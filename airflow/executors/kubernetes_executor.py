@@ -40,6 +40,7 @@ from urllib3.exceptions import ReadTimeoutError
 from airflow.exceptions import AirflowException, PodMutationHookException, PodReconciliationError
 from airflow.executors.base_executor import BaseExecutor, CommandType
 from airflow.kubernetes import pod_generator
+from airflow.kubernetes.istio import Istio
 from airflow.kubernetes.kube_client import get_kube_client
 from airflow.kubernetes.kube_config import KubeConfig
 from airflow.kubernetes.kubernetes_helper_functions import annotations_to_key, create_pod_id
@@ -92,6 +93,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
         self.watcher_queue = watcher_queue
         self.resource_version = resource_version
         self.kube_config = kube_config
+        self.istio = Istio(get_kube_client())
 
     def run(self) -> None:
         """Performs watching."""
@@ -172,6 +174,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
                 event=event,
             )
             last_resource_version = task.metadata.resource_version
+            self.istio.handle_istio_proxy(task)
 
         return last_resource_version
 
@@ -761,6 +764,7 @@ class KubernetesExecutor(BaseExecutor):
             for pod in pod_list:
                 self.adopt_launched_task(kube_client, pod, pod_ids)
         self._adopt_completed_pods(kube_client)
+        self._handle_zombied_istio_pods(kube_client)
         tis_to_flush.extend(pod_ids.values())
         return tis_to_flush
 
@@ -821,6 +825,22 @@ class KubernetesExecutor(BaseExecutor):
                 )
             except ApiException as e:
                 self.log.info("Failed to adopt pod %s. Reason: %s", pod.metadata.name, e)
+
+    def _handle_zombied_istio_pods(self, kube_client: client.CoreV1Api) -> None:
+        """
+        Handle Zombied pods that are caused because istio container is still running,
+        while base container (where Airflow task is run) is completed.
+
+        :param kube_client: kubernetes client for speaking to kube API
+        """
+        kwargs = {
+            'field_selector': "status.phase=Running",
+            'label_selector': 'kubernetes_executor=True',
+        }
+        pod_list = kube_client.list_namespaced_pod(namespace=self.kube_config.kube_namespace, **kwargs)
+        istio = Istio(kube_client=self.kube_client)
+        for pod in pod_list.items:
+            istio.handle_istio_proxy(pod)
 
     def _flush_task_queue(self) -> None:
         if TYPE_CHECKING:

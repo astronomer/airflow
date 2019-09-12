@@ -299,6 +299,7 @@ kubernetes = [
     # core is not hard-limited via install-requires, only by extra).
     "cryptography>=2.0.0",
     "kubernetes>=21.7.0,<24",
+    "packaging>=19.1",
 ]
 ldap = [
     "ldap3>=2.5.1",
