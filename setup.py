@@ -416,6 +416,7 @@ kerberos = [
 kubernetes = [
     'cryptography>=2.0.0',
     'kubernetes>=21.7.0',
+    'packaging>=19.1',
 ]
 kylin = ['kylinpy>=2.6']
 ldap = [
