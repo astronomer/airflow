@@ -65,9 +65,9 @@ repos:
           - --fuzzy-match-generates-todo
         files: \.rst$
       - id: insert-license
-        name: Add license for all CSS/JS/PUML/TS/TSX files
-        files: \.(css|js|puml|ts|tsx|jsx)$
-        exclude: ^\.github/.*$|^airflow/_vendor/
+        name: Add license for all JS/TS/TSX/CSS/PUML files
+        files: \.(js|jsx|ts|tsx|css|puml)$
+        exclude: ^\.github/.*$|^airflow/_vendor/|astro-theme.css$
         args:
           - --comment-style
           - "/*!| *| */"
