@@ -380,7 +380,7 @@ jobs:
   build-prod-images:
     timeout-minutes: 80
     name: "Build PROD images ${{matrix.python-version}}"
-    runs-on: ubuntu-20.04
+    runs-on: [self-hosted]
     needs: [build-info, cancel-workflow-runs, build-ci-images]
     strategy:
       matrix:
