@@ -121,7 +121,7 @@ jobs:
       # Avoid having to specify the runs-on logic every time
       - name: Set runs-on
         id: set-runs-on
-        run: echo "::set-output name=runsOn::${RUNS_ON}"
+        run: echo "::set-output name=runsOn::$(jq -n 'env.RUNS_ON')"
       - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
         uses: actions/checkout@v2
         with:
