@@ -929,7 +929,7 @@ jobs:
       - name: "Free space"
         run: ./scripts/ci/tools/ci_free_space_on_ci.sh
         if: |
-          needs.build-info.outputs.waitForImage == 'true' &
+          needs.build-info.outputs.waitForImage == 'true' &&
           !contains(needs.build-info.outputs.runsOn, 'self-hosted')
       - name: "Prepare PROD Image"
         run: ./scripts/ci/images/ci_prepare_prod_image_on_ci.sh
