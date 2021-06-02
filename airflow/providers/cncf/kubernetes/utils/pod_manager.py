@@ -39,6 +39,7 @@ from urllib3.exceptions import HTTPError as BaseHTTPError
 from airflow.exceptions import AirflowException
 from airflow.kubernetes.kube_client import get_kube_client
 from airflow.kubernetes.pod_generator import PodDefaults
+from airflow.providers.cncf.kubernetes.utils.istio import Istio
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 if TYPE_CHECKING:
@@ -99,6 +100,20 @@ class PodLoggingStatus:
     last_log_time: DateTime | None
 
 
+class SleepConfig:
+    """Configure sleeps used for polling"""
+
+    # Only polls during the start of a pod
+    POD_STARTING_POLL = 1
+    # Used to detect all cleanup jobs are completed
+    # and the entire Pod is cleaned up
+    POD_RUNNING_POLL = 1
+    # Polls for the duration of the task execution
+    # to detect when the task is done. The difference
+    # between this and POD_RUNNING_POLL is sidecars.
+    BASE_CONTAINER_RUNNING_POLL = 2
+
+
 class PodManager(LoggingMixin):
     """
     Helper class for creating, monitoring, and otherwise interacting with Kubernetes pods
@@ -130,6 +145,7 @@ class PodManager(LoggingMixin):
                 DeprecationWarning,
             )
         self._watch = watch.Watch()
+        self.istio = Istio(self._client)
 
     def run_pod_async(self, pod: V1Pod, **kwargs) -> V1Pod:
         """Runs POD asynchronously"""
@@ -192,7 +208,8 @@ class PodManager(LoggingMixin):
                     "Check the pod events in kubernetes to determine why."
                 )
                 raise PodLaunchFailedException(msg)
-            time.sleep(1)
+            time.sleep(SleepConfig.POD_STARTING_POLL)
+            self.log.debug("Pod not yet started")
 
     def follow_container_logs(self, pod: V1Pod, container_name: str) -> PodLoggingStatus:
         warnings.warn(
@@ -272,7 +289,7 @@ class PodManager(LoggingMixin):
         :param container_name: name of the container within the pod to monitor
         """
         while self.container_is_running(pod=pod, container_name=container_name):
-            time.sleep(1)
+            time.sleep(SleepConfig.BASE_CONTAINER_RUNNING_POLL)
 
     def await_pod_completion(self, pod: V1Pod) -> V1Pod:
         """
@@ -281,12 +298,15 @@ class PodManager(LoggingMixin):
         :param pod: pod spec that will be monitored
         :return: tuple[State, str | None]
         """
+        istio_shut_down_initiated = False
         while True:
             remote_pod = self.read_pod(pod)
             if remote_pod.status.phase in PodPhase.terminal_states:
                 break
             self.log.info("Pod %s has phase %s", pod.metadata.name, remote_pod.status.phase)
-            time.sleep(2)
+            time.sleep(SleepConfig.POD_RUNNING_POLL)
+            if not istio_shut_down_initiated:
+                istio_shut_down_initiated = self.istio.handle_istio_proxy(remote_pod)
         return remote_pod
 
     def parse_log_line(self, line: str) -> tuple[DateTime | None, str]:
