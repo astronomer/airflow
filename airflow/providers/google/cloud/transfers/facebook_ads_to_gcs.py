@@ -85,7 +85,6 @@ class FacebookAdsReportToGcsOperator(BaseOperator):
         bucket_name: str,
         object_name: str,
         fields: List[str],
-        params: Dict[str, Any],
         gzip: bool = False,
         api_version: str = "v6.0",
         gcp_conn_id: str = "google_cloud_default",
@@ -100,7 +99,6 @@ class FacebookAdsReportToGcsOperator(BaseOperator):
         self.facebook_conn_id = facebook_conn_id
         self.api_version = api_version
         self.fields = fields
-        self.params = params
         self.gzip = gzip
         self.impersonation_chain = impersonation_chain
 
