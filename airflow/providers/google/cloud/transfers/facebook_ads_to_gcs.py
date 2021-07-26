@@ -106,7 +106,7 @@ class FacebookAdsReportToGcsOperator(BaseOperator):
         service = FacebookAdsReportingHook(
             facebook_conn_id=self.facebook_conn_id, api_version=self.api_version
         )
-        rows = service.bulk_facebook_report(params=self.params, fields=self.fields)
+        rows = service.bulk_facebook_report(params={k: v() for k, v in self.params.items()}, fields=self.fields)
 
         converted_rows = [dict(row) for row in rows]
         self.log.info("Facebook Returned %s data points", len(converted_rows))
