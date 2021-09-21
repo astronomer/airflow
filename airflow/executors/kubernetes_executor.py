@@ -375,7 +375,10 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
                 event=event,
             )
             last_resource_version = task.metadata.resource_version
-            self.istio.handle_istio_proxy(task)
+            try:
+                self.istio.handle_istio_proxy(task)
+            except Exception as e:
+                self.log.exception("Issue shutting down istio proxy for task %s. Continuing", task.metadata.name)
 
         return last_resource_version
 
