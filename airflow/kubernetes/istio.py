@@ -15,9 +15,13 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import tenacity
+from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
+
 from airflow import AirflowException
 from airflow.utils.log.logging_mixin import LoggingMixin
-from kubernetes.stream import stream
+
 try:
     from packaging.version import parse as semantic_version
 except ImportError:
@@ -133,20 +137,45 @@ class Istio(LoggingMixin):
             self.log.info("Shutting down istio-proxy in pod {}".format(pod.metadata.name))
             self._post_quitquitquit(pod, container, status_port)
 
+    @tenacity.retry(
+        stop=tenacity.stop_after_attempt(3),
+        wait=tenacity.wait_fixed(0.5),
+        reraise=True,
+        retry=tenacity.retry_if_exception_type(ApiException),
+    )
     def _post_quitquitquit(self, pod, container, status_port):
-        """ Send the curl to shutdown the isto-proxy container
-        """
+        """Send the curl to shutdown the isto-proxy container"""
         # Use exec to curl localhost inside of the sidecar.
-        _ = stream(
-            self._client.connect_get_namespaced_pod_exec,
-            pod.metadata.name,
-            pod.metadata.namespace,
-            tty=False,
-            stderr=True,
-            stdin=False,
-            stdout=True,
-            container=container.name,
-            command=[
-                '/bin/sh',
-                '-c',
-                'curl -XPOST http://127.0.0.1:{}/quitquitquit'.format(status_port)])
+        try:
+            self.log.debug(
+                "Attempting to shutdown istio sidecar for %s", pod.metadata.name
+            )
+            _ = stream(
+                self._client.connect_get_namespaced_pod_exec,
+                pod.metadata.name,
+                pod.metadata.namespace,
+                tty=False,
+                stderr=True,
+                stdin=False,
+                stdout=True,
+                container=container.name,
+                command=[
+                    "/bin/sh",
+                    "-c",
+                    "curl -XPOST http://127.0.0.1:{}/quitquitquit".format(status_port),
+                ],
+            )
+            return
+        except ApiException:
+            # Check if the istio sidecar has already been shut down
+            current_pod = self._client.read_namespaced_pod(
+                name=pod.metadata.name,
+                namespace=pod.metadata.namespace,
+            )
+            if not self._should_shutdown_istio_proxy(current_pod):
+                self.log.info(
+                    "Istio sidecar is already shut down in %s, so continuing on",
+                    pod.metadata.name,
+                )
+                return
+            raise
