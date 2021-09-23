@@ -18,4 +18,4 @@
 # under the License.
 #
 
-version = '1.10.10+astro.9'
+version = '1.10.10.dev1+astro.10'
