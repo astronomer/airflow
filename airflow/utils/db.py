@@ -20,7 +20,7 @@ import os
 import time
 from typing import Iterable
 
-from sqlalchemy import Table, exc, func, inspect, or_, text
+from sqlalchemy import Table, exc, func
 
 from airflow import settings
 from airflow.configuration import conf
@@ -51,7 +51,11 @@ from airflow.models import (  # noqa: F401
 from airflow.models.serialized_dag import SerializedDagModel  # noqa: F401
 
 # TODO: remove create_session once we decide to break backward compatibility
-from airflow.utils.session import create_global_lock, create_session, provide_session  # noqa: F401
+from airflow.utils.session import (  # noqa: F401 # pylint: disable=unused-import
+    create_global_lock,
+    create_session,
+    provide_session,
+)
 
 log = logging.getLogger(__name__)
 
@@ -722,48 +726,16 @@ def check_run_id_null(session) -> Iterable[str]:
     session.rollback()
 
 
-def _move_dangling_run_data_to_new_table(session, source_table, target_table):
-    where_clause = "where dag_id is null or execution_date is null"
-    session.execute(text(f"create table {target_table} as select * from {source_table} {where_clause}"))
-    session.execute(text(f"delete from {source_table} {where_clause}"))
-
-
-def _move_dangling_task_data_to_new_table(session, source_table, target_table):
-    where_clause = f"""
-        where (task_id, dag_id, execution_date) IN (
-            select source.task_id, source.dag_id, source.execution_date
-            from {source_table} as source
-            left join dag_run as dr
-            on (source.dag_id = dr.dag_id and source.execution_date = dr.execution_date)
-            where dr.id is null
-        )
-    """
-    session.execute(text(f"create table {target_table} as select * from {source_table} {where_clause}"))
-    session.execute(text(f"delete from {source_table} {where_clause}"))
-
-
-def _format_dangling_table_name(source_table):
-    return f"_airflow_22_{source_table}_dangling"
-
-
-def _format_dangling_error(source_table, target_table, invalid_count, reason):
-    noun = "row" if invalid_count == 1 else "rows"
-    return (
-        f"The {source_table} table has {invalid_count} {noun} {reason}, which "
-        f"is invalid. We could not move them out of the way because the "
-        f"{target_table} table already exists in your database. Please either "
-        f"drop the {target_table} table, or manually delete the invalid rows "
-        f"from the {source_table} table."
-    )
-
-
 def check_task_tables_without_matching_dagruns(session) -> Iterable[str]:
+    from itertools import chain
+
     import sqlalchemy.schema
     from sqlalchemy import and_, outerjoin
 
     metadata = sqlalchemy.schema.MetaData(session.bind)
-    models_to_dagrun = [TaskInstance, TaskReschedule]
-    for model in models_to_dagrun + [DagRun]:
+    models_to_dagrun = [TaskInstance, TaskFail]
+    models_to_ti = []
+    for model in models_to_dagrun + models_to_ti + [DagRun]:
         try:
             metadata.reflect(only=[model.__tablename__])
         except exc.InvalidRequestError:
@@ -771,72 +743,43 @@ def check_task_tables_without_matching_dagruns(session) -> Iterable[str]:
             # version
             pass
 
-    # Key table doesn't exist -- likely empty DB.
     if DagRun.__tablename__ not in metadata or TaskInstance.__tablename__ not in metadata:
+        # Key table doesn't exist -- likely empty DB
+        session.rollback()
         return
 
-    existing_table_names = set(inspect(session.get_bind()).get_table_names())
+    for (model, target) in chain(
+        ((m, metadata.tables[DagRun.__tablename__]) for m in models_to_dagrun),
+        ((m, metadata.tables[TaskInstance.__tablename__]) for m in models_to_ti),
+    ):
+        table = metadata.tables.get(model.__tablename__)
+        if table is None:
+            continue
+        if 'run_id' in table.columns:
+            # Migration already applied, don't check again
+            continue
 
-    # We can't use the model here since it may differ from the db state due to
-    # this function is run prior to migration. Use the reflected table instead.
-    dagrun_table = metadata.tables[DagRun.__tablename__]
-    invalid_dagrun_count = (
-        session.query(dagrun_table.c.id)
-        .filter(or_(dagrun_table.c.dag_id.is_(None), dagrun_table.c.execution_date.is_(None)))
-        .count()
-    )
-    if invalid_dagrun_count > 0:
-        dagrun_dangling_table_name = _format_dangling_table_name(dagrun_table.name)
-        if dagrun_dangling_table_name in existing_table_names:
-            yield _format_dangling_error(
-                source_table=dagrun_table.name,
-                target_table=dagrun_dangling_table_name,
-                invalid_count=invalid_dagrun_count,
-                reason="with NULL dag_id or execution_date",
+        # We can't use the model here (as that would have the associationproxy, we instead need to use the
+        # _reflected_ table)
+        join_cond = and_(table.c.dag_id == target.c.dag_id, table.c.execution_date == target.c.execution_date)
+        if "task_id" in target.columns:
+            join_cond = and_(join_cond, table.c.task_id == target.c.task_id)
+
+        query = (
+            session.query(table.c.dag_id, table.c.task_id, table.c.execution_date)
+            .select_from(outerjoin(table, target, join_cond))
+            .filter(target.c.dag_id.is_(None))
+        )  # type: ignore
+
+        num = query.count()
+
+        if num > 0:
+            yield (
+                f'The {table.name} table has {num} row{"s" if num != 1 else ""} without a '
+                f'corresponding {target.name} row. You must manually correct this problem '
+                '(possibly by deleting the problem rows).'
             )
-            return
-        _move_dangling_run_data_to_new_table(session, dagrun_table.name, dagrun_dangling_table_name)
-
-    errored = False
-
-    for model in models_to_dagrun:
-        source_table = metadata.tables.get(model.__tablename__)
-        if source_table is None:
-            continue
-        if "run_id" in source_table.columns:  # Migration already applied, don't check again.
-            continue
-
-        # We can't use the model here since it may differ from the db state due to
-        # this function is run prior to migration. Use the reflected table instead.
-        source_to_dag_run_join_cond = and_(
-            source_table.c.dag_id == dagrun_table.c.dag_id,
-            source_table.c.execution_date == dagrun_table.c.execution_date,
-        )
-        invalid_row_count = (
-            session.query(source_table.c.dag_id, source_table.c.task_id, source_table.c.execution_date)
-            .select_from(outerjoin(source_table, dagrun_table, source_to_dag_run_join_cond))
-            .filter(dagrun_table.c.dag_id.is_(None))
-            .count()
-        )
-        if invalid_row_count <= 0:
-            continue
-
-        dangling_table_name = _format_dangling_table_name(source_table.name)
-        if dangling_table_name in existing_table_names:
-            yield _format_dangling_error(
-                source_table=source_table.name,
-                target_table=dangling_table_name,
-                invalid_count=invalid_row_count,
-                reason=f"without a corresponding {dagrun_table.name} row",
-            )
-            errored = True
-            continue
-        _move_dangling_task_data_to_new_table(session, source_table.name, dangling_table_name)
-
-    if errored:
-        session.rollback()
-    else:
-        session.commit()
+    session.rollback()
 
 
 @provide_session
