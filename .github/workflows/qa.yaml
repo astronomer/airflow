@@ -1,0 +1,57 @@
+# This file is Not licensed to ASF
+# SKIP LICENSE INSERTION
+
+---
+name: Build Airflow packages
+on:  # yamllint disable-line rule:truthy
+  schedule:
+    #        day of week    *: Each/every day of the week
+    #    month of year |    *: Each/every month of the year
+    #   day of month | |    *: Each/every day of the month
+    #         hour | | |    *: Midnight, UTC
+    #     minute | | | |  */5: 12:28am UTC
+    #          v v v v v
+    - cron: "*/5 * * * *"
+    # #       day of week   *: Each/every day of the week
+    # #   month of year |   *: Each/every month of the year
+    # #  day of month | |   *: Each/every day of the month
+    # #        hour | | |   0: Midnight, UTC
+    # #    minute | | | |  28: 12:28am UTC
+    # #         v v v v v
+    # - cron: "28 0 * * *"
+  push:
+    branches: ["astro-main"]
+  pull_request:
+    branches: ["astro-main"]
+permissions:
+  # All other permissions are set to none
+  contents: read
+
+jobs:
+  build-qa-python-packages:
+    timeout-minutes: 10
+    name: "Publish wheels"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.7'
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14
+      - name: Install Yarn
+        run: |
+          npm install --global yarn
+      - run: |
+          pip install --upgrade pip==21.2.4
+          pip install packaging GitPython wheel
+      - name: Create Python Wheel
+        run: ./scripts/ci/astronomer-qa-nightly-build.sh
+      - name: 🚀 Upload packages as artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          path: |
+            ./dist/apache-airflow/*
+            ./dist/astronomer-certified/*
