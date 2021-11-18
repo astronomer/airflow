@@ -30,7 +30,7 @@ if [[ ${AIRFLOW_VERSION} == *"dev"* ]]; then
 
     YYYYMMDD_DATE=$(date +%Y%m%d)
     sed -i -E "s/dev[0-9]+/dev${YYYYMMDD_DATE}/g" airflow/version.py
-    sed -i -E "s/dev[0-9]+(\+astro)?/dev${YYYYMMDD_DATE}\+astro/g" setup.py
+    sed -i -E "s/dev[0-9]+(\+astro)?/dev${YYYYMMDD_DATE}/g" setup.py
 
     UPDATED_AIRFLOW_VERSION=$(awk '/version = /{print $NF}' setup.py | tr -d \')
     export UPDATED_AIRFLOW_VERSION
@@ -64,4 +64,4 @@ echo "Airflow Base Version: $AIRFLOW_BASE_VESION"
 # Store the latest version info in a separate file
 # Example: 'astronomer-certified/latest-1.10.7.build' contains '1.10.7.post7'
 mkdir astronomer-certified
-echo "${CURRENT_AC_VERSION}" > astronomer-certified/latest-"$AIRFLOW_BASE_VESION".build
+echo "${CURRENT_AC_VERSION}" > astronomer-certified/latest-main.build
