@@ -21,8 +21,6 @@ on:  # yamllint disable-line rule:truthy
     # - cron: "28 0 * * *"
   push:
     branches: ["astro-main"]
-  pull_request:
-    branches: ["astro-main"]
 permissions:
   # All other permissions are set to none
   contents: read
@@ -49,9 +47,28 @@ jobs:
           pip install packaging GitPython wheel
       - name: Create Python Wheel
         run: ./scripts/ci/astronomer-qa-nightly-build.sh
-      - name: 🚀 Upload packages as artifacts
-        uses: actions/upload-artifact@v2
+      - name: "Deploy Python Wheel and tar.gz"
+        uses: actions-hub/gcloud@330.0.0
+        env:
+          APPLICATION_CREDENTIALS: ${{secrets.ASTRONOMER_PROD}}
+          PROJECT_ID: ${{secrets.GCLOUD_PROJECT_ID}}
         with:
-          path: |
-            ./dist/apache-airflow/*
-            ./dist/astronomer-certified/*
+          args: cp -a public-read -r ./dist/* gs://pip.astronomer.io/simple
+          cli: gsutil
+      - name: "Deploy '.build' file (containing deployed version number)"
+        uses: actions-hub/gcloud@330.0.0
+        env:
+          APPLICATION_CREDENTIALS: ${{secrets.ASTRONOMER_PROD}}
+          PROJECT_ID: ${{secrets.GCLOUD_PROJECT_ID}}
+        with:
+          args: >
+            -h "Cache-Control:no-cache,max-age=0"
+            cp -a public-read -r "./**/*.build" gs://pip.astronomer.io/simple/astronomer-certified
+          cli: gsutil
+      - name: Index Pages
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_CONTENT: ${{secrets.ASTRONOMER_PROD}}
+        run: |
+          git clone https://github.com/astronomer/pip-release-utilities.git pip-release-utilities
+          ./pip-release-utilities/build-index-page.sh pip.astronomer.io simple/apache-airflow
+          ./pip-release-utilities/build-index-page.sh pip.astronomer.io simple/astronomer-certified
