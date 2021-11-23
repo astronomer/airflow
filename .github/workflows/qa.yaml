@@ -32,6 +32,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - name: Install jq
+        run: |
+          sudo apt install --yes jq
       - uses: actions/setup-python@v2
         with:
           python-version: '3.7'
@@ -64,6 +67,16 @@ jobs:
           args: >
             -h "Cache-Control:no-cache,max-age=0"
             cp -a public-read -r "./**/*.build" gs://pip.astronomer.io/simple/astronomer-certified
+          cli: gsutil
+      - name: "Deploy '.build.json' file (containing full build info)"
+        uses: actions-hub/gcloud@330.0.0
+        env:
+          APPLICATION_CREDENTIALS: ${{secrets.ASTRONOMER_PROD}}
+          PROJECT_ID: ${{secrets.GCLOUD_PROJECT_ID}}
+        with:
+          args: >
+            -h "Cache-Control:no-cache,max-age=0"
+            cp -a public-read -r "./**/*.build.json" gs://pip.astronomer.io/simple/astronomer-certified
           cli: gsutil
       - name: Index Pages
         env:

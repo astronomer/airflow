@@ -50,7 +50,6 @@ python3 setup.py --quiet compile_assets bdist_wheel --dist-dir "$AIRFLOW_DIST_DI
 # Get the package name
 # As long as there's only one, this will grab it
 AIRFLOW_PACKAGE_PATH=$(echo $AIRFLOW_DIST_DIR/apache_airflow-*.whl)
-# shellcheck disable=SC2034
 AIRFLOW_PACKAGE_NAME=$(basename "$AIRFLOW_PACKAGE_PATH")
 
 ls -altr $AIRFLOW_DIST_DIR/*
@@ -80,3 +79,70 @@ echo "Airflow Base Version: $AIRFLOW_BASE_VERSION"
 # Example: 'astronomer-certified/latest-1.10.7.build' contains '1.10.7.post7'
 mkdir astronomer-certified
 echo "${CURRENT_AC_VERSION}" > astronomer-certified/latest-main.build
+
+# From https://stackoverflow.com/a/39896036
+# Use jq since it knows how to properly quote variables into JSON
+#
+# Also, if in the future we need to do this, you can serialize a
+# (non-associative) Bash array with jq:
+#
+# for item in "${MY_ARRAY[@]}"; do
+#     echo $item;
+# done | jq -nR '{items: [inputs | .]}'
+#
+# We use Bash shell parameter expansion to guard against variables not being
+# defined (these are also called "guarded references")
+#
+jq -n \
+   --arg build_date "$DATE_STRING" \
+   --arg git_ref_name "${GITHUB_REF_NAME:?You must specify GITHUB_REF_NAME}" \
+   --arg git_ref_type "${GITHUB_REF_TYPE:?You must specify GITHUB_REF_TYPE}" \
+   --arg git_commit_sha "${GITHUB_SHA:?You must specify GITHUB_SHA}" \
+   --arg github_workflow "${GITHUB_WORKFLOW:?You must specify GITHUB_WORKFLOW}" \
+   --arg github_job "${GITHUB_JOB:?You must specify GITHUB_JOB}" \
+   --arg github_action "${GITHUB_ACTION:?You must specify GITHUB_ACTION}" \
+   --arg github_run_number "${GITHUB_RUN_NUMER:?You must specify GITHUB_RUN_NUMBER}" \
+   --arg github_runner_name "${RUNNER_NAME:?You must specify RUNNER_NAME}" \
+   --arg github_runner_os "${RUNNER_OS:?You must specify RUNNER_OS}" \
+   --arg python_version "$(python3 --version)" \
+   --arg airflow_package_name "$AIRFLOW_PACKAGE_NAME" \
+   --arg airflow_version "$UPDATED_AIRFLOW_VERSION" \
+   --arg ac_package_name "$AC_PACKAGE_NAME" \
+   --arg ac_version "$CURRENT_AC_VERSION" \
+   '{
+      "date": $build_date,
+      "git": {
+        "ref": {
+          "name": $git_ref_name,
+          "type": $git_ref_type
+        },
+        "commit": $git_commit_sha
+      },
+      "github": {
+        "workflow": $github_workflow,
+        "job_id": $github_job,
+        "action": $github_action,
+        "run_number": $github_run_number,
+        "runner": {
+          "name": $github_runner_name,
+          "os": $github_runner_os
+        }
+      },
+      "python": {
+        "version": $python_version
+      },
+      "output": {
+        "airflow": {
+          "package": {
+            "name": $airflow_package_name,
+            "version": $airflow_version
+          }
+        }
+        "astronomer_certified": {
+          "package": {
+            "name": $ac_package_name,
+            "version": $ac_version
+          }
+        }
+      }
+    }' | tee astronomer-certified/latest-main.build.json
