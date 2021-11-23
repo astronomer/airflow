@@ -23,45 +23,171 @@ AIRFLOW_VERSION=$(awk '/version =/{print $NF; exit}' setup.py | tr -d \')
 export AIRFLOW_VERSION
 echo "Current Version is: ${AIRFLOW_VERSION}"
 
-if [[ ${AIRFLOW_VERSION} == *"dev"* ]]; then
-    echo "Building and releasing a QA package"
-    echo
-    git fetch
-
-    NEW_VERSION="$(date +%Y%m%d)"
-    sed -i -E "s/dev[0-9]+/dev${NEW_VERSION}/g" airflow/version.py
-    sed -i -E "s/dev[0-9]+(\+astro)?/dev${NEW_VERSION}/g" setup.py
-
-    UPDATED_AIRFLOW_VERSION=$(awk '/version = /{print $NF}' setup.py | tr -d \')
-    export UPDATED_AIRFLOW_VERSION
-    echo "Updated Airflow Version: $UPDATED_AIRFLOW_VERSION"
-
-    python3 setup.py --quiet compile_assets bdist_wheel --dist-dir dist/apache-airflow/
-else
+if [[ ${AIRFLOW_VERSION} != *"dev"* ]]; then
     echo "Version does not contain 'dev' in airflow/version.py"
     echo "Skipping build and release process"
     echo
     exit 1
 fi
 
-ls -altr dist/*/*
+echo "Building and releasing a QA package"
+echo
+# This output can be very long, and is mostly useless
+git fetch >/dev/null
+
+# Grab the latest commit from the source branch of a rebase, or the main branch
+HEAD_REF_COMMIT_SHA=$(git rev-parse ${GITHUB_HEAD_REF:-origin/main})
+
+DATE_STRING="$(date +%Y%m%d)"
+sed -i -E "s/dev[0-9]+/dev${DATE_STRING}/g" airflow/version.py
+sed -i -E "s/dev[0-9]+(\+astro)?/dev${DATE_STRING}/g" setup.py
+
+UPDATED_AIRFLOW_VERSION=$(awk '/version = /{print $NF}' setup.py | tr -d \')
+export UPDATED_AIRFLOW_VERSION
+echo "Updated Airflow Version: $UPDATED_AIRFLOW_VERSION"
+
+AIRFLOW_DIST_DIR="dist/apache-airflow"
+
+python3 setup.py --quiet compile_assets bdist_wheel --dist-dir "$AIRFLOW_DIST_DIR"
+
+# Get the package name
+# As long as there's only one, this will grab it
+AIRFLOW_PACKAGE_PATH=$(echo $AIRFLOW_DIST_DIR/apache_airflow-*.whl)
+AIRFLOW_PACKAGE_NAME=$(basename "$AIRFLOW_PACKAGE_PATH")
+
+ls -altr $AIRFLOW_DIST_DIR/*
+
+AC_DIST_DIR="dist/astronomer-certified"
 
 # Build the astronomer-certified release from the matching apache-airflow wheel file
-python3 scripts/ci/astronomer-certified-setup.py bdist_wheel --dist-dir dist/astronomer-certified dist/apache-airflow/apache_airflow-*.whl
+python3 scripts/ci/astronomer-certified-setup.py bdist_wheel --dist-dir "$AC_DIST_DIR" "$AIRFLOW_PACKAGE_PATH"
 
-ls -altr dist/astronomer-certified/*
+ls -altr $AC_DIST_DIR/*
 
+# Get the package name
+# As long as there's only one, this will grab it
+AC_PACKAGE_PATH=$(echo $AC_DIST_DIR/astronomer_certified-*.whl)
+AC_PACKAGE_NAME=$(basename "$AC_PACKAGE_PATH")
 # Get the version of AC (Example 1.10.7.post7)
-CURRENT_AC_VERSION=$(echo dist/astronomer-certified/astronomer_certified-*.whl | sed -E 's|.*astronomer_certified-(.+)-py3-none-any.whl|\1|')
+CURRENT_AC_VERSION=$(echo "$AC_PACKAGE_NAME" | sed -E 's|.*astronomer_certified-(.+)-py3-none-any.whl|\1|')
 export CURRENT_AC_VERSION
 echo "AC Version: $CURRENT_AC_VERSION"
 
 # Get the version of Apache Airflow (Example 1.10.7)
-AIRFLOW_BASE_VESION=$(echo "$CURRENT_AC_VERSION" | sed -E 's|([0-9]+\.[0-9]+\.[0-9]+).*|\1|')
-export AIRFLOW_BASE_VESION
-echo "Airflow Base Version: $AIRFLOW_BASE_VESION"
+AIRFLOW_BASE_VERSION=$(echo "$CURRENT_AC_VERSION" | sed -E 's|([0-9]+\.[0-9]+\.[0-9]+).*|\1|')
+export AIRFLOW_BASE_VERSION
+echo "Airflow Base Version: $AIRFLOW_BASE_VERSION"
 
 # Store the latest version info in a separate file
 # Example: 'astronomer-certified/latest-1.10.7.build' contains '1.10.7.post7'
 mkdir astronomer-certified
 echo "${CURRENT_AC_VERSION}" > astronomer-certified/latest-main.build
+
+# Debug :/
+echo "jq version: $(jq --version)"
+echo "DATE_STRING: $DATE_STRING"
+echo "GITHUB_REF_NAME: ${GITHUB_REF_NAME:?You must specify GITHUB_REF_NAME}"
+echo "GITHUB_REF_TYPE: ${GITHUB_REF_TYPE:?You must specify GITHUB_REF_TYPE}"
+echo "GITHUB_SHA: ${GITHUB_SHA:?You must specify GITHUB_SHA}"
+echo "GITHUB_HEAD_REF: ${GITHUB_HEAD_REF:-main}"
+echo "HEAD_REF_COMMIT_SHA: ${HEAD_REF_COMMIT_SHA}"
+echo "GITHUB_WORKFLOW: ${GITHUB_WORKFLOW:?You must specify GITHUB_WORKFLOW}"
+echo "GITHUB_JOB: ${GITHUB_JOB:?You must specify GITHUB_JOB}"
+echo "GITHUB_ACTION: ${GITHUB_ACTION:?You must specify GITHUB_ACTION}"
+echo "GITHUB_RUN_NUMBER: ${GITHUB_RUN_NUMBER:?You must specify GITHUB_RUN_NUMBER}"
+echo "RUNNER_NAME: ${RUNNER_NAME:?You must specify RUNNER_NAME}"
+echo "RUNNER_OS: ${RUNNER_OS:?You must specify RUNNER_OS}"
+echo "python3: $(python3 --version)"
+echo "AIRFLOW_PACKAGE_NAME: ${AIRFLOW_PACKAGE_NAME}"
+echo "UPDATED_AIRFLOW_VERSION: ${UPDATED_AIRFLOW_VERSION}"
+echo "AC_PACKAGE_NAME: ${AC_PACKAGE_NAME}"
+echo "CURRENT_AC_VERSION: ${CURRENT_AC_VERSION}"
+
+# From https://stackoverflow.com/a/39896036
+# Use jq since it knows how to properly quote variables into JSON
+#
+# Also, if in the future we need to do this, you can serialize a
+# (non-associative) Bash array with jq:
+#
+# for item in "${MY_ARRAY[@]}"; do
+#     echo $item;
+# done | jq -nR '{items: [inputs | .]}'
+#
+# We use Bash shell parameter expansion to guard against variables not being
+# defined (these are also called "guarded references")
+#
+jq -n \
+   --arg build_date "$DATE_STRING" \
+   --arg git_ref_name "${GITHUB_REF_NAME:?You must specify GITHUB_REF_NAME}" \
+   --arg git_ref_type "${GITHUB_REF_TYPE:?You must specify GITHUB_REF_TYPE}" \
+   --arg git_commit_sha "${GITHUB_SHA:?You must specify GITHUB_SHA}" \
+   --arg git_head_ref "${GITHUB_HEAD_REF:-main}"  \
+   --arg git_source_commit_sha "${HEAD_REF_COMMIT_SHA}" \
+   --arg github_workflow "${GITHUB_WORKFLOW:?You must specify GITHUB_WORKFLOW}" \
+   --arg github_job "${GITHUB_JOB:?You must specify GITHUB_JOB}" \
+   --arg github_action "${GITHUB_ACTION:?You must specify GITHUB_ACTION}" \
+   --arg github_run_number "${GITHUB_RUN_NUMBER:?You must specify GITHUB_RUN_NUMBER}" \
+   --arg github_runner_name "${RUNNER_NAME:?You must specify RUNNER_NAME}" \
+   --arg github_runner_os "${RUNNER_OS:?You must specify RUNNER_OS}" \
+   --arg node_version "$(node --version)" \
+   --arg npm_version "$(npm --version)" \
+   --arg yarn_version "$(yarn --version)" \
+   --arg python_version "$(python3 --version)" \
+   --arg airflow_package_name "$AIRFLOW_PACKAGE_NAME" \
+   --arg airflow_version "$UPDATED_AIRFLOW_VERSION" \
+   --arg ac_package_name "$AC_PACKAGE_NAME" \
+   --arg ac_version "$CURRENT_AC_VERSION" \
+   '{
+      "date": $build_date,
+      "git": {
+        "built_by": {
+          "ref": {
+            "name": $git_ref_name,
+            "type": $git_ref_type
+          },
+          "commit": $git_commit_sha
+        },
+        "built_from": {
+          "branch": $git_head_ref,
+          "commit": $git_source_commit_sha
+        }
+      },
+      "github": {
+        "workflow": $github_workflow,
+        "job_id": $github_job,
+        "action": $github_action,
+        "run_number": $github_run_number,
+        "runner": {
+          "name": $github_runner_name,
+          "os": $github_runner_os
+        }
+      },
+      "js": {
+        "node": {
+          "version": $node_version
+        },
+        "npm": {
+          "version": $npm_version
+        },
+        "yarn": {
+          "version": $yarn_version
+        }
+      },
+      "python": {
+        "version": $python_version
+      },
+      "output": {
+        "airflow": {
+          "package": {
+            "name": $airflow_package_name,
+            "version": $airflow_version
+          }
+        },
+        "astronomer_certified": {
+          "package": {
+            "name": $ac_package_name,
+            "version": $ac_version
+          }
+        }
+      }
+    }' | tee astronomer-certified/latest-main.build.json
