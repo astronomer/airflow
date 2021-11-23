@@ -23,26 +23,26 @@ AIRFLOW_VERSION=$(awk '/version =/{print $NF; exit}' setup.py | tr -d \')
 export AIRFLOW_VERSION
 echo "Current Version is: ${AIRFLOW_VERSION}"
 
-if [[ ${AIRFLOW_VERSION} == *"dev"* ]]; then
-    echo "Building and releasing a QA package"
-    echo
-    git fetch
-
-    NEW_VERSION="$(date +%Y%m%d)"
-    sed -i -E "s/dev[0-9]+/dev${NEW_VERSION}/g" airflow/version.py
-    sed -i -E "s/dev[0-9]+(\+astro)?/dev${NEW_VERSION}/g" setup.py
-
-    UPDATED_AIRFLOW_VERSION=$(awk '/version = /{print $NF}' setup.py | tr -d \')
-    export UPDATED_AIRFLOW_VERSION
-    echo "Updated Airflow Version: $UPDATED_AIRFLOW_VERSION"
-
-    python3 setup.py --quiet compile_assets bdist_wheel --dist-dir dist/apache-airflow/
-else
+if [[ ${AIRFLOW_VERSION} != *"dev"* ]]; then
     echo "Version does not contain 'dev' in airflow/version.py"
     echo "Skipping build and release process"
     echo
     exit 1
 fi
+
+echo "Building and releasing a QA package"
+echo
+git fetch
+
+NEW_VERSION="$(date +%Y%m%d)"
+sed -i -E "s/dev[0-9]+/dev${NEW_VERSION}/g" airflow/version.py
+sed -i -E "s/dev[0-9]+(\+astro)?/dev${NEW_VERSION}/g" setup.py
+
+UPDATED_AIRFLOW_VERSION=$(awk '/version = /{print $NF}' setup.py | tr -d \')
+export UPDATED_AIRFLOW_VERSION
+echo "Updated Airflow Version: $UPDATED_AIRFLOW_VERSION"
+
+python3 setup.py --quiet compile_assets bdist_wheel --dist-dir dist/apache-airflow/
 
 ls -altr dist/*/*
 
