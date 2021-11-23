@@ -75,10 +75,9 @@ AIRFLOW_BASE_VERSION=$(echo "$CURRENT_AC_VERSION" | sed -E 's|([0-9]+\.[0-9]+\.[
 export AIRFLOW_BASE_VERSION
 echo "Airflow Base Version: $AIRFLOW_BASE_VERSION"
 
-# Store the latest version info in a separate file
+# Store the latest full build info, including the latest version, in a separate file
 # Example: 'astronomer-certified/latest-1.10.7.build' contains '1.10.7.post7'
 mkdir astronomer-certified
-echo "${CURRENT_AC_VERSION}" > astronomer-certified/latest-main.build
 
 # From https://stackoverflow.com/a/39896036
 # and https://stedolan.github.io/jq/manual/#$ENV,env
