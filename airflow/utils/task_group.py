@@ -177,7 +177,7 @@ class TaskGroup(DAGNode):
 
     @property
     def node_id(self):
-        return self.group_id
+        return self._group_id
 
     @property
     def is_root(self) -> bool:
