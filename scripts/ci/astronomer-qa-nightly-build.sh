@@ -101,7 +101,7 @@ jq -n \
    --arg github_workflow "${GITHUB_WORKFLOW:?You must specify GITHUB_WORKFLOW}" \
    --arg github_job "${GITHUB_JOB:?You must specify GITHUB_JOB}" \
    --arg github_action "${GITHUB_ACTION:?You must specify GITHUB_ACTION}" \
-   --arg github_run_number "${GITHUB_RUN_NUMER:?You must specify GITHUB_RUN_NUMBER}" \
+   --arg github_run_number "${GITHUB_RUN_NUMBER:?You must specify GITHUB_RUN_NUMBER}" \
    --arg github_runner_name "${RUNNER_NAME:?You must specify RUNNER_NAME}" \
    --arg github_runner_os "${RUNNER_OS:?You must specify RUNNER_OS}" \
    --arg python_version "$(python3 --version)" \
