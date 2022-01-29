@@ -3503,6 +3503,47 @@ class Airflow(AirflowBaseView):
         # avoid spaces to reduce payload size
         return htmlsafe_json_dumps(data, separators=(',', ':'))
 
+    @expose('/object/graph_data')
+    @auth.has_access(
+        [
+            (permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG),
+        ]
+    )
+    @action_logging
+    def graph_data(self):
+        """Returns graph data"""
+        dag_id = request.args.get('dag_id')
+        dag = current_app.dag_bag.get_dag(dag_id)
+        if not dag:
+            flash(f'DAG "{dag_id}" seems to be missing.', "error")
+            return redirect(url_for('Airflow.index'))
+
+        root = request.args.get('root')
+        if root:
+            dag = dag.partial_subset(task_ids_or_regex=root, include_upstream=True, include_downstream=False)
+
+        nodes = task_group_to_dict(dag.task_group)
+        edges = dag_edges(dag)
+
+        tasks = {
+            t.task_id: {
+                'dag_id': t.dag_id,
+                'task_type': t.task_type,
+                'extra_links': t.extra_links,
+            }
+            for t in dag.tasks
+        }
+        if not tasks:
+            flash("No tasks found", "error")
+
+        data = {
+            'nodes': nodes,
+            'edges': edges,
+            'tasks': tasks,
+        }
+
+        return htmlsafe_json_dumps(data, separators=(',', ':'))
+
     @expose('/robots.txt')
     @action_logging
     def robots(self):

@@ -32,6 +32,7 @@ import useMarkSuccessTask from './useMarkSuccessTask';
 import useExtraLinks from './useExtraLinks';
 import useConfirmMarkTask from './useConfirmMarkTask';
 import useGridData from './useGridData';
+import useGraphData from './useGraphData';
 import useMappedInstances from './useMappedInstances';
 
 axios.interceptors.response.use(
@@ -53,5 +54,6 @@ export {
   useExtraLinks,
   useConfirmMarkTask,
   useGridData,
+  useGraphData,
   useMappedInstances,
 };
