@@ -280,30 +280,55 @@ class _TaskDecorator(Generic[Function, OperatorSubclass]):
             names = ", ".join(repr(n) for n in unknown_args)
             raise TypeError(f'{funcname} got unexpected keyword arguments {names}')
 
-    def map(
-        self, *, dag: Optional["DAG"] = None, task_group: Optional["TaskGroup"] = None, **kwargs
-    ) -> XComArg:
+    def map(self, *args, **kwargs) -> XComArg:
         self._validate_arg_names("map", kwargs)
-        dag = dag or DagContext.get_current_dag()
-        task_group = task_group or TaskGroupContext.get_current_task_group(dag)
-        task_id = get_unique_task_id(self.kwargs['task_id'], dag, task_group)
+        dag = self.kwargs.get("dag", DagContext.get_current_dag())
+        task_group = self.kwargs.get("task_group", TaskGroupContext.get_current_task_group(dag))
+        task_id = get_unique_task_id(self.kwargs["task_id"], dag, task_group)
 
-        operator = MappedOperator.from_decorator(
-            decorator=self,
+        operator = _MappedDecoratedOperator(
+            operator_class=self.operator_class,
+            partial_kwargs={
+                "python_callable": self.function,
+                "multiple_outputs": self.multiple_outputs,
+                **self.kwargs,
+            },
+            mapped_kwargs={},
+            task_id=task_id,
             dag=dag,
             task_group=task_group,
-            task_id=task_id,
-            mapped_kwargs=kwargs,
+            deps=_MappedDecoratedOperator._deps(self.operator_class.deps),
         )
+        operator.mapped_kwargs["op_args"] = args
+        operator.mapped_kwargs["op_kwargs"] = kwargs
+        for arg in itertools.chain(args, kwargs.values()):
+            XComArg.apply_upstream_relationship(operator, arg)
         return XComArg(operator=operator)
 
-    def partial(
-        self, *, dag: Optional["DAG"] = None, task_group: Optional["TaskGroup"] = None, **kwargs
-    ) -> "_TaskDecorator[Function, OperatorSubclass]":
-        self._validate_arg_names("partial", kwargs, {'task_id'})
+    def partial(self, *args, **kwargs) -> "_TaskDecorator[Function, OperatorSubclass]":
+        self._validate_arg_names("partial", kwargs)
         partial_kwargs = self.kwargs.copy()
-        partial_kwargs.update(kwargs)
+        if args:
+            partial_kwargs["op_args"] = [*partial_kwargs.get("op_args", ()), *args]
+        if kwargs:
+            op_kwargs = partial_kwargs.get("op_kwargs", {})
+            duplicated_keys = set(op_kwargs).intersection(kwargs)
+            if len(duplicated_keys) == 1:
+                raise TypeError(f"duplicated partial argument: {duplicated_keys.pop()}")
+            elif duplicated_keys:
+                duplicated_keys_display = ", ".join(sorted(duplicated_keys))
+                raise TypeError(f"duplicated partial arguments: {duplicated_keys_display}")
+            partial_kwargs["op_kwargs"] = {**op_kwargs, **kwargs}
         return attr.evolve(self, kwargs=partial_kwargs)
+
+
+class _MappedDecoratedOperator(MappedOperator):
+    def create_unmapped_operator(self, dag: DAG, kwargs: Dict[str, Any]) -> BaseOperator:
+        if kwargs.pop("dag").dag_id != dag.dag_id:
+            raise RuntimeError("Cannot unmap a task with inconsistent DAG ID")
+        if kwargs.pop("task_id") != self.task_id:
+            raise RuntimeError("Cannot unmap a task with inconsistent task ID")
+        return super().create_unmapped_operator(dag, kwargs)
 
 
 class TaskDecorator(Protocol):
