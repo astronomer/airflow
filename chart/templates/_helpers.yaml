@@ -171,24 +171,12 @@ If release name contains chart name it will be used as a full name.
 {{- end -}}
 {{- end }}
 
-{{ define "statsd_image" -}}
-{{ printf "%s:%s" .Values.images.statsd.repository .Values.images.statsd.tag }}
-{{- end }}
-
-{{ define "redis_image" -}}
-{{ printf "%s:%s" .Values.images.redis.repository .Values.images.redis.tag }}
-{{- end }}
-
 {{ define "fernet_key_secret" -}}
 {{ default (printf "%s-fernet-key" .Release.Name) .Values.fernetKeySecretName }}
 {{- end }}
 
 {{ define "webserver_secret_key_secret" -}}
 {{ default (printf "%s-webserver-secret-key" .Release.Name) .Values.webserverSecretKeySecretName }}
-{{- end }}
-
-{{ define "redis_password_secret" -}}
-{{ default (printf "%s-redis-password" .Release.Name) .Values.redis.passwordSecretName }}
 {{- end }}
 
 {{ define "airflow_metadata_secret" -}}
@@ -273,39 +261,6 @@ Create the name of the webserver service account to use
     {{ default (printf "%s-webserver" (include "airflow.fullname" .)) .Values.webserver.serviceAccount.name }}
 {{- else -}}
     {{ default "default" .Values.webserver.serviceAccount.name }}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Create the name of the redis service account to use
-*/}}
-{{- define "redis.serviceAccountName" -}}
-{{- if .Values.redis.serviceAccount.create -}}
-    {{ default (printf "%s-redis" (include "airflow.fullname" .)) .Values.redis.serviceAccount.name }}
-{{- else -}}
-    {{ default "default" .Values.redis.serviceAccount.name }}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Create the name of the scheduler service account to use
-*/}}
-{{- define "scheduler.serviceAccountName" -}}
-{{- if .Values.scheduler.serviceAccount.create -}}
-    {{ default (printf "%s-scheduler" (include "airflow.fullname" .)) .Values.scheduler.serviceAccount.name }}
-{{- else -}}
-    {{ default "default" .Values.scheduler.serviceAccount.name }}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Create the name of the statsd service account to use
-*/}}
-{{- define "statsd.serviceAccountName" -}}
-{{- if .Values.statsd.serviceAccount.create -}}
-    {{ default (printf "%s-statsd" (include "airflow.fullname" .)) .Values.statsd.serviceAccount.name }}
-{{- else -}}
-    {{ default "default" .Values.statsd.serviceAccount.name }}
 {{- end -}}
 {{- end -}}
 
@@ -409,33 +364,6 @@ Create the name of the cleanup service account to use
                 ticker += 1
                 time.sleep(1)
                 logging.info('Waiting for migrations... %s second(s)', ticker)
-  {{- end }}
-{{- end }}
-
-{{define "scheduler_liveness_check_command"}}
-
-  {{- if semverCompare ">=2.0.0" .Values.airflowVersion }}
-  - sh
-  - -c
-  - |
-    CONNECTION_CHECK_MAX_COUNT=0 AIRFLOW__LOGGING__LOGGING_LEVEL=ERROR exec /entrypoint \
-    airflow jobs check --job-type SchedulerJob --hostname $(hostname)
-  {{- else }}
-  - sh
-  - -c
-  - |
-    CONNECTION_CHECK_MAX_COUNT=0 exec /entrypoint python -Wignore -c "
-    import os
-    os.environ['AIRFLOW__CORE__LOGGING_LEVEL'] = 'ERROR'
-    os.environ['AIRFLOW__LOGGING__LOGGING_LEVEL'] = 'ERROR'
-    from airflow.jobs.scheduler_job import SchedulerJob
-    from airflow.utils.db import create_session
-    from airflow.utils.net import get_hostname
-    import sys
-    with create_session() as session:
-        job = session.query(SchedulerJob).filter_by(hostname=get_hostname()).order_by(
-            SchedulerJob.latest_heartbeat.desc()).limit(1).first()
-    sys.exit(0 if job.is_alive() else 1)"
   {{- end }}
 {{- end }}
 
