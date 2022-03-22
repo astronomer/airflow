@@ -74,7 +74,7 @@ def transform_airflow_version(airflow_ver):
         ver += f"-{str(parsed._version.local[-1])}"
 
     if parsed.is_devrelease:
-        ver += f".dev{str(parsed.dev)}"
+        ver += f"-dev{str(parsed.dev)}"
 
     return ver
 

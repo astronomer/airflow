@@ -52,7 +52,10 @@ def init_jinja_globals(app):
 
     try:
         airflow_version = airflow.__version__
-        airflow_upstream_version = airflow_version.split('.dev')[0].split('+astro')[0]
+        if '-dev' in airflow_version:
+            airflow_upstream_version = airflow_version.split('-dev')[0].split('+astro')[0]
+        else:
+            airflow_upstream_version = airflow_version.split('.dev')[0].split('+astro')[0]
         ac_url_version = airflow_upstream_version.replace('.', '-')
     except Exception as e:
         airflow_version = None
