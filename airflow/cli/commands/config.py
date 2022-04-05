@@ -18,30 +18,52 @@
 import io
 
 import pygments
+import rich_click as click
 from pygments.lexers.configs import IniLexer
+from rich.console import Console
 
+from airflow.cli import airflow_cmd, click_color
 from airflow.configuration import conf
 from airflow.utils.cli import should_use_colors
 from airflow.utils.code_utils import get_terminal_formatter
 
 
-def show_config(args):
+@airflow_cmd.group()
+@click.pass_context
+def config(ctx):
+    """Commands for the metadata database"""
+
+
+@config.command('list')
+@click.pass_context
+@click_color
+def show_config(ctx, color):
     """Show current application configuration"""
     with io.StringIO() as output:
         conf.write(output)
         code = output.getvalue()
-        if should_use_colors(args.color):
+        if should_use_colors(color):
             code = pygments.highlight(code=code, formatter=get_terminal_formatter(), lexer=IniLexer())
-        print(code)
+        console = Console()
+        code = code.replace('[', r'\[')
+        console.print(code, highlight=False)
 
 
-def get_value(args):
-    """Get one value from configuration"""
-    if not conf.has_section(args.section):
-        raise SystemExit(f'The section [{args.section}] is not found in config.')
+@config.command('get-value')
+@click.pass_context
+@click.argument('section')
+@click.argument('option')
+def get_value(ctx, section, option):
+    """Get one value from configuration
 
-    if not conf.has_option(args.section, args.option):
-        raise SystemExit(f'The option [{args.section}/{args.option}] is not found in config.')
+    section - The section of the configuration to get the value
+    option - The opinion name of the configuration
+    """
+    if not conf.has_section(section):
+        raise SystemExit(f'The section [{section}] is not found in config.')
 
-    value = conf.get(args.section, args.option)
-    print(value)
+    if not conf.has_option(section, option):
+        raise SystemExit(f'The option [{section}/{option}] is not found in config.')
+    console = Console()
+    value = conf.get(section, option)
+    console.print(value)

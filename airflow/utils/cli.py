@@ -298,11 +298,11 @@ class ColorMode:
     AUTO = "auto"
 
 
-def should_use_colors(args) -> bool:
+def should_use_colors(color) -> bool:
     """Processes arguments and decides whether to enable color in output"""
-    if args.color == ColorMode.ON:
+    if color == ColorMode.ON:
         return True
-    if args.color == ColorMode.OFF:
+    if color == ColorMode.OFF:
         return False
     return is_terminal_support_colors()
 
