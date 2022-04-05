@@ -29,6 +29,7 @@ from airflow.cli.commands import sync_perm  # noqa: F401
 from airflow.cli.commands import triggerer  # noqa: F401
 from airflow.cli.commands import users  # noqa: F401
 from airflow.cli.commands import version  # noqa: F401
+from airflow.cli.commands import variable  # noqa: F401
 from airflow.cli.commands import webserver  # noqa: F401
 
 if __name__ == '__main__':
