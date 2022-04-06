@@ -2199,9 +2199,14 @@ class TaskInstance(Base, LoggingMixin):
                         content = f.read()
                 return render_template_to_string(jinja_env.from_string(content), jinja_context)
 
-            subject = render('subject_template', default_subject)
-            html_content = render('html_content_template', default_html_content)
-            html_content_err = render('html_content_template', default_html_content_err)
+            try:
+                subject = render('subject_template', default_subject)
+                html_content = render('html_content_template', default_html_content)
+                html_content_err = render('html_content_template', default_html_content_err)
+            except:
+                subject = f"Airflow alert: {self.dag_id}.{self.task_id}"
+                html_content = f'Log: <a href="{self.log_url}">Link</a><br>'
+                html_content_err = 'Exception:<br>Failed attempt to attach error logs<br>'
 
         return subject, html_content, html_content_err
 
