@@ -16,12 +16,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
+import jinja2.nativetypes
 import jinja2.sandbox
 
 
-class SandboxedEnvironment(jinja2.sandbox.SandboxedEnvironment):
-    """SandboxedEnvironment for Airflow task templates."""
-
+class _AirflowEnvironmentMixin:
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -30,11 +29,18 @@ class SandboxedEnvironment(jinja2.sandbox.SandboxedEnvironment):
     def is_safe_attribute(self, obj, attr, value):
         """
         Allow access to ``_`` prefix vars (but not ``__``).
-
         Unlike the stock SandboxedEnvironment, we allow access to "private" attributes (ones starting with
-        ``_``) whilst still blocking internal or truely private attributes (``__`` prefixed ones).
+        ``_``) whilst still blocking internal or truly private attributes (``__`` prefixed ones).
         """
         return not jinja2.sandbox.is_internal_attribute(obj, attr)
+
+
+class NativeEnvironment(_AirflowEnvironmentMixin, jinja2.nativetypes.NativeEnvironment):
+    """NativeEnvironment for Airflow task templates."""
+
+
+class SandboxedEnvironment(_AirflowEnvironmentMixin, jinja2.sandbox.SandboxedEnvironment):
+    """SandboxedEnvironment for Airflow task templates."""
 
 
 def ds_filter(value):

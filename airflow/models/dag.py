@@ -50,7 +50,6 @@ from typing import (
 import jinja2
 import pendulum
 from dateutil.relativedelta import relativedelta
-from jinja2.nativetypes import NativeEnvironment
 from sqlalchemy import Boolean, Column, ForeignKey, Index, Integer, String, Text, func, or_
 from sqlalchemy.orm import backref, joinedload, relationship
 from sqlalchemy.orm.session import Session
@@ -1256,7 +1255,7 @@ class DAG(LoggingMixin):
         for t in self.tasks:
             t.resolve_template_files()
 
-    def get_template_env(self) -> jinja2.Environment:
+    def get_template_env(self, *, force_sandboxed: bool = False) -> jinja2.Environment:
         """Build a Jinja2 environment."""
         # Collect directories to search for template files
         searchpath = [self.folder]
@@ -1272,8 +1271,9 @@ class DAG(LoggingMixin):
         }
         if self.jinja_environment_kwargs:
             jinja_env_options.update(self.jinja_environment_kwargs)
-        if self.render_template_as_native_obj:
-            env = NativeEnvironment(**jinja_env_options)
+        env: jinja2.Environment
+        if self.render_template_as_native_obj and not force_sandboxed:
+            env = airflow.templates.NativeEnvironment(**jinja_env_options)
         else:
             env = airflow.templates.SandboxedEnvironment(**jinja_env_options)  # type: ignore
 
