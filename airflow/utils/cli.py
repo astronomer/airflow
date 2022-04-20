@@ -106,6 +106,64 @@ def action_cli(func=None, check_db=True, check_cli_args=True):
     return action_logging
 
 
+def action_cli_click_compatible(func=None, check_db=True):
+    def action_logging(f: T) -> T:
+        """
+        Click compatible version of action_cli.
+
+        Decorates function to execute function at the same time submitting action_logging
+        but in CLI context. It will call action logger callbacks twice,
+        one for pre-execution and the other one for post-execution.
+
+        Action logger will be called with below keyword parameters:
+            sub_command : name of sub-command
+            start_datetime : start datetime instance by utc
+            end_datetime : end datetime instance by utc
+            full_command : full command line arguments
+            user : current user
+            log : airflow.models.log.Log ORM instance
+            dag_id : dag id (optional)
+            task_id : task_id (optional)
+            execution_date : execution date (optional)
+            error : exception instance if there's an exception
+
+        :param f: function instance
+        :return: wrapped function
+        """
+
+        @functools.wraps(f)
+        def wrapper(ctx, *args, **kwargs):
+            """
+            An wrapper for cli functions.
+
+            :param args: Positional argument.
+            :param kwargs: A passthrough keyword argument
+            """
+            _check_cli_args(kwargs)
+            metrics = _build_metrics_click_compatible(f.__name__, kwargs)
+            cli_action_loggers.on_pre_execution(**metrics)
+            try:
+                # Check and run migrations if necessary
+                if check_db:
+                    from airflow.utils.db import check_and_run_migrations, synchronize_log_template
+
+                    check_and_run_migrations()
+                    synchronize_log_template()
+                return f(ctx, *args, **kwargs)
+            except Exception as e:
+                metrics['error'] = e
+                raise
+            finally:
+                metrics['end_datetime'] = datetime.utcnow()
+                cli_action_loggers.on_post_execution(**metrics)
+
+        return cast(T, wrapper)
+
+    if func:
+        return action_logging(func)
+    return action_logging
+
+
 def _build_metrics(func_name, args, kwargs):
     """
     Builds metrics dict from function args
@@ -143,6 +201,62 @@ def _build_metrics(func_name, args, kwargs):
     }
 
     tmp_dic = vars(args[0]) if (args and isinstance(args[0], Namespace)) else kwargs
+    metrics['dag_id'] = tmp_dic.get('dag_id')
+    metrics['task_id'] = tmp_dic.get('task_id')
+    metrics['execution_date'] = tmp_dic.get('execution_date')
+    metrics['host_name'] = socket.gethostname()
+
+    extra = json.dumps({k: metrics[k] for k in ('host_name', 'full_command')})
+    log = Log(
+        event=f'cli_{func_name}',
+        task_instance=None,
+        owner=metrics['user'],
+        extra=extra,
+        task_id=metrics.get('task_id'),
+        dag_id=metrics.get('dag_id'),
+        execution_date=metrics.get('execution_date'),
+    )
+    metrics['log'] = log
+    return metrics
+
+
+def _build_metrics_click_compatible(func_name, kwargs):
+    """
+    Builds metrics dict from function args
+    If the first item in args is a Namespace instance, it assumes that it
+    optionally contains "dag_id", "task_id", and "execution_date".
+
+    :param func_name: name of function
+    :param args: Arguments from wrapped function, possibly including the Namespace instance from
+                 argparse as the first argument
+    :param kwargs: Keyword arguments from wrapped function
+    :return: dict with metrics
+    """
+    from airflow.models import Log
+
+    sub_commands_to_check = {'users', 'connections'}
+    sensitive_fields = {'-p', '--password', '--conn-password'}
+    full_command = list(sys.argv)
+    sub_command = full_command[1] if len(full_command) > 1 else None
+    if sub_command in sub_commands_to_check:
+        for idx, command in enumerate(full_command):
+            if command in sensitive_fields:
+                # For cases when password is passed as "--password xyz" (with space between key and value)
+                full_command[idx + 1] = "*" * 8
+            else:
+                # For cases when password is passed as "--password=xyz" (with '=' between key and value)
+                for sensitive_field in sensitive_fields:
+                    if command.startswith(f'{sensitive_field}='):
+                        full_command[idx] = f'{sensitive_field}={"*" * 8}'
+
+    metrics = {
+        'sub_command': func_name,
+        'start_datetime': datetime.utcnow(),
+        'full_command': f'{full_command}',
+        'user': getuser(),
+    }
+
+    tmp_dic = kwargs
     metrics['dag_id'] = tmp_dic.get('dag_id')
     metrics['task_id'] = tmp_dic.get('task_id')
     metrics['execution_date'] = tmp_dic.get('execution_date')

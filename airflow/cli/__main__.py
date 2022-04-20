@@ -20,6 +20,7 @@
 from airflow.cli import airflow_cmd
 from airflow.cli.commands import celery  # noqa: F401
 from airflow.cli.commands import cheat_sheet  # noqa: F401
+from airflow.cli.commands import connection  # noqa: F401
 from airflow.cli.commands import db  # noqa: F401
 from airflow.cli.commands import info  # noqa: F401
 from airflow.cli.commands import jobs  # noqa: F401
