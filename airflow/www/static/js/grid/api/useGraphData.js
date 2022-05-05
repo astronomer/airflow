@@ -22,7 +22,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import camelcaseKeys from 'camelcase-keys';
 
-import getMetaValue from '../../utils';
+import { getMetaValue } from '../../utils';
 
 // dagId comes from dag.html
 const dagId = getMetaValue('dag_id');
@@ -52,7 +52,6 @@ const useGraphData = () => {
       const root = urlRoot ? `&root=${urlRoot}` : '';
       const resp = await fetch(`${graphDataUrl}?dag_id=${dagId}${root}`);
       let newData = await resp.json();
-      console.log(newData);
       if (newData) {
         newData = formatData(newData);
         if (JSON.stringify(newData) !== JSON.stringify(data)) {

@@ -18,11 +18,12 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Box, Button } from '@chakra-ui/react';
+import { Box, IconButton } from '@chakra-ui/react';
 import ELK from 'elkjs';
 import { Zoom } from '@visx/zoom';
+import { MdOutlineZoomOutMap } from 'react-icons/md';
 
-import useGraphData from '../api';
+import { useGraphData } from '../api';
 
 import Node from './Node';
 import Edge from './Edge';
@@ -41,8 +42,8 @@ const generateGraph = ({ nodes, edges }) => ({
   },
   children: nodes.children.map((n) => ({
     id: n.id,
-    width: 125,
-    height: 50,
+    width: 100,
+    height: 25,
   })),
   edges: edges.map((e) => ({ id: `${e.sourceId}-${e.targetId}`, sources: [e.sourceId], targets: [e.targetId] })),
 });
@@ -159,12 +160,12 @@ const Graph = () => {
     scaleX: 1,
     scaleY: 1,
     translateX: 0,
-    translateY: 150,
+    translateY: 0,
     skewX: 0,
     skewY: 0,
   };
-  const width = 1200;
-  const height = 600;
+  const width = 1600;
+  const height = 250;
 
   return (
     <Box position="relative" alignSelf="center" borderColor="gray.200" borderWidth={1}>
@@ -183,13 +184,13 @@ const Graph = () => {
               id="GRAPH"
               width={width}
               height={height}
-              style={{ cursor: zoom.isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+              // style={{ cursor: zoom.isDragging ? 'grabbing' : 'grab', touchAction: 'none' }}
               ref={zoom.containerRef}
             >
               <g transform={zoom.toString()}>
                 <Nodes data={data} />
               </g>
-              <rect
+              {/* <rect
                 width={width}
                 height={height}
                 rx={14}
@@ -203,10 +204,17 @@ const Graph = () => {
                 onMouseLeave={() => {
                   if (zoom.isDragging) zoom.dragEnd();
                 }}
-              />
+              /> */}
             </svg>
             <Box>
-              <Button onClick={zoom.reset} m={2}>Reset</Button>
+              <IconButton
+                onClick={zoom.reset}
+                fontSize="2xl"
+                m={2}
+                title="Reset zoom"
+                aria-label="Reset zoom"
+                icon={<MdOutlineZoomOutMap />}
+              />
             </Box>
           </Box>
         )}

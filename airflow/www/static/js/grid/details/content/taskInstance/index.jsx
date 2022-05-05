@@ -34,25 +34,14 @@ import ExtraLinks from './ExtraLinks';
 import Logs from './Logs';
 import TaskNav from './Nav';
 import Details from './Details';
+import Graph from '../../../Graph';
 
 import { useGridData, useTasks } from '../../../api';
 import MappedInstances from './MappedInstances';
 import { getMetaValue } from '../../../../utils';
+import getTask from '../../../utils/getTask';
 
 const dagId = getMetaValue('dag_id');
-
-const getTask = ({ taskId, runId, task }) => {
-  if (task.id === taskId) return task;
-  if (task.children) {
-    let foundTask;
-    task.children.forEach((c) => {
-      const childTask = getTask({ taskId, runId, task: c });
-      if (childTask) foundTask = childTask;
-    });
-    return foundTask;
-  }
-  return null;
-};
 
 const TaskInstance = ({ taskId, runId }) => {
   const [selectedRows, setSelectedRows] = useState([]);
@@ -85,6 +74,7 @@ const TaskInstance = ({ taskId, runId }) => {
           operator={operator}
         />
       )}
+      <Graph />
       {!isGroup && (
         <Box my={3}>
           <Text as="strong">{taskActionsTitle}</Text>

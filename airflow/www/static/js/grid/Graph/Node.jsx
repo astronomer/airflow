@@ -17,9 +17,15 @@
  * under the License.
  */
 
+/* global stateColors */
+
 import React from 'react';
 import { Box, Text } from '@chakra-ui/react';
 import { Group } from '@visx/group';
+
+import useSelection from '../utils/useSelection';
+import { useGridData } from '../api';
+import getTask from '../utils/getTask';
 
 const Node = ({
   node: {
@@ -27,16 +33,42 @@ const Node = ({
   },
   task,
   children,
-}) => (
-  <Group top={y} left={x} height={height} width={width}>
-    <foreignObject width={width} height={height}>
-      <Box borderWidth={1} borderRadius={5} p={2} height="100%" width="100%" borderColor="gray.400">
-        <Text fontSize={12}>{id}</Text>
-        <Text fontSize={12}>{(!!task && task.taskType) || ''}</Text>
-      </Box>
-    </foreignObject>
-    {children}
-  </Group>
-);
+}) => {
+  const { selected: { taskId, runId }, onSelect } = useSelection();
+  const { data: { groups } } = useGridData();
+
+  const isSelected = taskId === id;
+
+  const group = getTask({ taskId: id, runId, task: groups });
+  const instance = group && group.instances.find((ti) => ti.runId === runId);
+
+  return (
+    <Group top={y} left={x} height={height} width={width}>
+      <foreignObject width={width} height={height}>
+        <Box
+          borderWidth={isSelected ? 4 : 2}
+          borderRadius={5}
+          p={1}
+          pl={2}
+          pt={0}
+          height="100%"
+          width="100%"
+          borderColor={(instance && (stateColors[instance.state] || 'gray.400')) || 'gray.400'}
+          fontWeight={isSelected ? 'bold' : 'normal'}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSelect({ runId, taskId: id });
+          }}
+          cursor="pointer"
+        >
+          <Text fontSize={12}>{id}</Text>
+          <Text fontSize={12}>{(!!task && task.taskType) || ''}</Text>
+        </Box>
+      </foreignObject>
+      {children}
+    </Group>
+  );
+};
 
 export default Node;
