@@ -775,12 +775,23 @@ def check_and_run_migrations():
 
 
 @provide_session
+def log_template_exists(session: Session = NEW_SESSION):
+    metadata = reflect_tables([LogTemplate], session)
+    log_template_table = metadata.tables.get(LogTemplate.__tablename__)
+    return log_template_table is not None
+
+
+@provide_session
 def seed_log_template(*, session: Session = NEW_SESSION) -> None:
     """Add historical log_template record for ES log_id_template
 
     This only adds the historical values if the log_template table is empty -
     new install or initial upgrade to 2.3.0+.
     """
+    if not log_template_exists(session):
+        log.info('Log template table does not exist (added in 2.3.0); skipping log template seeding.')
+        return
+
     if session.query(LogTemplate.id).first():
         return
 
@@ -800,12 +811,7 @@ def synchronize_log_template(*, session: Session = NEW_SESSION) -> None:
     insert a new row if not.
     """
 
-    def log_template_exists():
-        metadata = reflect_tables([LogTemplate], session)
-        log_template_table = metadata.tables.get(LogTemplate.__tablename__)
-        return log_template_table is not None
-
-    if not log_template_exists():
+    if not log_template_exists(session):
         log.info('Log template table does not exist (added in 2.3.0); skipping log template sync.')
         return
 
