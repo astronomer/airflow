@@ -775,6 +775,24 @@ def check_and_run_migrations():
 
 
 @provide_session
+def seed_log_template(*, session: Session = NEW_SESSION) -> None:
+    """Add historical log_template record for ES log_id_template
+
+    This only adds the historical values if the log_template table is empty -
+    new install or initial upgrade to 2.3.0+.
+    """
+    if session.query(LogTemplate.id).first():
+        return
+
+    # The Astronomer chart overrode the default log_id_template to this
+    log_id = "{dag_id}_{task_id}_{run_id}_{try_number}"
+    # While the log_filename_template was the default
+    filename = "{{ ti.dag_id }}/{{ ti.task_id }}/{{ ts }}/{{ try_number }}.log"
+
+    session.add(LogTemplate(filename=filename, elasticsearch_id=log_id))
+
+
+@provide_session
 def synchronize_log_template(*, session: Session = NEW_SESSION) -> None:
     """Synchronize log template configs with table.
 
@@ -1476,6 +1494,7 @@ def upgradedb(
         log.info("Creating tables")
         command.upgrade(config, revision=to_revision or 'heads')
     add_default_pool_if_not_exists()
+    seed_log_template()
     synchronize_log_template()
 
 
