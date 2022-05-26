@@ -559,18 +559,22 @@ def not_found(error):
 
 def show_traceback(error):
     """Show Traceback for a given error"""
+    data = {
+        "python_version": sys.version.split(" ")[0],
+        "airflow_version": version,
+        "hostname": socket.getfqdn()
+        if conf.getboolean('webserver', 'EXPOSE_HOSTNAME', fallback=True)
+        else 'redact',
+        "info": traceback.format_exc()
+        if conf.getboolean('webserver', 'EXPOSE_STACKTRACE', fallback=True)
+        else 'Error! Please contact server admin.',
+    }
+
+    if request.headers.get('Accept') == 'application/json':
+        return htmlsafe_json_dumps(data), 500
+
     return (
-        render_template(
-            'airflow/traceback.html',
-            python_version=sys.version.split(" ")[0],
-            airflow_version=version,
-            hostname=socket.getfqdn()
-            if conf.getboolean('webserver', 'EXPOSE_HOSTNAME', fallback=True)
-            else 'redact',
-            info=traceback.format_exc()
-            if conf.getboolean('webserver', 'EXPOSE_STACKTRACE', fallback=True)
-            else 'Error! Please contact server admin.',
-        ),
+        render_template('airflow/traceback.html', **data),
         500,
     )
 
