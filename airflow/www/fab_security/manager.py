@@ -52,11 +52,9 @@ from flask_appbuilder.security.views import (
     AuthOAuthView,
     AuthOIDView,
     AuthRemoteUserView,
-    PermissionModelView,
     RegisterUserModelView,
     ResetMyPasswordView,
     ResetPasswordView,
-    RoleModelView,
     UserDBModelView,
     UserInfoEditView,
     UserLDAPModelView,
@@ -71,7 +69,7 @@ from flask_login import AnonymousUserMixin, LoginManager, current_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from airflow.www.fab_security.sqla.models import Action, Permission, RegisterUser, Resource, Role, User
-from airflow.www.views import ResourceModelView
+from airflow.www.views import ActionModelView, CustomRoleModelView, PermissionPairModelView, ResourceModelView
 
 log = logging.getLogger(__name__)
 
@@ -196,11 +194,11 @@ class BaseSecurityManager:
     userinfoeditview = UserInfoEditView
     """ Override if you want your own User information edit view """
 
-    rolemodelview = RoleModelView
-    actionmodelview = PermissionModelView
+    rolemodelview = CustomRoleModelView
+    actionmodelview = ActionModelView
     userstatschartview = UserStatsChartView
     resourcemodelview = ResourceModelView
-    permissionmodelview = PermissionModelView
+    permissionmodelview = PermissionPairModelView
 
     def __init__(self, appbuilder):
         self.appbuilder = appbuilder
@@ -300,7 +298,7 @@ class BaseSecurityManager:
         """Returns FAB builtin roles."""
         return self.appbuilder.get_app.config.get("FAB_ROLES", {})
 
-    def get_roles_from_keys(self, role_keys: List[str]) -> Set[RoleModelView]:
+    def get_roles_from_keys(self, role_keys: List[str]) -> Set[CustomRoleModelView]:
         """
         Construct a list of FAB role objects, from a list of keys.
 
@@ -787,7 +785,7 @@ class BaseSecurityManager:
         if self.appbuilder.app.config.get("FAB_ADD_SECURITY_PERMISSION_VIEWS_VIEW", True):
             self.appbuilder.add_view(
                 self.permissionmodelview,
-                "Permissions",
+                "Permission Pairs",
                 icon="fa-link",
                 label=_("Permissions"),
                 category="Security",
@@ -1363,7 +1361,8 @@ class BaseSecurityManager:
         else:
             return self._get_user_permission_resources(None, "menu_access", resource_names=menu_names)
 
-    def add_permissions_view(self, base_action_names, resource_name):  # Keep name for compatibility with FAB.
+    # Keep name for compatibility with FAB.
+    def add_permissions_view(self, base_action_names, resource_name):
         """
         Adds an action on a resource to the backend
 
@@ -1401,8 +1400,6 @@ class BaseSecurityManager:
                     roles = self.get_all_roles()
                     # del permission from all roles
                     for role in roles:
-                        # TODO: An action can't be removed from a role.
-                        # This is a bug in FAB. It has been reported.
                         self.remove_permission_from_role(role, perm)
                     self.delete_permission(perm.action.name, resource_name)
                 elif self.auth_role_admin not in self.builtin_roles and perm not in admin_role.permissions:
