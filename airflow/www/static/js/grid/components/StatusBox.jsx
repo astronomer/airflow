@@ -78,18 +78,14 @@ const StatusBox = ({
       placement="top"
       openDelay={400}
     >
-      <Box>
-        <SimpleStatus
-          state={instance.state}
-          onClick={onClick}
-          cursor="pointer"
-          data-testid="task-instance"
-          zIndex={1}
-          onMouseEnter={onMouseEnter}
-          onMouseLeave={onMouseLeave}
-          opacity={isActive ? 1 : 0.3}
-        />
-      </Box>
+      <div
+        className="status-box"
+        style={{backgroundColor: stateColors[instance.state] || 'white' }}
+        onClick={onClick}
+        data-testid="task-instance"
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      />
     </Tooltip>
   );
 };

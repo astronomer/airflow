@@ -50,20 +50,16 @@ const renderTaskRows = ({
 const TaskInstances = ({
   task, dagRunIds, selectedRunId, onSelect, activeTaskState,
 }) => (
-  <Flex justifyContent="flex-end">
+  <div className="task-instances">
     {dagRunIds.map((runId) => {
       // Check if an instance exists for the run, or return an empty box
       const instance = task.instances.find((gi) => gi && gi.runId === runId);
       const isSelected = selectedRunId === runId;
       return (
-        <Box
-          py="4px"
-          px={boxPaddingPx}
-          className={`js-${runId}`}
+        <div
+          className={`js-${runId} task-instance`}
           data-selected={isSelected}
-          transition="background-color 0.2s"
           key={`${runId}-${task.id}`}
-          bg={isSelected && 'blue.100'}
         >
           {instance
             ? (
@@ -75,10 +71,10 @@ const TaskInstances = ({
               />
             )
             : <Box width={boxSizePx} data-testid="blank-task" />}
-        </Box>
+        </div>
       );
     })}
-  </Flex>
+  </div>
 );
 
 const Row = (props) => {
@@ -118,28 +114,15 @@ const Row = (props) => {
 
   const isFullyOpen = level === openParentCount;
 
+  if (!isFullyOpen) return null;
+
   return (
     <>
-      <Tr
-        bg={isSelected && 'blue.100'}
-        borderBottomWidth={isFullyOpen ? 1 : 0}
-        borderBottomColor={isGroup && isOpen ? 'gray.400' : 'gray.200'}
+      <tr
+        data-selected={isSelected}
         role="group"
-        _hover={!isSelected && { bg: hoverBlue }}
-        transition="background-color 0.2s"
       >
-        <Td
-          bg={isSelected ? 'blue.100' : 'white'}
-          _groupHover={!isSelected && ({ bg: 'blue.50' })}
-          p={0}
-          transition="background-color 0.2s"
-          lineHeight="18px"
-          position="sticky"
-          left={0}
-          borderBottom={0}
-          width="100%"
-          zIndex={1}
-        >
+        <td className="names" role="gridcell">
           <Collapse in={isFullyOpen} unmountOnExit>
             <TaskName
               onToggle={memoizedToggle}
@@ -150,13 +133,12 @@ const Row = (props) => {
               level={level}
             />
           </Collapse>
-        </Td>
-        <Td width={0} p={0} borderBottom={0} />
-        <Td
-          p={0}
-          align="right"
-          width={`${dagRunIds.length * columnWidth}px`}
-          borderBottom={0}
+        </td>
+        <td role="gridcell" />
+        <td
+          className="tis"
+          role="gridcell"
+          style={{ width: `${dagRunIds.length * columnWidth}px` }}
         >
           <Collapse in={isFullyOpen} unmountOnExit>
             <TaskInstances
@@ -167,8 +149,8 @@ const Row = (props) => {
               activeTaskState={hoveredTaskState}
             />
           </Collapse>
-        </Td>
-      </Tr>
+        </td>
+      </tr>
       {isGroup && (
         renderTaskRows({
           ...props, level: level + 1, openParentCount: openParentCount + (isOpen ? 1 : 0),

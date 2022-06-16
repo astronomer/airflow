@@ -42,6 +42,10 @@ const myCache = createCache({
 });
 const mainElement = document.getElementById('react-container');
 shadowRoot.appendChild(mainElement);
+const gridStylesheet = document.createElement("link")
+gridStylesheet.rel = "stylesheet"
+gridStylesheet.type="text/css"
+gridStylesheet.href = gridCssUri;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -93,3 +97,4 @@ function App() {
 
 const reactRoot = createRoot(mainElement);
 reactRoot.render(<App />);
+shadowRoot.appendChild(gridStylesheet);

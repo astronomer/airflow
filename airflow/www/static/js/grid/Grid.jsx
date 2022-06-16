@@ -114,7 +114,7 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }) => {
           transitionProperty="none"
         />
       </Flex>
-      <Table>
+      <Table className="grid">
         <Thead display="block" pr="10px" position="sticky" top={0} zIndex={2} bg="white">
           <DagRuns />
         </Thead>

@@ -43,6 +43,7 @@
     const autoRefreshInterval = {{ auto_refresh_interval }};
     const defaultDagRunDisplayNumber = {{ default_dag_run_display_number }};
     const filtersOptions = {{ filters_drop_down_values }};
+    const gridCssUri = {{ url_for_asset('grid.css') | tojson }};
   </script>
   <script src="{{ url_for_asset('grid.js') }}"></script>
 {% endblock %}
