@@ -19,12 +19,9 @@
 
 import React from 'react';
 import {
-  Tr,
-  Td,
   Text,
   Box,
   TextProps,
-  TableCellProps,
   Flex,
   BoxProps,
 } from '@chakra-ui/react';
@@ -43,10 +40,6 @@ const DurationTick = ({ children, ...rest }: TextProps) => (
   <Text fontSize="sm" color="gray.400" right={1} position="absolute" whiteSpace="nowrap" {...rest}>
     {children}
   </Text>
-);
-
-const Th = (props: TableCellProps) => (
-  <Td position="sticky" top={0} zIndex={1} p={0} height="155px" bg="white" {...props} />
 );
 
 export interface RunWithDuration extends DagRun {
@@ -70,44 +63,49 @@ const DagRuns = () => {
   const max = Math.max.apply(null, durations);
 
   return (
-    <Tr>
-      <Th left={0} zIndex={2}>
-        <Box borderBottomWidth={3} position="relative" height="100%" width="100%">
-          {!!runs.length && (
-          <>
-            <DurationTick bottom="120px">Duration</DurationTick>
-            <DurationTick bottom="96px">
-              {formatDuration(max)}
-            </DurationTick>
-            <DurationTick bottom="46px">
-              {formatDuration(max / 2)}
-            </DurationTick>
-            <DurationTick bottom={0}>
-              00:00:00
-            </DurationTick>
-          </>
-          )}
-        </Box>
-      </Th>
-      <Th align="right" verticalAlign="bottom">
-        <Flex justifyContent="flex-end" borderBottomWidth={3} position="relative">
-          {runs.map((run: RunWithDuration, index) => (
-            <DagRunBar
-              key={run.runId}
-              run={run}
-              index={index}
-              totalRuns={runs.length}
-              max={max}
-              isSelected={run.runId === selected.runId}
-              onSelect={onSelect}
-            />
-          ))}
-          <DurationAxis bottom="100px" />
-          <DurationAxis bottom="50px" />
-          <DurationAxis bottom="4px" />
-        </Flex>
-      </Th>
-    </Tr>
+    <Flex
+      justifyContent="space-between"
+      position="sticky"
+      top={0}
+      zIndex={1}
+      p={0}
+      height="155px"
+      bg="white"
+      alignItems="flex-end"
+    >
+      <Box borderBottomWidth={3} position="relative" height="100%" width="100%">
+        {!!runs.length && (
+        <>
+          <DurationTick bottom="120px">Duration</DurationTick>
+          <DurationTick bottom="96px">
+            {formatDuration(max)}
+          </DurationTick>
+          <DurationTick bottom="46px">
+            {formatDuration(max / 2)}
+          </DurationTick>
+          <DurationTick bottom={0}>
+            00:00:00
+          </DurationTick>
+        </>
+        )}
+      </Box>
+      <Flex justifyContent="flex-end" borderBottomWidth={3} position="relative">
+        {runs.map((run: RunWithDuration, index) => (
+          <DagRunBar
+            key={run.runId}
+            run={run}
+            index={index}
+            totalRuns={runs.length}
+            max={max}
+            isSelected={run.runId === selected.runId}
+            onSelect={onSelect}
+          />
+        ))}
+        <DurationAxis bottom="100px" />
+        <DurationAxis bottom="50px" />
+        <DurationAxis bottom="4px" />
+      </Flex>
+    </Flex>
   );
 };
 

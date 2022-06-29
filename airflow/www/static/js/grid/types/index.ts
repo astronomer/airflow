@@ -75,6 +75,17 @@ interface Task {
   isMapped?: boolean;
 }
 
+interface BasicTask {
+  id: string | null;
+  label: string | null;
+  instances: TaskInstance[];
+  tooltip?: string;
+  extraLinks?: string[];
+  isGroup?: boolean;
+  isMapped?: boolean;
+  level?: number;
+}
+
 export type {
   Dag,
   DagRun,
@@ -82,4 +93,5 @@ export type {
   TaskState,
   TaskInstance,
   Task,
+  BasicTask,
 };

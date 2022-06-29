@@ -19,24 +19,23 @@
 
 /* global localStorage, ResizeObserver */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, MutableRefObject } from 'react';
 import {
-  Table,
-  Tbody,
   Box,
-  Thead,
   Flex,
   IconButton,
 } from '@chakra-ui/react';
+import useVirtual from "react-cool-virtual";
 
 import { MdReadMore } from 'react-icons/md';
 import { useGridData } from './api';
-import renderTaskRows from './renderTaskRows';
+import TaskRow from './TaskRow';
 import ResetRoot from './ResetRoot';
 import DagRuns from './dagRuns';
 import ToggleGroups from './ToggleGroups';
 import { getMetaValue } from '../utils';
 import AutoRefresh from './AutoRefresh';
+import type { Task, BasicTask } from './types';
 
 const dagId = getMetaValue('dag_id');
 
@@ -46,12 +45,37 @@ interface Props {
   hoveredTaskState?: string | null;
 }
 
+const flattenTasks = (group: Task, level: number = 0) => {
+  let list: BasicTask[] = [];
+  if (group.id) {
+    const { children, ...groupProps } = group;
+    list.push({
+      ...groupProps,
+      isGroup: !!group.children,
+      level,
+    });
+  }
+  if (group.children) {
+    group.children.forEach((c) => {
+      list = [...list, ...flattenTasks(c, level + 1)];
+    })
+  }
+  return list;
+}
+
 const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const tableRef = useRef<HTMLTableSectionElement>(null);
+  // const scrollRef = useRef<HTMLDivElement>(null);
+  // const tableRef = useRef<HTMLTableSectionElement>(null);
 
   const { data: { groups, dagRuns } } = useGridData();
   const dagRunIds = dagRuns.map((dr) => dr.runId);
+
+  const rows = flattenTasks(groups);
+
+  const { outerRef, innerRef, items } = useVirtual({
+    itemCount: rows.length,
+    itemSize: 18,
+  });
 
   const openGroupsKey = `${dagId}/open-groups`;
   const storedGroups = JSON.parse(localStorage.getItem(openGroupsKey) || '[]');
@@ -62,29 +86,29 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) =
     setOpenGroupIds(groupIds);
   };
 
-  useEffect(() => {
-    const scrollOnResize = new ResizeObserver(() => {
-      const runsContainer = scrollRef.current;
-      // Set scroll to top right if it is scrollable
-      if (
-        tableRef?.current
-        && runsContainer
-        && runsContainer.scrollWidth > runsContainer.clientWidth
-      ) {
-        runsContainer.scrollBy(tableRef.current.offsetWidth, 0);
-      }
-    });
+  // useEffect(() => {
+  //   const scrollOnResize = new ResizeObserver(() => {
+  //     const runsContainer = scrollRef.current;
+  //     // Set scroll to top right if it is scrollable
+  //     if (
+  //       tableRef?.current
+  //       && runsContainer
+  //       && runsContainer.scrollWidth > runsContainer.clientWidth
+  //     ) {
+  //       runsContainer.scrollBy(tableRef.current.offsetWidth, 0);
+  //     }
+  //   });
 
-    if (tableRef && tableRef.current) {
-      const table = tableRef.current;
+  //   if (tableRef && tableRef.current) {
+  //     const table = tableRef.current;
 
-      scrollOnResize.observe(table);
-      return () => {
-        scrollOnResize.unobserve(table);
-      };
-    }
-    return () => {};
-  }, [tableRef, isPanelOpen]);
+  //     scrollOnResize.observe(table);
+  //     return () => {
+  //       scrollOnResize.unobserve(table);
+  //     };
+  //   }
+  //   return () => {};
+  // }, [tableRef, isPanelOpen]);
 
   return (
     <Box
@@ -121,20 +145,22 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) =
       </Flex>
       <Box
         overflow="auto"
-        ref={scrollRef}
-        maxHeight="900px"
+        ref={outerRef as MutableRefObject<HTMLDivElement>}
+        height="600px"
         position="relative"
       >
-        <Table pr="10px">
-          <Thead>
-            <DagRuns />
-          </Thead>
-          <Tbody ref={tableRef}>
-            {renderTaskRows({
-              task: groups, dagRunIds, openGroupIds, onToggleGroups, hoveredTaskState,
-            })}
-          </Tbody>
-        </Table>
+        <DagRuns />
+        <Box ref={innerRef as MutableRefObject<HTMLDivElement>}>
+          {items.map(({ index, size }) => (
+            <TaskRow
+              key={rows[index].id}
+              task={rows[index]}
+              dagRunIds={dagRunIds}
+              hoveredTaskState={hoveredTaskState}
+              height={`${size}px`}
+            />
+          ))}
+        </Box>
       </Box>
     </Box>
   );

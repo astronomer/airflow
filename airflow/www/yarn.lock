@@ -1354,6 +1354,13 @@
   dependencies:
     regenerator-runtime "^0.13.4"
 
+"@babel/runtime@^7.16.7":
+  version "7.18.6"
+  resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.18.6.tgz#6a1ef59f838debd670421f8c7f2cbb8da9751580"
+  integrity sha512-t9wi7/AW6XtKahAe20Yw0/mMljKq0B1r2fPdvaAdV/KPDZewFXdaaa6K7lxmZBZ8FBNpCiAT6iHPmd6QO9bKfQ==
+  dependencies:
+    regenerator-runtime "^0.13.4"
+
 "@babel/runtime@^7.7.6":
   version "7.17.9"
   resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.17.9.tgz#d19fbf802d01a8cb6cf053a64e472d42c434ba72"
@@ -8465,6 +8472,13 @@ react-clientside-effect@^1.2.6:
   integrity sha512-XGGGRQAKY+q25Lz9a/4EPqom7WRjz3z9R2k4jhVKA/puQFH/5Nt27vFZYql4m4NVNdUvX8PS3O7r/Zzm7cjUlg==
   dependencies:
     "@babel/runtime" "^7.12.13"
+
+react-cool-virtual@^0.7.0:
+  version "0.7.0"
+  resolved "https://registry.yarnpkg.com/react-cool-virtual/-/react-cool-virtual-0.7.0.tgz#8fa5d8b622b1c73406f4542eba8cd75de3bc3558"
+  integrity sha512-oWRsF0Pf9dRWncpFvsCNWm0W/d/UEbUqxNIuhGEcLzdW16leokcl9gSYG9Ha5raaF/qq029W1cj65zAwgJyR7A==
+  dependencies:
+    "@babel/runtime" "^7.16.7"
 
 react-dom@^18.0.0:
   version "18.1.0"
