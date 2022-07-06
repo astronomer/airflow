@@ -45,6 +45,11 @@ dag1_dataset = Dataset('s3://dag1/output_1.txt', extra={'hi': 'bye'})
 # [END dataset_def]
 dag2_dataset = Dataset('s3://dag2/output_1.txt', extra={'hi': 'bye'})
 
+
+def post_execute(context, result):
+    context['dataset_payload'] = {"hello": "goodbye"}
+
+
 dag1 = DAG(
     dag_id='dag1',
     catchup=False,
@@ -54,7 +59,13 @@ dag1 = DAG(
 )
 
 # [START task_outlet]
-BashOperator(outlets=[dag1_dataset], task_id='upstream_task_1', bash_command="sleep 5", dag=dag1)
+BashOperator(
+    outlets=[dag1_dataset],
+    task_id='upstream_task_1',
+    bash_command="sleep 5",
+    post_execute=post_execute,
+    dag=dag1,
+)
 # [END task_outlet]
 
 with DAG(
@@ -79,6 +90,7 @@ dag3 = DAG(
     tags=['downstream'],
 )
 # [END dag_dep]
+
 
 BashOperator(
     outlets=[Dataset('s3://downstream_1_task/dataset_other.txt')],
