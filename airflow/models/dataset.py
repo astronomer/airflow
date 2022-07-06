@@ -222,7 +222,7 @@ class DatasetEvent(Base):
     __tablename__ = "dataset_event"
     __table_args__ = (
         ForeignKeyConstraint((dataset_id,), ["dataset.id"], name='datasetevent_dataset_fkey'),
-        Index('idx_dataset_id_created_at', dataset_id, created_at, unique=True),
+        Index('idx_dataset_id_created_at', dataset_id, created_at, mssql_clustered=True),
         {'sqlite_autoincrement': True},  # ensures PK values not reused
     )
 

@@ -141,7 +141,9 @@ def _create_dataset_event_table():
         ['dag_run.id'],
         name="datasetevent_dagrun_fkey",
     ),
-    op.create_index('idx_dataset_id_created_at', 'dataset_event', ['dataset_id', 'created_at'], unique=True)
+    op.create_index(
+        'idx_dataset_id_created_at', 'dataset_event', ['dataset_id', 'created_at'], mssql_clustered=True
+    )
 
 
 def upgrade():
