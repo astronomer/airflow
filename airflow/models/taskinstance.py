@@ -1528,19 +1528,19 @@ class TaskInstance(Base, LoggingMixin):
                     continue
                 downstream_dag_ids = [x.dag_id for x in dataset.dag_references]
                 self.log.debug("downstream dag ids %s", downstream_dag_ids)
-                for dag_id in downstream_dag_ids:
-                    dataset_payload = context.get('dataset_payload')
-                    session.merge(DatasetDagRunQueue(dataset_id=dataset.id, target_dag_id=dag_id))
-                    session.add(
-                        DatasetEvent(
-                            dataset_id=dataset.id,
-                            extra=dataset_payload,
-                            source_task_id=self.task_id,
-                            source_dag_id=self.dag_id,
-                            source_run_id=self.run_id,
-                            source_map_index=self.map_index,
-                        )
+                dataset_payload = context.get('dataset_payload')
+                session.add(
+                    DatasetEvent(
+                        dataset_id=dataset.id,
+                        extra=dataset_payload,
+                        source_task_id=self.task_id,
+                        source_dag_id=self.dag_id,
+                        source_run_id=self.run_id,
+                        source_map_index=self.map_index,
                     )
+                )
+                for dag_id in downstream_dag_ids:
+                    session.merge(DatasetDagRunQueue(dataset_id=dataset.id, target_dag_id=dag_id))
 
     def _execute_task_with_callbacks(self, context, test_mode=False):
         """Prepare Task for Execution"""
