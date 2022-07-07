@@ -240,6 +240,13 @@ class DatasetEvent(Base):
 
     def __repr__(self):
         args = []
-        for attr in ['dataset_id', 'extra', 'source_dag_run_id']:
+        for attr in [
+            'dataset_id',
+            'extra',
+            'source_task_id',
+            'source_dag_id',
+            'source_run_id',
+            'source_map_index',
+        ]:
             args.append(f"{attr}={getattr(self, attr)!r}")
         return f"{self.__class__.__name__}({', '.join(args)})"
