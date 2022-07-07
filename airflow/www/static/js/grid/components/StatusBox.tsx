@@ -63,7 +63,6 @@ const StatusBox = ({
   const containerRef = useContainerRef();
   const { runId, taskId } = instance;
   const { colors } = useTheme();
-  const hoverBlue = `${colors.blue[100]}50`;
 
   // Fetch the corresponding column element and set its background color when hovering
   const onMouseEnter = () => {
@@ -71,7 +70,8 @@ const StatusBox = ({
       ([...containerRef.current.getElementsByClassName(`js-${runId}`)] as HTMLElement[])
         .forEach((e) => {
           // Don't apply hover if it is already selected
-          if (e.getAttribute('data-selected') === 'false') e.style.backgroundColor = hoverBlue;
+          // eslint-disable-next-line prefer-destructuring
+          if (e.getAttribute('data-selected') === 'false') e.style.backgroundColor = colors.blue[50];
         });
     }
   };

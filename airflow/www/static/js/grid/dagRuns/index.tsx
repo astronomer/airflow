@@ -67,13 +67,11 @@ const DagRuns = () => {
       justifyContent="space-between"
       position="sticky"
       top={0}
-      zIndex={1}
+      zIndex={2}
       p={0}
-      height="155px"
-      bg="white"
       alignItems="flex-end"
     >
-      <Box
+      <Flex
         position="sticky"
         bg="white"
         left={0}
@@ -81,31 +79,33 @@ const DagRuns = () => {
         width="200px"
         flexGrow={1}
         flexShrink={0}
-        height="100%"
-        zIndex={2}
+        zIndex={3}
       >
-        {!!runs.length && (
-        <>
-          <DurationTick bottom="120px">Duration</DurationTick>
-          <DurationTick bottom="96px">
-            {formatDuration(max)}
-          </DurationTick>
-          <DurationTick bottom="46px">
-            {formatDuration(max / 2)}
-          </DurationTick>
-          <DurationTick bottom={0}>
-            00:00:00
-          </DurationTick>
-        </>
-        )}
-      </Box>
+        <Flex
+          px="1px"
+          pb="2px"
+          height="108px"
+        >
+          {!!runs.length && (
+          <>
+            <DurationTick bottom="96px">
+              {formatDuration(max)}
+            </DurationTick>
+            <DurationTick bottom="46px">
+              {formatDuration(max / 2)}
+            </DurationTick>
+            <DurationTick bottom={0}>
+              00:00:00
+            </DurationTick>
+          </>
+          )}
+        </Flex>
+      </Flex>
       <Flex justifyContent="flex-end" borderBottomWidth={3} position="relative">
-        {runs.map((run: RunWithDuration, index) => (
+        {runs.map((run: RunWithDuration) => (
           <DagRunBar
             key={run.runId}
             run={run}
-            index={index}
-            totalRuns={runs.length}
             max={max}
             isSelected={run.runId === selected.runId}
             onSelect={onSelect}

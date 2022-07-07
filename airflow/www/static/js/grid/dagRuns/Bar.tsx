@@ -23,10 +23,7 @@ import React from 'react';
 import { isEqual } from 'lodash';
 import {
   Flex,
-  Box,
   Tooltip,
-  Text,
-  VStack,
   useTheme,
 } from '@chakra-ui/react';
 import { MdPlayArrow } from 'react-icons/md';
@@ -34,7 +31,6 @@ import { RiArrowGoBackFill } from 'react-icons/ri';
 
 import DagRunTooltip from './Tooltip';
 import { useContainerRef } from '../context/containerRef';
-import Time from '../components/Time';
 import type { SelectionProps } from '../utils/useSelection';
 import type { RunWithDuration } from '.';
 import { hoverDelay } from '../utils';
@@ -44,24 +40,22 @@ const BAR_HEIGHT = 100;
 interface Props {
   run: RunWithDuration
   max: number;
-  index: number;
-  totalRuns: number;
   isSelected: boolean;
   onSelect: (props: SelectionProps) => void;
 }
 
 const DagRunBar = ({
-  run, max, index, totalRuns, isSelected, onSelect,
+  run, max, isSelected, onSelect,
 }: Props) => {
   const containerRef = useContainerRef();
   const { colors } = useTheme();
-  const hoverBlue = `${colors.blue[100]}50`;
 
   // Fetch the corresponding column element and set its background color when hovering
   const onMouseEnter = () => {
     if (!isSelected) {
       const els = Array.from(containerRef?.current?.getElementsByClassName(`js-${run.runId}`) as HTMLCollectionOf<HTMLElement>);
-      els.forEach((e) => { e.style.backgroundColor = hoverBlue; });
+      // eslint-disable-next-line prefer-destructuring
+      els.forEach((e) => { e.style.backgroundColor = colors.blue[50]; });
     }
   };
   const onMouseLeave = () => {
@@ -69,68 +63,64 @@ const DagRunBar = ({
     els.forEach((e) => { e.style.backgroundColor = ''; });
   };
 
-  // show the tick on the 4th DagRun and then every 10th tick afterwards
-  const shouldShowTick = index === totalRuns - 4
-    || (index < totalRuns - 4 && (index + 4) % 10 === 0);
-
   return (
-    <Box
-      className={`js-${run.runId}`}
-      data-selected={isSelected}
-      bg={isSelected ? 'blue.100' : undefined}
-      transition="background-color 0.2s"
-      px="1px"
-      pb="2px"
-      position="relative"
+    <Flex
+      height="108px"
+      bg="white"
+      alignItems="flex-end"
     >
       <Flex
-        height={BAR_HEIGHT}
-        alignItems="flex-end"
-        justifyContent="center"
-        px="2px"
-        cursor="pointer"
-        width="14px"
-        zIndex={1}
-        onMouseEnter={onMouseEnter}
-        onMouseLeave={onMouseLeave}
-        onClick={() => onSelect({ runId: run.runId })}
+        className={`js-${run.runId}`}
+        data-selected={isSelected}
+        bg={isSelected ? 'blue.100' : 'undefined'}
+        transition="background-color 0.2s"
+        px="1px"
+        pb="2px"
+        height="100%"
+        position="relative"
       >
-        <Tooltip
-          label={<DagRunTooltip dagRun={run} />}
-          hasArrow
-          portalProps={{ containerRef }}
-          placement="top"
-          openDelay={hoverDelay}
+        <Flex
+          height={BAR_HEIGHT}
+          alignItems="flex-end"
+          alignSelf="flex-end"
+          justifyContent="center"
+          px="2px"
+          cursor="pointer"
+          width="14px"
+          zIndex={1}
+          onMouseEnter={onMouseEnter}
+          onMouseLeave={onMouseLeave}
+          onClick={() => onSelect({ runId: run.runId })}
         >
-          <Flex
-            width="10px"
-            height={`${(run.duration / max) * BAR_HEIGHT}px`}
-            minHeight="14px"
-            backgroundColor={stateColors[run.state]}
-            borderRadius={2}
-            cursor="pointer"
-            pb="2px"
-            direction="column"
-            justifyContent="flex-end"
-            alignItems="center"
-            px="1px"
-            zIndex={1}
-            data-testid="run"
+          <Tooltip
+            label={<DagRunTooltip dagRun={run} />}
+            hasArrow
+            portalProps={{ containerRef }}
+            placement="top"
+            openDelay={hoverDelay}
           >
-            {run.runType === 'manual' && <MdPlayArrow size="8px" color="white" data-testid="manual-run" />}
-            {run.runType === 'backfill' && <RiArrowGoBackFill size="8px" color="white" data-testid="backfill-run" />}
-          </Flex>
-        </Tooltip>
+            <Flex
+              width="10px"
+              height={`${(run.duration / max) * BAR_HEIGHT}px`}
+              minHeight="14px"
+              backgroundColor={stateColors[run.state]}
+              borderRadius={2}
+              cursor="pointer"
+              pb="2px"
+              direction="column"
+              justifyContent="flex-end"
+              alignItems="center"
+              px="1px"
+              zIndex={1}
+              data-testid="run"
+            >
+              {run.runType === 'manual' && <MdPlayArrow size="8px" color="white" data-testid="manual-run" />}
+              {run.runType === 'backfill' && <RiArrowGoBackFill size="8px" color="white" data-testid="backfill-run" />}
+            </Flex>
+          </Tooltip>
+        </Flex>
       </Flex>
-      {shouldShowTick && (
-      <VStack position="absolute" top="0" left="8px" spacing={0} zIndex={0} width={0}>
-        <Text fontSize="sm" color="gray.400" whiteSpace="nowrap" transform="rotate(-30deg) translateX(28px)" mt="-23px !important">
-          <Time dateTime={run.executionDate} format="MMM DD, HH:mm" />
-        </Text>
-        <Box borderLeftWidth={1} opacity={0.7} height="100px" zIndex={0} />
-      </VStack>
-      )}
-    </Box>
+    </Flex>
   );
 };
 
@@ -142,8 +132,6 @@ const compareProps = (
 ) => (
   isEqual(prevProps.run, nextProps.run)
   && prevProps.max === nextProps.max
-  && prevProps.index === nextProps.index
-  && prevProps.totalRuns === nextProps.totalRuns
   && prevProps.isSelected === nextProps.isSelected
 );
 

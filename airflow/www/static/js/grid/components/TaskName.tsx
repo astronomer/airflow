@@ -27,7 +27,7 @@ import { FiChevronUp, FiChevronDown } from 'react-icons/fi';
 interface Props {
   isGroup?: boolean;
   isMapped?: boolean;
-  onToggle: () => void;
+  onToggle?: () => void;
   isOpen?: boolean;
   level?: number;
   label: string;
@@ -48,6 +48,7 @@ const TaskName = ({
     flexShrink={0}
     flexGrow={1}
     left={0}
+    zIndex={1}
     bg={isSelected ? 'blue.100' : 'white'}
     fontWeight={isGroup || isMapped ? 'bold' : 'normal'}
     borderBottomColor={isGroup && isOpen ? 'gray.400' : 'gray.200'}

@@ -157,9 +157,8 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) =
         <Box ref={innerRef}>
           {items.map(({ index, size }) => {
             const task = rows[index];
-            if (!task) return null;
+            if (!task || !rows[index]) return null;
             return (
-              !!rows[index] && (
               <TaskRow
                 key={rows[index].id}
                 task={rows[index]}
@@ -169,7 +168,6 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) =
                 onToggleGroups={onToggleGroups}
                 openGroupIds={openGroupIds}
               />
-              )
             );
           })}
         </Box>
