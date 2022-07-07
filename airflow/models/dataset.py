@@ -207,7 +207,10 @@ class DatasetEvent(Base):
 
     :param dataset_id: reference to Dataset record
     :param extra: JSON field for arbitrary extra info
-    :param source_dag_run_id: key to dag run which produced the event
+    :param source_task_id: the task_id of the TI which updated the dataset
+    :param source_dag_id: the dag_id of the TI which updated the dataset
+    :param source_run_id: the run_id of the TI which updated the dataset
+    :param source_map_index: the map_index of the TI which updated the dataset
     """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
