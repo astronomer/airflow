@@ -38,7 +38,6 @@ const columnWidth = boxSize + 2 * boxPadding;
 interface RowProps extends TableRowProps {
   task: BasicTask;
   dagRunIds: DagRun['runId'][];
-  // openParentCount?: number;
   openGroupIds?: string[];
   onToggleGroups?: (groupIds: string[]) => void;
   hoveredTaskState?: string | null;
@@ -89,7 +88,6 @@ const TaskInstances = ({
 const TaskRow = ({
   task,
   dagRunIds,
-  // openParentCount = 0,
   openGroupIds = [],
   onToggleGroups = () => {},
   hoveredTaskState,
@@ -119,9 +117,6 @@ const TaskRow = ({
     [task.isGroup, isOpen, task.label, openGroupIds, onToggleGroups],
   );
 
-  // check if the group's parents are all open, if not, return null
-  // if (task.level !== openParentCount) return null;
-
   return (
     <Flex
       bg={isSelected ? 'blue.100' : 'inherit'}
@@ -133,18 +128,6 @@ const TaskRow = ({
       justifyContent="space-between"
       {...rest}
     >
-      {/* <Td
-        bg={isSelected ? 'blue.100' : 'white'}
-        _groupHover={!isSelected ? { bg: 'blue.50' } : undefined}
-        p={0}
-        transition="background-color 0.2s"
-        lineHeight="18px"
-        position="sticky"
-        left={0}
-        borderBottom={0}
-        width="100%"
-        zIndex={1}
-      > */}
       <TaskName
         onToggle={memoizedToggle}
         isGroup={task.isGroup}
@@ -153,7 +136,6 @@ const TaskRow = ({
         isOpen={isOpen}
         level={task.level}
       />
-      {/* </Td> */}
       <Flex
         p={0}
         align="right"

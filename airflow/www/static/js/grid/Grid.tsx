@@ -19,13 +19,13 @@
 
 /* global localStorage, ResizeObserver */
 
-import React, { useState, MutableRefObject } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Flex,
   IconButton,
 } from '@chakra-ui/react';
-import useVirtual from "react-cool-virtual";
+import useVirtual from 'react-cool-virtual';
 
 import { MdReadMore } from 'react-icons/md';
 import { useGridData } from './api';
@@ -45,7 +45,7 @@ interface Props {
   hoveredTaskState?: string | null;
 }
 
-const flattenTasks = (group: Task, level: number = 0) => {
+const flattenTasks = (group: Task, openGroupIds: string[], level: number = 0) => {
   let list: BasicTask[] = [];
   if (group.id) {
     const { children, ...groupProps } = group;
@@ -55,60 +55,64 @@ const flattenTasks = (group: Task, level: number = 0) => {
       level,
     });
   }
-  if (group.children) {
+  // Add children to the list if the group is expanded
+  if (group.children && (!group.label || openGroupIds.includes(group.label))) {
     group.children.forEach((c) => {
-      list = [...list, ...flattenTasks(c, level + 1)];
-    })
+      list = [...list, ...flattenTasks(c, openGroupIds, level + 1)];
+    });
   }
   return list;
-}
+};
 
 const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) => {
-  // const scrollRef = useRef<HTMLDivElement>(null);
-  // const tableRef = useRef<HTMLTableSectionElement>(null);
-
   const { data: { groups, dagRuns } } = useGridData();
   const dagRunIds = dagRuns.map((dr) => dr.runId);
-
-  const rows = flattenTasks(groups);
-
-  const { outerRef, innerRef, items } = useVirtual({
-    itemCount: rows.length,
-    itemSize: 18,
-  });
 
   const openGroupsKey = `${dagId}/open-groups`;
   const storedGroups = JSON.parse(localStorage.getItem(openGroupsKey) || '[]');
   const [openGroupIds, setOpenGroupIds] = useState(storedGroups);
+  const [rows, setRows] = useState(flattenTasks(groups, openGroupIds));
+
+  const { outerRef, innerRef, items } = useVirtual<HTMLDivElement>({
+    itemCount: rows.length,
+    itemSize: 18,
+  });
 
   const onToggleGroups = (groupIds: string[]) => {
     localStorage.setItem(openGroupsKey, JSON.stringify(groupIds));
     setOpenGroupIds(groupIds);
+    if (!groupIds.length) {
+      const filteredRows = rows.filter((row) => row.level === 1);
+      setRows(filteredRows);
+    } else {
+      const filteredRows = flattenTasks(groups, groupIds);
+      setRows(filteredRows);
+    }
   };
 
-  // useEffect(() => {
-  //   const scrollOnResize = new ResizeObserver(() => {
-  //     const runsContainer = scrollRef.current;
-  //     // Set scroll to top right if it is scrollable
-  //     if (
-  //       tableRef?.current
-  //       && runsContainer
-  //       && runsContainer.scrollWidth > runsContainer.clientWidth
-  //     ) {
-  //       runsContainer.scrollBy(tableRef.current.offsetWidth, 0);
-  //     }
-  //   });
+  useEffect(() => {
+    const scrollOnResize = new ResizeObserver(() => {
+      const runsContainer = outerRef.current;
+      // Set scroll to top right if it is scrollable
+      if (
+        innerRef?.current
+        && runsContainer
+        && runsContainer.scrollWidth > runsContainer.clientWidth
+      ) {
+        runsContainer.scrollBy(innerRef.current.offsetWidth, 0);
+      }
+    });
 
-  //   if (tableRef && tableRef.current) {
-  //     const table = tableRef.current;
+    if (innerRef && innerRef.current) {
+      const table = innerRef.current;
 
-  //     scrollOnResize.observe(table);
-  //     return () => {
-  //       scrollOnResize.unobserve(table);
-  //     };
-  //   }
-  //   return () => {};
-  // }, [tableRef, isPanelOpen]);
+      scrollOnResize.observe(table);
+      return () => {
+        scrollOnResize.unobserve(table);
+      };
+    }
+    return () => {};
+  }, [innerRef, isPanelOpen, outerRef]);
 
   return (
     <Box
@@ -145,21 +149,29 @@ const Grid = ({ isPanelOpen = false, onPanelToggle, hoveredTaskState }: Props) =
       </Flex>
       <Box
         overflow="auto"
-        ref={outerRef as MutableRefObject<HTMLDivElement>}
+        ref={outerRef}
         height="600px"
         position="relative"
       >
         <DagRuns />
-        <Box ref={innerRef as MutableRefObject<HTMLDivElement>}>
-          {items.map(({ index, size }) => (
-            <TaskRow
-              key={rows[index].id}
-              task={rows[index]}
-              dagRunIds={dagRunIds}
-              hoveredTaskState={hoveredTaskState}
-              height={`${size}px`}
-            />
-          ))}
+        <Box ref={innerRef}>
+          {items.map(({ index, size }) => {
+            const task = rows[index];
+            if (!task) return null;
+            return (
+              !!rows[index] && (
+              <TaskRow
+                key={rows[index].id}
+                task={rows[index]}
+                dagRunIds={dagRunIds}
+                hoveredTaskState={hoveredTaskState}
+                height={`${size}px`}
+                onToggleGroups={onToggleGroups}
+                openGroupIds={openGroupIds}
+              />
+              )
+            );
+          })}
         </Box>
       </Box>
     </Box>
