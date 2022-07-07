@@ -21,69 +21,26 @@ import React, { useCallback } from 'react';
 import {
   Box,
   Flex,
-  useTheme,
-  TableRowProps,
+  FlexProps,
 } from '@chakra-ui/react';
 
 import StatusBox, { boxSize, boxSizePx } from './components/StatusBox';
 import TaskName from './components/TaskName';
 
-import useSelection, { SelectionProps } from './utils/useSelection';
-import type { Task, DagRun, BasicTask } from './types';
+import useSelection from './utils/useSelection';
+import type { DagRun, BasicTask } from './types';
 
 const boxPadding = 3;
 const boxPaddingPx = `${boxPadding}px`;
 const columnWidth = boxSize + 2 * boxPadding;
 
-interface RowProps extends TableRowProps {
+interface RowProps extends FlexProps {
   task: BasicTask;
   dagRunIds: DagRun['runId'][];
   openGroupIds?: string[];
   onToggleGroups?: (groupIds: string[]) => void;
   hoveredTaskState?: string | null;
 }
-
-interface TaskInstancesProps {
-  task: Task;
-  dagRunIds: string[];
-  selectedRunId?: string | null;
-  onSelect: (selection: SelectionProps) => void;
-  hoveredTaskState?: string | null;
-}
-
-const TaskInstances = ({
-  task, dagRunIds, selectedRunId, onSelect, hoveredTaskState,
-}: TaskInstancesProps) => (
-  <Flex justifyContent="flex-end">
-    {dagRunIds.map((runId: string) => {
-      // Check if an instance exists for the run, or return an empty box
-      const instance = task.instances.find((ti) => ti && ti.runId === runId);
-      const isSelected = selectedRunId === runId;
-      return (
-        <Box
-          py="4px"
-          px={boxPaddingPx}
-          className={`js-${runId}`}
-          data-selected={isSelected}
-          transition="background-color 0.2s"
-          key={`${runId}-${task.id}`}
-          bg={isSelected ? 'blue.100' : undefined}
-        >
-          {instance
-            ? (
-              <StatusBox
-                instance={instance}
-                group={task}
-                onSelect={onSelect}
-                isActive={hoveredTaskState === undefined || hoveredTaskState === instance.state}
-              />
-            )
-            : <Box width={boxSizePx} data-testid="blank-task" />}
-        </Box>
-      );
-    })}
-  </Flex>
-);
 
 const TaskRow = ({
   task,
@@ -93,11 +50,7 @@ const TaskRow = ({
   hoveredTaskState,
   ...rest
 }: RowProps) => {
-  const { colors } = useTheme();
   const { selected, onSelect } = useSelection();
-
-  const hoverBlue = `${colors.blue[100]}50`;
-  const isSelected = selected.taskId === task.id;
 
   const isOpen = openGroupIds.some((g) => g === task.label);
 
@@ -119,12 +72,7 @@ const TaskRow = ({
 
   return (
     <Flex
-      bg={isSelected ? 'blue.100' : 'inherit'}
-      borderBottomWidth={1}
-      borderBottomColor={task.isGroup && isOpen ? 'gray.400' : 'gray.200'}
       role="group"
-      _hover={!isSelected ? { bg: hoverBlue } : undefined}
-      transition="background-color 0.2s"
       justifyContent="space-between"
       {...rest}
     >
@@ -135,20 +83,44 @@ const TaskRow = ({
         label={task.label || task.id || ''}
         isOpen={isOpen}
         level={task.level}
+        isSelected={selected.taskId === task.id}
       />
       <Flex
         p={0}
-        align="right"
         width={`${dagRunIds.length * columnWidth}px`}
         borderBottom={0}
+        justifyContent="flex-end"
       >
-        <TaskInstances
-          dagRunIds={dagRunIds}
-          task={task}
-          selectedRunId={selected.runId}
-          onSelect={onSelect}
-          hoveredTaskState={hoveredTaskState}
-        />
+        {dagRunIds.map((runId: string) => {
+          // Check if an instance exists for the run, or return an empty box
+          const instance = task.instances.find((ti) => ti && ti.runId === runId);
+          const isSelected = selected.runId === runId || selected.taskId === instance?.taskId;
+          return (
+            <Box
+              key={`${runId}-${task.id}`}
+              className={`js-${runId}`}
+              py="4px"
+              px={boxPaddingPx}
+              data-selected={isSelected}
+              transition="background-color 0.2s"
+              bg={isSelected ? 'blue.100' : undefined}
+              _groupHover={!isSelected ? { bg: 'blue.50' } : undefined}
+              borderBottomColor={task.isGroup && isOpen ? 'gray.400' : 'gray.200'}
+              borderBottomWidth={1}
+            >
+              {instance
+                ? (
+                  <StatusBox
+                    instance={instance}
+                    group={task}
+                    onSelect={onSelect}
+                    isActive={hoveredTaskState === undefined || hoveredTaskState === instance.state}
+                  />
+                )
+                : <Box width={boxSizePx} data-testid="blank-task" />}
+            </Box>
+          );
+        })}
       </Flex>
     </Flex>
   );

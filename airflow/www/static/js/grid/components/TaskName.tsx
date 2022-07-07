@@ -31,20 +31,29 @@ interface Props {
   isOpen?: boolean;
   level?: number;
   label: string;
+  isSelected?: boolean;
 }
 
 const TaskName = ({
-  isGroup = false, isMapped = false, onToggle, isOpen = false, level = 0, label,
+  isGroup = false, isMapped = false, onToggle, isOpen = false, level = 0, label, isSelected,
 }: Props) => (
   <Flex
     as={isGroup ? 'button' : 'div'}
     onClick={onToggle}
     aria-label={label}
     title={label}
-    mr={4}
-    width="100%"
+    width="200px"
     alignItems="center"
+    position="sticky"
+    flexShrink={0}
+    flexGrow={1}
+    left={0}
+    bg={isSelected ? 'blue.100' : 'white'}
     fontWeight={isGroup || isMapped ? 'bold' : 'normal'}
+    borderBottomColor={isGroup && isOpen ? 'gray.400' : 'gray.200'}
+    borderBottomWidth={1}
+    _groupHover={!isSelected ? { bg: 'blue.50' } : undefined}
+    transition="background-color 0.2s"
   >
     <Text
       display="inline"
@@ -52,9 +61,7 @@ const TaskName = ({
       noOfLines={1}
     >
       {label}
-      {isMapped && (
-        ' [ ]'
-      )}
+      {isMapped && (' [ ]')}
     </Text>
     {isGroup && (
       isOpen ? <FiChevronDown data-testid="open-group" /> : <FiChevronUp data-testid="closed-group" />

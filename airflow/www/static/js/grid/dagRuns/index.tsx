@@ -73,7 +73,17 @@ const DagRuns = () => {
       bg="white"
       alignItems="flex-end"
     >
-      <Box borderBottomWidth={3} position="relative" height="100%" width="100%">
+      <Box
+        position="sticky"
+        bg="white"
+        left={0}
+        borderBottomWidth={3}
+        width="200px"
+        flexGrow={1}
+        flexShrink={0}
+        height="100%"
+        zIndex={2}
+      >
         {!!runs.length && (
         <>
           <DurationTick bottom="120px">Duration</DurationTick>
