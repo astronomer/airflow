@@ -99,6 +99,11 @@ class AzureCosmosDBHook(BaseHook):
             endpoint_uri = conn.login
             master_key = conn.password
 
+            print("^^^^^^^^^^^^")
+            print(endpoint_uri)
+            print("^^^^^^^^^^^^")
+            print(master_key)
+
             self.default_database_name = extras.get('database_name') or extras.get(
                 'extra__azure_cosmos__database_name'
             )
@@ -319,6 +324,20 @@ class AzureCosmosDBHook(BaseHook):
             return list(result_iterable)
         except CosmosHttpResponseError:
             return None
+
+    def test_connection(self):
+        """Test a configured Azure Cosmos connection."""
+        success = (True, "Successfully connected to Azure Cosmos.")
+        hook = AzureCosmosDBHook(azure_cosmos_conn_id=self.conn_id)
+        try:
+            db_info = next(iter(hook.get_conn().list_databases()))
+            print(db_info)
+            return success
+        except StopIteration:
+            print("In StopIteration")
+            return success
+        except Exception as e:
+            return False, str(e)
 
 
 def get_database_link(database_id: str) -> str:

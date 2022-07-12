@@ -60,9 +60,13 @@ class BaseSecretsBackend(ABC):
 
         value = value.strip()
         if value[0] == '{':
+            print("Connection object in base_secrets", Connection.__dict__)
             return Connection.from_json(conn_id=conn_id, value=value)
         else:
-            return Connection(conn_id=conn_id, uri=value)
+            print("value variable in base_secrets.py is...", value)
+            conn1 = Connection(conn_id=conn_id, uri=value)
+            print("Connection object in else condition of base_secrets", conn1.__dict__)
+            return conn1
 
     def get_conn_uri(self, conn_id: str) -> Optional[str]:
         """
@@ -89,7 +93,9 @@ class BaseSecretsBackend(ABC):
         # TODO: after removal of ``get_conn_uri`` we should not catch NotImplementedError here
         try:
             value = self.get_conn_value(conn_id=conn_id)
+            print("value from get_conn_value", value)
         except NotImplementedError:
+            print("getting into exception block for get_conn_value")
             not_implemented_get_conn_value = True
             warnings.warn(
                 "Method `get_conn_uri` is deprecated. Please use `get_conn_value`.",
@@ -100,7 +106,9 @@ class BaseSecretsBackend(ABC):
         if not_implemented_get_conn_value:
             try:
                 value = self.get_conn_uri(conn_id=conn_id)
+                print("value from get_conn_uri", value)
             except NotImplementedError:
+                print("getting into exception block for get_conn_uri")
                 raise NotImplementedError(
                     f"Secrets backend {self.__class__.__name__} neither implements "
                     "`get_conn_value` nor `get_conn_uri`.  Method `get_conn_uri` is "
@@ -108,6 +116,7 @@ class BaseSecretsBackend(ABC):
                 )
 
         if value:
+            print("Calling deserialize_connection from base_secrets.py")
             return self.deserialize_connection(conn_id=conn_id, value=value)
         else:
             return None

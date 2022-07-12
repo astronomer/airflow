@@ -4150,6 +4150,9 @@ class ConnectionModelView(AirflowModelView):
 
     def process_form(self, form, is_created):
         """Process form data."""
+        print(type(form.data))
+        print("In process_form....")
+        print(form.data)
         conn_id = form.data["conn_id"]
         conn_type = form.data["conn_type"]
 

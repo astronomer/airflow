@@ -118,13 +118,16 @@ class Connection(Base, LoggingMixin):
         self.description = description
         if extra and not isinstance(extra, str):
             extra = json.dumps(extra)
+        print("uri in connection.py is...", uri)
         if uri and (conn_type or host or login or password or schema or port or extra):
+            print("raising exception in connection.py")
             raise AirflowException(
                 "You must create an object using the URI or individual values "
                 "(conn_type, host, login, password, schema, port or extra)."
                 "You can't mix these two ways to create this object."
             )
         if uri:
+            print("calling _parse_from_uri from connection.py")
             self._parse_from_uri(uri)
         else:
             self.conn_type = conn_type
@@ -139,6 +142,7 @@ class Connection(Base, LoggingMixin):
 
         if self.password:
             mask_secret(self.password)
+        print("here9")
 
     @staticmethod
     def _validate_extra(extra, conn_id) -> None:
@@ -188,14 +192,18 @@ class Connection(Base, LoggingMixin):
         return conn_type
 
     def _parse_from_uri(self, uri: str):
+        print("in _parse_from_uri")
         uri_parts = urlparse(uri)
+        print("uri_parts in _parse_from_uri", uri_parts)
         conn_type = uri_parts.scheme
         self.conn_type = self._normalize_conn_type(conn_type)
         self.host = _parse_netloc_to_hostname(uri_parts)
         quoted_schema = uri_parts.path[1:]
         self.schema = unquote(quoted_schema) if quoted_schema else quoted_schema
         self.login = unquote(uri_parts.username) if uri_parts.username else uri_parts.username
+        print("uri_parts.password in _parse_from_uri", uri_parts.password)
         self.password = unquote(uri_parts.password) if uri_parts.password else uri_parts.password
+        print("self.password in _parse_from_uri", self.password)
         self.port = uri_parts.port
         if uri_parts.query:
             query = dict(parse_qsl(uri_parts.query, keep_blank_values=True))
@@ -206,6 +214,7 @@ class Connection(Base, LoggingMixin):
 
     def get_uri(self) -> str:
         """Return connection in URI format"""
+        print("here20")
         if '_' in self.conn_type:
             self.log.warning(
                 "Connection schemes (type: %s) shall not contain '_' according to RFC3986.",
@@ -216,9 +225,14 @@ class Connection(Base, LoggingMixin):
 
         authority_block = ''
         if self.login is not None:
+            print("here21")
             authority_block += quote(self.login, safe='')
 
+        print("here22")
+        print(self.password)
+
         if self.password is not None:
+            print("here23")
             authority_block += ':' + quote(self.password, safe='')
 
         if authority_block > '':
@@ -243,6 +257,7 @@ class Connection(Base, LoggingMixin):
 
         if self.extra:
             try:
+                print("here25")
                 query: Optional[str] = urlencode(self.extra_dejson)
             except TypeError:
                 query = None
@@ -251,10 +266,17 @@ class Connection(Base, LoggingMixin):
             else:
                 uri += ('?' if self.schema else '/?') + urlencode({self.EXTRA_KEY: self.extra})
 
+        print("here11")
         return uri
 
     def get_password(self) -> Optional[str]:
         """Return encrypted password."""
+        print("in get_password")
+        print("**************")
+        print(self._password)
+        print("**************")
+        print(self.is_encrypted)
+        print("**************")
         if self._password and self.is_encrypted:
             fernet = get_fernet()
             if not fernet.is_encrypted:
@@ -264,18 +286,23 @@ class Connection(Base, LoggingMixin):
                 )
             return fernet.decrypt(bytes(self._password, 'utf-8')).decode()
         else:
+            print("here32")
             return self._password
 
     def set_password(self, value: Optional[str]):
         """Encrypt password and set in object attribute."""
+        print("in set_password...value is", value)
         if value:
             fernet = get_fernet()
+            print(self._password)
             self._password = fernet.encrypt(bytes(value, 'utf-8')).decode()
+            print(self._password)
             self.is_encrypted = fernet.is_encrypted
 
     @declared_attr
     def password(cls):
         """Password. The value is decrypted/encrypted when reading/setting the value."""
+        print("in password....")
         return synonym('_password', descriptor=property(cls.get_password, cls.set_password))
 
     def get_extra(self) -> Dict:
@@ -415,9 +442,13 @@ class Connection(Base, LoggingMixin):
         :param conn_id: connection id
         :return: connection
         """
+        print("Calling ensure_secrets_loaded...")
         for secrets_backend in ensure_secrets_loaded():
             try:
+                print("In connection.py@@@@@@@@")
+                print(secrets_backend.__dict__)
                 conn = secrets_backend.get_connection(conn_id=conn_id)
+                print("connection object in connection.py..get_connection_from_secrets..", conn.__dict__)
                 if conn:
                     return conn
             except Exception:

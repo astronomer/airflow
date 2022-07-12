@@ -66,6 +66,8 @@ class BaseHook(LoggingMixin):
 
         conn = Connection.get_connection_from_secrets(conn_id)
         log.info("Using connection ID '%s' for task execution.", conn.conn_id)
+        print("connection object in base.py..get_connection..", conn.__dict__)
+        print("Password is : ", conn.password)
         return conn
 
     @classmethod
