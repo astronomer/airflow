@@ -17,57 +17,66 @@
  * under the License.
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Box, Code, Heading } from '@chakra-ui/react';
+import { snakeCase } from 'lodash';
+import type {
+  ColumnDef, PaginationState, SortingState,
+} from '@tanstack/react-table';
 
 import { useDatasets } from 'src/api';
-import Table from 'src/components/Table';
 import Time from 'src/components/Time';
-import { snakeCase } from 'lodash';
-import type { SortingRule } from 'react-table';
+import NewTable from 'src/components/NewTable';
+import type { Dataset } from 'src/types';
+
+interface Info {
+  getValue: <TTValue = unknown>() => TTValue;
+}
+
+const CodeCell = ({ getValue }: Info) => <Code>{getValue()}</Code>;
+const TimeCell = ({ getValue }: Info) => <Time dateTime={getValue()} />;
 
 const DatasetsList = () => {
   const limit = 25;
-  const [offset, setOffset] = useState(0);
-  const [sortBy, setSortBy] = useState<SortingRule<object>[]>([]);
+  const [pagination, setPagination] = useState<PaginationState>(
+    {
+      pageIndex: 0,
+      pageSize: limit,
+    },
+  );
+  const [sorting, setSorting] = useState<SortingState>([]);
 
-  const sort = sortBy[0];
+  const sort = sorting[0];
   const order = sort ? `${sort.desc ? '-' : ''}${snakeCase(sort.id)}` : '';
 
-  const { data: { datasets, totalEntries }, isLoading } = useDatasets({ limit, offset, order });
+  const offset = Math.ceil(pagination.pageIndex) * limit;
+  const { data: { datasets, totalEntries } } = useDatasets({
+    offset, limit, order,
+  });
 
-  const columns = useMemo(
-    () => [
-      {
-        Header: 'URI',
-        accessor: 'uri',
-      },
-      {
-        Header: 'Extra',
-        accessor: 'extra',
-        disableSortBy: true,
-      },
-      {
-        Header: 'Created At',
-        accessor: 'createdAt',
-      },
-      {
-        Header: 'Updated At',
-        accessor: 'updatedAt',
-      },
-    ],
-    [],
-  );
-
-  const data = useMemo(
-    () => datasets.map((d) => ({
-      ...d,
-      extra: <Code>{d.extra}</Code>,
-      createdAt: <Time dateTime={d.createdAt} />,
-      updatedAt: <Time dateTime={d.updatedAt} />,
-    })),
-    [datasets],
-  );
+  const columns: ColumnDef<Dataset>[] = [
+    {
+      header: 'URI',
+      accessorKey: 'uri',
+      cell: (info) => info.getValue(),
+    },
+    {
+      header: 'Extra',
+      accessorKey: 'extra',
+      cell: CodeCell,
+      enableSorting: false,
+    },
+    {
+      header: 'Created At',
+      accessorKey: 'createdAt',
+      cell: TimeCell,
+    },
+    {
+      header: 'Updated At',
+      accessorKey: 'updatedAt',
+      cell: TimeCell,
+    },
+  ];
 
   return (
     <Box>
@@ -75,17 +84,18 @@ const DatasetsList = () => {
         Datasets
       </Heading>
       <Box borderWidth={1}>
-        <Table
-          data={data}
+        <NewTable
+          data={datasets}
           columns={columns}
-          isLoading={isLoading}
-          manualPagination={{
-            offset,
-            setOffset,
-            totalEntries,
+          sort={{
+            sorting,
+            setSorting,
           }}
-          pageSize={limit}
-          setSortBy={setSortBy}
+          pagination={{
+            totalEntries,
+            state: pagination,
+            setPagination,
+          }}
         />
       </Box>
     </Box>

@@ -34,7 +34,7 @@ interface Props {
   order?: string;
 }
 
-export default function useDatasets({ limit, offset, order }: Props) {
+export default function useDatasets({ limit, offset = 0, order }: Props) {
   const query = useQuery<DatasetsData>(
     ['datasets', limit, offset, order],
     () => {
