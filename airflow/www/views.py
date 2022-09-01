@@ -97,11 +97,11 @@ from airflow.models.dag import DAG, get_dataset_triggered_next_run_info
 from airflow.models.dagcode import DagCode
 from airflow.models.dagrun import DagRun, DagRunType
 from airflow.models.dataset import (
-    DatasetDagRef,
+    DagScheduleDatasetReference,
     DatasetDagRunQueue,
     DatasetEvent,
     DatasetModel,
-    DatasetTaskRef,
+    TaskOutletDatasetReference,
 )
 from airflow.models.operator import Operator
 from airflow.models.serialized_dag import SerializedDagModel
@@ -3587,8 +3587,8 @@ class Airflow(AirflowBaseView):
                     func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
                 )
                 .outerjoin(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
-                .outerjoin(DatasetDagRef)
-                .outerjoin(DatasetTaskRef)
+                .outerjoin(DagScheduleDatasetReference)
+                .outerjoin(TaskOutletDatasetReference)
                 .group_by(DatasetModel.id, DatasetModel.uri)
                 .order_by(order_by)
                 .offset(offset)
@@ -3609,8 +3609,8 @@ class Airflow(AirflowBaseView):
             #            func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
             #        )
             #        .outerjoin(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
-            #        .outerjoin(DatasetDagRef)
-            #        .outerjoin(DatasetTaskRef)
+            #        .outerjoin(DagScheduleDatasetReference)
+            #        .outerjoin(TaskOutletDatasetReference)
             #        .group_by(DatasetModel.id, DatasetModel.uri)
             #        .order_by(order_by)
             #        .offset(offset)
@@ -3626,7 +3626,7 @@ class Airflow(AirflowBaseView):
                         DatasetModel.uri,
                         func.max(DatasetEvent.timestamp).label("last_dataset_update"),
                         func.count(DatasetEvent.id).label("total_updates"),
-                        func.count(DatasetTaskRef.dataset_id).label("producing_task_count"),
+                        func.count(TaskOutletDatasetReference.dataset_id).label("producing_task_count"),
                         func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
                     )
                     # .outerjoin(DatasetModel.events)
