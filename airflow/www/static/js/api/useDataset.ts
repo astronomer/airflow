@@ -29,7 +29,7 @@ interface Props {
 
 export default function useDataset({ datasetUri }: Props) {
   return useQuery(
-    ['dataset', uri],
+    ['dataset', datasetUri],
     () => {
       const datasetUrl = getMetaValue('dataset_api').replace('__URI__', encodeURIComponent(datasetUri));
       return axios.get<AxiosResponse, API.Dataset>(datasetUrl);

@@ -3477,17 +3477,18 @@ class Airflow(AirflowBaseView):
     @auth.has_access([(permissions.ACTION_CAN_READ, permissions.RESOURCE_DAG)])
     def next_run_datasets(self, dag_id):
         """Returns datasets necessary, and their status, for the next dag run"""
+        print(f"dag_id: {dag_id}")
         dag = get_airflow_app().dag_bag.get_dag(dag_id)
         if not dag:
             return {'error': f"can't find dag {dag_id}"}, 404
 
         with create_session() as session:
-            data = [
-                dict(info)
-                for info in session.query(
+            q = (
+                session.query(
                     DatasetModel.id,
                     DatasetModel.uri,
-                    DatasetDagRunQueue.created_at,
+                    func.max(DatasetDagRunQueue.created_at).label("created_at"),
+                    func.min(DatasetDagRunQueue.created_at).label("first_time"),
                 )
                 .join(DagScheduleDatasetReference, DatasetModel.id == DagScheduleDatasetReference.dataset_id)
                 .join(
@@ -3499,9 +3500,14 @@ class Airflow(AirflowBaseView):
                     isouter=True,
                 )
                 .filter(DagScheduleDatasetReference.dag_id == dag_id)
+                .group_by(DatasetModel.id)
                 .order_by(DatasetModel.id)
-                .all()
-            ]
+            )
+
+            print(f"q:\n{q}")
+            print(f"q.all()\n{q.all()}")
+
+            data = [dict(info) for info in q.all()]
         return (
             htmlsafe_json_dumps(data, separators=(',', ':'), cls=utils_json.AirflowJsonEncoder),
             {'Content-Type': 'application/json; charset=utf-8'},
@@ -3555,47 +3561,60 @@ class Airflow(AirflowBaseView):
         offset = int(request.args.get("offset", 0))
         order_by = request.args.get("order_by", "uri")
         lstriped_orderby = order_by.lstrip('-')
-        if allowed_attrs and lstriped_orderby not in allowed_attrs:
+        if lstriped_orderby not in allowed_attrs:
             return {
-                "detail": f"Ordering with '{lstriped_orderby}' is disallowed or the attribute does not exist on the model"
+                "detail": (
+                    f"Ordering with '{lstriped_orderby}' is disallowed or the attribute does not "
+                    "exist on the model"
+                )
             }, 400
 
         if lstriped_orderby == "uri":
             if order_by[0] == "-":
-                order_by = getattr(DatasetModel, lstriped_orderby).desc()
+                order_by = tuple(getattr(DatasetModel, lstriped_orderby).desc())
             else:
-                order_by = getattr(DatasetModel, lstriped_orderby).asc()
+                order_by = tuple(getattr(DatasetModel, lstriped_orderby).asc())
         if lstriped_orderby == "last_dataset_update":
             if order_by[0] == "-":
-                order_by = func.max(DatasetEvent.timestamp).desc()
+                # Push the nulls to last, and order just the never-updated datasets alphabetically by uri
+                order_by = (func.max(DatasetEvent.timestamp).desc().nulls_last(), DatasetModel.uri.asc())
             else:
-                order_by = func.max(DatasetEvent.timestamp).asc()
+                # Somebody may have lots of datasets and want to see what datasets haven't ever been updated
+                # yet, so we list the nulls first, and order just the never-updated datasets alphabetically
+                # by uri
+                order_by = (func.max(DatasetEvent.timestamp).asc().nulls_first(), DatasetModel.uri.asc())
 
-        if limit > 50:
-            limit = 50
+        limit = 50 if limit > 50 else limit
 
         with create_session() as session:
             total_entries = session.query(func.count(DatasetModel.id)).scalar()
 
-            print(
+            q = (
                 session.query(
                     DatasetModel.id,
                     DatasetModel.uri,
                     func.max(DatasetEvent.timestamp).label("last_dataset_update"),
-                    func.count(DatasetEvent.id).label("total_updates"),
+                    func.coalesce(func.count(DatasetEvent.id), 0).label("total_updates"),
                     func.count(DatasetModel.producing_tasks).label("producing_task_count"),
                     func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
                 )
                 .outerjoin(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
-                .outerjoin(DagScheduleDatasetReference)
-                .outerjoin(TaskOutletDatasetReference)
+                .outerjoin(
+                    DagScheduleDatasetReference, DagScheduleDatasetReference.dataset_id == DatasetModel.id
+                )
+                .outerjoin(
+                    TaskOutletDatasetReference, TaskOutletDatasetReference.dataset_id == DatasetModel.id
+                )
                 .group_by(DatasetModel.id, DatasetModel.uri)
-                .order_by(order_by)
+                .order_by(*order_by)
                 .offset(offset)
                 .limit(limit)
             )
 
-            print(session.query(DatasetModel.producing_tasks).all())
+            print(q)
+            print(q.all())
+
+            # print(session.query(DatasetModel.producing_tasks).all())
 
             # datasets = [
             #    dict(dataset)
@@ -3621,23 +3640,24 @@ class Airflow(AirflowBaseView):
             datasets = [
                 dict(dataset)
                 for dataset in (
-                    session.query(
-                        DatasetModel.id,
-                        DatasetModel.uri,
-                        func.max(DatasetEvent.timestamp).label("last_dataset_update"),
-                        func.count(DatasetEvent.id).label("total_updates"),
-                        func.count(TaskOutletDatasetReference.dataset_id).label("producing_task_count"),
-                        func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
-                    )
-                    # .outerjoin(DatasetModel.events)
-                    .outerjoin(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
-                    .outerjoin(DatasetModel.producing_tasks)
-                    .outerjoin(DatasetModel.consuming_dags)
-                    .group_by(DatasetModel.id, DatasetModel.uri)
-                    .order_by(order_by)
-                    .offset(offset)
-                    .limit(limit)
-                    .all()
+                    # session.query(
+                    #     DatasetModel.id,
+                    #     DatasetModel.uri,
+                    #     func.max(DatasetEvent.timestamp).label("last_dataset_update"),
+                    #     func.count(DatasetEvent.id).label("total_updates"),
+                    #     func.count(TaskOutletDatasetReference.dataset_id).label("producing_task_count"),
+                    #     func.count(DatasetModel.consuming_dags).label("consuming_dag_count"),
+                    # )
+                    # # .outerjoin(DatasetModel.events)
+                    # .outerjoin(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
+                    # .outerjoin(DatasetModel.producing_tasks)
+                    # .outerjoin(DatasetModel.consuming_dags)
+                    # .group_by(DatasetModel.id, DatasetModel.uri)
+                    # .order_by(order_by)
+                    # .offset(offset)
+                    # .limit(limit)
+                    # .all()
+                    q.all()
                 )
             ]
             data = {"datasets": datasets, "total_entries": total_entries}

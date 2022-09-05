@@ -23,6 +23,7 @@ from sqlalchemy.orm.session import Session
 from airflow.configuration import conf
 from airflow.datasets import Dataset
 from airflow.models.dataset import DatasetDagRunQueue, DatasetEvent, DatasetModel
+from airflow.utils import timezone
 from airflow.utils.log.logging_mixin import LoggingMixin
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ class DatasetManager(LoggingMixin):
         if not dataset_model:
             self.log.warning("DatasetModel %s not found", dataset_model)
             return
+        print(f"Creating DatasetEvent for {dataset_model.uri}")
         session.add(
             DatasetEvent(
                 dataset_id=dataset_model.id,
@@ -71,13 +73,15 @@ class DatasetManager(LoggingMixin):
         # mapped) tasks update the same dataset, this can fail with a unique
         # constraint violation.
         #
-        # If we support it, use ON CONFLICT to do nothing, otherwise
+        # If we support it, use ON CONFLICT to update the , otherwise
         # "fallback" to running this in a nested transaction. This is needed
         # so that the adding of these rows happens in the same transaction
         # where `ti.state` is changed.
 
-        if session.bind.dialect.name == "postgresql":
-            return self._postgres_queue_dagruns(dataset, session)
+        if session.bind.dialect.name in ("postgresql", "sqlite"):
+            return self._on_conflict_queue_dagruns(dataset, session)
+        elif session.bind.dialent.name == "mysql":
+            return self._on_duplicate_key_update_queue_dagruns(dataset, session)
         return self._slow_path_queue_dagruns(dataset, session)
 
     def _slow_path_queue_dagruns(self, dataset: DatasetModel, session: Session) -> None:
@@ -87,17 +91,35 @@ class DatasetManager(LoggingMixin):
         # Don't error whole transaction when a single RunQueue item conflicts.
         # https://docs.sqlalchemy.org/en/14/orm/session_transaction.html#using-savepoint
         for dag_id in consuming_dag_ids:
+            self.log.debug(f"Trying to queue individual DDRQ for '{dag_id}' and dataset '{dataset.uri}'")
             item = DatasetDagRunQueue(target_dag_id=dag_id, dataset_id=dataset.id)
             try:
                 with session.begin_nested():
                     session.merge(item)
             except exc.IntegrityError:
-                self.log.debug("Skipping record %s", item, exc_info=True)
+                item = session.query(DatasetDagRunQueue).where(target_dag_id=dag_id, dataset_id=dataset.id)
+                self.log.info("Updating DDRQ %s creation time", item)
+                item.created_at = timezone.utcnow()
+                session.merge(item)
 
     def _postgres_queue_dagruns(self, dataset: DatasetModel, session: Session) -> None:
         from sqlalchemy.dialects.postgresql import insert
 
-        stmt = insert(DatasetDagRunQueue).values(dataset_id=dataset.id).on_conflict_do_nothing()
+        self.log.debug(
+            "Upserting multiple DDRQs for DAGs "
+            f"{', '.join([target_dag.dag_id for target_dag in dataset.consuming_dags])}"
+            f" and dataset '{dataset.uri}'"
+        )
+        stmt = (
+            insert(DatasetDagRunQueue)
+            .values(dataset_id=dataset.id)
+            .on_conflict_do_update(
+                constraint='datasetdagrunqueue_pkey',
+                set_={
+                    'created_at': timezone.utcnow(),
+                },
+            )
+        )
         session.execute(
             stmt,
             [{'target_dag_id': target_dag.dag_id} for target_dag in dataset.consuming_dags],
