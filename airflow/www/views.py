@@ -3487,21 +3487,28 @@ class Airflow(AirflowBaseView):
                 session.query(
                     DatasetModel.id,
                     DatasetModel.uri,
-                    func.max(DatasetDagRunQueue.created_at).label("created_at"),
-                    func.min(DatasetDagRunQueue.created_at).label("first_time"),
+                    func.max(DatasetEvent.timestamp).label("lastUpdate"),
                 )
-                .join(DagScheduleDatasetReference, DatasetModel.id == DagScheduleDatasetReference.dataset_id)
+                .join(DagScheduleDatasetReference, DagScheduleDatasetReference.dataset_id == DatasetModel.id)
                 .join(
                     DatasetDagRunQueue,
                     and_(
-                        DatasetDagRunQueue.dataset_id == DagScheduleDatasetReference.dataset_id,
+                        DatasetDagRunQueue.dataset_id == DatasetModel.id,
                         DatasetDagRunQueue.target_dag_id == DagScheduleDatasetReference.dag_id,
+                    ),
+                    isouter=True,
+                )
+                .join(
+                    DatasetEvent,
+                    and_(
+                        DatasetEvent.dataset_id == DatasetModel.id,
+                        DatasetEvent.timestamp > DatasetDagRunQueue.created_at,
                     ),
                     isouter=True,
                 )
                 .filter(DagScheduleDatasetReference.dag_id == dag_id)
                 .group_by(DatasetModel.id)
-                .order_by(DatasetModel.id)
+                .order_by(DatasetModel.uri)
             )
 
             print(f"q:\n{q}")
