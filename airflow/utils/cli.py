@@ -181,11 +181,11 @@ def get_dag_by_file_location(dag_id: str):
     return dagbag.dags[dag_id]
 
 
-def get_dag(subdir: str | None, dag_id: str) -> DAG:
+def get_dag(subdir: str | None, dag_id: str, include_examples=False) -> DAG:
     """Returns DAG of a given dag_id"""
     from airflow.models import DagBag
 
-    dagbag = DagBag(process_subdir(subdir))
+    dagbag = DagBag(process_subdir(subdir), include_examples=include_examples)
     if dag_id not in dagbag.dags:
         raise AirflowException(
             f"Dag {dag_id!r} could not be found; either it does not exist or it failed to parse."
