@@ -52,6 +52,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import NoResultFound
 
+from airflow.compat.functools import cached_property
 from airflow.configuration import conf
 from airflow.exceptions import AirflowException, RemovedInAirflow3Warning, TaskDeferred
 from airflow.lineage import apply_lineage, prepare_lineage
@@ -1475,7 +1476,19 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         """Required by DAGNode."""
         return DagAttributeTypes.OP, self.task_id
 
-    is_mapped: ClassVar[bool] = False
+    @cached_property
+    def is_mapped(self) -> bool:
+        """Whether this task is mapped.
+
+        A task is considered mapped if the user called an expansion function on
+        the task itself, or any of its parent task group.
+        """
+        group = self.task_group
+        while group is not None:
+            if group.is_mapped:
+                return True
+            group = group.task_group
+        return False
 
     @property
     def inherits_from_empty_operator(self):

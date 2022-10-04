@@ -41,6 +41,8 @@ class ReadyToRescheduleDep(BaseTIDep):
         considered as passed. This dependency fails if the latest reschedule
         request's reschedule date is still in future.
         """
+        # TODO: (AIP-42) I think this logic might change when task group mapping
+        # is implemented? We'll need to further analyze the mapped task case.
         is_mapped = ti.task.is_mapped
         if not is_mapped and not getattr(ti.task, "reschedule", False):
             # Mapped sensors don't have the reschedule property (it can only

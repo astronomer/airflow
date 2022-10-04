@@ -338,6 +338,8 @@ def dag_to_grid(dag, dag_runs, session):
                     set_overall_state(record)
                     yield record
 
+            # TODO: (AIP-42) I think this logic might change when task group mapping
+            # is implemented? We'll need to further analyze the mapped task case.
             if item.is_mapped:
                 instances = list(_mapped_summary(grouped_tis.get(item.task_id, [])))
             else:

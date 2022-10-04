@@ -49,6 +49,7 @@ IGNORED = {
     "shallow_copy_attrs",
     # Only on MappedOperator.
     "expand_input",
+    "parse_time_mapped_ti_count",
     "partial_kwargs",
 }
 
@@ -128,7 +129,7 @@ def _is_property(f: ast.FunctionDef) -> bool:
     decorator = f.decorator_list[0]
     if not isinstance(decorator, ast.Name):
         return False
-    return decorator.id == "property"
+    return decorator.id in ("property", "cached_property")
 
 
 def _iter_member_names(klass: ast.ClassDef) -> typing.Iterator[str]:

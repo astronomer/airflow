@@ -302,6 +302,8 @@ class PlainXComArg(XComArg):
         from airflow.models.xcom import XCom
 
         task = self.operator
+        # TODO: (AIP-42) I think this logic might change when task group mapping
+        # is implemented? We'll need to further analyze the mapped task case.
         if task.is_mapped:
             query = session.query(func.count(XCom.map_index)).filter(
                 XCom.dag_id == task.dag_id,

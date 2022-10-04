@@ -2314,8 +2314,8 @@ class TaskInstance(Base, LoggingMixin):
     def _record_task_map_for_downstreams(self, task: Operator, value: Any, *, session: Session) -> None:
         if next(task.iter_mapped_dependants(), None) is None:  # No mapped dependants, no need to validate.
             return
-        # TODO: We don't push TaskMap for mapped task instances because it's not
-        # currently possible for a downstream to depend on one individual mapped
+        # TODO: (AIP-42) We don't push TaskMap for mapped task instances because
+        # it's not currently possible for a downstream to depend on one mapped
         # task instance. This will change when we implement task group mapping,
         # and we'll need to further analyze the mapped task case.
         if task.is_mapped:

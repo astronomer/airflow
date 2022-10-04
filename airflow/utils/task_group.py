@@ -24,7 +24,7 @@ from __future__ import annotations
 import copy
 import re
 import weakref
-from typing import TYPE_CHECKING, Any, Generator, Sequence
+from typing import TYPE_CHECKING, Any, ClassVar, Generator, Sequence
 
 from airflow.exceptions import (
     AirflowDagCycleException,
@@ -72,6 +72,7 @@ class TaskGroup(DAGNode):
     """
 
     used_group_ids: set[str | None]
+    is_mapped: ClassVar[bool] = False
 
     def __init__(
         self,
@@ -464,6 +465,8 @@ class MappedTaskGroup(TaskGroup):
     Don't instantiate this class directly; call *expand* or *expand_kwargs* on
     a ``@task_group`` function instead.
     """
+
+    is_mapped = True
 
     def __init__(self, *, expand_input: ExpandInput, **kwargs: Any) -> None:
         super().__init__(**kwargs)

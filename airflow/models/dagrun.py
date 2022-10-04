@@ -22,18 +22,7 @@ import os
 import warnings
 from collections import defaultdict
 from datetime import datetime
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Iterable,
-    Iterator,
-    NamedTuple,
-    Sequence,
-    TypeVar,
-    cast,
-    overload,
-)
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, NamedTuple, Sequence, TypeVar, overload
 
 from sqlalchemy import (
     Boolean,
@@ -932,9 +921,8 @@ class DagRun(Base, LoggingMixin):
                     ti.state = State.REMOVED
                 continue
 
-            if not task.is_mapped:
+            if not isinstance(task, MappedOperator):
                 continue
-            task = cast("MappedOperator", task)
             num_mapped_tis = task.parse_time_mapped_ti_count
             # Check if the number of mapped literals has changed and we need to mark this TI as removed
             if num_mapped_tis is not None:
@@ -1045,9 +1033,8 @@ class DagRun(Base, LoggingMixin):
         """
 
         def expand_mapped_literals(task: Operator) -> tuple[Operator, Sequence[int]]:
-            if not task.is_mapped:
+            if not isinstance(task, MappedOperator):
                 return (task, (-1,))
-            task = cast("MappedOperator", task)
             count = task.get_mapped_ti_count(self.run_id, session=session)
             if not count:
                 return (task, (-1,))
