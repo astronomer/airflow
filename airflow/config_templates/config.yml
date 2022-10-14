@@ -1088,7 +1088,7 @@
       version_added: 1.10.8
       type: string
       example: ~
-      default: "True"
+      default: "False"
     - name: dag_default_view
       description: |
         Default DAG view. Valid values are: ``tree``, ``graph``, ``duration``, ``gantt``, ``landing_times``
