@@ -90,6 +90,9 @@ class PostgresHook(DbApiHook):
         # check for authentication via AWS IAM
         if conn.extra_dejson.get("iam", False):
             conn.login, conn.password, conn.port = self.get_iam_token(conn)
+        search_path = conn.extra_dejson.get("search_path", False)
+        if search_path:
+            search_path = f"-c search_path={search_path},public"
 
         conn_args = dict(
             host=conn.host,
@@ -97,6 +100,7 @@ class PostgresHook(DbApiHook):
             password=conn.password,
             dbname=self.schema or conn.schema,
             port=conn.port,
+            options=search_path,
         )
         raw_cursor = conn.extra_dejson.get("cursor", False)
         if raw_cursor:
