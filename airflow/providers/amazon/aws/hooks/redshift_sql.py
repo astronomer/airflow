@@ -16,6 +16,9 @@
 # under the License.
 from __future__ import annotations
 
+import warnings
+from typing import Any
+
 import redshift_connector
 from redshift_connector import Connection as RedshiftConnection
 from sqlalchemy import create_engine
@@ -44,6 +47,19 @@ class RedshiftSQLHook(DbApiHook):
     hook_name = "Amazon Redshift"
     supports_autocommit = True
 
+    def __init__(self, *args, **kwargs) -> None:
+        if "schema" in kwargs and "database" not in kwargs:
+            warnings.warn(
+                'The "schema" arg has been renamed to "database" as it contained the database name.'
+                'Please use "database" to set the database name.',
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            kwargs["database"] = kwargs["schema"]
+        super().__init__(*args, **kwargs)
+        self.database: str | None = kwargs.pop("database", None)
+        self.schema: str | None = kwargs.pop("schema", None)
+
     @staticmethod
     def get_ui_field_behavior() -> dict:
         """Returns custom field behavior"""
@@ -71,7 +87,7 @@ class RedshiftSQLHook(DbApiHook):
         if conn.port:
             conn_params["port"] = conn.port
         if conn.schema:
-            conn_params["database"] = conn.schema
+            conn_params["database"] = self.database or conn.schema
 
         return conn_params
 
