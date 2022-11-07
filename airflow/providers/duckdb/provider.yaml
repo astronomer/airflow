@@ -26,6 +26,7 @@ versions:
 
 dependencies:
   - apache-airflow-providers-common-sql>=1.3.0
+  - python-duckdb
 
 integrations:
   - integration-name: DuckDB
@@ -34,12 +35,6 @@ integrations:
       - /docs/apache-airflow-providers-duckdb/operators.rst
     logo: /integration-logos/duckdb/DuckDB.png
     tags: [software]
-
-operators:
-  - integration-name: DuckDB
-
-    python-modules:
-      - airflow.providers.duckdb.operators.duckdb
 
 hooks:
   - integration-name: DuckDB
