@@ -25,7 +25,7 @@ from airflow.providers.common.sql.hooks.sql import DbApiHook
 class DuckdbHook(DbApiHook):
     """Interact with DuckDB."""
 
-    onn_name_attr = "duckdb_conn_id"
+    conn_name_attr = "duckdb_conn_id"
     default_conn_name = "duckdb_default"
     conn_type = "duckdb"
     hook_name = "Duckdb"
@@ -45,3 +45,12 @@ class DuckdbHook(DbApiHook):
         if not conn.host:
             return "duckdb:///:memory:"
         return f"duckdb:///{conn.host}"
+
+    @staticmethod
+    def get_ui_field_behaviour() -> dict:
+        """Returns custom field behavior"""
+        return {
+            "hidden_fields": ["schema", "login", "password", "port", "extra"],
+            "relabeling": {},
+            "placeholders": {"host": "DB file location (for in-memory leave it empty)"}
+        }
