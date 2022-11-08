@@ -577,6 +577,7 @@ ALL_DB_PROVIDERS = [
     "arangodb",
     "cloudant",
     "databricks",
+    "duckdb",
     "exasol",
     "influxdb",
     "microsoft.mssql",
