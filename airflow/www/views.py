@@ -98,7 +98,13 @@ from airflow.models.abstractoperator import AbstractOperator
 from airflow.models.dag import DAG, get_dataset_triggered_next_run_info
 from airflow.models.dagcode import DagCode
 from airflow.models.dagrun import DagRun, DagRunType
-from airflow.models.dataset import DagScheduleDatasetReference, DatasetDagRunQueue, DatasetEvent, DatasetModel
+from airflow.models.dataset import (
+    DagScheduleDatasetReference,
+    DatasetDagRunQueue,
+    DatasetEvent,
+    DatasetModel,
+    TaskOutletDatasetReference,
+)
 from airflow.models.operator import Operator
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance
@@ -3525,7 +3531,7 @@ class Airflow(AirflowBaseView):
                     ),
                     isouter=True,
                 )
-                .filter(DagScheduleDatasetReference.dag_id == dag_id)
+                .filter(DagScheduleDatasetReference.dag_id == dag_id, DatasetModel.is_orphaned.is_(False))
                 .group_by(DatasetModel.id, DatasetModel.uri)
                 .order_by(DatasetModel.uri)
                 .all()
@@ -3573,6 +3579,54 @@ class Airflow(AirflowBaseView):
             htmlsafe_json_dumps(data, separators=(",", ":"), dumps=flask.json.dumps),
             {"Content-Type": "application/json; charset=utf-8"},
         )
+
+    @expose("/object/dataset/delete", methods=["POST"])
+    @action_logging
+    def delete_dataset(self):
+        """Delete an unreferenced dataset"""
+        dataset_id = int(request.values.get("dataset_id"))
+
+        if not dataset_id:
+            return {
+                "detail": "You must specify the dataset by its ID in dataset_id",
+            }, 400
+
+        with create_session() as session:
+            # Check that the dataset exists
+            if not session.query(DatasetModel).filter(DatasetModel.id == dataset_id).scalar():
+                return {"detail": "The dataset doesn't exist"}, 200
+
+            query = session.query(DagScheduleDatasetReference).filter(
+                DagScheduleDatasetReference.dataset_id == dataset_id,
+            )
+            if query.count() > 0:
+                return {
+                    "detail": (
+                        f"That dataset is still being used to schedule {query.count()} DAG(s): "
+                        f"{', '.join([dag.dag_id for dag in query.all()])}. "
+                        "Remove the dataset from those DAG(s) schedule parameters before attempting to "
+                        "delete this dataset."
+                    ),
+                }, 400
+
+            query = session.query(TaskOutletDatasetReference).filter(
+                TaskOutletDatasetReference.dataset_id == dataset_id,
+            )
+            if query.count() > 0:
+                return {
+                    "detail": (
+                        "That dataset is still referenced in task outlet(s): "
+                        f"{', '.join([f'{task.dag_id}.{task.task_id}' for task in query.all()])}. "
+                        "Remove the dataset from those task outlet list before attempting to delete this "
+                        "dataset."
+                    ),
+                }, 400
+
+            dataset = session.query(DatasetModel).filter(DatasetModel.id == dataset_id).scalar()
+            dataset.is_orphaned = True
+            session.add(dataset)
+
+        return redirect(url_for("Airflow.datasets"))
 
     @expose("/object/datasets_summary")
     @auth.has_access([(permissions.ACTION_CAN_READ, permissions.RESOURCE_DATASET)])
@@ -3648,7 +3702,7 @@ class Airflow(AirflowBaseView):
             if has_event_filters:
                 count_query = count_query.join(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
 
-            filters = []
+            filters = [DatasetModel.is_orphaned.is_(False)]
             if uri_pattern:
                 filters.append(DatasetModel.uri.ilike(f"%{uri_pattern}%"))
             if updated_after:

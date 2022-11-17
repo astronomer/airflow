@@ -2850,8 +2850,19 @@ class DAG(LoggingMixin):
             )
             dag_refs_to_add = {x for x in dag_refs_needed if x not in dag_refs_stored}
             session.bulk_save_objects(dag_refs_to_add)
-            for obj in dag_refs_stored - dag_refs_needed:
-                session.delete(obj)
+
+            dag_refs_to_remove = {x for x in dag_refs_stored if x not in dag_refs_needed}
+            for dsdr in dag_refs_to_remove:
+                log.debug(
+                    "Removing DagScheduleDatasetReference (dataset_id=%s, dag_id=%s",
+                    dsdr.dataset_id,
+                    dsdr.dag_id,
+                    dsdr.task_id,
+                )
+                session.query(DagScheduleDatasetReference).filter(
+                    DagScheduleDatasetReference.dataset_id == dsdr.dataset_id,
+                    DagScheduleDatasetReference.dag_id == dsdr.dag_id,
+                ).delete()
 
         existing_task_outlet_refs_dict = collections.defaultdict(set)
         for dag_id, orm_dag in existing_dags.items():
@@ -2867,8 +2878,45 @@ class DAG(LoggingMixin):
             task_refs_stored = existing_task_outlet_refs_dict[(dag_id, task_id)]
             task_refs_to_add = {x for x in task_refs_needed if x not in task_refs_stored}
             session.bulk_save_objects(task_refs_to_add)
-            for obj in task_refs_stored - task_refs_needed:
-                session.delete(obj)
+
+            task_refs_to_remove = {x for x in task_refs_stored if x not in task_refs_needed}
+            for todr in task_refs_to_remove:
+                log.debug(
+                    "Removing TaskOutletDatasetReference (dataset_id=%s, dag_id=%s, task_id=%s)",
+                    todr.dataset_id,
+                    todr.dag_id,
+                    todr.task_id,
+                )
+                session.query(TaskOutletDatasetReference).filter(
+                    TaskOutletDatasetReference.dataset_id == todr.dataset_id,
+                    TaskOutletDatasetReference.dag_id == todr.dag_id,
+                    TaskOutletDatasetReference.task_id == todr.task_id,
+                ).delete()
+
+        # Remove any orphaned datasets
+        orphaned_dataset_query = (
+            session.query(DatasetModel)
+            .join(
+                DagScheduleDatasetReference,
+                DagScheduleDatasetReference.dataset_id == DatasetModel.id,
+                isouter=True,
+            )
+            .join(
+                TaskOutletDatasetReference,
+                TaskOutletDatasetReference.dataset_id == DatasetModel.id,
+                isouter=True,
+            )
+            .group_by(DatasetModel.id)
+            .having(
+                and_(
+                    func.count(DagScheduleDatasetReference.dag_id) == 0,
+                    func.count(TaskOutletDatasetReference.dag_id) == 0,
+                )
+            )
+        )
+        for dataset in orphaned_dataset_query.all():
+            dataset.is_orphaned = True
+            session.add(dataset)
 
         # Issue SQL/finish "Unit of Work", but let @provide_session commit (or if passed a session, let caller
         # decide when to commit
