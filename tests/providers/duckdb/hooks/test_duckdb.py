@@ -15,6 +15,8 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+from __future__ import annotations
+
 from unittest import mock
 
 import pytest
@@ -27,15 +29,12 @@ class TestDuckdbHook:
     @pytest.mark.parametrize(
         "return_value, expected",
         [
-            (
-                Connection(conn_id="duckdb_default", conn_type="duckdb"),
-                "duckdb:///:memory:"
-            ),
+            (Connection(conn_id="duckdb_default", conn_type="duckdb"), "duckdb:///:memory:"),
             (
                 Connection(conn_id="duckdb_default", conn_type="duckdb", host="path/db.duckdb"),
-                "duckdb:///path/db.duckdb"
-            )
-        ]
+                "duckdb:///path/db.duckdb",
+            ),
+        ],
     )
     def test_get_conn(self, db, get_connection, return_value, expected):
         get_connection.return_value = return_value
@@ -46,15 +45,12 @@ class TestDuckdbHook:
     @pytest.mark.parametrize(
         "return_value, expected",
         [
-            (
-                Connection(conn_id="duckdb_default", conn_type="duckdb"),
-                ":memory:"
-            ),
+            (Connection(conn_id="duckdb_default", conn_type="duckdb"), ":memory:"),
             (
                 Connection(conn_id="duckdb_default", conn_type="duckdb", host="path/db.duckdb"),
-                "path/db.duckdb"
-            )
-        ]
+                "path/db.duckdb",
+            ),
+        ],
     )
     @mock.patch("airflow.hooks.base.BaseHook.get_connection")
     @mock.patch("duckdb.connect")

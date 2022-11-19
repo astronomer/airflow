@@ -21,7 +21,6 @@ from airflow import DAG
 from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 from airflow.utils.dates import datetime
 
-
 with DAG(
     "example_duckdb_sql_execute_query",
     description="Example DAG for DuckDB SQLExecuteQueryOperator.",
@@ -39,7 +38,7 @@ with DAG(
     create_table = SQLExecuteQueryOperator(
         task_id="create_table",
         sql=f"CREATE TABLE people(id INTEGER, name VARCHAR);",
-        conn_id="duckdb_default"
+        conn_id="duckdb_default",
     )
     # [END howto_operator_duckdb_sql_create_table]
 
@@ -47,21 +46,19 @@ with DAG(
     insert_table = SQLExecuteQueryOperator(
         task_id="insert_table",
         sql=f"INSERT INTO people VALUES (1, 'Mark'), (2, 'Hannes');",
-        conn_id="duckdb_default"
+        conn_id="duckdb_default",
     )
     # [END howto_operator_duckdb_sql_create_table]
 
     # [START howto_operator_duckdb_sql_select_table]
     select_table = SQLExecuteQueryOperator(
-        task_id="select_table",
-        sql=f"select * from people;",
-        conn_id="duckdb_default"
+        task_id="select_table", sql=f"select * from people;", conn_id="duckdb_default"
     )
     # [END howto_operator_duckdb_sql_create_table]
 
     create_table >> insert_table >> select_table
 
-from tests.system.utils import get_test_run  # noqa: E402
+from tests.system.utils import get_test_run
 
 # Needed to run the example DAG with pytest (see: tests/system/README.md#run_via_pytest)
 test_run = get_test_run(dag)
