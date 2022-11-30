@@ -31,8 +31,8 @@ from distributed import Client, Future, as_completed
 from distributed.security import Security
 
 from airflow.configuration import conf
-from airflow.exceptions import AirflowException
-from airflow.executors.base_executor import NOT_STARTED_MESSAGE, BaseExecutor, CommandType
+from airflow.exceptions import AirflowException, ExecutorNotStartedError
+from airflow.executors.base_executor import BaseExecutor, CommandType
 from airflow.models.taskinstance import TaskInstanceKey
 
 # queue="default" is a special case since this is the base config default queue name,
@@ -85,7 +85,7 @@ class DaskExecutor(BaseExecutor):
             return subprocess.check_call(command, close_fds=True)
 
         if not self.client:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
 
         resources = None
         if queue not in _UNDEFINED_QUEUES:
@@ -103,7 +103,7 @@ class DaskExecutor(BaseExecutor):
 
     def _process_future(self, future: Future) -> None:
         if not self.futures:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if future.done():
             key = self.futures[future]
             if future.exception():
@@ -118,22 +118,22 @@ class DaskExecutor(BaseExecutor):
 
     def sync(self) -> None:
         if self.futures is None:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         # make a copy so futures can be popped during iteration
         for future in self.futures.copy():
             self._process_future(future)
 
     def end(self) -> None:
         if not self.client:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if self.futures is None:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.client.cancel(list(self.futures.keys()))
         for future in as_completed(self.futures.copy()):
             self._process_future(future)
 
     def terminate(self):
         if self.futures is None:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.client.cancel(self.futures.keys())
         self.end()

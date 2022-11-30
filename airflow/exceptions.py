@@ -368,3 +368,10 @@ class AirflowProviderDeprecationWarning(DeprecationWarning):
 
     deprecated_provider_since: str | None = None
     "Indicates the provider version that started raising this deprecation warning"
+
+
+class ExecutorNotStartedError(AirflowException):
+    """Raised when executor unexpectedly not fully started."""
+
+    def __init__(self, *args):
+        super().__init__(*(args if args else ["The executor should be started first!"]))

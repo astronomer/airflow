@@ -36,8 +36,8 @@ from typing import Any, Optional, Tuple
 from setproctitle import getproctitle, setproctitle
 
 from airflow import settings
-from airflow.exceptions import AirflowException
-from airflow.executors.base_executor import NOT_STARTED_MESSAGE, PARALLELISM, BaseExecutor, CommandType
+from airflow.exceptions import AirflowException, ExecutorNotStartedError
+from airflow.executors.base_executor import PARALLELISM, BaseExecutor, CommandType
 from airflow.models.taskinstance import TaskInstanceKey, TaskInstanceStateType
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.state import State
@@ -246,7 +246,7 @@ class LocalExecutor(BaseExecutor):
             :param executor_config: configuration for the executor
             """
             if not self.executor.result_queue:
-                raise AirflowException(NOT_STARTED_MESSAGE)
+                raise ExecutorNotStartedError
             local_worker = LocalWorker(self.executor.result_queue, key=key, command=command)
             self.executor.workers_used += 1
             self.executor.workers_active += 1
@@ -285,10 +285,10 @@ class LocalExecutor(BaseExecutor):
         def start(self) -> None:
             """Starts limited parallelism implementation."""
             if not self.executor.manager:
-                raise AirflowException(NOT_STARTED_MESSAGE)
+                raise ExecutorNotStartedError
             self.queue = self.executor.manager.Queue()
             if not self.executor.result_queue:
-                raise AirflowException(NOT_STARTED_MESSAGE)
+                raise ExecutorNotStartedError
             self.executor.workers = [
                 QueuedLocalWorker(self.queue, self.executor.result_queue)
                 for _ in range(self.executor.parallelism)
@@ -315,7 +315,7 @@ class LocalExecutor(BaseExecutor):
             :param executor_config: configuration for the executor
             """
             if not self.queue:
-                raise AirflowException(NOT_STARTED_MESSAGE)
+                raise ExecutorNotStartedError
             self.queue.put((key, command))
 
         def sync(self):
@@ -366,7 +366,7 @@ class LocalExecutor(BaseExecutor):
     ) -> None:
         """Execute asynchronously."""
         if not self.impl:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
 
         self.validate_airflow_tasks_run_command(command)
 
@@ -375,7 +375,7 @@ class LocalExecutor(BaseExecutor):
     def sync(self) -> None:
         """Sync will get called periodically by the heartbeat method."""
         if not self.impl:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.impl.sync()
 
     def end(self) -> None:
@@ -384,9 +384,9 @@ class LocalExecutor(BaseExecutor):
         :return:
         """
         if not self.impl:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.manager:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.log.info(
             "Shutting down LocalExecutor"
             "; waiting for running tasks to finish.  Signal again if you don't want to wait."

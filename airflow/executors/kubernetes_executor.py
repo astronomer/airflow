@@ -37,8 +37,13 @@ from kubernetes.client import Configuration, models as k8s
 from kubernetes.client.rest import ApiException
 from urllib3.exceptions import ReadTimeoutError
 
-from airflow.exceptions import AirflowException, PodMutationHookException, PodReconciliationError
-from airflow.executors.base_executor import NOT_STARTED_MESSAGE, BaseExecutor, CommandType
+from airflow.exceptions import (
+    AirflowException,
+    ExecutorNotStartedError,
+    PodMutationHookException,
+    PodReconciliationError,
+)
+from airflow.executors.base_executor import BaseExecutor, CommandType
 from airflow.kubernetes import pod_generator
 from airflow.kubernetes.kube_client import get_kube_client
 from airflow.kubernetes.kube_config import KubeConfig
@@ -98,7 +103,7 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
         """Performs watching"""
         kube_client: client.CoreV1Api = get_kube_client()
         if not self.scheduler_job_id:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         while True:
             try:
                 self.resource_version = self._run(
@@ -465,7 +470,7 @@ class KubernetesExecutor(BaseExecutor):
         """
         self.log.debug("Clearing tasks that have not been launched")
         if not self.kube_client:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
 
         query = session.query(TaskInstance).filter(
             TaskInstance.state == State.QUEUED, TaskInstance.queued_by_job_id == self.job_id
@@ -572,7 +577,7 @@ class KubernetesExecutor(BaseExecutor):
         else:
             pod_template_file = None
         if not self.task_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.event_buffer[key] = (State.QUEUED, self.scheduler_job_id)
         self.task_queue.put((key, command, kube_executor_config, pod_template_file))
         # We keep a temporary local record that we've handled this so we don't
@@ -586,17 +591,17 @@ class KubernetesExecutor(BaseExecutor):
         if self.queued_tasks:
             self.log.debug("self.queued: %s", self.queued_tasks)
         if not self.scheduler_job_id:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.kube_scheduler:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.kube_config:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.result_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.task_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.event_scheduler:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.kube_scheduler.sync()
 
         last_resource_version = None
@@ -672,7 +677,7 @@ class KubernetesExecutor(BaseExecutor):
     def _check_worker_pods_pending_timeout(self):
         """Check if any pending worker pods have timed out"""
         if not self.scheduler_job_id:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         timeout = self.kube_config.worker_pods_pending_timeout
         self.log.debug("Looking for pending worker pods older than %d seconds", timeout)
 
@@ -709,7 +714,7 @@ class KubernetesExecutor(BaseExecutor):
         if state != State.RUNNING:
             if self.kube_config.delete_worker_pods:
                 if not self.kube_scheduler:
-                    raise AirflowException(NOT_STARTED_MESSAGE)
+                    raise ExecutorNotStartedError
                 if state != State.FAILED or self.kube_config.delete_worker_pods_on_failure:
                     self.kube_scheduler.delete_pod(pod_id, namespace)
                     self.log.info("Deleted pod: %s in namespace %s", str(key), str(namespace))
@@ -745,7 +750,7 @@ class KubernetesExecutor(BaseExecutor):
         :param pod_ids: pod_ids we expect to patch.
         """
         if not self.scheduler_job_id:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.log.info("attempting to adopt pod %s", pod.metadata.name)
         pod.metadata.labels["airflow-worker"] = pod_generator.make_safe_label_value(self.scheduler_job_id)
         pod_id = annotations_to_key(pod.metadata.annotations)
@@ -772,7 +777,7 @@ class KubernetesExecutor(BaseExecutor):
         :param kube_client: kubernetes client for speaking to kube API
         """
         if not self.scheduler_job_id:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         new_worker_id_label = pod_generator.make_safe_label_value(self.scheduler_job_id)
         kwargs = {
             "field_selector": "status.phase=Succeeded",
@@ -793,7 +798,7 @@ class KubernetesExecutor(BaseExecutor):
 
     def _flush_task_queue(self) -> None:
         if not self.task_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.log.debug("Executor shutting down, task_queue approximate size=%d", self.task_queue.qsize())
         while True:
             try:
@@ -806,7 +811,7 @@ class KubernetesExecutor(BaseExecutor):
 
     def _flush_result_queue(self) -> None:
         if not self.result_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.log.debug("Executor shutting down, result_queue approximate size=%d", self.result_queue.qsize())
         while True:
             try:
@@ -834,11 +839,11 @@ class KubernetesExecutor(BaseExecutor):
     def end(self) -> None:
         """Called when the executor shuts down"""
         if not self.task_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.result_queue:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         if not self.kube_scheduler:
-            raise AirflowException(NOT_STARTED_MESSAGE)
+            raise ExecutorNotStartedError
         self.log.info("Shutting down Kubernetes executor")
         self.log.debug("Flushing task_queue...")
         self._flush_task_queue()
