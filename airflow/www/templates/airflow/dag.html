@@ -472,7 +472,6 @@
 {% endblock %}
 {% block tail %}
   {{ super() }}
-  <script src="{{ url_for_asset('dag.js') }}"></script>
   <script>
     // Tests rely on confirmDeleteDag to be in the html
     function confirmDeleteDag(link, id) {
