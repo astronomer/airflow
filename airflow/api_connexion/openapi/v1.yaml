@@ -2312,6 +2312,120 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /notifications:
+    get:
+      summary: Get all notifications
+      description: |
+        Get all notifications.
+
+        *New in version 2.6.0*
+      x-openapi-router-controller: airflow.api_connexion.endpoints.notification_endpoint
+      operationId: get_notifications
+      tags: [Notification]
+      parameters:
+        - $ref: '#/components/parameters/PageLimit'
+        - $ref: '#/components/parameters/PageOffset'
+        - $ref: '#/components/parameters/OrderBy'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationCollection'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+
+    post:
+      summary: Create a notification
+      description: |
+        Create a new notification.
+
+        *New in version 2.6.0*
+      x-openapi-router-controller: airflow.api_connexion.endpoints.notification_endpoint
+      operationId: post_notification
+      tags: [Notification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notification'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '409':
+          $ref: '#/components/responses/AlreadyExists'
+
+  /notifications/{notification_id}:
+    parameters:
+      - $ref: '#/components/parameters/NotificationID'
+    get:
+      summary: Get a notification
+      description: |
+        Get a notification with a specific ID.
+
+        *New in version 2.6.0*
+      x-openapi-router-controller: airflow.api_connexion.endpoints.notification_endpoint
+      operationId: get_notification
+      tags: [Notification]
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update a notification
+      description: |
+        Update fields for a notification.
+
+        *New in version 2.6.0*
+      x-openapi-router-controller: airflow.api_connexion.endpoints.notification_endpoint
+      operationId: patch_notification
+      tags: [Notification]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Notification'
+      responses:
+        '200':
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/PermissionDenied'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   # Reusable schemas (data models)
   schemas:
@@ -4018,6 +4132,45 @@ components:
           description: The git version (including git commit hash)
           nullable: true
 
+    Notification:
+      type: object
+      description: Notification.
+      properties:
+        notification_id:
+          type: integer
+          description: The notification id
+        states:
+          type: string
+          description: The different states to notify about
+        tags:
+          type: string
+          description: The Dag Tags to notify about
+        status:
+          type: string
+          description: The notification status
+        type:
+          type: string
+          description: The type of the notification e.g email, slack etc
+        created_at:
+          type: string
+          description: The notification creation time
+          nullable: false
+        updated_at:
+          type: string
+          description: The notification update time
+          nullable: false
+
+    NotificationCollection:
+      type: object
+      allOf:
+        - type: object
+          properties:
+            dataset_events:
+              type: array
+              items:
+                $ref: '#/components/schemas/Notification'
+        - $ref: '#/components/schemas/CollectionInfo'
+
     # Form
     ClearDagRun:
       type: object
@@ -4695,6 +4848,15 @@ components:
         format: path
       required: true
       description: The variable Key.
+
+    NotificationID:
+      in: path
+      name: notification_id
+      schema:
+        type: string
+        format: path
+      required: true
+      description: The notification ID
 
     # Logs
     FullContent:

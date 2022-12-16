@@ -53,6 +53,7 @@ from airflow.models.dataset import (
     DatasetModel,
     TaskOutletDatasetReference,
 )
+from airflow.models.notification import Notification
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import SimpleTaskInstance, TaskInstance, TaskInstanceKey
 from airflow.stats import Stats
@@ -1085,7 +1086,7 @@ class SchedulerJob(BaseJob):
             # create a new one. This is so that in the next Scheduling loop we try to create new runs
             # instead of falling in a loop of Integrity Error.
             if (dag.dag_id, dag_model.next_dagrun) not in existing_dagruns:
-                dag.create_dagrun(
+                dag_run = dag.create_dagrun(
                     run_type=DagRunType.SCHEDULED,
                     execution_date=dag_model.next_dagrun,
                     state=DagRunState.QUEUED,
@@ -1096,6 +1097,9 @@ class SchedulerJob(BaseJob):
                     creating_job_id=self.id,
                 )
                 active_runs_of_dags[dag.dag_id] += 1
+                Notification.notify(
+                    DagRunState.QUEUED, dag.dag_id, dag_run.run_id, session=session, tags=dag.tags
+                )
             if self._should_update_dag_next_dagruns(dag, dag_model, active_runs_of_dags[dag.dag_id]):
                 dag_model.calculate_dagrun_date_fields(dag, data_interval)
         # TODO[HA]: Should we do a session.flush() so we don't have to keep lots of state/object in
@@ -1196,6 +1200,9 @@ class SchedulerJob(BaseJob):
                     dag_hash=dag_hash,
                     creating_job_id=self.id,
                 )
+                Notification.notify(
+                    DagRunState.QUEUED, dag_run.dag_id, run_id, session=session, tags=dag.tags
+                )
                 dag_run.consumed_dataset_events.extend(dataset_events)
                 session.query(DatasetDagRunQueue).filter(
                     DatasetDagRunQueue.target_dag_id == dag_run.dag_id
@@ -1254,6 +1261,9 @@ class SchedulerJob(BaseJob):
                 active_runs_of_dags[dag_run.dag_id] += 1
                 _update_state(dag, dag_run)
                 dag_run.notify_dagrun_state_changed()
+                Notification.notify(
+                    DagRunState.RUNNING, dag_run.dag_id, dag_run.run_id, session=session, tags=dag.tags
+                )
 
     @retry_db_transaction
     def _schedule_all_dag_runs(self, guard, dag_runs, session):

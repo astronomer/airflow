@@ -67,6 +67,7 @@ def import_all_models():
     import airflow.jobs.triggerer_job
     import airflow.models.dagwarning
     import airflow.models.dataset
+    import airflow.models.notification
     import airflow.models.serialized_dag
     import airflow.models.tasklog
     import airflow.www.fab_security.sqla.models
@@ -103,6 +104,7 @@ __lazy_imports = {
     "ImportError": "airflow.models.errors",
     "Log": "airflow.models.log",
     "MappedOperator": "airflow.models.mappedoperator",
+    "Notification": "airflow.models.notification",
     "Operator": "airflow.models.operator",
     "Param": "airflow.models.param",
     "Pool": "airflow.models.pool",
@@ -132,6 +134,7 @@ if TYPE_CHECKING:
     from airflow.models.errors import ImportError
     from airflow.models.log import Log
     from airflow.models.mappedoperator import MappedOperator
+    from airflow.models.notification import EmailNotification, Notification
     from airflow.models.operator import Operator
     from airflow.models.param import Param
     from airflow.models.pool import Pool

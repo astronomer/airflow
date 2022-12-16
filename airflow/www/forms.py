@@ -31,7 +31,16 @@ from flask_appbuilder.forms import DynamicForm
 from flask_babel import lazy_gettext
 from flask_wtf import FlaskForm
 from wtforms import widgets
-from wtforms.fields import Field, IntegerField, PasswordField, SelectField, StringField, TextAreaField
+from wtforms.fields import (
+    Field,
+    IntegerField,
+    PasswordField,
+    RadioField,
+    SelectField,
+    SelectMultipleField,
+    StringField,
+    TextAreaField,
+)
 from wtforms.validators import InputRequired, Optional
 
 from airflow.configuration import conf
@@ -190,3 +199,34 @@ class ConnectionForm(DynamicForm):
     password = PasswordField(lazy_gettext("Password"), widget=BS3PasswordFieldWidget())
     port = IntegerField(lazy_gettext("Port"), validators=[Optional()], widget=BS3TextFieldWidget())
     extra = TextAreaField(lazy_gettext("Extra"), widget=BS3TextAreaFieldWidget())
+
+
+class NotificationForm(DynamicForm):
+    """Form for editing and adding Notification"""
+
+    states = SelectMultipleField(
+        lazy_gettext("States"),
+        choices=(
+            ("queued", "queued"),
+            ("running", "running"),
+            ("success", "success"),
+            ("failed", "failed"),
+        ),
+        validators=[InputRequired()],
+        widget=widgets.Select(multiple=True),
+    )
+    tags = SelectMultipleField(
+        lazy_gettext("Tags"), validators=[Optional()], widget=widgets.Select(multiple=True)
+    )
+    type = RadioField(
+        lazy_gettext("Type"),
+        validators=[InputRequired()],
+    )
+
+
+class EmailNotificationForm(NotificationForm):
+    """Form for editing and adding Email Notification"""
+
+    email_list = StringField(
+        lazy_gettext("Email List"), validators=[InputRequired()], widget=BS3TextFieldWidget()
+    )

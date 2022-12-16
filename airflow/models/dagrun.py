@@ -56,6 +56,7 @@ from airflow.listeners.listener import get_listener_manager
 from airflow.models.abstractoperator import NotMapped
 from airflow.models.base import Base, StringID
 from airflow.models.expandinput import NotFullyPopulated
+from airflow.models.notification import Notification
 from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.tasklog import LogTemplate
 from airflow.stats import Stats
@@ -672,6 +673,7 @@ class DagRun(Base, LoggingMixin):
                 self.data_interval_end,
                 self.dag_hash,
             )
+            Notification.notify(self.state, self.dag_id, self.run_id, session=session, tags=dag.tags)
             session.flush()
 
         self._emit_true_scheduling_delay_stats_for_finished_state(finished_tis)

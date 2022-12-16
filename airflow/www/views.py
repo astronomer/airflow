@@ -100,6 +100,7 @@ from airflow.models.dagcode import DagCode
 from airflow.models.dagrun import DagRun, DagRunType
 from airflow.models.dataset import DagScheduleDatasetReference, DatasetDagRunQueue, DatasetEvent, DatasetModel
 from airflow.models.mappedoperator import MappedOperator
+from airflow.models.notification import Notification
 from airflow.models.operator import Operator
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance, TaskInstanceNote
@@ -132,6 +133,8 @@ from airflow.www.forms import (
     DateTimeForm,
     DateTimeWithNumRunsForm,
     DateTimeWithNumRunsWithDagRunsForm,
+    EmailNotificationForm,
+    NotificationForm,
     TaskInstanceEditForm,
 )
 from airflow.www.widgets import AirflowModelListWidget, AirflowVariableShowWidget
@@ -3894,6 +3897,29 @@ class Airflow(AirflowBaseView):
             ),
             sorting_key=arg_sorting_key,
             sorting_direction=arg_sorting_direction,
+        )
+
+    @expose("/notifications")
+    def notification_view(self):
+        """View to show notifications"""
+        return self.render_template(
+            "airflow/notification.html", notifications=Notification.get_notifications(), title="Notifications"
+        )
+
+    @expose("/notifications/add")
+    @provide_session
+    def add_notification(self, session=None):
+
+        form = NotificationForm()
+        form.tags.choices = [(tag.name, tag.name) for tag in session.query(DagTag).all()]
+        form.type.choices = [(n.type) for n in session.query(Notification.type).all()]
+
+        email_notification_form = EmailNotificationForm()
+
+        return self.render_template(
+            "airflow/notification-add.html",
+            form=form,
+            email_notification_form=email_notification_form,
         )
 
 

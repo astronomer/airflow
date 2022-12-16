@@ -707,6 +707,40 @@ export interface paths {
       };
     };
   };
+  "/notifications": {
+    /**
+     * Get all notifications.
+     *
+     * *New in version 2.6.0*
+     */
+    get: operations["get_notifications"];
+    /**
+     * Create a new notification.
+     *
+     * *New in version 2.6.0*
+     */
+    post: operations["post_notification"];
+  };
+  "/notifications/{notification_id}": {
+    /**
+     * Get a notification with a specific ID.
+     *
+     * *New in version 2.6.0*
+     */
+    get: operations["get_notification"];
+    /**
+     * Update fields for a notification.
+     *
+     * *New in version 2.6.0*
+     */
+    patch: operations["patch_notification"];
+    parameters: {
+      path: {
+        /** The notification ID */
+        notification_id: components["parameters"]["NotificationID"];
+      };
+    };
+  };
 }
 
 export interface components {
@@ -1706,6 +1740,26 @@ export interface components {
       /** @description The git version (including git commit hash) */
       git_version?: string | null;
     };
+    /** @description Notification. */
+    Notification: {
+      /** @description The notification id */
+      notification_id?: number;
+      /** @description The different states to notify about */
+      states?: string;
+      /** @description The Dag Tags to notify about */
+      tags?: string;
+      /** @description The notification status */
+      status?: string;
+      /** @description The type of the notification e.g email, slack etc */
+      type?: string;
+      /** @description The notification creation time */
+      created_at?: string;
+      /** @description The notification update time */
+      updated_at?: string;
+    };
+    NotificationCollection: {
+      dataset_events?: components["schemas"]["Notification"][];
+    } & components["schemas"]["CollectionInfo"];
     ClearDagRun: {
       /**
        * @description If set, don't actually run this operation. The response will contain a list of task instances
@@ -2191,6 +2245,8 @@ export interface components {
     PoolName: string;
     /** @description The variable Key. */
     VariableKey: string;
+    /** @description The notification ID */
+    NotificationID: string;
     /**
      * @description A full content will be returned.
      * By default, only the first fragment will be returned.
@@ -4398,6 +4454,116 @@ export interface operations {
       };
     };
   };
+  /**
+   * Get all notifications.
+   *
+   * *New in version 2.6.0*
+   */
+  get_notifications: {
+    parameters: {
+      query: {
+        /** The numbers of items to return. */
+        limit?: components["parameters"]["PageLimit"];
+        /** The number of items to skip before starting to collect the result set. */
+        offset?: components["parameters"]["PageOffset"];
+        /**
+         * The name of the field to order the results by.
+         * Prefix a field name with `-` to reverse the sort order.
+         *
+         * *New in version 2.1.0*
+         */
+        order_by?: components["parameters"]["OrderBy"];
+      };
+    };
+    responses: {
+      /** Success. */
+      200: {
+        content: {
+          "application/json": components["schemas"]["NotificationCollection"];
+        };
+      };
+      401: components["responses"]["Unauthenticated"];
+      403: components["responses"]["PermissionDenied"];
+    };
+  };
+  /**
+   * Create a new notification.
+   *
+   * *New in version 2.6.0*
+   */
+  post_notification: {
+    responses: {
+      /** Success. */
+      200: {
+        content: {
+          "application/json": components["schemas"]["Notification"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthenticated"];
+      403: components["responses"]["PermissionDenied"];
+      409: components["responses"]["AlreadyExists"];
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Notification"];
+      };
+    };
+  };
+  /**
+   * Get a notification with a specific ID.
+   *
+   * *New in version 2.6.0*
+   */
+  get_notification: {
+    parameters: {
+      path: {
+        /** The notification ID */
+        notification_id: components["parameters"]["NotificationID"];
+      };
+    };
+    responses: {
+      /** Success. */
+      200: {
+        content: {
+          "application/json": components["schemas"]["Notification"];
+        };
+      };
+      401: components["responses"]["Unauthenticated"];
+      403: components["responses"]["PermissionDenied"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  /**
+   * Update fields for a notification.
+   *
+   * *New in version 2.6.0*
+   */
+  patch_notification: {
+    parameters: {
+      path: {
+        /** The notification ID */
+        notification_id: components["parameters"]["NotificationID"];
+      };
+    };
+    responses: {
+      /** Success. */
+      200: {
+        content: {
+          "application/json": components["schemas"]["Notification"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthenticated"];
+      403: components["responses"]["PermissionDenied"];
+      404: components["responses"]["NotFound"];
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Notification"];
+      };
+    };
+  };
 }
 
 export interface external {}
@@ -4470,6 +4636,8 @@ export type ConfigOption = CamelCasedPropertiesDeep<components['schemas']['Confi
 export type ConfigSection = CamelCasedPropertiesDeep<components['schemas']['ConfigSection']>;
 export type Config = CamelCasedPropertiesDeep<components['schemas']['Config']>;
 export type VersionInfo = CamelCasedPropertiesDeep<components['schemas']['VersionInfo']>;
+export type Notification = CamelCasedPropertiesDeep<components['schemas']['Notification']>;
+export type NotificationCollection = CamelCasedPropertiesDeep<components['schemas']['NotificationCollection']>;
 export type ClearDagRun = CamelCasedPropertiesDeep<components['schemas']['ClearDagRun']>;
 export type ClearTaskInstances = CamelCasedPropertiesDeep<components['schemas']['ClearTaskInstances']>;
 export type UpdateTaskInstancesState = CamelCasedPropertiesDeep<components['schemas']['UpdateTaskInstancesState']>;
@@ -4566,3 +4734,7 @@ export type PostUserVariables = CamelCasedPropertiesDeep<operations['post_user']
 export type GetUserVariables = CamelCasedPropertiesDeep<operations['get_user']['parameters']['path']>;
 export type DeleteUserVariables = CamelCasedPropertiesDeep<operations['delete_user']['parameters']['path']>;
 export type PatchUserVariables = CamelCasedPropertiesDeep<operations['patch_user']['parameters']['path'] & operations['patch_user']['parameters']['query'] & operations['patch_user']['requestBody']['content']['application/json']>;
+export type GetNotificationsVariables = CamelCasedPropertiesDeep<operations['get_notifications']['parameters']['query']>;
+export type PostNotificationVariables = CamelCasedPropertiesDeep<operations['post_notification']['requestBody']['content']['application/json']>;
+export type GetNotificationVariables = CamelCasedPropertiesDeep<operations['get_notification']['parameters']['path']>;
+export type PatchNotificationVariables = CamelCasedPropertiesDeep<operations['patch_notification']['parameters']['path'] & operations['patch_notification']['requestBody']['content']['application/json']>;
