@@ -198,7 +198,7 @@ class SQLExecuteQueryOperator(BaseSQLOperator):
     :param autocommit: (optional) if True, each command is automatically committed (default: False).
     :param parameters: (optional) the parameters to render the SQL query with.
     :param handler: (optional) the function that will be applied to the cursor (default: fetch_all_handler).
-    :param split_statements: (optional) if split single SQL string into statements (default: False).
+    :param split_statements: (optional) if split single SQL string into statements (default: True).
     :param return_last: (optional) return the result of only last statement (default: True).
 
     .. seealso::
@@ -218,7 +218,7 @@ class SQLExecuteQueryOperator(BaseSQLOperator):
         autocommit: bool = False,
         parameters: Mapping | Iterable | None = None,
         handler: Callable[[Any], Any] = fetch_all_handler,
-        split_statements: bool = False,
+        split_statements: bool = True,
         return_last: bool = True,
         **kwargs,
     ) -> None:
