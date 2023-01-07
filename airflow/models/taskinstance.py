@@ -83,6 +83,7 @@ from airflow.exceptions import (
     UnmappableXComTypePushed,
     XComForMappingNotPushed,
 )
+from airflow.models import Cache
 from airflow.models.base import Base, StringID
 from airflow.models.log import Log
 from airflow.models.mappedoperator import MappedOperator
@@ -1385,6 +1386,16 @@ class TaskInstance(Base, LoggingMixin):
 
         self.task = self.task.prepare_for_execution()
         context = self.get_template_context(ignore_param_exceptions=False)
+        cache_fn = getattr(self.task, "cache_key_fn", None)
+        if cache_fn:
+            cache_key = cache_fn(context)
+            cache_ = Cache.get(cache_key)
+            if cache_:
+                mark_success = True
+                self.log.info("Using cached result for %s", self.task)
+                xcom_value = XCom.get_one(task_id=cache_.task_id, dag_id=cache_.dag_id, run_id=cache_.run_id)
+                if xcom_value:
+                    self.xcom_push(key=XCOM_RETURN_KEY, value=xcom_value, session=session)
         try:
             if not mark_success:
                 self._execute_task_with_callbacks(context, test_mode)
@@ -1610,6 +1621,13 @@ class TaskInstance(Base, LoggingMixin):
                 xcom_value = None
             if xcom_value is not None:  # If the task returns a result, push an XCom containing it.
                 self.xcom_push(key=XCOM_RETURN_KEY, value=xcom_value, session=session)
+            cache_key_fn = getattr(self.task, "cache_key_fn", None)
+            if cache_key_fn:
+                cache_key = cache_key_fn(context)
+                try:
+                    Cache.set(key=cache_key, task_id=self.task_id, dag_id=self.dag_id, run_id=self.run_id)
+                except Exception:
+                    pass
             self._record_task_map_for_downstreams(task_orig, xcom_value, session=session)
         return result
 

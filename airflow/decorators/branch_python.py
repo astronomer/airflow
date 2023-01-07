@@ -67,7 +67,9 @@ class _BranchPythonDecoratedOperator(DecoratedOperator, BranchPythonOperator):
 
 
 def branch_task(
-    python_callable: Callable | None = None, multiple_outputs: bool | None = None, **kwargs
+    python_callable: Callable | None = None,
+    multiple_outputs: bool | None = None,
+    **kwargs,
 ) -> TaskDecorator:
     """
     Wraps a python function into a BranchPythonOperator.

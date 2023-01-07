@@ -65,6 +65,7 @@ def import_all_models():
     import airflow.jobs.local_task_job
     import airflow.jobs.scheduler_job
     import airflow.jobs.triggerer_job
+    import airflow.models.cache
     import airflow.models.dagwarning
     import airflow.models.dataset
     import airflow.models.serialized_dag
@@ -116,6 +117,7 @@ __lazy_imports = {
     "Variable": "airflow.models.variable",
     "XCom": "airflow.models.xcom",
     "clear_task_instances": "airflow.models.taskinstance",
+    "Cache": "airflow.models.cache",
 }
 
 if TYPE_CHECKING:
@@ -123,6 +125,7 @@ if TYPE_CHECKING:
     # having to resort back to this hacky method
     from airflow.models.base import ID_LEN, Base
     from airflow.models.baseoperator import BaseOperator, BaseOperatorLink
+    from airflow.models.cache import Cache
     from airflow.models.connection import Connection
     from airflow.models.dag import DAG, DagModel, DagTag
     from airflow.models.dagbag import DagBag

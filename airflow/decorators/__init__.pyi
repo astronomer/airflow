@@ -59,6 +59,7 @@ class TaskDecoratorCollection:
         # _PythonDecoratedOperator.
         templates_dict: Mapping[str, Any] | None = None,
         show_return_value_in_logs: bool = True,
+        cache_key_fn: Callable | None = None,
         **kwargs,
     ) -> TaskDecorator:
         """Create a decorator to convert the decorated callable to a task.
@@ -85,6 +86,7 @@ class TaskDecoratorCollection:
         multiple_outputs: bool | None = None,
         templates_dict: Mapping[str, Any] | None = None,
         show_return_value_in_logs: bool = True,
+        cache_key_fn: Callable | None = None,
         **kwargs,
     ) -> TaskDecorator:
         """Aliasing ``python``; signature should match exactly."""

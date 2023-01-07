@@ -62,6 +62,7 @@ class _PythonDecoratedOperator(DecoratedOperator, PythonOperator):
 def python_task(
     python_callable: Callable | None = None,
     multiple_outputs: bool | None = None,
+    cache_key_fn: Callable | None = None,
     **kwargs,
 ) -> TaskDecorator:
     """Wraps a function into an Airflow operator.
@@ -76,5 +77,6 @@ def python_task(
         python_callable=python_callable,
         multiple_outputs=multiple_outputs,
         decorated_operator_class=_PythonDecoratedOperator,
+        cache_key_fn=cache_key_fn,
         **kwargs,
     )
