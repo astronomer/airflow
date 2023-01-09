@@ -55,6 +55,7 @@ from sqlalchemy import (
     or_,
     text,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import reconstructor, relationship
@@ -1389,13 +1390,20 @@ class TaskInstance(Base, LoggingMixin):
         cache_fn = getattr(self.task, "cache_fn", None)
         if cache_fn:
             cache_key = cache_fn(context)
-            cache_ = TaskRunCache.get(cache_key)
-            if cache_:
-                mark_success = True
-                self.log.info("Using cached result for %s", self.task)
-                xcom_value = XCom.get_one(task_id=cache_.task_id, dag_id=cache_.dag_id, run_id=cache_.run_id)
-                if xcom_value:
-                    self.xcom_push(key=XCOM_RETURN_KEY, value=xcom_value, session=session)
+            if not cache_key:
+                self.log.warning("cache_fn returned None, skipping cache")
+            else:
+                cache_ = TaskRunCache.get(cache_key)
+                if cache_ and cache_.expiration_date and cache_.expiration_date < timezone.utcnow():
+                    self.log.warning("Task cache expired, skipping cache")
+                elif cache_:
+                    mark_success = True
+                    self.log.info("Using cached result for %s", self.task)
+                    xcom_value = XCom.get_one(
+                        task_id=cache_.task_id, dag_id=cache_.dag_id, run_id=cache_.run_id
+                    )
+                    if xcom_value:
+                        self.xcom_push(key=XCOM_RETURN_KEY, value=xcom_value, session=session)
         try:
             if not mark_success:
                 self._execute_task_with_callbacks(context, test_mode)
@@ -1624,11 +1632,20 @@ class TaskInstance(Base, LoggingMixin):
             cache_fn = getattr(self.task, "cache_fn", None)
             if cache_fn:
                 cache_key = cache_fn(context)
+                expiration = getattr(self.task, "cache_expiration", None)
+                expiration_date = timezone.utcnow() + expiration if expiration else None
                 try:
                     TaskRunCache.set(
-                        key=cache_key, task_id=self.task_id, dag_id=self.dag_id, run_id=self.run_id
+                        key=cache_key,
+                        task_id=self.task_id,
+                        dag_id=self.dag_id,
+                        run_id=self.run_id,
+                        expiration_date=expiration_date,
                     )
-                except Exception:
+                except IntegrityError:
+                    # If the cache key already exists, we don't need to do anything.
+                    # This can happen if two taskinstances are running at the same time and
+                    # both try to cache
                     pass
             self._record_task_map_for_downstreams(task_orig, xcom_value, session=session)
         return result

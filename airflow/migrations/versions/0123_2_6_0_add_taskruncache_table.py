@@ -44,7 +44,7 @@ def upgrade():
     op.create_table(
         "task_run_cache",
         sa.Column("key", sa.String(), nullable=False),
-        sa.Column("expiration_date", TIMESTAMP()),
+        sa.Column("expiration", TIMESTAMP()),
         sa.Column("dag_id", sa.String()),
         sa.Column("task_id", sa.String()),
         sa.Column("run_id", sa.String()),

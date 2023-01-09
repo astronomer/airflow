@@ -54,6 +54,7 @@ class DecoratedSensorOperator(PythonSensor):
     ) -> None:
         kwargs.pop("multiple_outputs")
         kwargs.pop("cache_fn")
+        kwargs.pop("cache_expiration")
         kwargs["task_id"] = get_unique_task_id(task_id, kwargs.get("dag"), kwargs.get("task_group"))
         super().__init__(**kwargs)
 

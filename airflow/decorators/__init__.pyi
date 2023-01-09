@@ -60,6 +60,7 @@ class TaskDecoratorCollection:
         templates_dict: Mapping[str, Any] | None = None,
         show_return_value_in_logs: bool = True,
         cache_fn: Callable | None = None,
+        cache_expiration: timedelta | None = None,
         **kwargs,
     ) -> TaskDecorator:
         """Create a decorator to convert the decorated callable to a task.
@@ -74,6 +75,8 @@ class TaskDecoratorCollection:
             logs. Defaults to True, which allows return value log output.
             It can be set to False to prevent log output of return value when you return huge data
             such as transmission a large amount of XCom to TaskAPI.
+        :param cache_fn: A function that will be used to cache the result of the decorated function.
+        :param cache_expiration: The expiration time of the cache.
         """
     # [START mixin_for_typing]
     @overload
@@ -87,6 +90,7 @@ class TaskDecoratorCollection:
         templates_dict: Mapping[str, Any] | None = None,
         show_return_value_in_logs: bool = True,
         cache_fn: Callable | None = None,
+        cache_expiration: timedelta | None = None,
         **kwargs,
     ) -> TaskDecorator:
         """Aliasing ``python``; signature should match exactly."""

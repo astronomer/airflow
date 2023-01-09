@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Callable, Sequence
 
 from airflow.decorators.base import DecoratedOperator, TaskDecorator, task_decorator_factory
@@ -63,6 +64,7 @@ def python_task(
     python_callable: Callable | None = None,
     multiple_outputs: bool | None = None,
     cache_fn: Callable | None = None,
+    cache_expiration: timedelta | None = None,
     **kwargs,
 ) -> TaskDecorator:
     """Wraps a function into an Airflow operator.
@@ -72,11 +74,14 @@ def python_task(
     :param python_callable: Function to decorate
     :param multiple_outputs: If set to True, the decorated function's return value will be unrolled to
         multiple XCom values. Dict will unroll to XCom values with its keys as XCom keys. Defaults to False.
+    :param cache_fn: A function that returns a string key used to cache the result of the task run.
+    :param cache_expiration: The expiration time of the cache
     """
     return task_decorator_factory(
         python_callable=python_callable,
         multiple_outputs=multiple_outputs,
         decorated_operator_class=_PythonDecoratedOperator,
         cache_fn=cache_fn,
+        cache_expiration=cache_expiration,
         **kwargs,
     )
