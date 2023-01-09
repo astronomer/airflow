@@ -21,19 +21,22 @@ from sqlalchemy import Column, String
 
 from airflow.models.base import Base
 from airflow.utils.session import provide_session
+from airflow.utils.sqlalchemy import UtcDateTime
 
 
-class Cache(Base):
-    """Class to store cache data in database"""
+class TaskRunCache(Base):
+    """Class to store task cache data in the database"""
 
-    __tablename__ = "cache"
+    __tablename__ = "task_run_cache"
     key = Column(String(), primary_key=True)
+    expiration_date = Column(UtcDateTime)
     dag_id = Column(String())
     task_id = Column(String())
     run_id = Column(String())
 
-    def __init__(self, key, dag_id, task_id, run_id):
+    def __init__(self, key, dag_id, task_id, run_id, expiration_date=None):
         self.key = key
+        self.expiration_date = expiration_date
         self.dag_id = dag_id
         self.task_id = task_id
         self.run_id = run_id
@@ -41,11 +44,13 @@ class Cache(Base):
     @classmethod
     @provide_session
     def get(cls, key, session=None):
-        return session.query(cls).filter(cls.key == key).first()
+        return session.query(cls).filter(cls.key == key).one_or_none()
 
     @classmethod
     @provide_session
-    def set(cls, key, task_id, dag_id, run_id, session=None):
-        cache = cls(key, dag_id, task_id, run_id)
-        session.merge(cache)
-        session.commit()
+    def set(cls, key, task_id, dag_id, run_id, expiration_date=None, session=None):
+        task_run_cache = cls(
+            key=key, dag_id=dag_id, task_id=task_id, run_id=run_id, expiration_date=expiration_date
+        )
+        session.add(task_run_cache)
+        session.flush()

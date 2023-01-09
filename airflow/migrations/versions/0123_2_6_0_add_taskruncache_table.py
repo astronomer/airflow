@@ -16,11 +16,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Add cache
+"""Add TaskRunCache table
 
-Revision ID: 1d4555d1e483
+Revision ID: df22e6a7f1cb
 Revises: 290244fb8b83
-Create Date: 2023-01-07 05:28:04.483443
+Create Date: 2023-01-09 10:33:59.533624
 
 """
 
@@ -29,8 +29,10 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+from airflow.migrations.db_types import TIMESTAMP
+
 # revision identifiers, used by Alembic.
-revision = "1d4555d1e483"
+revision = "df22e6a7f1cb"
 down_revision = "290244fb8b83"
 branch_labels = None
 depends_on = None
@@ -38,17 +40,18 @@ airflow_version = "2.6.0"
 
 
 def upgrade():
-    """Apply Add cache"""
+    """Apply Add TaskRunCache table"""
     op.create_table(
-        "cache",
+        "task_run_cache",
         sa.Column("key", sa.String(), nullable=False),
-        sa.Column("dag_id", sa.String(), nullable=True),
-        sa.Column("task_id", sa.String(), nullable=True),
-        sa.Column("run_id", sa.String(), nullable=True),
-        sa.PrimaryKeyConstraint("key", name=op.f("cache_pkey")),
+        sa.Column("expiration_date", TIMESTAMP()),
+        sa.Column("dag_id", sa.String()),
+        sa.Column("task_id", sa.String()),
+        sa.Column("run_id", sa.String()),
+        sa.PrimaryKeyConstraint("key", name=op.f("task_run_cache_pkey")),
     )
 
 
 def downgrade():
-    """Unapply Add cache"""
-    op.drop_table("cache")
+    """Unapply Add TaskRunCache table"""
+    op.drop_table("task_run_cache")

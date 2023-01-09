@@ -163,6 +163,7 @@ class DecoratedOperator(BaseOperator):
         calling your callable (templated)
     :param multiple_outputs: If set to True, the decorated function's return value will be unrolled to
         multiple XCom values. Dict will unroll to XCom values with its keys as XCom keys. Defaults to False.
+    :param cache_fn: A function that will be used to cache the result of the decorated function.
     :param kwargs_to_upstream: For certain operators, we might need to upstream certain arguments
         that would otherwise be absorbed by the DecoratedOperator (for example python_callable for the
         PythonOperator). This gives a user the option to upstream kwargs as needed.
@@ -184,7 +185,7 @@ class DecoratedOperator(BaseOperator):
         op_kwargs: Mapping[str, Any] | None = None,
         multiple_outputs: bool = False,
         kwargs_to_upstream: dict[str, Any] | None = None,
-        cache_key_fn: Callable | None = None,
+        cache_fn: Callable | None = None,
         **kwargs,
     ) -> None:
         task_id = get_unique_task_id(task_id, kwargs.get("dag"), kwargs.get("task_group"))
@@ -207,7 +208,7 @@ class DecoratedOperator(BaseOperator):
         self.multiple_outputs = multiple_outputs
         self.op_args = op_args
         self.op_kwargs = op_kwargs
-        self.cache_key_fn = cache_key_fn
+        self.cache_fn = cache_fn
         super().__init__(task_id=task_id, **kwargs_to_upstream, **kwargs)
 
     def execute(self, context: Context):
@@ -295,7 +296,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
     decorator_name: str = attr.ib(repr=False, default="task")
 
     _airflow_is_task_decorator: ClassVar[bool] = True
-    cache_key_fn: Callable | None = attr.ib(default=None)
+    cache_fn: Callable | None = attr.ib(default=None)
 
     @multiple_outputs.default
     def _infer_multiple_outputs(self):
@@ -317,7 +318,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
             op_args=args,
             op_kwargs=kwargs,
             multiple_outputs=self.multiple_outputs,
-            cache_key_fn=self.cache_key_fn,
+            cache_fn=self.cache_fn,
             **self.kwargs,
         )
         if self.function.__doc__:
@@ -439,7 +440,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
             # task's expand() contribute to the op_kwargs operator argument, not
             # the operator arguments themselves, and should expand against it.
             expand_input_attr="op_kwargs_expand_input",
-            cache_key_fn=self.cache_key_fn,
+            cache_fn=self.cache_fn,
         )
         return XComArg(operator=operator)
 
@@ -464,7 +465,7 @@ class DecoratedMappedOperator(MappedOperator):
     # We can't save these in expand_input because op_kwargs need to be present
     # in partial_kwargs, and MappedOperator prevents duplication.
     op_kwargs_expand_input: ExpandInput
-    cache_key_fn: Callable | None
+    cache_fn: Callable | None
 
     def __hash__(self):
         return id(self)
@@ -492,7 +493,7 @@ class DecoratedMappedOperator(MappedOperator):
             "multiple_outputs": self.multiple_outputs,
             "python_callable": self.python_callable,
             "op_kwargs": {**partial_op_kwargs, **mapped_op_kwargs},
-            "cache_key_fn": self.cache_key_fn,
+            "cache_fn": self.cache_fn,
         }
         return super()._get_unmap_kwargs(kwargs, strict=False)
 
@@ -544,7 +545,7 @@ class TaskDecorator(Protocol):
         self,
         *,
         multiple_outputs: bool | None = None,
-        cache_key_fn: Callable | None = None,
+        cache_fn: Callable | None = None,
         **kwargs: Any,
     ) -> Callable[[Callable[FParams, FReturn]], Task[FParams, FReturn]]:
         """For the decorator factory ``@task()`` case."""
@@ -558,7 +559,7 @@ def task_decorator_factory(
     *,
     multiple_outputs: bool | None = None,
     decorated_operator_class: type[BaseOperator],
-    cache_key_fn: Callable | None = None,
+    cache_fn: Callable | None = None,
     **kwargs,
 ) -> TaskDecorator:
     """Generate a wrapper that wraps a function into an Airflow operator.
@@ -572,6 +573,7 @@ def task_decorator_factory(
         most one XCom value is pushed.
     :param decorated_operator_class: The operator that executes the logic needed
         to run the python function in the correct environment.
+    :param cache_fn: A function that will be used to cache the result of the decorated function.
 
     Other kwargs are directly forwarded to the underlying operator class when
     it's instantiated.
@@ -583,7 +585,7 @@ def task_decorator_factory(
             function=python_callable,
             multiple_outputs=multiple_outputs,
             operator_class=decorated_operator_class,
-            cache_key_fn=cache_key_fn,
+            cache_fn=cache_fn,
             kwargs=kwargs,
         )
         return cast(TaskDecorator, decorator)
@@ -595,7 +597,7 @@ def task_decorator_factory(
             function=python_callable,
             multiple_outputs=multiple_outputs,
             operator_class=decorated_operator_class,
-            cache_key_fn=cache_key_fn,
+            cache_fn=cache_fn,
             kwargs=kwargs,
         )
 

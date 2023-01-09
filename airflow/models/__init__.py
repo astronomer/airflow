@@ -65,11 +65,11 @@ def import_all_models():
     import airflow.jobs.local_task_job
     import airflow.jobs.scheduler_job
     import airflow.jobs.triggerer_job
-    import airflow.models.cache
     import airflow.models.dagwarning
     import airflow.models.dataset
     import airflow.models.serialized_dag
     import airflow.models.tasklog
+    import airflow.models.taskruncache
     import airflow.www.fab_security.sqla.models
 
 
@@ -117,7 +117,7 @@ __lazy_imports = {
     "Variable": "airflow.models.variable",
     "XCom": "airflow.models.xcom",
     "clear_task_instances": "airflow.models.taskinstance",
-    "Cache": "airflow.models.cache",
+    "TaskRunCache": "airflow.models.taskruncache",
 }
 
 if TYPE_CHECKING:

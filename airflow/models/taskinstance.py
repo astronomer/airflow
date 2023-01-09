@@ -83,7 +83,6 @@ from airflow.exceptions import (
     UnmappableXComTypePushed,
     XComForMappingNotPushed,
 )
-from airflow.models import Cache
 from airflow.models.base import Base, StringID
 from airflow.models.log import Log
 from airflow.models.mappedoperator import MappedOperator
@@ -91,6 +90,7 @@ from airflow.models.param import process_params
 from airflow.models.taskfail import TaskFail
 from airflow.models.taskmap import TaskMap
 from airflow.models.taskreschedule import TaskReschedule
+from airflow.models.taskruncache import TaskRunCache
 from airflow.models.xcom import XCOM_RETURN_KEY, LazyXComAccess, XCom
 from airflow.plugins_manager import integrate_macros_plugins
 from airflow.sentry import Sentry
@@ -1386,10 +1386,10 @@ class TaskInstance(Base, LoggingMixin):
 
         self.task = self.task.prepare_for_execution()
         context = self.get_template_context(ignore_param_exceptions=False)
-        cache_fn = getattr(self.task, "cache_key_fn", None)
+        cache_fn = getattr(self.task, "cache_fn", None)
         if cache_fn:
             cache_key = cache_fn(context)
-            cache_ = Cache.get(cache_key)
+            cache_ = TaskRunCache.get(cache_key)
             if cache_:
                 mark_success = True
                 self.log.info("Using cached result for %s", self.task)
@@ -1621,11 +1621,13 @@ class TaskInstance(Base, LoggingMixin):
                 xcom_value = None
             if xcom_value is not None:  # If the task returns a result, push an XCom containing it.
                 self.xcom_push(key=XCOM_RETURN_KEY, value=xcom_value, session=session)
-            cache_key_fn = getattr(self.task, "cache_key_fn", None)
-            if cache_key_fn:
-                cache_key = cache_key_fn(context)
+            cache_fn = getattr(self.task, "cache_fn", None)
+            if cache_fn:
+                cache_key = cache_fn(context)
                 try:
-                    Cache.set(key=cache_key, task_id=self.task_id, dag_id=self.dag_id, run_id=self.run_id)
+                    TaskRunCache.set(
+                        key=cache_key, task_id=self.task_id, dag_id=self.dag_id, run_id=self.run_id
+                    )
                 except Exception:
                     pass
             self._record_task_map_for_downstreams(task_orig, xcom_value, session=session)

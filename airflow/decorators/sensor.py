@@ -53,6 +53,7 @@ class DecoratedSensorOperator(PythonSensor):
         **kwargs,
     ) -> None:
         kwargs.pop("multiple_outputs")
+        kwargs.pop("cache_fn")
         kwargs["task_id"] = get_unique_task_id(task_id, kwargs.get("dag"), kwargs.get("task_group"))
         super().__init__(**kwargs)
 
@@ -70,5 +71,6 @@ def sensor_task(python_callable: Callable | None = None, **kwargs) -> TaskDecora
         python_callable=python_callable,
         multiple_outputs=False,
         decorated_operator_class=DecoratedSensorOperator,
+        cache_fn=None,
         **kwargs,
     )
