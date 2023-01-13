@@ -19,7 +19,7 @@
 from __future__ import annotations
 
 import enum
-from typing import TYPE_CHECKING, Iterable, Sequence
+from typing import TYPE_CHECKING, Iterable, Sequence, Any
 
 import google.api_core.exceptions
 from google.cloud.bigtable.column_family import GarbageCollectionRule
@@ -588,3 +588,20 @@ class BigtableUpdateClusterOperator(BaseOperator, BigtableValidationMixin):
         except google.api_core.exceptions.GoogleAPICallError as e:
             self.log.error("An error occurred. Exiting.")
             raise e
+
+
+class BigtableBackupOperator(BaseOperator):
+    def __init__(
+        self,
+        *,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+    ):
+        self.gcp_conn_id = gcp_conn_id
+        self.impersonation_chain = impersonation_chain
+
+    def execute(self, context: Context) -> Any:
+        hook = BigtableHook(
+            gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
+        )

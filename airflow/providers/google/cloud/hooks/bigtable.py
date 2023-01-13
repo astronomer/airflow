@@ -289,3 +289,5 @@ class BigtableHook(GoogleBaseHook):
         """
         table = Table(table_id, instance)
         return table.get_cluster_states()
+
+    def
