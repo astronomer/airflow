@@ -24,6 +24,7 @@ from airflow.decorators.external_python import external_python_task
 from airflow.decorators.python import python_task
 from airflow.decorators.python_virtualenv import virtualenv_task
 from airflow.decorators.sensor import sensor_task
+from airflow.decorators.setup_teardown_task import setup_task, teardown_task
 from airflow.decorators.short_circuit import short_circuit_task
 from airflow.decorators.task_group import task_group
 from airflow.models.dag import dag
@@ -42,6 +43,8 @@ __all__ = [
     "branch_task",
     "short_circuit_task",
     "sensor_task",
+    "setup",
+    "teardown",
 ]
 
 
@@ -68,3 +71,5 @@ class TaskDecoratorCollection:
 
 
 task = TaskDecoratorCollection()
+setup = setup_task
+teardown = teardown_task
