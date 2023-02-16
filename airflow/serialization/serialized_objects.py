@@ -1319,6 +1319,13 @@ class TaskGroupSerialization(BaseSerialization):
             "tooltip": task_group.tooltip,
             "ui_color": task_group.ui_color,
             "ui_fgcolor": task_group.ui_fgcolor,
+            "setup_children": {
+                label: child.serialize_for_task_group() for label, child in task_group.setup_children.items()
+            },
+            "teardown_children": {
+                label: child.serialize_for_task_group()
+                for label, child in task_group.teardown_children.items()
+            },
             "children": {
                 label: child.serialize_for_task_group() for label, child in task_group.children.items()
             },
