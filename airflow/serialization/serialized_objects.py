@@ -514,7 +514,6 @@ class BaseSerialization:
 
     @classmethod
     def _is_constructor_param(cls, attrname: str, instance: Any) -> bool:
-
         return attrname in cls._CONSTRUCTOR_PARAMS
 
     @classmethod
@@ -1202,7 +1201,6 @@ class SerializedDAG(DAG, BaseSerialization):
             if k == "_downstream_task_ids":
                 v = set(v)
             elif k == "tasks":
-
                 SerializedBaseOperator._load_operator_extra_links = cls._load_operator_extra_links
 
                 v = {task["task_id"]: SerializedBaseOperator.deserialize_operator(task) for task in v}
@@ -1310,6 +1308,16 @@ class TaskGroupSerialization(BaseSerialization):
         if not task_group:
             return None
 
+        # Add implicit deps
+        if task_group.setup_children or task_group.teardown_children:
+            for child in task_group.children.values():
+                if task_group.setup_children:
+                    # assume a single setup
+                    list(task_group.setup_children.values())[0] >> child
+                if task_group.teardown_children:
+                    # assume a single teardown
+                    child >> list(task_group.teardown_children.values())[0]
+
         # task_group.xxx_ids needs to be sorted here, because task_group.xxx_ids is a set,
         # when converting set to list, the order is uncertain.
         # When calling json.dumps(self.data, sort_keys=True) to generate dag_hash, misjudgment will occur
@@ -1376,6 +1384,18 @@ class TaskGroupSerialization(BaseSerialization):
             task.task_group = weakref.proxy(group)
             return task
 
+        group.setup_children = {
+            label: set_ref(task_dict[val])
+            if _type == DAT.OP
+            else cls.deserialize_task_group(val, group, task_dict, dag=dag)
+            for label, (_type, val) in encoded_group["setup_children"].items()
+        }
+        group.teardown_children = {
+            label: set_ref(task_dict[val])
+            if _type == DAT.OP
+            else cls.deserialize_task_group(val, group, task_dict, dag=dag)
+            for label, (_type, val) in encoded_group["teardown_children"].items()
+        }
         group.children = {
             label: set_ref(task_dict[val])
             if _type == DAT.OP
