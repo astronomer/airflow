@@ -1309,14 +1309,14 @@ class TaskGroupSerialization(BaseSerialization):
             return None
 
         # Add implicit deps
-        if task_group.setup_children or task_group.teardown_children:
-            for child in task_group.children.values():
-                if task_group.setup_children:
-                    # assume a single setup
-                    list(task_group.setup_children.values())[0] >> child
-                if task_group.teardown_children:
-                    # assume a single teardown
-                    child >> list(task_group.teardown_children.values())[0]
+        # if task_group.setup_children or task_group.teardown_children:
+        #    for child in task_group.children.values():
+        #        if task_group.setup_children:
+        #            # assume a single setup
+        #            list(task_group.setup_children.values())[0] >> child
+        #        if task_group.teardown_children:
+        #            # assume a single teardown
+        #            child >> list(task_group.teardown_children.values())[0]
 
         # task_group.xxx_ids needs to be sorted here, because task_group.xxx_ids is a set,
         # when converting set to list, the order is uncertain.
