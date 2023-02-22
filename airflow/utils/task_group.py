@@ -520,7 +520,7 @@ class TaskGroup(DAGNode):
         while groups_to_visit:
             visiting = groups_to_visit.pop(0)
 
-            for child in visiting.children.values():
+            for child in visiting.all_children.values():
                 if isinstance(child, AbstractOperator):
                     yield child
                 elif isinstance(child, TaskGroup):

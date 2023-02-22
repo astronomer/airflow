@@ -48,7 +48,9 @@ class SetupTeardownDep(BaseTIDep):
 
         setup_task_ids = {x.task_id for x in task.task_group.setup_children.values()}
         teardown_task_ids = {x.task_id for x in task.task_group.teardown_children.values()}
-        normal_task_ids = {x.task_id for x in task.task_group.children.values()}
+        normal_task_ids = (
+            {x.task_id for x in task.task_group.iter_tasks()} - setup_task_ids - teardown_task_ids
+        )
 
         is_setup_task = task.task_id in setup_task_ids
         is_teardown_task = task.task_id in teardown_task_ids
