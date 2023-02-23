@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Iterator
 
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.deps.base_ti_dep import BaseTIDep, TIDepStatus
+from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
 
 
 class SetupTeardownDep(BaseTIDep):
+    """Check for dependencies between setup / teardown tasks and the "normal" tasks they serve."""
+
     NAME = "Setup and Teardown"
     IGNORABLE = True
     IS_TASK_DEP = True
@@ -60,17 +63,38 @@ class SetupTeardownDep(BaseTIDep):
             return
 
         finished_tis = dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
+        finished_setup_tis = [x for x in finished_tis if x.task_id in setup_task_ids]
         finished_task_ids = {x.task_id for x in finished_tis}
 
         if is_teardown_task:
-            remaining = normal_task_ids - finished_task_ids
-            print(f"remaining normal: {remaining}")
-            if remaining:
-                yield self._failing_status(reason=f"Not all normal tasks have finished: {len(remaining)}")
+            remaining_normal = normal_task_ids - finished_task_ids
+            print(f"remaining normal: {remaining_normal}")
+            if remaining_normal:
+                yield self._failing_status(
+                    reason=f"Not all normal tasks have finished: {len(remaining_normal)}"
+                )
+                return
 
-        # normal tasks
-        remaining = setup_task_ids - finished_task_ids
-        print(f"remaining normal: {remaining}")
+        # we are dealing with a normal task
 
-        if remaining:
-            yield self._failing_status(reason=f"Not all setup tasks have finished: {len(remaining)}")
+        # first check if there are remaining setup tasks
+        remaining_setup = setup_task_ids - finished_task_ids
+        print(f"remaining setup: {remaining_setup}")
+        if remaining_setup:
+            yield self._failing_status(reason=f"Not all setup tasks have finished: {len(remaining_setup)}")
+            return
+
+        # all setup tasks complete; check if state is ok now.
+        changed = False
+        can_proceed_states = {TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED}
+        if not all(x.state in can_proceed_states for x in finished_setup_tis):
+            # todo: do we need to check dep_context.flag_upstream_failed?
+            changed = ti.set_state(TaskInstanceState.UPSTREAM_FAILED, session)
+        if changed:
+            dep_context.have_changed_ti_states = True
+        if ti.state == TaskInstanceState.UPSTREAM_FAILED:
+            yield self._failing_status(reason="Some setup tasks were not in 'success', 'skipped'.")
+            return
+        else:
+            yield self._passing_status(reason="Setup tasks have completed without failure.")
+            return
