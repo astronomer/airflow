@@ -21,6 +21,7 @@ from airflow.models.baseoperator import BaseOperator
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.deps.setup_teardown_dep import SetupTeardownDep
 from airflow.utils.state import TaskInstanceState
+from airflow.utils.task_group import TaskGroup
 
 
 class TestSetupTeardownDep:
@@ -165,3 +166,67 @@ class TestSetupTeardownDep:
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_teardown, session, DepContext()))[0]
         assert actual.passed is False
         assert actual.reason == "Not all normal tasks have finished: 1"
+
+    def test__get_dep_statuses_in_taskgroup(self, session, dag_maker):
+        with dag_maker(session=session):
+            with TaskGroup("group1"):
+                BaseOperator.as_setup(task_id="setup_task")
+                BaseOperator.as_teardown(task_id="teardown_task")
+                BaseOperator(task_id="normal_task")
+
+        dr = dag_maker.create_dagrun()
+        ti_setup = [x for x in dr.task_instances if x.task_id == "group1.setup_task"][0]
+        ti_normal = [x for x in dr.task_instances if x.task_id == "group1.normal_task"][0]
+        ti_teardown = [x for x in dr.task_instances if x.task_id == "group1.teardown_task"][0]
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Task is a setup task"
+
+        ti_setup.state = TaskInstanceState.SUCCESS
+        session.merge(ti_setup)
+        session.commit()
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup tasks have completed without failure."
+
+        # Complete normal task
+        ti_normal.state = TaskInstanceState.SUCCESS
+        session.merge(ti_normal)
+        session.commit()
+        # assert teardown passed
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_teardown, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup completed successfully and normal tasks finished."
+
+    def test__get_dep_statuses_in_for_setup_tasks_in_taskgroup_with_subgroup(self, session, dag_maker):
+        with dag_maker(session=session):
+            with TaskGroup("group1"):
+                BaseOperator.as_setup(task_id="setup_task_1")
+                BaseOperator(task_id="normal_task_1")
+                with TaskGroup("subgroup1"):
+                    BaseOperator.as_setup(task_id="setup_task_2")
+                    BaseOperator(task_id="normal_task_2")
+
+        dr = dag_maker.create_dagrun()
+        ti_setup_1 = [x for x in dr.task_instances if x.task_id == "group1.setup_task_1"][0]
+        ti_normal_1 = [x for x in dr.task_instances if x.task_id == "group1.normal_task_1"][0]
+        ti_setup_2 = [x for x in dr.task_instances if x.task_id == "group1.subgroup1.setup_task_2"][0]
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_1, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Task is a setup task"
+
+        # Setup 1 in outer group must be done before setup 2 in inner group can run
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_2, session, DepContext()))[0]
+        assert actual.passed is False
+        assert actual.reason == "Not all upstream tasks have completed: 1"
+
+        # Complete setup 1 in outer group and also the normal task in outer group
+        ti_setup_1.state = TaskInstanceState.SUCCESS
+        ti_normal_1.state = TaskInstanceState.SUCCESS
+        session.merge(ti_setup_1)
+        session.merge(ti_normal_1)
+        session.commit()
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_2, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Task is a setup task"
