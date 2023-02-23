@@ -75,12 +75,67 @@ class TestSetupTeardownDep:
         assert actual.passed is True
         assert actual.reason == "Task is a setup task"
 
-        # in effect, this means pass
-        assert not list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup tasks have completed without failure."
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_teardown, session, DepContext()))[0]
         assert actual.passed is False
         assert actual.reason == "Not all normal tasks have finished: 1"
+
+    def test__get_dep_statuses_normal_success(self, session, dag_maker):
+        with dag_maker(session=session):
+            BaseOperator.as_setup(task_id="setup_task")
+            BaseOperator(task_id="normal_task")
+            BaseOperator.as_teardown(task_id="teardown_task")
+        dr = dag_maker.create_dagrun()
+        ti_setup = [x for x in dr.task_instances if x.task_id == "setup_task"][0]
+        ti_normal = [x for x in dr.task_instances if x.task_id == "normal_task"][0]
+        ti_teardown = [x for x in dr.task_instances if x.task_id == "teardown_task"][0]
+
+        # mark setup task as done
+        ti_setup.state = TaskInstanceState.SUCCESS
+        ti_normal.state = TaskInstanceState.SUCCESS
+        session.commit()
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Task is a setup task"
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup tasks have completed without failure."
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_teardown, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup completed successfully and normal tasks finished."
+
+    def test__get_dep_statuses_normal_failed(self, session, dag_maker):
+        with dag_maker(session=session):
+            BaseOperator.as_setup(task_id="setup_task")
+            BaseOperator(task_id="normal_task")
+            BaseOperator.as_teardown(task_id="teardown_task")
+        dr = dag_maker.create_dagrun()
+        ti_setup = [x for x in dr.task_instances if x.task_id == "setup_task"][0]
+        ti_normal = [x for x in dr.task_instances if x.task_id == "normal_task"][0]
+        ti_teardown = [x for x in dr.task_instances if x.task_id == "teardown_task"][0]
+
+        # mark setup task as done
+        ti_setup.state = TaskInstanceState.SUCCESS
+        ti_normal.state = TaskInstanceState.FAILED
+        session.commit()
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Task is a setup task"
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup tasks have completed without failure."
+
+        actual = list(SetupTeardownDep()._get_dep_statuses(ti_teardown, session, DepContext()))[0]
+        assert actual.passed is True
+        assert actual.reason == "Setup completed successfully and normal tasks finished."
 
     def test__get_dep_statuses_setup_failed(self, session, dag_maker):
         with dag_maker(session=session):

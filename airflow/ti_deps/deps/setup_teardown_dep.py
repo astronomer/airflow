@@ -74,6 +74,9 @@ class SetupTeardownDep(BaseTIDep):
                     reason=f"Not all normal tasks have finished: {len(remaining_normal)}"
                 )
                 return
+            else:
+                yield self._passing_status("Setup completed successfully and normal tasks finished.")
+                return
 
         # we are dealing with a normal task
 
