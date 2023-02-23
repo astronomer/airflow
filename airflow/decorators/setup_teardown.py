@@ -17,8 +17,10 @@
 from __future__ import annotations
 
 import functools
+import types
 from typing import Callable
 
+from airflow.decorators import python_task
 from airflow.utils.setup_teardown import SetupTeardownContext
 
 
@@ -28,6 +30,9 @@ def setup_task(python_callable: Callable) -> Callable:
         with SetupTeardownContext.setup():
             return python_callable(*args, **kwargs)
 
+    # Using FunctionType here since _TaskDecorator is also a callable
+    if isinstance(python_callable, types.FunctionType):
+        python_callable = python_task(python_callable)
     return wrapper
 
 
@@ -37,4 +42,7 @@ def teardown_task(python_callable: Callable) -> Callable:
         with SetupTeardownContext.teardown():
             return python_callable(*args, **kwargs)
 
+    # Using FunctionType here since _TaskDecorator is also a callable
+    if isinstance(python_callable, types.FunctionType):
+        python_callable = python_task(python_callable)
     return wrapper

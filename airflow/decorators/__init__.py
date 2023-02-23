@@ -43,6 +43,8 @@ __all__ = [
     "branch_task",
     "short_circuit_task",
     "sensor_task",
+    "setup",
+    "teardown",
 ]
 
 

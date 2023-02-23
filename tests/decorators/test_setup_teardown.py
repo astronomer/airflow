@@ -23,6 +23,30 @@ from airflow.decorators import setup, task, teardown
 class TestSetupTearDownTask:
     def test_marking_functions_as_setup_task(self, dag_maker):
         @setup
+        def mytask():
+            print("I am a setup task")
+
+        with dag_maker() as dag:
+            mytask()
+
+        assert len(dag.task_group.setup_children) == 1
+        assert len(dag.task_group.children) == 0
+        assert len(dag.task_group.teardown_children) == 0
+
+    def test_marking_functions_as_teardown_task(self, dag_maker):
+        @teardown
+        def mytask():
+            print("I am a teardown task")
+
+        with dag_maker() as dag:
+            mytask()
+
+        assert len(dag.task_group.setup_children) == 0
+        assert len(dag.task_group.children) == 0
+        assert len(dag.task_group.teardown_children) == 1
+
+    def test_marking_decorated_functions_as_setup_task(self, dag_maker):
+        @setup
         @task
         def mytask():
             print("I am a setup task")
@@ -44,7 +68,7 @@ class TestSetupTearDownTask:
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 0
 
-    def test_marking_functions_as_teardown_task(self, dag_maker):
+    def test_marking_decorated_functions_as_teardown_task(self, dag_maker):
         @teardown
         @task
         def mytask():
