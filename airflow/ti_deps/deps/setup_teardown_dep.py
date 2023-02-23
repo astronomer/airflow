@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 
 class SetupTeardownDep(BaseTIDep):
-    NAME = "Setup and Teardown rules"
+    NAME = "Setup and Teardown"
     IGNORABLE = True
     IS_TASK_DEP = True
 
