@@ -28,7 +28,8 @@ class TestSetupTearDownTask:
 
         with dag_maker() as dag:
             mytask()
-
+        setup_task = dag.task_group.setup_children["mytask"]
+        assert setup_task._is_setup
         assert len(dag.task_group.setup_children) == 1
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 0
@@ -41,6 +42,8 @@ class TestSetupTearDownTask:
         with dag_maker() as dag:
             mytask()
 
+        teardown_task = dag.task_group.teardown_children["mytask"]
+        assert teardown_task._is_teardown
         assert len(dag.task_group.setup_children) == 0
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 1
@@ -54,6 +57,8 @@ class TestSetupTearDownTask:
         with dag_maker() as dag:
             mytask()
 
+        setup_task = dag.task_group.setup_children["mytask"]
+        assert setup_task._is_setup
         assert len(dag.task_group.setup_children) == 1
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 0
@@ -64,6 +69,8 @@ class TestSetupTearDownTask:
         with dag_maker() as dag:
             BashOperator.as_setup(task_id="mytask", bash_command='echo "I am a setup task"')
 
+        setup_task = dag.task_group.setup_children["mytask"]
+        assert setup_task._is_setup
         assert len(dag.task_group.setup_children) == 1
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 0
@@ -77,6 +84,8 @@ class TestSetupTearDownTask:
         with dag_maker() as dag:
             mytask()
 
+        teardown_task = dag.task_group.teardown_children["mytask"]
+        assert teardown_task._is_teardown
         assert len(dag.task_group.setup_children) == 0
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 1
@@ -87,6 +96,8 @@ class TestSetupTearDownTask:
         with dag_maker() as dag:
             BashOperator.as_teardown(task_id="mytask", bash_command='echo "I am a setup task"')
 
+        teardown_task = dag.task_group.teardown_children["mytask"]
+        assert teardown_task._is_teardown
         assert len(dag.task_group.setup_children) == 0
         assert len(dag.task_group.children) == 0
         assert len(dag.task_group.teardown_children) == 1

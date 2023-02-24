@@ -240,10 +240,12 @@ class TaskGroup(DAGNode):
 
         if isinstance(task, AbstractOperator):
             if SetupTeardownContext.is_setup:
+                setattr(task, "_is_setup", True)
                 self.setup_children[key] = task
                 return
             elif SetupTeardownContext.is_teardown:
                 self.teardown_children[key] = task
+                setattr(task, "_is_teardown", True)
                 return
 
         self.children[key] = task
