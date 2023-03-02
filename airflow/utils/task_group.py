@@ -138,8 +138,8 @@ class TaskGroup(DAGNode):
 
         self.children: dict[str, DAGNode] = {}
 
-        self.setup_children: dict[str, AbstractOperator] = {}
-        self.teardown_children: dict[str, AbstractOperator] = {}
+        self.setup_children: dict[str, DAGNode] = {}
+        self.teardown_children: dict[str, DAGNode] = {}
 
         if parent_group:
             parent_group.add(self)
@@ -238,17 +238,16 @@ class TaskGroup(DAGNode):
             if task.children:
                 raise AirflowException("Cannot add a non-empty TaskGroup")
 
-        if isinstance(task, AbstractOperator):
-            if SetupTeardownContext.is_setup:
+        if SetupTeardownContext.is_setup:
+            if isinstance(task, AbstractOperator):
                 setattr(task, "_is_setup", True)
-                self.setup_children[key] = task
-                return
-            elif SetupTeardownContext.is_teardown:
-                self.teardown_children[key] = task
+            self.setup_children[key] = task
+        elif SetupTeardownContext.is_teardown:
+            if isinstance(task, AbstractOperator):
                 setattr(task, "_is_teardown", True)
-                return
-
-        self.children[key] = task
+            self.teardown_children[key] = task
+        else:
+            self.children[key] = task
 
     def _remove(self, task: DAGNode) -> None:
         key = task.node_id

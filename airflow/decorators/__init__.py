@@ -16,7 +16,7 @@
 # under the License.
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from airflow.decorators.base import TaskDecorator
 from airflow.decorators.branch_python import branch_task
@@ -71,5 +71,5 @@ class TaskDecoratorCollection:
 
 
 task = TaskDecoratorCollection()
-setup = setup_task
-teardown = teardown_task
+setup: Callable = setup_task
+teardown: Callable = teardown_task

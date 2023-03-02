@@ -25,24 +25,26 @@ from airflow.utils.setup_teardown import SetupTeardownContext
 
 
 def setup_task(python_callable: Callable) -> Callable:
+    # Using FunctionType here since _TaskDecorator is also a callable
+    if isinstance(python_callable, types.FunctionType):
+        python_callable = python_task(python_callable)
+
     @functools.wraps(python_callable)
     def wrapper(*args, **kwargs):
         with SetupTeardownContext.setup():
             return python_callable(*args, **kwargs)
 
-    # Using FunctionType here since _TaskDecorator is also a callable
-    if isinstance(python_callable, types.FunctionType):
-        python_callable = python_task(python_callable)
     return wrapper
 
 
 def teardown_task(python_callable: Callable) -> Callable:
-    @functools.wraps(python_callable)
-    def wrapper(*args, **kwargs):
-        with SetupTeardownContext.teardown():
-            return python_callable(*args, **kwargs)
-
     # Using FunctionType here since _TaskDecorator is also a callable
     if isinstance(python_callable, types.FunctionType):
         python_callable = python_task(python_callable)
+
+    @functools.wraps(python_callable)
+    def wrapper(*args, **kwargs) -> Callable:
+        with SetupTeardownContext.teardown():
+            return python_callable(*args, **kwargs)
+
     return wrapper
