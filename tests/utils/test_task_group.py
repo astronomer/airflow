@@ -20,8 +20,8 @@ from __future__ import annotations
 import pendulum
 import pytest
 
-from airflow.decorators import dag, task_group as task_group_decorator
-from airflow.exceptions import TaskAlreadyInTaskGroup
+from airflow.decorators import dag, setup, task_group as task_group_decorator, teardown
+from airflow.exceptions import AirflowException, TaskAlreadyInTaskGroup
 from airflow.models import DAG
 from airflow.models.xcom_arg import XComArg
 from airflow.operators.bash import BashOperator
@@ -1301,3 +1301,46 @@ def test_iter_tasks():
         "section_2.task3",
         "section_2.bash_task",
     ]
+
+
+def test_block_peer_setup(dag_maker):
+    @setup
+    def mytask():
+        print("I am a setup task")
+
+    @setup
+    @task_group_decorator
+    def anothertask():
+        print("I am another setup task")
+
+    with dag_maker():
+        mytask()
+        with pytest.raises(
+            AirflowException,
+            match=(
+                "A setup task or TaskGroup cannot be added to a TaskGroup"
+                " with an existing setup task or TaskGroup"
+            ),
+        ):
+            anothertask()
+
+
+def test_block_peer_teardown(dag_maker):
+    @teardown
+    def mytask():
+        print("I am a teardown task")
+
+    @teardown
+    def anothertask():
+        print("I am another teardown task")
+
+    with dag_maker():
+        mytask()
+        with pytest.raises(
+            AirflowException,
+            match=(
+                "A teardown task or TaskGroup cannot be added to a TaskGroup"
+                " with an existing teardown task or TaskGroup"
+            ),
+        ):
+            anothertask()

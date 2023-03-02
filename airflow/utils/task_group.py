@@ -239,10 +239,20 @@ class TaskGroup(DAGNode):
                 raise AirflowException("Cannot add a non-empty TaskGroup")
 
         if SetupTeardownContext.is_setup:
+            if self.setup_children:
+                raise AirflowException(
+                    "A setup task or TaskGroup cannot be added to a TaskGroup"
+                    " with an existing setup task or TaskGroup"
+                )
             if isinstance(task, AbstractOperator):
                 setattr(task, "_is_setup", True)
             self.setup_children[key] = task
         elif SetupTeardownContext.is_teardown:
+            if self.teardown_children:
+                raise AirflowException(
+                    "A teardown task or TaskGroup cannot be added to a TaskGroup"
+                    " with an existing teardown task or TaskGroup"
+                )
             if isinstance(task, AbstractOperator):
                 setattr(task, "_is_teardown", True)
             self.teardown_children[key] = task
