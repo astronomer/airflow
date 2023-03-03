@@ -622,6 +622,9 @@ class DAG(LoggingMixin):
         # fileloc based only on the serialize dag
         self._processor_dags_folder = None
 
+    def update_relative(self, other, upstream, edge_modifier):
+        self.task_group.update_relative(other, upstream, edge_modifier)
+
     def get_doc_md(self, doc_md: str | None) -> str | None:
         if doc_md is None:
             return doc_md
