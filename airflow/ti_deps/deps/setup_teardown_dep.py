@@ -26,6 +26,7 @@ from airflow.utils.state import TaskInstanceState
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from airflow.models.baseoperator import BaseOperator
     from airflow.models.taskinstance import TaskInstance
 
 
@@ -58,13 +59,46 @@ class SetupTeardownDep(BaseTIDep):
         is_setup_task = task.task_id in setup_task_ids
         is_teardown_task = task.task_id in teardown_task_ids
 
-        if is_setup_task:
-            yield self._passing_status(reason="Task is a setup task")
-            return
-
         finished_tis = dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
         finished_setup_tis = [x for x in finished_tis if x.task_id in setup_task_ids]
         finished_task_ids = {x.task_id for x in finished_tis}
+
+        if is_setup_task:
+            # a single setup task should run only if the following
+            #  * group roots have no upstreams (or they are done)
+            #  * parent group has no setup tasks (or they are done)
+            # todo: test to add: if parent setup is task, easy; if group, check roots
+
+            roots: set[BaseOperator] = {*ti.task.task_group.get_roots()}
+            # todo: add test for parent has normal to normal and no other deps
+            # todo: test interdeps in setup group
+            # todo: remove ability to set upstream between normal and setup
+            # todo: how do we accomplish setup-to-setup deps....
+            root_upstream_ids = {task_id for root in roots for task_id in root.upstream_task_ids}
+            # todo: add test for parent group has only setup and no normal
+            # todo: for teardown, have to do reverse
+
+            # todo: if this is group, must check only leaves!!!
+            # todo: what is the "trigger rule" for passing setup groups -- leaves are success or skipped?
+            parent_setup_task_ids = set()
+            if task.task_group.parent_group:
+                parent_setup_task_ids |= {
+                    x.task_id for x in task.task_group.parent_group.setup_children.values()
+                }
+            unfinished_parent_setup = parent_setup_task_ids.difference(finished_task_ids)
+            if unfinished_parent_setup:
+                yield self._failing_status(
+                    reason=f"Setup tasks in parent group not complete: {len(unfinished_parent_setup)}"
+                )
+                return
+            unfinished_group_upstream = root_upstream_ids.difference(finished_task_ids)
+            if unfinished_group_upstream:
+                yield self._failing_status(
+                    reason=f"Group upstream tasks not complete: {len(unfinished_group_upstream)}"
+                )
+                return
+            yield self._passing_status(reason="Task is a setup task and ancestors complete")
+            return
 
         if is_teardown_task:
             remaining_normal = normal_task_ids - finished_task_ids

@@ -50,7 +50,7 @@ class TestSetupTeardownDep:
         ti_teardown = [x for x in dr.task_instances if x.task_id == "teardown_task"][0]
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
         assert actual.passed is False
         assert actual.reason == "Not all setup tasks have finished: 1"
@@ -74,7 +74,7 @@ class TestSetupTeardownDep:
         ti_teardown = [x for x in dr.task_instances if x.task_id == "teardown_task"][0]
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
         assert actual.passed is True
@@ -101,7 +101,7 @@ class TestSetupTeardownDep:
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
         assert actual.passed is True
@@ -128,7 +128,7 @@ class TestSetupTeardownDep:
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
         assert actual.passed is True
@@ -154,7 +154,7 @@ class TestSetupTeardownDep:
         ti_teardown = [x for x in dr.task_instances if x.task_id == "teardown_task"][0]
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         # dep check should fail and state updated to upstream failed
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_normal, session, DepContext()))[0]
@@ -180,7 +180,7 @@ class TestSetupTeardownDep:
         ti_teardown = [x for x in dr.task_instances if x.task_id == "group1.teardown_task"][0]
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         ti_setup.state = TaskInstanceState.SUCCESS
         session.merge(ti_setup)
@@ -214,12 +214,12 @@ class TestSetupTeardownDep:
 
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_1, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
 
         # Setup 1 in outer group must be done before setup 2 in inner group can run
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_2, session, DepContext()))[0]
         assert actual.passed is False
-        assert actual.reason == "Not all upstream tasks have completed: 1"
+        assert actual.reason == "Setup tasks in parent group not complete: 1"
 
         # Complete setup 1 in outer group and also the normal task in outer group
         ti_setup_1.state = TaskInstanceState.SUCCESS
@@ -229,4 +229,4 @@ class TestSetupTeardownDep:
         session.commit()
         actual = list(SetupTeardownDep()._get_dep_statuses(ti_setup_2, session, DepContext()))[0]
         assert actual.passed is True
-        assert actual.reason == "Task is a setup task"
+        assert actual.reason == "Task is a setup task and ancestors complete"
