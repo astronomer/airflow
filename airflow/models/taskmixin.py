@@ -178,13 +178,17 @@ class DAGNode(DependencyMixin, metaclass=ABCMeta):
 
         task_list: list[Operator] = []
         for task_object in task_or_task_list:
-            task_object.update_relative(self, not upstream, edge_modifier=edge_modifier)
+            task_object.update_relative(other=self, upstream=not upstream, edge_modifier=edge_modifier)
             relatives = task_object.leaves if upstream else task_object.roots
             for task in relatives:
                 if not isinstance(task, (BaseOperator, MappedOperator)):
                     raise AirflowException(
                         f"Relationships can only be set between Operators; received {task.__class__.__name__}"
                     )
+                if self == task:
+                    continue
+                if self.task_id.startswith("setup") and task.task_id.startswith("teardown"):
+                    continue
                 task_list.append(task)
 
         # relationships can only be set if the tasks share a single DAG. Tasks
