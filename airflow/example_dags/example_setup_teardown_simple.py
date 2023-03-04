@@ -34,9 +34,6 @@ with DAG(
         task_id="root_setup", bash_command="sleep 5 && echo 'Hello from root_setup'"
     )
     normal = BashOperator(task_id="normal", bash_command="sleep 5 && echo 'I am just a normal task'")
-    root_teardown = BashOperator.as_teardown(
-        task_id="root_teardown", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
-    )
 
     with TaskGroup("section_1") as section_1:
         s_setup = BashOperator.as_setup(
@@ -49,6 +46,11 @@ with DAG(
 
         s_setup >> s_normal >> s_teardown
 
-    root_setup >> normal >> section_1 >> root_teardown
+    normal2 = BashOperator(task_id="normal2", bash_command="sleep 5 && echo 'I am just another normal task'")
+    root_teardown = BashOperator.as_teardown(
+        task_id="root_teardown", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
+    )
+
+    root_setup >> normal >> section_1 >> normal2 >> root_teardown
 
     print(root_setup.get_serialized_fields())
