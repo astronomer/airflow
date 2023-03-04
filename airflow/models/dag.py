@@ -1672,7 +1672,6 @@ class DAG(LoggingMixin):
 
         # Next, get any of them from our parent DAG (if there is one)
         if include_parentdag and self.parent_dag is not None:
-
             if visited_external_tis is None:
                 visited_external_tis = set()
 
@@ -1915,6 +1914,18 @@ class DAG(LoggingMixin):
     def leaves(self) -> list[Operator]:
         """Return nodes with no children. These are last to execute and are called leaves or leaf nodes."""
         return [task for task in self.tasks if not task.downstream_list]
+
+    @property
+    def non_teardown_leaves(self) -> list[Operator]:
+        """
+        Return nodes with no children (excluding teardown children).
+        Not necessailry the last to execute, but the last ones that matter for DagRun state purposes.
+        """
+
+        def remove_teardowns(tasks):
+            return [task for task in tasks if not task._is_teardown]
+
+        return [task for task in self.tasks if not remove_teardowns(task.downstream_list)]
 
     def topological_sort(self, include_subdag_tasks: bool = False):
         """
@@ -3581,7 +3592,6 @@ def dag(
 STATICA_HACK = True
 globals()["kcah_acitats"[::-1].upper()] = False
 if STATICA_HACK:  # pragma: no cover
-
     from airflow.models.serialized_dag import SerializedDagModel
 
     DagModel.serialized_dag = relationship(SerializedDagModel)

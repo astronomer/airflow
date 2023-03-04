@@ -686,6 +686,9 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     # Set to True for an operator instantiated by a mapped operator.
     __from_mapped = False
 
+    _is_setup = False
+    _is_teardown = False
+
     def __init__(
         self,
         task_id: str,
@@ -925,6 +928,11 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     @classmethod
     def as_teardown(cls, *args, **kwargs):
         from airflow.utils.setup_teardown import SetupTeardownContext
+
+        # TODO: what about args path?
+        if "trigger_rule" in kwargs:
+            raise AirflowException("Can't set trigger_rule in teardown tasks")
+        kwargs["trigger_rule"] = TriggerRule.ALL_DONE
 
         with SetupTeardownContext.teardown():
             return cls(*args, **kwargs)
@@ -1472,6 +1480,8 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
                     "template_fields",
                     "template_fields_renderers",
                     "params",
+                    "_is_setup",
+                    "_is_teardown",
                 }
             )
             DagContext.pop_context_managed_dag()
