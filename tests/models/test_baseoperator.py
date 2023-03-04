@@ -407,6 +407,40 @@ class TestBaseOperator:
         assert work2.get_flat_relative_ids(upstream=True) == {"setup1", "work1"}
         assert work2.get_flat_relative_ids(upstream=False) == {"work3"}
 
+    def test_get_flat_relative_ids_with_dag_arrows(self):
+        dag = DAG(dag_id="test_dag", start_date=datetime.now())
+        with dag:
+            dag_setup = BaseOperator.as_setup(task_id="dag_setup")
+            work1 = BaseOperator(task_id="work1")
+            work2 = BaseOperator(task_id="work2")
+            work3 = BaseOperator(task_id="work3")
+            work4 = BaseOperator(task_id="work4")
+            work1 >> work2
+            work3 >> work4
+            dag_teardown = BaseOperator.as_teardown(task_id="dag_teardown")
+            dag_setup >> dag
+            dag >> dag_teardown
+
+        assert work2.get_flat_relative_ids(upstream=True, setup_only=True) == {"dag_setup"}
+        assert work2.get_flat_relative_ids(upstream=True) == {"dag_setup", "work1"}
+        assert work2.get_flat_relative_ids(upstream=False) == {"dag_teardown"}
+        assert dag_teardown.get_direct_relative_ids(upstream=True) == {"work2", "work4"}
+        assert dag_teardown.get_flat_relative_ids(upstream=True) == {
+            "dag_setup",
+            "work1",
+            "work2",
+            "work3",
+            "work4",
+        }
+        assert dag_setup.get_direct_relative_ids(upstream=False) == {"work1", "work3"}
+        assert dag_setup.get_flat_relative_ids(upstream=False) == {
+            "work1",
+            "work2",
+            "work3",
+            "work4",
+            "dag_teardown",
+        }
+
     def test_get_flat_relative_ids_with_setup_and_groups(self):
         dag = DAG(dag_id="test_dag", start_date=datetime.now())
         with dag:

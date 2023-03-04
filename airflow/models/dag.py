@@ -81,6 +81,7 @@ from airflow.models.dagrun import DagRun
 from airflow.models.operator import Operator
 from airflow.models.param import DagParam, ParamsDict
 from airflow.models.taskinstance import Context, TaskInstance, TaskInstanceKey, clear_task_instances
+from airflow.models.taskmixin import DependencyMixin
 from airflow.secrets.local_filesystem import LocalFilesystemBackend
 from airflow.security import permissions
 from airflow.stats import Stats
@@ -107,6 +108,7 @@ if TYPE_CHECKING:
     from airflow.decorators import TaskDecoratorCollection
     from airflow.models.dagbag import DagBag
     from airflow.models.slamiss import SlaMiss
+    from airflow.utils.edgemodifier import EdgeModifier
     from airflow.utils.task_group import TaskGroup
 
 
@@ -245,7 +247,7 @@ def get_dataset_triggered_next_run_info(
 
 
 @functools.total_ordering
-class DAG(LoggingMixin):
+class DAG(LoggingMixin, DependencyMixin):
     """
     A dag (directed acyclic graph) is a collection of tasks with directional
     dependencies. A dag also has a schedule, a start date and an end date
@@ -610,6 +612,14 @@ class DAG(LoggingMixin):
 
     def update_relative(self, other, upstream, edge_modifier):
         self.task_group.update_relative(other, upstream, edge_modifier)
+
+    def set_downstream(
+        self,
+        task_or_task_list: DependencyMixin | Sequence[DependencyMixin],
+        edge_modifier: EdgeModifier | None = None,
+    ) -> None:
+        """Set a node (or nodes) to be directly downstream from the current node."""
+        self.task_group._set_relatives(task_or_task_list, upstream=False, edge_modifier=edge_modifier)
 
     def get_doc_md(self, doc_md: str | None) -> str | None:
         if doc_md is None:
