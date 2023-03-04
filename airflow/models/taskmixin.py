@@ -187,7 +187,7 @@ class DAGNode(DependencyMixin, metaclass=ABCMeta):
                     )
                 if self == task:
                     continue
-                if self.task_id.startswith("setup") and task.task_id.startswith("teardown"):
+                if self._is_setup and task._is_teardown:  # todo: make these public? change to single enum?
                     continue
                 task_list.append(task)
 

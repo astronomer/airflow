@@ -168,22 +168,16 @@ class AbstractOperator(Templater, DAGNode):
         if found_descendants is None:
             found_descendants = set()
 
-        def filter_setup(task_id):
-            """If setup_only true, return True only if task is setup task."""
-            if setup_only:
-                return "setup" in task_id
-            return True
-
-        task_ids_to_trace = [x for x in self.get_direct_relative_ids(upstream) if filter_setup(x)]
+        task_ids_to_trace = self.get_direct_relative_ids(upstream)
         while task_ids_to_trace:
             task_ids_to_trace_next: set[str] = set()
             for task_id in task_ids_to_trace:
                 if task_id in found_descendants:
                     continue
                 task = dag.task_dict[task_id]
-                task_ids_to_trace_next |= {
-                    x for x in task.get_direct_relative_ids(upstream) if filter_setup(x)
-                }
+                if setup_only and not task._is_setup:
+                    continue
+                task_ids_to_trace_next |= task.get_direct_relative_ids(upstream)
                 found_descendants.add(task_id)
             task_ids_to_trace = task_ids_to_trace_next
 
