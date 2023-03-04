@@ -73,3 +73,8 @@ with DAG(
 #  descendents of the parent group setup. different behavior.
 #
 # todo: when clearing tasks, we need to keep track of each teardown which is downstream of a setup
+# todo: add test for teardowns. should teardowns have a special trigger rule that means essentially,
+#  upstream setups are success and other upstream are done?  we either need to force users to ensure
+#  that setups also have a direct dep to the teardown, or we recurse the ancestors to find the nearest setups
+#  and check those.  or, we could optionally allow, in defining the teardown task, to specify which task it
+#  is a teardown *for*.
