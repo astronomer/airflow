@@ -576,7 +576,7 @@ class DagRun(Base, LoggingMixin):
                     if changed_by_upstream:  # Something changed, we need to recalculate!
                         unfinished = unfinished.recalculate()
 
-        leaf_task_ids = {t.task_id for t in dag.leaves}
+        leaf_task_ids = {t.task_id for t in dag.non_teardown_leaves}
         leaf_tis = [ti for ti in tis if ti.task_id in leaf_task_ids if ti.state != TaskInstanceState.REMOVED]
 
         # if all roots finished and at least one failed, the run failed
