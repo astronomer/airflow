@@ -396,6 +396,17 @@ class TestBaseOperator:
         assert test_task.email_on_retry is False
         assert test_task.email_on_failure is True
 
+    def test_get_flat_relative_ids_with_setup(self):
+        dag = DAG(dag_id="test_dag", start_date=datetime.now())
+        setup1 = BaseOperator.as_setup(task_id="setup1", dag=dag)
+        work1 = BaseOperator(task_id="work1", dag=dag)
+        work2 = BaseOperator(task_id="work2", dag=dag)
+        work3 = BaseOperator(task_id="work3", dag=dag)
+        setup1 >> work1 >> work2 >> work3
+        assert work2.get_flat_relative_ids(upstream=True, setup_only=True) == {"setup1"}
+        assert work2.get_flat_relative_ids(upstream=True) == {"setup1", "work1"}
+        assert work2.get_flat_relative_ids(upstream=False) == {"work3"}
+
     def test_cross_downstream(self):
         """Test if all dependencies between tasks are all set correctly."""
         dag = DAG(dag_id="test_dag", start_date=datetime.now())
