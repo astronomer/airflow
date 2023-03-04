@@ -72,3 +72,4 @@ with DAG(
 # todo: when clearing work task in group, then we clear setup in parent group but don't clear the other
 #  descendents of the parent group setup. different behavior.
 #
+# todo: when clearing tasks, we need to keep track of each teardown which is downstream of a setup
