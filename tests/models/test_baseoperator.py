@@ -407,6 +407,26 @@ class TestBaseOperator:
         assert work2.get_flat_relative_ids(upstream=True) == {"setup1", "work1"}
         assert work2.get_flat_relative_ids(upstream=False) == {"work3"}
 
+    def test_get_flat_relative_ids_with_setup_and_groups(self):
+        dag = DAG(dag_id="test_dag", start_date=datetime.now())
+        with dag:
+            dag_setup = BaseOperator.as_setup(task_id="dag_setup")
+            for group_name in ("g1", "g2"):
+                with TaskGroup(group_name) as tg:
+                    group_setup = BaseOperator.as_setup(task_id="group_setup")
+                    work1 = BaseOperator(task_id="work1")
+                    work2 = BaseOperator(task_id="work2")
+                    work3 = BaseOperator(task_id="work3")
+                    group_setup >> work1 >> work2 >> work3
+                dag_setup >> tg
+        g2_work2 = dag.task_dict["g2.work2"]
+        assert g2_work2.get_flat_relative_ids(upstream=True, setup_only=True) == {
+            "dag_setup",
+            "g2.group_setup",
+        }
+        assert g2_work2.get_flat_relative_ids(upstream=True) == {"dag_setup", "g2.group_setup", "g2.work1"}
+        assert g2_work2.get_flat_relative_ids(upstream=False) == {"g2.work3"}
+
     def test_cross_downstream(self):
         """Test if all dependencies between tasks are all set correctly."""
         dag = DAG(dag_id="test_dag", start_date=datetime.now())
