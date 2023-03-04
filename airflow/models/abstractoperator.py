@@ -175,10 +175,9 @@ class AbstractOperator(Templater, DAGNode):
                 if task_id in found_descendants:
                     continue
                 task = dag.task_dict[task_id]
-                if setup_only and not task._is_setup:
-                    continue
                 task_ids_to_trace_next |= task.get_direct_relative_ids(upstream)
-                found_descendants.add(task_id)
+                if not (setup_only and not task._is_setup):
+                    found_descendants.add(task_id)
             task_ids_to_trace = task_ids_to_trace_next
 
         return found_descendants
