@@ -20,9 +20,19 @@ from __future__ import annotations
 
 import pendulum
 
+from airflow.example_dags.example_skip_dag import EmptySkipOperator
+from airflow.models.baseoperator import BaseOperator
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.utils.task_group import TaskGroup
+
+
+class EmptyFailOperator(BaseOperator):
+    """Fails."""
+
+    def execute(self, context):
+        raise ValueError("i fail")
+
 
 with DAG(
     dag_id="example_setup_teardown_simple",
@@ -30,11 +40,26 @@ with DAG(
     catchup=False,
     tags=["example"],
 ) as dag:
-    root_setup = BashOperator.as_setup(
-        task_id="root_setup", bash_command="sleep 5 && echo 'Hello from root_setup'"
-    )
+    with TaskGroup("dag_setup") as dag_setup:
+        root_setup1 = BashOperator.as_setup(
+            task_id="root_setup_1", bash_command="sleep 5 && echo 'Hello from root_setup'"
+        )
+        root_setup2 = BashOperator.as_setup(
+            task_id="root_setup_2", bash_command="sleep 5 && echo 'Hello from root_setup'"
+        )
     normal = BashOperator(task_id="normal", bash_command="sleep 5 && echo 'I am just a normal task'")
-
+    skip_op = EmptySkipOperator(task_id="skip_op")
+    skip_normal_op = EmptySkipOperator(task_id="skip_normal_op")
+    skip_setup = BashOperator.as_setup(task_id="skip_setup", bash_command="sleep 5")
+    skip_teardown = BashOperator.as_teardown(task_id="skip_teardown", bash_command="sleep 5")
+    normal >> skip_op >> skip_setup >> skip_normal_op >> skip_teardown
+    fail_op = EmptyFailOperator(task_id="fail_op")
+    fail_normal_op = EmptyFailOperator(task_id="fail_normal_op")
+    fail_setup = BashOperator.as_setup(task_id="fail_setup", bash_command="sleep 5")
+    fail_teardown = BashOperator.as_teardown(task_id="fail_teardown", bash_command="sleep 5")
+    normal >> fail_op >> fail_setup >> fail_normal_op >> fail_teardown
+    # todo: currently we ignore setup >> teardown directly. but maybe should only do that when dag>>teardown
+    #  or perhaps throw error in that case. right now, setup >> teardown is silently ignored.
     with TaskGroup("section_1") as section_1:
         s_setup = BashOperator.as_setup(
             task_id="taskgroup_setup", bash_command="sleep 5 && echo 'Hello from taskgroup_setup'"
@@ -43,14 +68,22 @@ with DAG(
         s_teardown = BashOperator.as_teardown(
             task_id="taskgroup_teardown", bash_command="sleep 5 && echo 'Hello from taskgroup_teardown'"
         )
-
         s_setup >> s_normal >> s_teardown
-
+    list(section_1.get_leaves())
+    assert list(x.task_id for x in section_1.get_leaves()) == ["section_1.normal"]
     normal2 = BashOperator(task_id="normal2", bash_command="sleep 5 && echo 'I am just another normal task'")
-    root_teardown = BashOperator.as_teardown(
-        task_id="root_teardown", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
-    )
+    with TaskGroup("dag_teardown") as dag_teardown:
+        root_teardown1 = BashOperator.as_teardown(
+            task_id="root_teardown1", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
+        )
+        root_teardown2 = BashOperator.as_teardown(
+            task_id="root_teardown2", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
+        )
 
-    root_setup >> normal >> section_1 >> normal2 >> root_teardown
+    dag_setup >> normal >> section_1 >> normal2 >> dag_teardown
+    root_setup1 >> root_teardown1
+    root_setup2 >> root_teardown2
 
-    print(root_setup.get_serialized_fields())
+    print(normal2.upstream_list)
+    assert [x.task_id for x in normal2.upstream_list] == ["section_1.normal"]
+    print(root_setup1.get_serialized_fields())

@@ -461,6 +461,20 @@ class TestBaseOperator:
         assert g2_work2.get_flat_relative_ids(upstream=True) == {"dag_setup", "g2.group_setup", "g2.work1"}
         assert g2_work2.get_flat_relative_ids(upstream=False) == {"g2.work3"}
 
+    def test_get_flat_relative_ids_teardown_roots_ignored(self):
+        dag = DAG(dag_id="test_dag", start_date=datetime.now())
+        with dag:
+            dag_setup = BaseOperator.as_setup(task_id="dag_setup")
+            dag_teardown = BaseOperator.as_teardown(task_id="dag_teardown")
+            work1 = BaseOperator(task_id="work1")
+            work2 = BaseOperator(task_id="work2")
+            work3 = BaseOperator(task_id="work3")
+            [work1, work2] >> work3
+            dag_setup >> dag
+            dag >> dag_teardown
+        assert dag_setup.get_direct_relative_ids(upstream=False) == {"work1", "work2"}
+        assert dag_teardown.get_direct_relative_ids(upstream=True) == {"work3"}
+
     def test_cross_downstream(self):
         """Test if all dependencies between tasks are all set correctly."""
         dag = DAG(dag_id="test_dag", start_date=datetime.now())
