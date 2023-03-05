@@ -84,6 +84,7 @@ class DependencyMixin:
 
     def __rshift__(self, other: DependencyMixin | Sequence[DependencyMixin]):
         """Implements Task >> Task"""
+        # breakpoint()
         self.set_downstream(other)
         return other
 
@@ -187,8 +188,7 @@ class DAGNode(DependencyMixin, metaclass=ABCMeta):
                     )
                 if self == task:
                     continue
-                if self._is_setup and task._is_teardown:  # todo: make these public? change to single enum?
-                    continue
+                # todo: test: if setup >> teardown works, but, teardowns are not included in roots when arrowing.
                 task_list.append(task)
 
         # relationships can only be set if the tasks share a single DAG. Tasks
