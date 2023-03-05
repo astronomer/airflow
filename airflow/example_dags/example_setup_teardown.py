@@ -24,6 +24,36 @@ from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.utils.task_group import TaskGroup
 
+
+
+with DAG(dag_id="hi", start_date=pendulum.now()) as dag1:
+    with TaskGroup("a") as t:
+        w1 = BashOperator(task_id="w1", bash_command="echo 1")
+        w2 = BashOperator(task_id="w2", bash_command="echo 1")
+        w1 >> w2
+
+    w3 = BashOperator(task_id="w3", bash_command="echo 1")
+
+"""
+todo: docs:
+
+normal_task >> group
+
+in this case we ignore teardown roots.
+
+setup_task >> dag
+
+in this case we shouldn't ignore
+
+"""
+
+#
+w3 >> t
+# w3.roots
+#
+# w3.get_direct_relative_ids(upstream=False)
+w3.downstream_task_ids
+
 with DAG(
     dag_id="example_setup_teardown",
     start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
@@ -42,3 +72,11 @@ with DAG(
         )
 
     normal >> section_1
+
+import os
+os.environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"]="mysql+mysqldb://root@localhost/testing"
+from airflow.settings import Session
+session = Session()
+from airflow.models.taskinstance import TaskInstance
+tis = list(session.query(TaskInstance).all())
+[x for x in tis if x.is_setup]

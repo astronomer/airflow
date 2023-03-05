@@ -40,7 +40,7 @@ with DAG(
     catchup=False,
     tags=["example"],
 ) as dag:
-    with TaskGroup("dag_setup") as dag_setup:
+    with TaskGroup("dag_setup", is_setup=True) as dag_setup:
         root_setup1 = BashOperator.as_setup(
             task_id="root_setup_1", bash_command="sleep 5 && echo 'Hello from root_setup'"
         )
@@ -53,11 +53,13 @@ with DAG(
     skip_setup = BashOperator.as_setup(task_id="skip_setup", bash_command="sleep 5")
     skip_teardown = BashOperator.as_teardown(task_id="skip_teardown", bash_command="sleep 5")
     normal >> skip_op >> skip_setup >> skip_normal_op >> skip_teardown
+    skip_setup >> skip_teardown
     fail_op = EmptyFailOperator(task_id="fail_op")
     fail_normal_op = EmptyFailOperator(task_id="fail_normal_op")
     fail_setup = BashOperator.as_setup(task_id="fail_setup", bash_command="sleep 5")
     fail_teardown = BashOperator.as_teardown(task_id="fail_teardown", bash_command="sleep 5")
     normal >> fail_op >> fail_setup >> fail_normal_op >> fail_teardown
+    fail_setup >> fail_teardown
     # todo: currently we ignore setup >> teardown directly. but maybe should only do that when dag>>teardown
     #  or perhaps throw error in that case. right now, setup >> teardown is silently ignored.
     with TaskGroup("section_1") as section_1:
@@ -72,7 +74,7 @@ with DAG(
     list(section_1.get_leaves())
     assert list(x.task_id for x in section_1.get_leaves()) == ["section_1.normal"]
     normal2 = BashOperator(task_id="normal2", bash_command="sleep 5 && echo 'I am just another normal task'")
-    with TaskGroup("dag_teardown") as dag_teardown:
+    with TaskGroup("dag_teardown", is_teardown=True) as dag_teardown:
         root_teardown1 = BashOperator.as_teardown(
             task_id="root_teardown1", bash_command="sleep 5 && echo 'Goodbye from root_teardown'"
         )
@@ -83,7 +85,7 @@ with DAG(
     dag_setup >> normal >> section_1 >> normal2 >> dag_teardown
     root_setup1 >> root_teardown1
     root_setup2 >> root_teardown2
-
-    print(normal2.upstream_list)
+    root_setup1.downstream_list
+    print(normal2.downstream_list)
     assert [x.task_id for x in normal2.upstream_list] == ["section_1.normal"]
     print(root_setup1.get_serialized_fields())

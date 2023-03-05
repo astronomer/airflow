@@ -55,7 +55,7 @@ from sqlalchemy import (
     func,
     inspect,
     or_,
-    text,
+    text, Boolean,
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.mutable import MutableDict
@@ -416,6 +416,8 @@ class TaskInstance(Base, LoggingMixin):
     # Usually used when resuming from DEFERRED.
     next_method = Column(String(1000))
     next_kwargs = Column(MutableDict.as_mutable(ExtendedJSON))
+
+    is_setup = Column(Boolean)
 
     # If adding new fields here then remember to add them to
     # refresh_from_db() or they won't display in the UI correctly
@@ -846,6 +848,7 @@ class TaskInstance(Base, LoggingMixin):
             self.trigger_id = ti.trigger_id
             self.next_method = ti.next_method
             self.next_kwargs = ti.next_kwargs
+            self.is_setup = ti.is_setup
         else:
             self.state = None
 
@@ -866,6 +869,7 @@ class TaskInstance(Base, LoggingMixin):
         # value that needs to be stored in the db.
         self.executor_config = task.executor_config
         self.operator = task.task_type
+        self.is_setup = task._is_setup
 
     @provide_session
     def clear_xcom_data(self, session: Session = NEW_SESSION) -> None:

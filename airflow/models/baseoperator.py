@@ -932,7 +932,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         # TODO: what about args path?
         if "trigger_rule" in kwargs:
             raise AirflowException("Can't set trigger_rule in teardown tasks")
-        kwargs["trigger_rule"] = TriggerRule.ALL_DONE
+        kwargs["trigger_rule"] = TriggerRule.ALL_DONE_SETUP_SUCCESS
 
         with SetupTeardownContext.teardown():
             return cls(*args, **kwargs)
