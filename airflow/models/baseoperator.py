@@ -940,6 +940,10 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
 
         on_failure_fail_dagrun = kwargs.pop("on_failure_fail_dagrun", False)
         with SetupTeardownContext.teardown(on_failure_fail_dagrun=on_failure_fail_dagrun):
+            # TODO: what about args path?
+            if "trigger_rule" in kwargs:
+                raise AirflowException("Can't set trigger_rule in teardown tasks")
+            kwargs["trigger_rule"] = TriggerRule.ALL_DONE_SETUP_SUCCESS
             return cls(*args, **kwargs)
 
     def __eq__(self, other):

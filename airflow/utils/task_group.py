@@ -92,9 +92,14 @@ class TaskGroup(DAGNode):
         ui_color: str = "CornflowerBlue",
         ui_fgcolor: str = "#000",
         add_suffix_on_collision: bool = False,
+        is_setup:bool = False,
+        is_teardown:bool = False,
+
     ):
         from airflow.models.dag import DagContext
 
+        self.is_setup = is_setup
+        self.is_teardown = is_teardown
         self.prefix_group_id = prefix_group_id
         self.default_args = copy.deepcopy(default_args or {})
 
@@ -357,15 +362,21 @@ class TaskGroup(DAGNode):
         """
 
         def recurse_for_first_non_teardown(task):
-            for upstream_task in task.upstream_list:
-                if upstream_task._is_teardown:
-                    yield from recurse_for_first_non_teardown(upstream_task)
+            for down_task in task.downstream_list:
+                if down_task._is_teardown:
+                    yield from recurse_for_first_non_teardown(down_task)
                 else:
-                    yield upstream_task
+                    yield down_task
 
         for task in self:
             if not any(self.has_task(parent) for parent in task.get_direct_relatives(upstream=True)):
-                yield from recurse_for_first_non_teardown(task)
+                if self.is_teardown:
+                    yield task
+                    continue
+                if not task._is_teardown:
+                    yield task
+                else:
+                    yield from recurse_for_first_non_teardown(task)
 
     def get_leaves(self) -> Generator[BaseOperator, None, None]:
         """
@@ -382,7 +393,13 @@ class TaskGroup(DAGNode):
 
         for task in self:
             if not any(self.has_task(child) for child in task.get_direct_relatives(upstream=False)):
-                yield from recurse_for_first_non_setup(task)
+                if self.is_setup:
+                    yield task
+                    continue
+                if not (task._is_teardown or task._is_setup):
+                    yield task
+                else:
+                    yield from recurse_for_first_non_setup(task)
 
     def child_id(self, label):
         """
