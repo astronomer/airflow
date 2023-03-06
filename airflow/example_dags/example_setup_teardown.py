@@ -72,11 +72,11 @@ with DAG(
         )
 
     normal >> section_1
-
-import os
-os.environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"]="mysql+mysqldb://root@localhost/testing"
-from airflow.settings import Session
-session = Session()
-from airflow.models.taskinstance import TaskInstance
-tis = list(session.query(TaskInstance).all())
-[x for x in tis if x.is_setup]
+#
+# import os
+# os.environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"]="mysql+mysqldb://root@localhost/testing"
+# from airflow.settings import Session
+# session = Session()
+# from airflow.models.taskinstance import TaskInstance
+# tis = list(session.query(TaskInstance).all())
+# [x for x in tis if x.is_setup]

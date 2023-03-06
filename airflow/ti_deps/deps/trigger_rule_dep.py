@@ -55,7 +55,7 @@ class _UpstreamTIStates(NamedTuple):
     skipped_setup: int
 
     @classmethod
-    def calculate(cls, finished_upstreams: Iterator[TaskInstance]) -> _UpstreamTIStates:
+    def calculate(cls, finished_upstreams: Iterator[TaskInstance], emit_warnings) -> _UpstreamTIStates:
         """Calculate states for a task instance.
 
         :param ti: the ti that we want to calculate deps for
@@ -66,9 +66,11 @@ class _UpstreamTIStates(NamedTuple):
         for ti in finished_upstreams:
             curr_state = {ti.state: 1}
             counter.update(curr_state)
-            if ti.is_setup:
+            if "setup" in ti.task_id:  # ti.is_setup:
                 setup_counter.update(curr_state)
-        logging.warning(setup_counter)
+        if emit_warnings:
+            logging.warning("counter=%s", counter)
+            logging.warning("setup_counter=%s", setup_counter)
         return _UpstreamTIStates(
             success=counter.get(TaskInstanceState.SUCCESS, 0),
             skipped=counter.get(TaskInstanceState.SKIPPED, 0),
@@ -125,6 +127,8 @@ class TriggerRuleDep(BaseTIDep):
         from airflow.models.taskinstance import TaskInstance
 
         task = ti.task
+        this_task_id = task.task_id
+        emit_warnings = this_task_id == "section_1.taskgroup_teardown"
         upstream_tasks = {t.task_id: t for t in task.upstream_list}
         trigger_rule = task.trigger_rule
 
@@ -184,8 +188,10 @@ class TriggerRuleDep(BaseTIDep):
             for finished_ti in dep_context.ensure_finished_tis(ti.get_dagrun(session), session)
             if _is_relevant_upstream(finished_ti)
         )
-        logging.warning("%s: %s", ti.task_id, finished_upstream_tis)
-        upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis)
+        finished_upstream_tis = list(finished_upstream_tis)
+        if emit_warnings:
+            logging.warning("ti=%s finished=%s", ti.task_id, finished_upstream_tis)
+        upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis, emit_warnings)
 
         success = upstream_states.success
         skipped = upstream_states.skipped
@@ -229,7 +235,7 @@ class TriggerRuleDep(BaseTIDep):
         # "simple" tasks (no task or task group mapping involved).
         if not any(needs_expansion(t) for t in upstream_tasks.values()):
             upstream = len(upstream_tasks)
-            upstream_setup = len([x for x in upstream_tasks.values() if x._is_setup])
+            upstream_setup = len([x for x in upstream_tasks.values() if "setup" in x.task_id])
         else:
             upstream = (
                 session.query(func.count())
@@ -285,9 +291,24 @@ class TriggerRuleDep(BaseTIDep):
             elif trigger_rule == TR.ALL_DONE_SETUP_SUCCESS:
                 if upstream_done and skipped_setup >= upstream_setup:
                     new_state = TaskInstanceState.SKIPPED
-                elif upstream_done and upstream_setup >= success_setup:
+                    if emit_warnings:
+                        logging.warning(
+                            "ti=%s skipped_setup >= upstream_setup (%s >= %s), marking skipped",
+                            ti.task_id,
+                            skipped_setup,
+                            upstream_setup,
+                        )
+                elif upstream_done and upstream_setup > success_setup:
                     new_state = TaskInstanceState.UPSTREAM_FAILED
-
+                    if emit_warnings:
+                        logging.warning(
+                            "ti=%s upstream_setup >= success_setup (%s >= %s), marking failed",
+                            ti.task_id,
+                            upstream_setup,
+                            success_setup,
+                        )
+        if new_state == TaskInstanceState.SKIPPED:
+            logging.warning("marking %s as skipped", this_task_id)
         if new_state is not None:
             if new_state == TaskInstanceState.SKIPPED and dep_context.wait_for_past_depends_before_skipping:
                 past_depends_met = ti.xcom_pull(
@@ -415,8 +436,9 @@ class TriggerRuleDep(BaseTIDep):
                     )
                 )
         elif trigger_rule == TR.ALL_DONE_SETUP_SUCCESS:
+            status = None
             if not upstream_done:
-                yield self._failing_status(
+                status = self._failing_status(
                     reason=(
                         f"Task's trigger rule '{trigger_rule}' requires all upstream tasks to have "
                         f"completed, but found {upstream_done} task(s) that were not done. "
@@ -424,8 +446,8 @@ class TriggerRuleDep(BaseTIDep):
                         f"upstream_task_ids={task.upstream_task_ids}"
                     )
                 )
-            elif upstream_setup is None:
-                yield self._failing_status(
+            elif upstream_setup is None:  # for now, None only happens in mapped case
+                status = self._failing_status(
                     reason=(
                         f"Task's trigger rule '{trigger_rule}' cannot have mapped tasks as upstream. "
                         f"upstream_states={upstream_states}, "
@@ -433,7 +455,7 @@ class TriggerRuleDep(BaseTIDep):
                     )
                 )
             elif not success_setup >= upstream_setup:
-                yield self._failing_status(
+                status = self._failing_status(
                     reason=(
                         f"Task's trigger rule '{trigger_rule}' requires all upstream setup tasks be "
                         f"successful, but found {upstream_setup - success_setup} task(s) that were not. "
@@ -441,5 +463,12 @@ class TriggerRuleDep(BaseTIDep):
                         f"upstream_task_ids={task.upstream_task_ids}"
                     )
                 )
+            if status:
+                if emit_warnings:
+                    logging.warning("ti=%s status=%s", ti.task_id, status)
+                yield status
+            else:
+                if emit_warnings:
+                    logging.warning("ti=%s no failing status", ti.task_id)
         else:
             yield self._failing_status(reason=f"No strategy to evaluate trigger rule '{trigger_rule}'.")
