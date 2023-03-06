@@ -365,22 +365,24 @@ class TaskGroup(DAGNode):
         dependencies within the TaskGroup.
         """
 
-        def recurse_for_first_non_teardown(task):
+        def recurse_for_first_non_teardown(group, task):
             for down_task in task.downstream_list:
+                if not group.has_task(down_task):
+                    continue
                 if down_task._is_teardown:
-                    yield from recurse_for_first_non_teardown(down_task)
+                    yield from recurse_for_first_non_teardown(group, down_task)
                 else:
                     yield down_task
 
         for task in self:
-            if not any(self.has_task(parent) for parent in task.get_direct_relatives(upstream=True)):
+            if not any(self.has_task(x) for x in task.get_direct_relatives(upstream=True)):
                 if self.is_teardown:
                     yield task
                     continue
                 if not task._is_teardown:
                     yield task
                 else:
-                    yield from recurse_for_first_non_teardown(task)
+                    yield from recurse_for_first_non_teardown(self, task)
 
     def get_leaves(self) -> Generator[BaseOperator, None, None]:
         """
@@ -388,22 +390,24 @@ class TaskGroup(DAGNode):
         dependencies within the TaskGroup
         """
 
-        def recurse_for_first_non_setup(task):
+        def recurse_for_first_non_setup(group, task):
             for upstream_task in task.upstream_list:
+                if not group.has_task(upstream_task):
+                    continue
                 if upstream_task._is_setup or upstream_task._is_teardown:
-                    yield from recurse_for_first_non_setup(upstream_task)
+                    yield from recurse_for_first_non_setup(group, upstream_task)
                 else:
                     yield upstream_task
 
         for task in self:
-            if not any(self.has_task(child) for child in task.get_direct_relatives(upstream=False)):
+            if not any(self.has_task(x) for x in task.get_direct_relatives(upstream=False)):
                 if self.is_setup:
                     yield task
                     continue
                 if not (task._is_teardown or task._is_setup):
                     yield task
                 else:
-                    yield from recurse_for_first_non_setup(task)
+                    yield from recurse_for_first_non_setup(self, task)
 
     def child_id(self, label):
         """

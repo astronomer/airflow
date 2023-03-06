@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from json import JSONDecodeError
 from operator import itemgetter
+from pprint import pprint
 from typing import Any, Callable, Collection, Iterator, Mapping, MutableMapping, Sequence
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -2947,7 +2948,7 @@ class Airflow(AirflowBaseView):
             external_log_name = None
 
         state_priority = ["no_status" if p is None else p for p in wwwutils.priority]
-
+        pprint(edges)
         return self.render_template(
             "airflow/graph.html",
             dag=dag,
