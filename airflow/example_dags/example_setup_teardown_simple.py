@@ -48,20 +48,28 @@ with DAG(
             task_id="root_setup_2", bash_command="sleep 5 && echo 'Hello from root_setup'"
         )
     normal = BashOperator(task_id="normal", bash_command="sleep 5 && echo 'I am just a normal task'")
-    skip_op = EmptySkipOperator(task_id="skip_op")
-    skip_normal_op = EmptySkipOperator(task_id="skip_normal_op")
-    skip_setup = BashOperator.as_setup(task_id="skip_setup", bash_command="sleep 5")
-    skip_teardown = BashOperator.as_teardown(task_id="skip_teardown", bash_command="sleep 5")
+
+    skip_op = EmptySkipOperator(task_id="op.skip")
+    skip_normal_op = EmptySkipOperator(task_id="normal_op.skip")
+    skip_setup = BashOperator.as_setup(task_id="setup.skip", bash_command="sleep 5")
+    skip_teardown = BashOperator.as_teardown(task_id="teardown.skip", bash_command="sleep 5")
     normal >> skip_op >> skip_setup >> skip_normal_op >> skip_teardown
     skip_setup >> skip_teardown
-    fail_op = EmptyFailOperator(task_id="fail_op")
-    fail_normal_op = EmptyFailOperator(task_id="fail_normal_op")
-    fail_setup = BashOperator.as_setup(task_id="fail_setup", bash_command="sleep 5")
-    fail_teardown = BashOperator.as_teardown(task_id="fail_teardown", bash_command="sleep 5")
+
+    op_skip_after = BashOperator(task_id="op.skip_after", bash_command="echo 1")
+    normal_op_skip_after = EmptySkipOperator(task_id="normal_op.skip_after")
+    setup_skip_after = BashOperator.as_setup(task_id="setup.skip_after", bash_command="sleep 5")
+    teardown_skip_after = BashOperator.as_teardown(task_id="teardown.skip_after", bash_command="sleep 5")
+    normal >> op_skip_after >> setup_skip_after >> normal_op_skip_after >> teardown_skip_after
+    setup_skip_after >> teardown_skip_after
+
+    fail_op = EmptyFailOperator(task_id="op.fail")
+    fail_normal_op = EmptyFailOperator(task_id="normal_op.fail")
+    fail_setup = BashOperator.as_setup(task_id="setup.fail", bash_command="sleep 5")
+    fail_teardown = BashOperator.as_teardown(task_id="teardown.fail", bash_command="sleep 5")
     normal >> fail_op >> fail_setup >> fail_normal_op >> fail_teardown
     fail_setup >> fail_teardown
-    # todo: currently we ignore setup >> teardown directly. but maybe should only do that when dag>>teardown
-    #  or perhaps throw error in that case. right now, setup >> teardown is silently ignored.
+
     with TaskGroup("section_1") as section_1:
         s_setup = BashOperator.as_setup(
             task_id="taskgroup_setup", bash_command="sleep 5 && echo 'Hello from taskgroup_setup'"
@@ -73,7 +81,7 @@ with DAG(
         )
 
         s_setup >> s_normal >> s_teardown
-        # s_setup >> s_teardown
+        s_setup >> s_teardown
 
     list(section_1.get_leaves())
     assert list(x.task_id for x in section_1.get_leaves()) == ["section_1.normal"]
