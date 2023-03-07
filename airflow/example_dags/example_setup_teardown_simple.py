@@ -24,10 +24,7 @@ from airflow.example_dags.example_skip_dag import EmptySkipOperator
 from airflow.models.baseoperator import BaseOperator
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
-from airflow.serialization.serialized_objects import BaseSerialization, SerializedDAG
-from airflow.utils.dag_edges import dag_edges
-from airflow.utils.task_group import TaskGroup, task_group_to_dict
-from airflow.utils.trigger_rule import TriggerRule
+from airflow.utils.task_group import TaskGroup
 
 
 class EmptyFailOperator(BaseOperator):
@@ -76,7 +73,7 @@ with DAG(
         )
 
         s_setup >> s_normal >> s_teardown
-        s_setup >> s_teardown
+        # s_setup >> s_teardown
 
     list(section_1.get_leaves())
     assert list(x.task_id for x in section_1.get_leaves()) == ["section_1.normal"]
