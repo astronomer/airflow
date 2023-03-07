@@ -65,7 +65,7 @@ class _UpstreamTIStates(NamedTuple):
         for ti in finished_upstreams:
             curr_state = {ti.state: 1}
             counter.update(curr_state)
-            if "setup" in ti.task_id:  # ti.is_setup:
+            if ti.is_setup:
                 setup_counter.update(curr_state)
         if emit_warnings:
             logging.warning("counter=%s", counter)
@@ -234,7 +234,7 @@ class TriggerRuleDep(BaseTIDep):
         # "simple" tasks (no task or task group mapping involved).
         if not any(needs_expansion(t) for t in upstream_tasks.values()):
             upstream = len(upstream_tasks)
-            upstream_setup = len([x for x in upstream_tasks.values() if "setup" in x.task_id])
+            upstream_setup = len([x for x in upstream_tasks.values() if x._is_setup])
         else:
             upstream = (
                 session.query(func.count())
