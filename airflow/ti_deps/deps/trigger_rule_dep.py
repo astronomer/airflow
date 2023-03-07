@@ -67,9 +67,6 @@ class _UpstreamTIStates(NamedTuple):
             counter.update(curr_state)
             if ti.is_setup:
                 setup_counter.update(curr_state)
-        if emit_warnings:
-            logging.warning("counter=%s", counter)
-            logging.warning("setup_counter=%s", setup_counter)
         return _UpstreamTIStates(
             success=counter.get(TaskInstanceState.SUCCESS, 0),
             skipped=counter.get(TaskInstanceState.SKIPPED, 0),
