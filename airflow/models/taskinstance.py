@@ -41,6 +41,7 @@ import lazy_object_proxy
 import pendulum
 from jinja2 import TemplateAssertionError, UndefinedError
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -55,7 +56,7 @@ from sqlalchemy import (
     func,
     inspect,
     or_,
-    text, Boolean,
+    text,
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.mutable import MutableDict
@@ -561,6 +562,7 @@ class TaskInstance(Base, LoggingMixin):
             "executor_config": task.executor_config,
             "operator": task.task_type,
             "map_index": map_index,
+            "is_setup": task._is_setup,
         }
 
     @reconstructor
