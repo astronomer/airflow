@@ -85,6 +85,10 @@ with DAG(
 
     normal2 = BashOperator(task_id="normal2", bash_command="sleep 5 && echo 'I am just another normal task'")
     with TaskGroup("dag_teardown", is_teardown=True) as dag_teardown:
+        # todo; if taskgroup is marked as teardown, all of its tasks must be teardown
+        #     and you can't specify them as such (?)
+        # todo: we actually need to be able to mark groups as teardown or setup?????
+        #    authoring convenience but is that enough?
         root_teardown1 = BashOperator.as_teardown(
             task_id="root_teardown1",
             bash_command="sleep 5 && echo 'Goodbye from root_teardown'",
@@ -95,5 +99,9 @@ with DAG(
         )
 
     dag_setup >> normal >> section_1 >> normal2 >> dag_teardown
+    # dag_teardown >> normal_abc  # todo: when all leaves are teardown
     root_setup1 >> root_teardown1
     root_setup2 >> root_teardown2
+
+# todo: can we chop is_setup from task_instance table
+# todo: do we still need is_setup / is_teardown for task groups
