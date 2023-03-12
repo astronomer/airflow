@@ -97,8 +97,8 @@ class TaskGroup(DAGNode):
     ):
         from airflow.models.dag import DagContext
 
-        self.is_setup = is_setup
-        self.is_teardown = is_teardown
+        self.is_setup = SetupTeardownContext.is_setup or is_setup
+        self.is_teardown = SetupTeardownContext.is_teardown or is_teardown
         self.prefix_group_id = prefix_group_id
         self.default_args = copy.deepcopy(default_args or {})
 
