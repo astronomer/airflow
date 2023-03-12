@@ -69,7 +69,9 @@ from airflow.utils import timezone
 from airflow.utils.context import KNOWN_CONTEXT_KEYS, Context
 from airflow.utils.decorators import remove_task_decorator
 from airflow.utils.helpers import prevent_duplicates
+from airflow.utils.setup_teardown import SetupTeardownContext
 from airflow.utils.task_group import TaskGroup, TaskGroupContext
+from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.types import NOTSET
 
 
@@ -334,6 +336,11 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         self.kwargs.setdefault("task_id", self.function.__name__)
 
     def __call__(self, *args: FParams.args, **kwargs: FParams.kwargs) -> XComArg:
+        if SetupTeardownContext.is_teardown:
+            if "trigger_rule" in self.kwargs:
+                raise AirflowException("Can't set trigger_rule in teardown tasks")
+            self.kwargs["trigger_rule"] = TriggerRule.ALL_DONE_SETUP_SUCCESS
+
         op = self.operator_class(
             python_callable=self.function,
             op_args=args,
