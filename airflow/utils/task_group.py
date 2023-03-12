@@ -92,9 +92,8 @@ class TaskGroup(DAGNode):
         ui_color: str = "CornflowerBlue",
         ui_fgcolor: str = "#000",
         add_suffix_on_collision: bool = False,
-        is_setup:bool = False,
-        is_teardown:bool = False,
-
+        is_setup: bool = False,
+        is_teardown: bool = False,
     ):
         from airflow.models.dag import DagContext
 
@@ -558,6 +557,7 @@ class TaskGroup(DAGNode):
     def __repr__(self):
         name = self.group_id or f"<root group for dag_id '{self.dag_id}'>"
         return f"{self.__class__.__name__}({name})"
+
 
 class MappedTaskGroup(TaskGroup):
     """A mapped task group.
