@@ -59,12 +59,47 @@ with DAG(
 
         @task
         def hello():
+            raise ValueError("fail!")
             print("I say hello")
 
-        my_setup()
-        hello()
-        my_teardown()
+        my_setup_task = my_setup()
+        my_teardown_task = my_teardown()
+        my_setup_task >> hello() >> my_teardown_task
+        my_setup_task >> my_teardown_task
 
-    root_setup()
-    normal() >> section_1()
-    root_teardown()
+    # root_setup()
+    # normal() >> section_1()
+    # root_teardown()
+
+    @task_group
+    def section_2():
+        # You can also mark task groups as setup and teardown
+        # and all tasks in them will be setup/teardown tasks
+        @setup
+        @task_group
+        def my_setup_taskgroup():
+            @task
+            def first_setup():
+                print("I set some stuff up")
+
+            @task
+            def second_setup():
+                print("I set some other stuff up")
+
+            first_setup()
+            second_setup()
+
+        @task
+        def hello():
+            print("I say hello")
+
+        my_setup_taskgroup() >> hello()
+
+    root_setup_task = root_setup()
+    # breakpoint()
+    normal() >> section_1() >> section_2()
+    root_setup_task >> dag
+    root_teardown_task = root_teardown()
+    root_setup_task >> root_teardown_task
+
+    dag >> root_teardown_task
