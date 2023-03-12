@@ -59,11 +59,13 @@ with DAG(
 
         @task
         def hello():
+            raise ValueError("fail!")
             print("I say hello")
 
-        my_setup()
-        hello()
-        my_teardown()
+        my_setup_task = my_setup()
+        my_teardown_task = my_teardown()
+        my_setup_task >> hello() >> my_teardown_task
+        my_setup_task >> my_teardown_task
 
     @task_group
     def section_2():
@@ -87,9 +89,13 @@ with DAG(
         def hello():
             print("I say hello")
 
-        my_setup_taskgroup()
-        hello()
+        my_setup_taskgroup() >> hello()
 
-    root_setup()
+    root_setup_task = root_setup()
+    # breakpoint()
     normal() >> section_1() >> section_2()
-    root_teardown()
+    root_setup_task >> dag
+    root_teardown_task = root_teardown()
+    root_setup_task >> root_teardown_task
+
+    dag >> root_teardown_task
