@@ -555,6 +555,9 @@ class TaskGroup(DAGNode):
                         f"Encountered a DAGNode that is not a TaskGroup or an AbstractOperator: {type(child)}"
                     )
 
+    def __repr__(self):
+        name = self.group_id or f"<root group for dag_id '{self.dag_id}'>"
+        return f"{self.__class__.__name__}({name})"
 
 class MappedTaskGroup(TaskGroup):
     """A mapped task group.
