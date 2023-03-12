@@ -274,6 +274,7 @@ class MappedOperator(AbstractOperator):
     end_date: pendulum.DateTime | None
     upstream_task_ids: set[str] = attr.ib(factory=set, init=False)
     downstream_task_ids: set[str] = attr.ib(factory=set, init=False)
+    _is_setup: set[str] = attr.ib(default=False, init=False)
 
     _disallow_kwargs_override: bool
     """Whether execution fails if ``expand_input`` has duplicates to ``partial_kwargs``.
