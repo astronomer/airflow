@@ -26,6 +26,7 @@ from google.cloud.bigtable import enums
 from google.cloud.bigtable.column_family import GarbageCollectionRule
 
 from airflow.exceptions import AirflowException
+from airflow.models import BaseOperator
 from airflow.providers.google.cloud.hooks.bigtable import BigtableHook
 from airflow.providers.google.cloud.links.bigtable import (
     BigtableClusterLink,
@@ -588,3 +589,147 @@ class BigtableUpdateClusterOperator(GoogleCloudBaseOperator, BigtableValidationM
         except google.api_core.exceptions.GoogleAPICallError as e:
             self.log.error("An error occurred. Exiting.")
             raise e
+
+
+class BigtableCreateClusterOperator(BaseOperator):
+    """
+    Create a Cloud Bigtable cluster.
+
+    For more details about creating a Cloud Bigtable cluster,
+    have a look at the reference:
+    https://cloud.google.com/python/docs/reference/bigtable/latest/cluster
+
+    .. seealso::
+        For more information on how to use this operator, take a look at the guide:
+        :ref:`howto/operator:BigtableCreateClusterOperator`
+
+    :param cluster_id: The ID of the Cloud Bigtable cluster to update.
+    :param instance_id: The ID of the Cloud Bigtable instance.
+    :param project_id: Optional, the ID of the Google Cloud project.
+    :param location: The location where this cluster’s nodes and storage reside.
+    :param nodes: The desired number of nodes for the Cloud Bigtable cluster.
+    :param min_nodes: If specified, this configuration takes precedence over `nodes`.
+        If specified, then `max_nodes` and `cpu_utilization_percent` must be specified too.
+    :param max_nodes: If specified, this configuration takes precedence over `nodes`.
+        If specified, then `min_nodes` and `cpu_utilization_percent` must be specified too.
+    :param cpu_utilization_percent: The CPU utilization target for the cluster’s workload for autoscaling.
+    :param storage_type: The type of storage. possible value
+        enums.StorageType.UNSPECIFIED | enums.StorageType.SSD | enums.StorageType.HDD
+    :param gcp_conn_id: The connection ID to use to connect to Google Cloud.
+    :param impersonation_chain: Optional service account to impersonate using short-term
+        credentials, or chained list of accounts required to get the access_token
+        of the last account in the list, which will be impersonated in the request.
+        If set as a string, the account must grant the originating account
+        the Service Account Token Creator IAM role.
+        If set as a sequence, the identities from the list must grant
+        Service Account Token Creator IAM role to the directly preceding identity, with first
+        account from the list granting this role to the originating account (templated).
+    """
+    def __init__(
+        self,
+        cluster_id: str,
+        instance_id,
+        project_id: str | None = None,
+        location: str | None = None,
+        nodes: int | None = None,
+        min_nodes: int | None = None,
+        max_nodes: int | None = None,
+        cpu_utilization_percent: int | None = None,
+        storage_type: str = enums.StorageType.UNSPECIFIED,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
+    ):
+        self.cluster_id = cluster_id
+        self.instance_id = instance_id
+        self.project_id = project_id
+        self.location = location
+        self.serve_nodes = nodes
+        self.min_serve_nodes = min_nodes
+        self.max_serve_nodes = max_nodes
+        self.cpu_utilization_percent = cpu_utilization_percent
+        self.storage_type = storage_type
+        self.gcp_conn_id = gcp_conn_id
+        self.impersonation_chain = impersonation_chain
+        self._validate()
+        super().__init__(**kwargs)
+
+    def _validate(self):
+        if self.cpu_utilization_percent is not None:
+            if self.max_serve_nodes is None:
+                raise ValueError("max_serve_nodes can't be None since cpu_utilization_percent is set.")
+            if self.min_serve_nodes is None:
+                raise ValueError("min_serve_nodes can't be None since cpu_utilization_percent is set.")
+        if self.cpu_utilization_percent is None and self.serve_nodes is None:
+            raise ValueError("Either cpu_utilization_percent or serve_nodes required.")
+
+    def execute(self, context: Context) -> None:
+        hook = BigtableHook(
+            gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
+        )
+
+        instance = hook.get_instance(instance_id=self.instance_id, project_id=self.project_id)
+        cluster = instance.cluster(
+            self.cluster_id,
+            location_id=self.location,
+            serve_nodes=self.serve_nodes,
+            min_serve_nodes=self.min_serve_nodes,
+            max_serve_nodes=self.max_serve_nodes,
+            cpu_utilization_percent=self.cpu_utilization_percent,
+            storage_type=self.storage_type
+        )
+        operation = instance.create(clusters=[cluster])
+        operation.result()
+
+
+class BigtableDeleteClusterOperator(BaseOperator):
+    """
+    Delete a Cloud Bigtable cluster.
+
+    For more details about deleting a Cloud Bigtable cluster,
+    have a look at the reference:
+    https://cloud.google.com/python/docs/reference/bigtable/latest/cluster
+
+    .. seealso::
+        For more information on how to use this operator, take a look at the guide:
+        :ref:`howto/operator:BigtableDeleteClusterOperator`
+
+    :param cluster_id: The ID of the Cloud Bigtable cluster to update.
+    :param instance_id: The ID of the Cloud Bigtable instance.
+    :param project_id: Optional, the ID of the Google Cloud project.
+    :param gcp_conn_id: The connection ID to use to connect to Google Cloud.
+    :param impersonation_chain: Optional service account to impersonate using short-term
+        credentials, or chained list of accounts required to get the access_token
+        of the last account in the list, which will be impersonated in the request.
+        If set as a string, the account must grant the originating account
+        the Service Account Token Creator IAM role.
+        If set as a sequence, the identities from the list must grant
+        Service Account Token Creator IAM role to the directly preceding identity, with first
+        account from the list granting this role to the originating account (templated).
+    """
+    def __init__(
+        self,
+        cluster_id: str,
+        instance_id: str,
+        project_id: str | None = None,
+        gcp_conn_id: str = "google_cloud_default",
+        impersonation_chain: str | Sequence[str] | None = None,
+        **kwargs,
+    ):
+        self.cluster_id = cluster_id
+        self.instance_id = instance_id
+        self.project_id = project_id
+        self.gcp_conn_id = gcp_conn_id
+        self.impersonation_chain = impersonation_chain
+        super().__init__(**kwargs)
+
+    def execute(self, context: Context) -> None:
+        hook = BigtableHook(
+            gcp_conn_id=self.gcp_conn_id,
+            impersonation_chain=self.impersonation_chain,
+        )
+
+        instance = hook.get_instance(instance_id=self.instance_id, project_id=self.project_id)
+        cluster = instance.cluster(self.cluster_id)
+        cluster.delete()

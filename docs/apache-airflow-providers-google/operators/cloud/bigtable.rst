@@ -91,7 +91,41 @@ it will be retrieved from the Google Cloud connection used. Both variants are sh
     :start-after: [START howto_operator_gcp_bigtable_instance_delete]
     :end-before: [END howto_operator_gcp_bigtable_instance_delete]
 
-.. _howto/operator:BigtableUpdateClusterOperator:
+.. _howto/operator:BigtableCreateClusterOperator:
+
+BigtableCreateClusterOperator
+-----------------------------
+
+Use the :class:`~airflow.providers.google.cloud.operators.bigtable.BigtableCreateClusterOperator`
+to create Bigtable cluster.
+
+Using the operator
+""""""""""""""""""
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/bigtable/example_bigtable.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gcp_bigtable_cluster_create]
+    :end-before: [END howto_operator_gcp_bigtable_cluster_create]
+
+
+BigtableDeleteClusterOperator
+-----------------------------
+
+.. _howto/operator:BigtableDeleteClusterOperator:
+
+Use the :class:`~airflow.providers.google.cloud.operators.bigtable.BigtableDeleteClusterOperator`
+to create Bigtable cluster.
+
+Using the operator
+""""""""""""""""""
+
+.. exampleinclude:: /../../tests/system/providers/google/cloud/bigtable/example_bigtable.py
+    :language: python
+    :dedent: 4
+    :start-after: [START howto_operator_gcp_bigtable_cluster_delete]
+    :end-before: [END howto_operator_gcp_bigtable_cluster_delete]
+
 
 BigtableUpdateClusterOperator
 -----------------------------

@@ -32,7 +32,7 @@ from airflow.providers.google.cloud.operators.bigtable import (
     BigtableDeleteInstanceOperator,
     BigtableDeleteTableOperator,
     BigtableUpdateClusterOperator,
-    BigtableUpdateInstanceOperator,
+    BigtableUpdateInstanceOperator, BigtableDeleteClusterOperator,
 )
 
 PROJECT_ID = "test_project_id"
@@ -975,3 +975,26 @@ class TestBigtableTableCreate:
             gcp_conn_id=GCP_CONN_ID,
             impersonation_chain=IMPERSONATION_CHAIN,
         )
+
+
+class TestBigtableCreateClusterOperator:
+    def test_create_cluster_called_with_serve_node(self):
+        pass
+
+    def test_create_cluster_called_with_auto_scale_config(self):
+        pass
+
+    def test_invalid_param(self):
+        pass
+
+
+class TestBigtableDeleteClusterOperator:
+    @mock.patch("google.cloud.bigtable.Client.instance")
+    def test_delete_cluster_called(self, mock_instance):
+        operator = BigtableDeleteClusterOperator(
+            cluster_id="cluster-1",
+            instance_id="instance-1"
+        )
+
+        operator.execute(None)
+        mock_instance.callled_once()
