@@ -386,12 +386,12 @@ class TaskGroup(DAGNode):
         dependencies within the TaskGroup
         """
 
-        def recurse_for_first_non_setup(group, task):
+        def recurse_for_first_non_setup_teardown(group, task):
             for upstream_task in task.upstream_list:
                 if not group.has_task(upstream_task):
                     continue
                 if upstream_task._is_setup or upstream_task._is_teardown:
-                    yield from recurse_for_first_non_setup(group, upstream_task)
+                    yield from recurse_for_first_non_setup_teardown(group, upstream_task)
                 else:
                     yield upstream_task
 
@@ -403,7 +403,7 @@ class TaskGroup(DAGNode):
                 if not (task._is_teardown or task._is_setup):
                     yield task
                 else:
-                    yield from recurse_for_first_non_setup(self, task)
+                    yield from recurse_for_first_non_setup_teardown(self, task)
 
     def child_id(self, label):
         """

@@ -64,7 +64,7 @@ def dag_edges(dag: DAG):
             # and upstream_join_id. Skip edges between individual tasks of the TaskGroups.
             target_group = task_group_map[target_id]
             edges_to_add.add((task_group.downstream_join_id, target_group.upstream_join_id))
-
+            # todo: when manually adding group teardown >> outer teardown, need to show line
             for child in task_group.get_leaves():
                 edges_to_add.add((child.task_id, task_group.downstream_join_id))
                 for target in target_group.get_roots():
