@@ -1314,6 +1314,36 @@ class TaskGroupSerialization(BaseSerialization):
         if not task_group:
             return None
 
+        setup_task = next(
+            (t for t in task_group.children.values() if isinstance(t, BaseOperator) and t._is_setup), None
+        )
+        teardown_task = next(
+            (t for t in task_group.children.values() if isinstance(t, BaseOperator) and t._is_teardown), None
+        )
+
+        if setup_task:
+            roots_for_setup = task_group.roots
+            try:
+                roots_for_setup.remove(setup_task)
+            except ValueError:
+                pass
+
+            print(f"roots_for_setup: {roots_for_setup}")
+            setup_task >> roots_for_setup
+        if teardown_task:
+            leaves_for_teardown = task_group.leaves
+            try:
+                leaves_for_teardown.remove(teardown_task)
+            except ValueError:
+                pass
+
+            print(f"leaves_for_teardown: {leaves_for_teardown}")
+            leaves_for_teardown >> teardown_task
+
+        # And finally, link the 2 together
+        if setup_task and teardown_task:
+            setup_task >> teardown_task
+
         # task_group.xxx_ids needs to be sorted here, because task_group.xxx_ids is a set,
         # when converting set to list, the order is uncertain.
         # When calling json.dumps(self.data, sort_keys=True) to generate dag_hash, misjudgment will occur

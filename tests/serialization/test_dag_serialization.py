@@ -1392,6 +1392,107 @@ class TestStringifiedDAGs:
         assert task._is_teardown
         assert task._on_failure_fail_dagrun
 
+    def test_setup_teardown_implicit_deps(self, dag_maker):
+        with dag_maker() as dag:
+            EmptyOperator.as_setup(task_id="mysetup")
+            EmptyOperator.as_teardown(task_id="myteardown")
+            EmptyOperator(task_id="first") >> EmptyOperator(task_id="second")
+
+        # We expect:
+        #   mysetup >> first >> second >> myteardown
+        #   mysetup >> teardown
+
+        serialized_dag = SerializedDAG.deserialize_dag(SerializedDAG.serialize_dag(dag))
+
+        setup_task = serialized_dag.task_group.children["mysetup"]
+        setup_task.upstream_task_ids == []
+        setup_task.downstream_task_ids == ["first", "teardown"]
+
+        first_task = serialized_dag.task_group.children["first"]
+        first_task.upstream_task_ids == ["mysetup"]
+        first_task.downstream_task_ids == ["second"]
+
+        second_task = serialized_dag.task_group.children["second"]
+        second_task.upstream_task_ids == ["first"]
+        second_task.downstream_task_ids == ["second"]
+
+        teardown_task = serialized_dag.task_group.children["myteardown"]
+        teardown_task.upstream_task_ids == ["second", "mysetup"]
+        teardown_task.upstream_task_ids == ["mysetup", "second"]
+        teardown_task.downstream_task_ids == []
+
+    def test_setup_teardown_implicit_deps_in_taskgroup(self, dag_maker):
+        with dag_maker() as dag:
+            EmptyOperator.as_setup(task_id="mysetup")
+            EmptyOperator.as_teardown(task_id="myteardown")
+            first = EmptyOperator(task_id="first")
+
+            with TaskGroup("section_1") as section_1:
+                EmptyOperator.as_setup(task_id="taskgroup_setup")
+                EmptyOperator(task_id="second")
+                EmptyOperator.as_setup(task_id="taskgroup_teardown")
+
+            first >> section_1
+
+        serialized_dag = SerializedDAG.deserialize_dag(SerializedDAG.serialize_dag(dag))
+
+        root_group = serialized_dag.task_group
+        section_1_taskgroup = root_group.children["section_1"]
+
+        print(f"root_group upstream tasks: {root_group.upstream_task_ids}")
+        print(f"root_group upstream group ids: {root_group.upstream_group_ids}")
+        print(f"root_group downstream tasks: {root_group.downstream_task_ids}")
+        print(f"root_group downstream group ids: {root_group.downstream_group_ids}")
+
+        print(f"section_1_taskgroup upstream tasks: {section_1_taskgroup.upstream_task_ids}")
+        print(f"section_1_taskgroup upstream group ids: {section_1_taskgroup.upstream_group_ids}")
+        print(f"section_1_taskgroup downstream tasks: {section_1_taskgroup.downstream_task_ids}")
+        print(f"section_1_taskgroup downstream group ids: {section_1_taskgroup.downstream_group_ids}")
+
+        setup_task = root_group.children["mysetup"]
+        setup_task.upstream_task_ids == []
+        setup_task.downstream_task_ids == ["first", "teardown"]
+
+        first_task = root_group.children["first"]
+        first_task.upstream_task_ids == ["mysetup"]
+        first_task.downstream_task_ids == ["section_1.taskgroup_setup"]
+
+        tg_setup_task = section_1_taskgroup.children["section_1.taskgroup_setup"]
+        tg_setup_task.upstream_task_ids == ["first"]
+        tg_setup_task.downstream_task_ids == ["section_1.second", "section_1.taskgroup_teardown"]
+
+        second_task = section_1_taskgroup.children["section_1.second"]
+        second_task.upstream_task_ids == ["section_1.taskgroup_setup"]
+        second_task.downstream_task_ids == ["myteardown", "section_1.taskgroup_teardown"]
+
+        tg_teardown_task = section_1_taskgroup.children["section_1.taskgroup_teardown"]
+        tg_teardown_task.upstream_task_ids == ["section_1.taskgroup_setup", "section_1.second"]
+        tg_teardown_task.downstream_task_ids == ["myteardown"]
+
+        teardown_task = root_group.children["myteardown"]
+        teardown_task.upstream_task_ids == ["section_1.second", "mysetup"]
+        teardown_task.downstream_task_ids == []
+
+        assert 0 == 1
+
+        # task_group_middle_dict = TaskGroupSerialization.serialize_task_group(
+        #    dag.task_group.children["task_group_middle"]
+        # )
+        # upstream_group_ids = task_group_middle_dict["upstream_group_ids"]
+        # assert upstream_group_ids == ["task_group_up1", "task_group_up2"]
+
+        # upstream_task_ids = task_group_middle_dict["upstream_task_ids"]
+        # assert upstream_task_ids == ["task_group_up1.task_up1", "task_group_up2.task_up2"]
+
+        # downstream_group_ids = task_group_middle_dict["downstream_group_ids"]
+        # assert downstream_group_ids == ["task_group_down1", "task_group_down2"]
+
+        # task_group_down1_dict = TaskGroupSerialization.serialize_task_group(
+        #    dag.task_group.children["task_group_down1"]
+        # )
+        # downstream_task_ids = task_group_down1_dict["downstream_task_ids"]
+        # assert downstream_task_ids == ["end"]
+
     def test_deps_sorted(self):
         """
         Tests serialize_operator, make sure the deps is in order
