@@ -29,6 +29,7 @@ import weakref
 from typing import TYPE_CHECKING, Any, Generator, Iterator, Sequence
 
 from airflow.compat.functools import cache
+from airflow.configuration import conf
 from airflow.exceptions import (
     AirflowDagCycleException,
     AirflowException,
@@ -92,9 +93,8 @@ class TaskGroup(DAGNode):
         ui_color: str = "CornflowerBlue",
         ui_fgcolor: str = "#000",
         add_suffix_on_collision: bool = False,
-        is_setup:bool = False,
-        is_teardown:bool = False,
-
+        is_setup: bool = False,
+        is_teardown: bool = False,
     ):
         from airflow.models.dag import DagContext
 
@@ -337,6 +337,34 @@ class TaskGroup(DAGNode):
 
     def __exit__(self, _type, _value, _tb):
         TaskGroupContext.pop_context_managed_task_group()
+        raise_if_multiple = (
+            conf.getboolean(
+                "core",
+                "allow_multiple_setup_tasks",
+                fallback=False,
+            )
+            is False
+        )
+        setup_tasks = {v for k, v in self.children.items() if not isinstance(v, self.__class__) and v._is_setup is True}
+        teardown_tasks = {v for k, v in self.children.items() if not isinstance(v, self.__class__) and v._is_teardown is True}
+        if raise_if_multiple:
+            if len(setup_tasks) > 1:
+                raise ValueError(
+                    f"Error processing dag '{self.dag_id}'. "
+                    "Only one setup task per group supported unless you enable setting"
+                    "core > allow_multiple_setup_tasks"
+                )
+            if len(teardown_tasks) > 1:
+                raise ValueError(
+                    f"Error processing dag '{self.dag_id}'. "
+                    "Only one teardown task per group supported unless you enable setting"
+                    "core > allow_multiple_setup_tasks"
+                )
+        if len(setup_tasks) == len(teardown_tasks) == 1:
+            setup_task = setup_tasks.pop()
+            if not any(x._is_teardown for x in setup_task.downstream_list):
+                teardown_task = teardown_tasks.pop()
+                setup_task >> list(self.children.values()) >> teardown_task
 
     def has_task(self, task: BaseOperator) -> bool:
         """Returns True if this TaskGroup or its children TaskGroups contains the given task."""

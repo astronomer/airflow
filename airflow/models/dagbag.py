@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     import pathlib
 
     from airflow.models.dag import DAG
+    from airflow.utils.task_group import TaskGroup
 
 
 class FileLoadStat(NamedTuple):
@@ -68,6 +69,33 @@ class FileLoadStat(NamedTuple):
     dag_num: int
     task_num: int
     dags: str
+
+
+def _find_experimental_setup_teardown_tasks(group_):
+    def tasks_and_groups(group):
+        setup_tasks = []
+        teardown_tasks = []
+        groups = []
+        for k, v in group.children.items():
+            if isinstance(v, TaskGroup):
+                groups.append(v)
+            elif v._is_setup:
+                setup_tasks.append(v)
+            elif v._is_teardown:
+                teardown_tasks.append(v)
+        return setup_tasks, teardown_tasks, groups
+
+    def check_tasks(group):
+        setup_tasks, teardown_tasks, groups = tasks_and_groups(group)
+        for g in groups:
+            yield from check_tasks(g)
+        group_name = group.group_id if group.group_id else "<root group>"
+        if len(setup_tasks) > 1:
+            yield group_name, "setup", len(setup_tasks)
+        if len(teardown_tasks) > 1:
+            yield group_name, "teardown", len(teardown_tasks)
+
+    yield from check_tasks(group_)
 
 
 class DagBag(LoggingMixin):

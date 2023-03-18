@@ -54,6 +54,7 @@ from airflow.utils.log.logging_mixin import LoggingMixin, StreamLogWriter, set_c
 from airflow.utils.mixins import MultiprocessingStartMethodMixin
 from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.state import State
+from airflow.utils.task_group import TaskGroup
 
 if TYPE_CHECKING:
     from airflow.models.operator import Operator
@@ -615,6 +616,47 @@ class DagFileProcessor(LoggingMixin):
                 if message:
                     self.dag_warnings.add(DagWarning(subdag.dag_id, DagWarningType.NONEXISTENT_POOL, message))
 
+    def _validate_setup_teardown_rules(self, *, dagbag: DagBag):
+        """Validates and adds warning if setup / teardown usage relies on experimental behavior."""
+
+        def tasks_and_groups(group):
+            setup_tasks = []
+            teardown_tasks = []
+            groups = []
+            for k, v in group.children.items():
+                if isinstance(v, TaskGroup):
+                    groups.append(v)
+                elif v._is_setup:
+                    setup_tasks.append(v)
+                elif v._is_teardown:
+                    teardown_tasks.append(v)
+            return setup_tasks, teardown_tasks, groups
+
+        def check_tasks(group):
+            setup_tasks, teardown_tasks, groups = tasks_and_groups(group)
+            for g in groups:
+                yield from check_tasks(g)
+            group_name = group.group_id if group.group_id else "<root group>"
+            if len(setup_tasks) > 1:
+                yield (
+                    f"Group '{group_name}' has {len(setup_tasks)} setup tasks; having more than one "
+                    "per group is an experimental feature and the semantics may change."
+                )
+            if len(teardown_tasks) > 1:
+                yield (
+                    f"Group '{group_name}' has {len(setup_tasks)} teardown tasks; having more than one "
+                    "per group is an experimental feature and the semantics may change."
+                )
+
+        for dag in dagbag.dags.values():
+            for message in check_tasks(dag.task_group):
+                self.dag_warnings.add(DagWarning(dag.dag_id, DagWarningType.EXPERIMENTAL_FEATURE, message))
+            for subdag in dag.subdags:
+                for message in check_tasks(subdag):
+                    self.dag_warnings.add(
+                        DagWarning(subdag.dag_id, DagWarningType.EXPERIMENTAL_FEATURE, message)
+                    )
+
     def update_dag_warnings(self, *, session: Session, dagbag: DagBag) -> None:
         """
         Update any import warnings to be displayed in the UI.
@@ -626,6 +668,7 @@ class DagFileProcessor(LoggingMixin):
         :param dagbag: DagBag containing DAGs with configuration warnings
         """
         self._validate_task_pools(dagbag=dagbag)
+        self._validate_setup_teardown_rules(dagbag=dagbag)
 
         stored_warnings = set(
             session.query(DagWarning).filter(DagWarning.dag_id.in_(dagbag.dags.keys())).all()

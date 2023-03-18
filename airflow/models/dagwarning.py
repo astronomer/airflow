@@ -100,3 +100,4 @@ class DagWarningType(str, Enum):
     """
 
     NONEXISTENT_POOL = "non-existent pool"
+    EXPERIMENTAL_FEATURE = "experimental feature"
