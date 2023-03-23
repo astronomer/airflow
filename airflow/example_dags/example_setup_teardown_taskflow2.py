@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import pendulum
 
-from airflow.decorators import setup, task, task_group, teardown
 from airflow.models.dag import DAG
 from airflow.operators.bash import BashOperator
 from airflow.utils.task_group import TaskGroup
@@ -147,7 +146,7 @@ with DAG(
         dag_setup2 = my_setup("dag_setup2")
     with TaskGroup("dag_teardown", is_teardown=True) as dag_teardown_group:
         dag_teardown1 = my_teardown("dag_teardown1")
-        # dag_teardown2 = my_teardown("dag_teardown2")
+        dag_teardown2 = my_teardown("dag_teardown2")
     dag_setup_group >> my_work("dag_work1") >> dag_teardown_group
     dag_setup_group >> tg1
     tg1 >> my_work("dag_work2") >> dag_teardown_group
@@ -194,24 +193,3 @@ with DAG(
             setup_inner = my_setup("setup")
             work_inner = my_work("work")
             teardown_inner = my_teardown("teardown")
-
-@context_manager
-
-with DAG(
-    dag_id="example_setup_teardown_nested_implicit2",
-    start_date=pendulum.datetime(2021, 1, 1, tz="UTC"),
-    catchup=False,
-    tags=["example"],
-) as dag:
-    with TaskGroup("group1") as tg1:
-        setup1 = my_setup("g1_setup")
-        teardown1 = my_teardown("g1_teardown")
-        with setup_teardown(setup1, teardown1):
-            work1 = my_work("g1_work")
-
-            with TaskGroup("nested1", setup) as tg2:
-                setup_inner = my_setup("setup")
-                teardown_inner = my_teardown("teardown")
-                with setup_teardown(setup_inner, teardown_inner):
-                work_inner = my_work("work")
-
