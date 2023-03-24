@@ -927,24 +927,28 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             if SetupTeardownContext.on_failure_fail_dagrun:
                 self._on_failure_fail_dagrun = True
 
-    @classmethod
-    def as_setup(cls, *args, **kwargs):
-        from airflow.utils.setup_teardown import SetupTeardownContext
+    def as_setup(self):
+        self._is_setup = True
+        self._is_teardown = False
+        return self
 
-        with SetupTeardownContext.setup():
-            return cls(*args, **kwargs)
+    def teardown_for(self, *tasks, on_failure_fail_dagrun: bool = False):
+        """Set this task as teardown and specify the tasks for which it is a teardown."""
+        self.as_teardown(on_failure_fail_dagrun=on_failure_fail_dagrun)
+        for task in tasks:
+            if not task._is_setup:
+                raise ValueError("Marking task as teardown for non-setup is currently unsupported.")
+            task >> self
+        return self
 
-    @classmethod
-    def as_teardown(cls, *args, **kwargs):
-        from airflow.utils.setup_teardown import SetupTeardownContext
-
-        on_failure_fail_dagrun = kwargs.pop("on_failure_fail_dagrun", False)
-        with SetupTeardownContext.teardown(on_failure_fail_dagrun=on_failure_fail_dagrun):
-            # TODO: what about args path?
-            if "trigger_rule" in kwargs:
-                raise AirflowException("Can't set trigger_rule in teardown tasks")
-            kwargs["trigger_rule"] = TriggerRule.ALL_DONE_SETUP_SUCCESS
-            return cls(*args, **kwargs)
+    def as_teardown(self, *, on_failure_fail_dagrun: bool = False):
+        """Set this task as teardown."""
+        # TODO: what about args path?
+        self._on_failure_fail_dagrun = on_failure_fail_dagrun
+        self.trigger_rule = TriggerRule.ALL_DONE_SETUP_SUCCESS
+        self._is_setup = False
+        self._is_teardown = True
+        return self
 
     def __eq__(self, other):
         if type(self) is type(other):

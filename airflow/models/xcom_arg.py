@@ -342,6 +342,18 @@ class PlainXComArg(XComArg):
             return None
         raise XComNotFound(ti.dag_id, task_id, self.key)
 
+    def as_setup(self):
+        self.operator.as_setup()
+        return self
+
+    def as_teardown(self, **kwargs):
+        self.operator.as_teardown(**kwargs)
+        return self
+
+    def teardown_for(self, *tasks, **kwargs):
+        self.operator.teardown_for(*tasks, **kwargs)
+        return self
+
 
 def _get_callable_name(f: Callable | str) -> str:
     """Try to "describe" a callable by getting its name."""
