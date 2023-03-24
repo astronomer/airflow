@@ -75,19 +75,17 @@ with DAG(
     def section_2():
         # You can also mark task groups as setup and teardown
         # and all tasks in them will be setup/teardown tasks
-        @setup
         @task_group
         def my_setup_taskgroup():
+            @setup
             @task
             def first_setup():
                 print("I set some stuff up")
 
+            @setup
             @task
             def second_setup():
                 print("I set some other stuff up")
-
-            first_setup()
-            second_setup()
 
         @task
         def hello():
@@ -96,6 +94,7 @@ with DAG(
         my_setup_taskgroup() >> hello()
 
     root_setup_task = root_setup()
+
     # breakpoint()
     normal() >> section_1() >> section_2()
     root_setup_task >> dag
