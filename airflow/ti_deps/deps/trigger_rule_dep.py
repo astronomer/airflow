@@ -54,7 +54,7 @@ class _UpstreamTIStates(NamedTuple):
     skipped_setup: int
 
     @classmethod
-    def calculate(cls, finished_upstreams: Iterator[TaskInstance], emit_warnings) -> _UpstreamTIStates:
+    def calculate(cls, finished_upstreams: Iterator[TaskInstance]) -> _UpstreamTIStates:
         """Calculate states for a task instance.
 
         :param ti: the ti that we want to calculate deps for
@@ -123,8 +123,6 @@ class TriggerRuleDep(BaseTIDep):
         from airflow.models.taskinstance import TaskInstance
 
         task = ti.task
-        this_task_id = task.task_id
-        emit_warnings = this_task_id == "section_1.taskgroup_teardown"
         upstream_tasks = {t.task_id: t for t in task.upstream_list}
         trigger_rule = task.trigger_rule
 
@@ -185,9 +183,7 @@ class TriggerRuleDep(BaseTIDep):
             if _is_relevant_upstream(finished_ti)
         )
         finished_upstream_tis = list(finished_upstream_tis)
-        if emit_warnings:
-            logging.warning("ti=%s finished=%s", ti.task_id, finished_upstream_tis)
-        upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis, emit_warnings)
+        upstream_states = _UpstreamTIStates.calculate(finished_upstream_tis)
 
         success = upstream_states.success
         skipped = upstream_states.skipped
@@ -304,8 +300,6 @@ class TriggerRuleDep(BaseTIDep):
                         upstream_setup,
                         success_setup,
                     )
-        if new_state == TaskInstanceState.SKIPPED:
-            logging.warning("marking %s as skipped", this_task_id)
         if new_state is not None:
             logging.warning("ti=%s new_state=%s", ti.task_id, new_state)
             if new_state == TaskInstanceState.SKIPPED and dep_context.wait_for_past_depends_before_skipping:
@@ -463,11 +457,6 @@ class TriggerRuleDep(BaseTIDep):
                     )
                 )
             if status:
-                if emit_warnings:
-                    logging.warning("ti=%s status=%s", ti.task_id, status)
                 yield status
-            else:
-                if emit_warnings:
-                    logging.warning("ti=%s no failing status", ti.task_id)
         else:
             yield self._failing_status(reason=f"No strategy to evaluate trigger rule '{trigger_rule}'.")
