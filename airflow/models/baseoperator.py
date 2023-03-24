@@ -941,7 +941,7 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
             task >> self
         return self
 
-    def as_teardown(self, *, on_failure_fail_dagrun: bool = False):
+    def as_teardown(self, *, on_failure_fail_dagrun: bool = False) -> BaseOperator:
         """Set this task as teardown."""
         # TODO: what about args path?
         self._on_failure_fail_dagrun = on_failure_fail_dagrun
