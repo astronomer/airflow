@@ -373,7 +373,7 @@ class RedshiftDeleteClusterSnapshotOperator(BaseOperator):
         self.poll_interval = poll_interval
         self.redshift_hook = RedshiftHook(aws_conn_id=aws_conn_id)
         self._attempts = 10
-        self._attempt_interval = 1
+        self._attempt_interval = 15
 
     def execute(self, context: Context) -> Any:
         while self._attempts >= 0:
