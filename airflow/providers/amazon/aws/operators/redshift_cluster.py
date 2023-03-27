@@ -336,7 +336,7 @@ class RedshiftCreateClusterSnapshotOperator(BaseOperator):
 
 class RedshiftDeleteClusterSnapshotOperator(BaseOperator):
     """
-    Deletes the specified manual snapshot
+    Deletes the specified manual snapshot. If cluster snapshot not found task mask as success.
 
     .. seealso::
         For more information on how to use this operator, take a look at the guide:
@@ -372,12 +372,28 @@ class RedshiftDeleteClusterSnapshotOperator(BaseOperator):
         self.wait_for_completion = wait_for_completion
         self.poll_interval = poll_interval
         self.redshift_hook = RedshiftHook(aws_conn_id=aws_conn_id)
+        self._attempts = 10
+        self._attempt_interval = 1
 
     def execute(self, context: Context) -> Any:
-        self.redshift_hook.get_conn().delete_cluster_snapshot(
-            SnapshotClusterIdentifier=self.cluster_identifier,
-            SnapshotIdentifier=self.snapshot_identifier,
-        )
+        while self._attempts >= 0:
+            try:
+                self.redshift_hook.get_conn().delete_cluster_snapshot(
+                    SnapshotClusterIdentifier=self.cluster_identifier,
+                    SnapshotIdentifier=self.snapshot_identifier,
+                )
+            except self.redshift_hook.get_conn().exceptions.ClusterSnapshotNotFoundFault:
+                self.log.info("Cluster snapshot %s not found", self.snapshot_identifier)
+            except self.redshift_hook.get_conn().exceptions.InvalidClusterSnapshotStateFault as error:
+                self._attempts = self._attempts - 1
+
+                if self._attempts > 0:
+                    self.log.error(
+                        "Unable to delete cluster snapshot. %d attempts remaining.", self._attempts
+                    )
+                    time.sleep(self._attempt_interval)
+                else:
+                    raise error
 
         if self.wait_for_completion:
             while self.get_status() is not None:
