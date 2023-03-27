@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import pytest
 
+from airflow.decorators import setup, task, teardown
 from airflow.exceptions import AirflowException
-from airflow.utils.setup_teardown import SetupTeardownContext
+from airflow.utils.setup_teardown import SetupTeardownContext, setup_teardown
 
 
 class TestSetupTearDownContext:
@@ -111,3 +112,51 @@ class TestSetupTearDownContext:
 
         assert SetupTeardownContext.is_setup is False
         assert SetupTeardownContext.is_teardown is False
+
+    def test_setup_teardown_context(self, dag_maker):
+        @setup
+        def setup_task():
+            print(1)
+
+        @setup
+        def setup_task2():
+            print(1)
+
+        @teardown
+        def teardown_task():
+            print(2)
+
+        @teardown
+        def teardown_task2():
+            print(2)
+
+        @task
+        def normal_task():
+            print(3)
+
+        @task
+        def normal_task2():
+            print(4)
+
+        setup1 = setup_task()
+        setup2 = setup_task2()
+        teardown1 = teardown_task()
+        teardown2 = teardown_task2()
+        with dag_maker() as dag:
+            with setup_teardown([setup1, setup2], [teardown1, teardown2]):
+                task1 = normal_task()
+                task2 = normal_task2()
+                task1 >> task2
+
+        task_group = dag.task_group
+        assert task_group.roots == [setup1.operator]
+        assert task_group.leaves == [teardown1.operator]
+        assert task_group.children["setup_task2"].upstream_list == [setup1.operator]
+        assert set(task_group.children["setup_task2"].downstream_list) == {task1.operator, teardown2.operator}
+        assert set(task_group.children["setup_task"].downstream_list) == {setup2.operator, teardown1.operator}
+        assert task_group.children["normal_task2"].upstream_list == [task1.operator]
+        assert task_group.children["normal_task2"].downstream_list == [teardown2.operator]
+        assert set(task_group.children["teardown_task"].upstream_list) == {
+            teardown2.operator,
+            setup1.operator,
+        }
