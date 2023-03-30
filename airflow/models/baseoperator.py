@@ -932,7 +932,9 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
     @classmethod
     def as_teardown(cls, *args, **kwargs):
         on_failure_fail_dagrun = kwargs.pop("on_failure_fail_dagrun", False)
-        op = cls(*args, **kwargs)
+        if "trigger_rule" in kwargs:
+            raise ValueError("Cannot set trigger rule for teardown tasks.")
+        op = cls(*args, **kwargs, trigger_rule=TriggerRule._ALL_DONE_SETUP_SUCCESS)
         op._is_teardown = True
         op._on_failure_fail_dagrun = on_failure_fail_dagrun
         return op
