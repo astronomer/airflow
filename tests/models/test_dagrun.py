@@ -28,7 +28,7 @@ from sqlalchemy.orm.session import Session
 
 from airflow import settings
 from airflow.callbacks.callback_requests import DagCallbackRequest
-from airflow.decorators import task, task_group
+from airflow.decorators import task, task_group, teardown
 from airflow.models import (
     DAG,
     DagBag,
@@ -2267,3 +2267,33 @@ def test_clearing_task_and_moving_from_non_mapped_to_mapped(dag_maker, session):
     dr1.task_instance_scheduling_decisions(session)
     for table in [TaskFail, XCom]:
         assert session.query(table).count() == 0
+
+
+@pytest.mark.parametrize(
+    "dag_run_state, on_failure_fail_dagrun", [[State.SUCCESS, False], [State.FAILED, True]]
+)
+def test_teardown_faile_behaviour_on_dagrun(dag_maker, session, dag_run_state, on_failure_fail_dagrun):
+    with dag_maker():
+
+        @teardown(on_failure_fail_dagrun=on_failure_fail_dagrun)
+        def teardowntask():
+            print(1)
+
+        @task
+        def mytask():
+            print(1)
+
+        mytask() >> teardowntask()
+
+    dr = dag_maker.create_dagrun()
+    mytask_it = dr.get_task_instance(task_id="mytask")
+    teardown_ti = dr.get_task_instance(task_id="teardowntask")
+    mytask_it.state = State.SUCCESS
+    teardown_ti.state = State.FAILED
+    session.merge(mytask_it)
+    session.merge(teardown_ti)
+    session.flush()
+    dr.update_state()
+    session.flush()
+    dr = session.query(DagRun).one()
+    assert dr.state == dag_run_state
