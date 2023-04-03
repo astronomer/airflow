@@ -24,23 +24,38 @@ from airflow.decorators import python_task
 from airflow.decorators.task_group import _TaskGroupFactory
 
 
-def setup_task(func: Callable) -> Callable:
-    # Using FunctionType here since _TaskDecorator is also a callable
-    if isinstance(func, types.FunctionType):
-        func = python_task(func)
-    if isinstance(func, _TaskGroupFactory):
-        raise AirflowException("Task groups cannot be marked as setup or teardown.")
-    func._is_setup = True  # type: ignore[attr-defined]
-    return func
+def setup_task(_func=None, *, multiple_outputs=None, **kwargs) -> Callable:
+    def setup(func: Callable) -> Callable:
+        # Using FunctionType here since _TaskDecorator is also a callable
+        if isinstance(func, types.FunctionType):
+            func = python_task(python_callable=func, multiple_outputs=multiple_outputs, **kwargs)
+        elif isinstance(func, _TaskGroupFactory):
+            raise AirflowException("Task groups cannot be marked as setup or teardown.")
+        else:
+            if not func.multiple_outputs:  # type: ignore[attr-defined]
+                func.multiple_outputs = multiple_outputs  # type: ignore[attr-defined]
+            func.kwargs.update(kwargs)  # type: ignore[attr-defined]
+        func._is_setup = True  # type: ignore[attr-defined]
+        return func
+
+    if _func is None:
+        return setup
+    return setup(_func)
 
 
-def teardown_task(_func=None, *, on_failure_fail_dagrun: bool = False) -> Callable:
+def teardown_task(
+    _func=None, *, multiple_outputs=None, on_failure_fail_dagrun: bool = False, **kwargs
+) -> Callable:
     def teardown(func: Callable) -> Callable:
         # Using FunctionType here since _TaskDecorator is also a callable
         if isinstance(func, types.FunctionType):
-            func = python_task(func)
-        if isinstance(func, _TaskGroupFactory):
+            func = python_task(python_callable=func, multiple_outputs=multiple_outputs, **kwargs)
+        elif isinstance(func, _TaskGroupFactory):
             raise AirflowException("Task groups cannot be marked as setup or teardown.")
+        else:
+            if not func.multiple_outputs:  # type: ignore[attr-defined]
+                func.multiple_outputs = multiple_outputs  # type: ignore[attr-defined]
+            func.kwargs.update(kwargs)  # type: ignore[attr-defined]
         func._is_teardown = True  # type: ignore[attr-defined]
         func._on_failure_fail_dagrun = on_failure_fail_dagrun  # type: ignore[attr-defined]
         return func
