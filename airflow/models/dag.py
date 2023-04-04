@@ -1208,6 +1208,16 @@ class DAG(LoggingMixin):
         return list(self.task_dict.keys())
 
     @property
+    def teardowns(self):
+        return [task for task in self.tasks if getattr(task, "_is_teardown", None)]
+
+    @property
+    def tasks_upstream_of_teardowns(self):
+        x = [t.upstream_list for t in self.teardowns]
+        x = [val for sublist in x for val in (sublist if isinstance(sublist, list) else [sublist])]
+        return [val for val in x if not getattr(val, "_is_teardown", None)]
+
+    @property
     def task_group(self) -> TaskGroup:
         return self._task_group
 
