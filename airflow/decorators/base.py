@@ -301,9 +301,6 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
     decorator_name: str = attr.ib(repr=False, default="task")
 
     _airflow_is_task_decorator: ClassVar[bool] = True
-    _is_setup: ClassVar[bool] = False
-    _is_teardown: ClassVar[bool] = False
-    _on_failure_fail_dagrun: ClassVar[bool] = False
 
     @multiple_outputs.default
     def _infer_multiple_outputs(self):
@@ -344,9 +341,6 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
             multiple_outputs=self.multiple_outputs,
             **self.kwargs,
         )
-        op._is_setup = self._is_setup
-        op._is_teardown = self._is_teardown
-        op._on_failure_fail_dagrun = self._on_failure_fail_dagrun
         op_doc_attrs = [op.doc, op.doc_json, op.doc_md, op.doc_rst, op.doc_yaml]
         # Set the task's doc_md to the function's docstring if it exists and no other doc* args are set.
         if self.function.__doc__ and not any(op_doc_attrs):
@@ -480,9 +474,6 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
 
     def override(self, **kwargs: Any) -> _TaskDecorator[FParams, FReturn, OperatorSubclass]:
         result = attr.evolve(self, kwargs={**self.kwargs, **kwargs})
-        setattr(result, "_is_setup", self._is_setup)
-        setattr(result, "_is_teardown", self._is_teardown)
-        setattr(result, "_on_failure_fail_dagrun", self._on_failure_fail_dagrun)
         return result
 
 

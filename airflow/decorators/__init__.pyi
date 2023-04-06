@@ -49,8 +49,6 @@ __all__ = [
     "branch_task",
     "short_circuit_task",
     "sensor_task",
-    "setup",
-    "teardown",
 ]
 
 class TaskDecoratorCollection:
@@ -456,5 +454,3 @@ class TaskDecoratorCollection:
     def sensor(self, python_callable: FParams | FReturn | None = None) -> Task[FParams, FReturn]: ...
 
 task: TaskDecoratorCollection
-setup: Callable
-teardown: Callable
