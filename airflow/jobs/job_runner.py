@@ -17,8 +17,10 @@
 
 from __future__ import annotations
 
+import datetime
 from typing import TYPE_CHECKING
 
+from airflow.typing_compat import TypeGuard
 from airflow.utils.session import NEW_SESSION, provide_session
 
 if TYPE_CHECKING:
@@ -28,12 +30,33 @@ if TYPE_CHECKING:
     from airflow.serialization.pydantic.base_job import BaseJobPydantic
 
 
+def is_concrete_job(job: BaseJob | BaseJobPydantic | EmptyJob) -> TypeGuard[BaseJob | BaseJobPydantic]:
+    return not isinstance(job, EmptyJob)
+
+
+class EmptyJob:
+    """A stand-in for a job object to signify "no job".
+
+    This implements the `null object`_ design pattern to simplify
+    BaseJobRunner's ``job`` interface.
+
+    This only implements just enough interface to pass type-checking since
+    concrete job runners should never have an empty job at runtime.
+
+    .. _`null object`: https://en.wikipedia.org/wiki/Null_object_pattern
+    """
+
+    id = None
+    latest_heartbeat = datetime.datetime.min
+    heartrate = None
+
+
 class BaseJobRunner:
     """Abstract class for job runners to derive from."""
 
     job_type = "undefined"
 
-    job: BaseJob | BaseJobPydantic
+    job: BaseJob | BaseJobPydantic | EmptyJob = EmptyJob()
 
     def _execute(self) -> int | None:
         """

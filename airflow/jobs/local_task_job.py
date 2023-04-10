@@ -18,13 +18,14 @@
 from __future__ import annotations
 
 import signal
+from typing import TYPE_CHECKING
 
 import psutil
 from sqlalchemy.orm import Session
 
 from airflow.configuration import conf
 from airflow.exceptions import AirflowException
-from airflow.jobs.base_job import perform_heartbeat
+from airflow.jobs.base_job import BaseJob, perform_heartbeat
 from airflow.jobs.job_runner import BaseJobRunner
 from airflow.models.taskinstance import TaskInstance, TaskReturnCode
 from airflow.stats import Stats
@@ -35,6 +36,9 @@ from airflow.utils.net import get_hostname
 from airflow.utils.platform import IS_WINDOWS
 from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.state import State
+
+if TYPE_CHECKING:
+    from airflow.serialization.pydantic.base_job import BaseJobPydantic
 
 SIGSEGV_MESSAGE = """
 ******************************************* Received SIGSEGV *******************************************
@@ -71,6 +75,8 @@ class LocalTaskJobRunner(BaseJobRunner, LoggingMixin):
     """LocalTaskJob runs a single task instance."""
 
     job_type = "LocalTaskJob"
+
+    job: BaseJob | BaseJobPydantic
 
     def __init__(
         self,

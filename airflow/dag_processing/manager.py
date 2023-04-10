@@ -47,6 +47,7 @@ from airflow.callbacks.callback_requests import CallbackRequest, SlaCallbackRequ
 from airflow.configuration import conf
 from airflow.dag_processing.processor import DagFileProcessorProcess
 from airflow.jobs.base_job import perform_heartbeat
+from airflow.jobs.job_runner import is_concrete_job
 from airflow.models import errors
 from airflow.models.dag import DagModel
 from airflow.models.dagwarning import DagWarning
@@ -585,10 +586,7 @@ class DagFileProcessorManager(LoggingMixin):
         while True:
             loop_start_time = time.monotonic()
             ready = multiprocessing.connection.wait(self.waitables.keys(), timeout=poll_time)
-            # we cannot (for now) define job in _job_runner nicely due to circular references of
-            # job and job runner, so we have to use getattr, but we might address it in the future
-            # change when decoupling these two even more
-            if getattr(self._job_runner, "job", None) is not None:
+            if is_concrete_job(self._job_runner.job):
                 perform_heartbeat(self._job_runner.job, only_if_necessary=False)
             if self._direct_scheduler_conn is not None and self._direct_scheduler_conn in ready:
                 agent_signal = self._direct_scheduler_conn.recv()

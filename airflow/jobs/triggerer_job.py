@@ -55,7 +55,9 @@ from airflow.utils.module_loading import import_string
 from airflow.utils.session import provide_session
 
 if TYPE_CHECKING:
+    from airflow.jobs.base_job import BaseJob
     from airflow.models import TaskInstance
+    from airflow.serialization.pydantic.base_job import BaseJobPydantic
 
 HANDLER_SUPPORTS_TRIGGERER = False
 """
@@ -245,6 +247,8 @@ class TriggererJobRunner(BaseJobRunner, LoggingMixin):
     """
 
     job_type = "TriggererJob"
+
+    job: BaseJob | BaseJobPydantic
 
     def __init__(self, capacity=None, *args, **kwargs):
         # Call superclass
