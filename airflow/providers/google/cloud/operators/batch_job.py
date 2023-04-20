@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 from google.cloud import batch_v1
@@ -27,6 +28,7 @@ from google.cloud.batch_v1.types import (
 
 from airflow.models import BaseOperator
 from airflow.providers.google.cloud.hooks.batch_job import BatchJobHook
+from airflow.providers.google.cloud.operators.cloud_base import GoogleCloudBaseOperator
 from airflow.utils.context import Context
 
 """
@@ -55,9 +57,30 @@ task resource
 - core
 - memory
 
-
-
 """
+
+
+class BatchJobOperation(Enum):
+    CREATE = "create"
+
+
+class NewBatchJobOperator(GoogleCloudBaseOperator):
+    def __init__(
+        self,
+        operation: str = BatchJobOperation.CREATE,
+        config: dict | None = None,
+        gcp_conn_id: str | None = "gcloud_default",
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.operation = operation
+        self.config = config
+        self.gcp_conn_id = gcp_conn_id
+
+    def execute(self, context: Context) -> Any:
+        hook = BatchJobHook(gcp_conn_id=self.gcp_conn_id)
+        if self.operation == BatchJobOperation.CREATE:
+            hook.new_create_job(self.config)
 
 
 class BatchJobOperator(BaseOperator):

@@ -17,9 +17,10 @@
 
 from __future__ import annotations
 
-from google.cloud import batch_v1
-
 from airflow.providers.google.common.hooks.base_google import GoogleBaseHook
+
+
+ENDPOINT = "https://batch.googleapis.com/v1"
 
 
 class BatchJobHook(GoogleBaseHook):
@@ -37,6 +38,12 @@ class BatchJobHook(GoogleBaseHook):
 
     def get_client(self):
         return batch_v1.BatchServiceClient(credentials=self.get_credentials())
+
+    def new_create_job(self, job_id:str = "test", config: dict | None = None):
+        path = f"{ENDPOINT}/projects/{self.project_id}/location/{self.region}?job_id={job_id}"
+
+        parent = f"projects/{self.project_id}/locations/{self.region}"
+        return self.get_client().create_job(job_id="test", parent=parent, job=config)
 
     def create_job(
         self,
