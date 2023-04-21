@@ -35,8 +35,6 @@ from airflow.providers.google.cloud.operators.mlengine import (  # AIPlatformCon
     MLEngineDeleteVersionOperator,
     MLEngineGetModelOperator,
     MLEngineListVersionsOperator,
-    MLEngineManageModelOperator,
-    MLEngineManageVersionOperator,
     MLEngineSetDefaultVersionOperator,
     MLEngineStartBatchPredictionJobOperator,
     MLEngineStartTrainingJobOperator,
@@ -359,63 +357,6 @@ class TestMLEngineTrainingCancelJobOperator:
         assert http_error_code == ctx.value.resp.status
 
 
-class TestMLEngineModelOperator:
-    @patch(MLENGINE_AI_PATH.format("MLEngineHook"))
-    def test_success_create_model(self, mock_hook):
-        task = MLEngineManageModelOperator(
-            task_id="task-id",
-            project_id=TEST_PROJECT_ID,
-            model=TEST_MODEL,
-            operation="create",
-            gcp_conn_id=TEST_GCP_CONN_ID,
-            impersonation_chain=TEST_IMPERSONATION_CHAIN,
-        )
-
-        task.execute(context=MagicMock())
-
-        mock_hook.assert_called_once_with(
-            gcp_conn_id=TEST_GCP_CONN_ID,
-            impersonation_chain=TEST_IMPERSONATION_CHAIN,
-        )
-        mock_hook.return_value.create_model.assert_called_once_with(
-            project_id=TEST_PROJECT_ID, model=TEST_MODEL
-        )
-
-    @patch(MLENGINE_AI_PATH.format("MLEngineHook"))
-    def test_success_get_model(self, mock_hook):
-        task = MLEngineManageModelOperator(
-            task_id="task-id",
-            project_id=TEST_PROJECT_ID,
-            model=TEST_MODEL,
-            operation="get",
-            gcp_conn_id=TEST_GCP_CONN_ID,
-            impersonation_chain=TEST_IMPERSONATION_CHAIN,
-        )
-
-        result = task.execute(context=MagicMock())
-
-        mock_hook.assert_called_once_with(
-            gcp_conn_id=TEST_GCP_CONN_ID,
-            impersonation_chain=TEST_IMPERSONATION_CHAIN,
-        )
-        mock_hook.return_value.get_model.assert_called_once_with(
-            project_id=TEST_PROJECT_ID, model_name=TEST_MODEL_NAME
-        )
-        assert mock_hook.return_value.get_model.return_value == result
-
-    @patch(MLENGINE_AI_PATH.format("MLEngineHook"))
-    def test_fail(self, mock_hook):
-        task = MLEngineManageModelOperator(
-            task_id="task-id",
-            project_id=TEST_PROJECT_ID,
-            model=TEST_MODEL,
-            operation="invalid",
-            gcp_conn_id=TEST_GCP_CONN_ID,
-        )
-        with pytest.raises(ValueError):
-            task.execute(None)
-
-
 class TestMLEngineCreateModelOperator:
     @patch(MLENGINE_AI_PATH.format("MLEngineHook"))
     def test_success_create_model(self, mock_hook):
@@ -481,33 +422,6 @@ class TestMLEngineDeleteModelOperator:
         )
         mock_hook.return_value.delete_model.assert_called_once_with(
             project_id=TEST_PROJECT_ID, model_name=TEST_MODEL_NAME, delete_contents=True
-        )
-
-
-class TestMLEngineVersionOperator:
-    VERSION_DEFAULT_ARGS = {
-        "project_id": "test-project",
-        "model_name": "test-model",
-        "task_id": "test-version",
-    }
-
-    @patch(MLENGINE_AI_PATH.format("MLEngineHook"))
-    def test_success_create_version(self, mock_hook):
-        success_response = {"name": "some-name", "done": True}
-        hook_instance = mock_hook.return_value
-        hook_instance.create_version.return_value = success_response
-
-        training_op = MLEngineManageVersionOperator(version=TEST_VERSION, **self.VERSION_DEFAULT_ARGS)
-        training_op.execute(None)
-
-        mock_hook.assert_called_once_with(
-            gcp_conn_id="google_cloud_default",
-            impersonation_chain=None,
-        )
-        # Make sure only 'create_version' is invoked on hook instance
-        assert len(hook_instance.mock_calls) == 1
-        hook_instance.create_version.assert_called_once_with(
-            project_id="test-project", model_name="test-model", version_spec=TEST_VERSION
         )
 
 

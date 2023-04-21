@@ -20,9 +20,8 @@ from __future__ import annotations
 
 import os
 import textwrap
-import warnings
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
 
 from google.api_core.retry import Retry
 from google.cloud.storage.retry import DEFAULT_RETRY
@@ -121,34 +120,6 @@ class GCSObjectExistenceSensor(BaseSensorOperator):
             raise AirflowException(event["message"])
         self.log.info("File %s was found in bucket %s.", self.object, self.bucket)
         return event["message"]
-
-
-class GCSObjectExistenceAsyncSensor(GCSObjectExistenceSensor):
-    """
-    Checks for the existence of a file in Google Cloud Storage.
-    Class `GCSObjectExistenceAsyncSensor` is deprecated and will be removed in a future release.
-    Please use `GCSObjectExistenceSensor` and set `deferrable` attribute to `True` instead
-
-    :param bucket: The Google Cloud Storage bucket where the object is.
-    :param object: The name of the object to check in the Google cloud storage bucket.
-    :param google_cloud_conn_id: The connection ID to use when connecting to Google Cloud Storage.
-    :param impersonation_chain: Optional service account to impersonate using short-term
-        credentials, or chained list of accounts required to get the access_token
-        of the last account in the list, which will be impersonated in the request.
-        If set as a string, the account must grant the originating account
-        the Service Account Token Creator IAM role.
-        If set as a sequence, the identities from the list must grant
-        Service Account Token Creator IAM role to the directly preceding identity, with first
-        account from the list granting this role to the originating account (templated).
-    """
-
-    def __init__(self, **kwargs: Any) -> None:
-        warnings.warn(
-            "Class `GCSObjectExistenceAsyncSensor` is deprecated and will be removed in a future release. "
-            "Please use `GCSObjectExistenceSensor` and set `deferrable` attribute to `True` instead",
-            DeprecationWarning,
-        )
-        super().__init__(deferrable=True, **kwargs)
 
 
 def ts_function(context):

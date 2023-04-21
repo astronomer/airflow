@@ -21,7 +21,7 @@ from __future__ import annotations
 import enum
 import json
 import warnings
-from typing import TYPE_CHECKING, Any, Iterable, Sequence, SupportsAbs
+from typing import TYPE_CHECKING, Any, Sequence, SupportsAbs
 
 import attr
 from google.api_core.exceptions import Conflict
@@ -943,220 +943,6 @@ class BigQueryGetDataOperator(GoogleCloudBaseOperator):
         return event["records"]
 
 
-class BigQueryExecuteQueryOperator(GoogleCloudBaseOperator):
-    """
-    Executes BigQuery SQL queries in a specific BigQuery database.
-    This operator does not assert idempotency.
-
-    This operator is deprecated.
-    Please use :class:`airflow.providers.google.cloud.operators.bigquery.BigQueryInsertJobOperator`
-
-    :param sql: the SQL code to be executed as a single string, or
-        a list of str (sql statements), or a reference to a template file.
-        Template references are recognized by str ending in '.sql'
-    :param destination_dataset_table: A dotted
-        ``(<project>.|<project>:)<dataset>.<table>`` that, if set, will store the results
-        of the query. (templated)
-    :param write_disposition: Specifies the action that occurs if the destination table
-        already exists. (default: 'WRITE_EMPTY')
-    :param create_disposition: Specifies whether the job is allowed to create new tables.
-        (default: 'CREATE_IF_NEEDED')
-    :param allow_large_results: Whether to allow large results.
-    :param flatten_results: If true and query uses legacy SQL dialect, flattens
-        all nested and repeated fields in the query results. ``allow_large_results``
-        must be ``true`` if this is set to ``false``. For standard SQL queries, this
-        flag is ignored and results are never flattened.
-    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud.
-    :param udf_config: The User Defined Function configuration for the query.
-        See https://cloud.google.com/bigquery/user-defined-functions for details.
-    :param use_legacy_sql: Whether to use legacy SQL (true) or standard SQL (false).
-    :param maximum_billing_tier: Positive integer that serves as a multiplier
-        of the basic price.
-        Defaults to None, in which case it uses the value set in the project.
-    :param maximum_bytes_billed: Limits the bytes billed for this job.
-        Queries that will have bytes billed beyond this limit will fail
-        (without incurring a charge). If unspecified, this will be
-        set to your project default.
-    :param api_resource_configs: a dictionary that contain params
-        'configuration' applied for Google BigQuery Jobs API:
-        https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs
-        for example, {'query': {'useQueryCache': False}}. You could use it
-        if you need to provide some params that are not supported by BigQueryOperator
-        like args.
-    :param schema_update_options: Allows the schema of the destination
-        table to be updated as a side effect of the load job.
-    :param query_params: a list of dictionary containing query parameter types and
-        values, passed to BigQuery. The structure of dictionary should look like
-        'queryParameters' in Google BigQuery Jobs API:
-        https://cloud.google.com/bigquery/docs/reference/rest/v2/jobs.
-        For example, [{ 'name': 'corpus', 'parameterType': { 'type': 'STRING' },
-        'parameterValue': { 'value': 'romeoandjuliet' } }]. (templated)
-    :param labels: a dictionary containing labels for the job/query,
-        passed to BigQuery
-    :param priority: Specifies a priority for the query.
-        Possible values include INTERACTIVE and BATCH.
-        The default value is INTERACTIVE.
-    :param time_partitioning: configure optional time partitioning fields i.e.
-        partition by field, type and expiration as per API specifications.
-    :param cluster_fields: Request that the result of this query be stored sorted
-        by one or more columns. BigQuery supports clustering for both partitioned and
-        non-partitioned tables. The order of columns given determines the sort order.
-    :param location: The geographic location of the job. Required except for
-        US and EU. See details at
-        https://cloud.google.com/bigquery/docs/locations#specifying_your_location
-    :param encryption_configuration: [Optional] Custom encryption configuration (e.g., Cloud KMS keys).
-        **Example**: ::
-
-            encryption_configuration = {
-                "kmsKeyName": "projects/testp/locations/us/keyRings/test-kr/cryptoKeys/test-key"
-            }
-    :param impersonation_chain: Optional service account to impersonate using short-term
-        credentials, or chained list of accounts required to get the access_token
-        of the last account in the list, which will be impersonated in the request.
-        If set as a string, the account must grant the originating account
-        the Service Account Token Creator IAM role.
-        If set as a sequence, the identities from the list must grant
-        Service Account Token Creator IAM role to the directly preceding identity, with first
-        account from the list granting this role to the originating account (templated).
-    """
-
-    template_fields: Sequence[str] = (
-        "sql",
-        "destination_dataset_table",
-        "labels",
-        "query_params",
-        "impersonation_chain",
-    )
-    template_ext: Sequence[str] = (".sql",)
-    template_fields_renderers = {"sql": "sql"}
-    ui_color = BigQueryUIColors.QUERY.value
-
-    @property
-    def operator_extra_links(self):
-        """Return operator extra links"""
-        if isinstance(self.sql, str):
-            return (BigQueryConsoleLink(),)
-        return (BigQueryConsoleIndexableLink(i) for i, _ in enumerate(self.sql))
-
-    def __init__(
-        self,
-        *,
-        sql: str | Iterable[str],
-        destination_dataset_table: str | None = None,
-        write_disposition: str = "WRITE_EMPTY",
-        allow_large_results: bool = False,
-        flatten_results: bool | None = None,
-        gcp_conn_id: str = "google_cloud_default",
-        udf_config: list | None = None,
-        use_legacy_sql: bool = True,
-        maximum_billing_tier: int | None = None,
-        maximum_bytes_billed: float | None = None,
-        create_disposition: str = "CREATE_IF_NEEDED",
-        schema_update_options: list | tuple | set | None = None,
-        query_params: list | None = None,
-        labels: dict | None = None,
-        priority: str = "INTERACTIVE",
-        time_partitioning: dict | None = None,
-        api_resource_configs: dict | None = None,
-        cluster_fields: list[str] | None = None,
-        location: str | None = None,
-        encryption_configuration: dict | None = None,
-        impersonation_chain: str | Sequence[str] | None = None,
-        **kwargs,
-    ) -> None:
-        super().__init__(**kwargs)
-        warnings.warn(
-            "This operator is deprecated. Please use `BigQueryInsertJobOperator`.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-        self.sql = sql
-        self.destination_dataset_table = destination_dataset_table
-        self.write_disposition = write_disposition
-        self.create_disposition = create_disposition
-        self.allow_large_results = allow_large_results
-        self.flatten_results = flatten_results
-        self.gcp_conn_id = gcp_conn_id
-        self.udf_config = udf_config
-        self.use_legacy_sql = use_legacy_sql
-        self.maximum_billing_tier = maximum_billing_tier
-        self.maximum_bytes_billed = maximum_bytes_billed
-        self.schema_update_options = schema_update_options
-        self.query_params = query_params
-        self.labels = labels
-        self.priority = priority
-        self.time_partitioning = time_partitioning
-        self.api_resource_configs = api_resource_configs
-        self.cluster_fields = cluster_fields
-        self.location = location
-        self.encryption_configuration = encryption_configuration
-        self.hook: BigQueryHook | None = None
-        self.impersonation_chain = impersonation_chain
-
-    def execute(self, context: Context):
-        if self.hook is None:
-            self.log.info("Executing: %s", self.sql)
-            self.hook = BigQueryHook(
-                gcp_conn_id=self.gcp_conn_id,
-                use_legacy_sql=self.use_legacy_sql,
-                location=self.location,
-                impersonation_chain=self.impersonation_chain,
-            )
-        if isinstance(self.sql, str):
-            job_id: str | list[str] = self.hook.run_query(
-                sql=self.sql,
-                destination_dataset_table=self.destination_dataset_table,
-                write_disposition=self.write_disposition,
-                allow_large_results=self.allow_large_results,
-                flatten_results=self.flatten_results,
-                udf_config=self.udf_config,
-                maximum_billing_tier=self.maximum_billing_tier,
-                maximum_bytes_billed=self.maximum_bytes_billed,
-                create_disposition=self.create_disposition,
-                query_params=self.query_params,
-                labels=self.labels,
-                schema_update_options=self.schema_update_options,
-                priority=self.priority,
-                time_partitioning=self.time_partitioning,
-                api_resource_configs=self.api_resource_configs,
-                cluster_fields=self.cluster_fields,
-                encryption_configuration=self.encryption_configuration,
-            )
-        elif isinstance(self.sql, Iterable):
-            job_id = [
-                self.hook.run_query(
-                    sql=s,
-                    destination_dataset_table=self.destination_dataset_table,
-                    write_disposition=self.write_disposition,
-                    allow_large_results=self.allow_large_results,
-                    flatten_results=self.flatten_results,
-                    udf_config=self.udf_config,
-                    maximum_billing_tier=self.maximum_billing_tier,
-                    maximum_bytes_billed=self.maximum_bytes_billed,
-                    create_disposition=self.create_disposition,
-                    query_params=self.query_params,
-                    labels=self.labels,
-                    schema_update_options=self.schema_update_options,
-                    priority=self.priority,
-                    time_partitioning=self.time_partitioning,
-                    api_resource_configs=self.api_resource_configs,
-                    cluster_fields=self.cluster_fields,
-                    encryption_configuration=self.encryption_configuration,
-                )
-                for s in self.sql
-            ]
-        else:
-            raise AirflowException(f"argument 'sql' of type {type(str)} is neither a string nor an iterable")
-        context["task_instance"].xcom_push(key="job_id", value=job_id)
-
-    def on_kill(self) -> None:
-        super().on_kill()
-        if self.hook is not None:
-            self.log.info("Cancelling running query")
-            self.hook.cancel_job(self.hook.running_job_id)
-
-
 class BigQueryCreateEmptyTableOperator(GoogleCloudBaseOperator):
     """
     Creates a new, empty table in the specified BigQuery dataset,
@@ -1269,7 +1055,6 @@ class BigQueryCreateEmptyTableOperator(GoogleCloudBaseOperator):
     :param if_exists: What should Airflow do if the table exists. If set to `log`, the TI will be passed to
         success and an error message will be logged. Set to `ignore` to ignore the error, set to `fail` to
         fail the TI, and set to `skip` to skip it.
-    :param exists_ok: Deprecated - use `if_exists="ignore"` instead.
     """
 
     template_fields: Sequence[str] = (
@@ -1307,17 +1092,8 @@ class BigQueryCreateEmptyTableOperator(GoogleCloudBaseOperator):
         cluster_fields: list[str] | None = None,
         impersonation_chain: str | Sequence[str] | None = None,
         if_exists: str = "log",
-        bigquery_conn_id: str | None = None,
-        exists_ok: bool | None = None,
         **kwargs,
     ) -> None:
-        if bigquery_conn_id:
-            warnings.warn(
-                "The bigquery_conn_id parameter has been deprecated. Use the gcp_conn_id parameter instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            gcp_conn_id = bigquery_conn_id
 
         super().__init__(**kwargs)
 
@@ -1337,11 +1113,7 @@ class BigQueryCreateEmptyTableOperator(GoogleCloudBaseOperator):
         self.cluster_fields = cluster_fields
         self.table_resource = table_resource
         self.impersonation_chain = impersonation_chain
-        if exists_ok is not None:
-            warnings.warn("`exists_ok` parameter is deprecated, please use `if_exists`", DeprecationWarning)
-            self.if_exists = IfExistAction.IGNORE if exists_ok else IfExistAction.LOG
-        else:
-            self.if_exists = IfExistAction(if_exists)
+        self.if_exists = IfExistAction(if_exists)
 
     def execute(self, context: Context) -> None:
         bq_hook = BigQueryHook(
@@ -1512,16 +1284,8 @@ class BigQueryCreateExternalTableOperator(GoogleCloudBaseOperator):
         encryption_configuration: dict | None = None,
         location: str | None = None,
         impersonation_chain: str | Sequence[str] | None = None,
-        bigquery_conn_id: str | None = None,
         **kwargs,
     ) -> None:
-        if bigquery_conn_id:
-            warnings.warn(
-                "The bigquery_conn_id parameter has been deprecated. Use the gcp_conn_id parameter instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            gcp_conn_id = bigquery_conn_id
 
         super().__init__(**kwargs)
 
@@ -1786,7 +1550,6 @@ class BigQueryCreateEmptyDatasetOperator(GoogleCloudBaseOperator):
                 gcp_conn_id='_my_gcp_conn_',
                 task_id='newDatasetCreator',
                 dag=dag)
-    :param exists_ok: Deprecated - use `if_exists="ignore"` instead.
     """
 
     template_fields: Sequence[str] = (
@@ -1809,7 +1572,6 @@ class BigQueryCreateEmptyDatasetOperator(GoogleCloudBaseOperator):
         gcp_conn_id: str = "google_cloud_default",
         impersonation_chain: str | Sequence[str] | None = None,
         if_exists: str = "log",
-        exists_ok: bool | None = None,
         **kwargs,
     ) -> None:
 
@@ -1819,11 +1581,7 @@ class BigQueryCreateEmptyDatasetOperator(GoogleCloudBaseOperator):
         self.gcp_conn_id = gcp_conn_id
         self.dataset_reference = dataset_reference if dataset_reference else {}
         self.impersonation_chain = impersonation_chain
-        if exists_ok is not None:
-            warnings.warn("`exists_ok` parameter is deprecated, please use `if_exists`", DeprecationWarning)
-            self.if_exists = IfExistAction.IGNORE if exists_ok else IfExistAction.LOG
-        else:
-            self.if_exists = IfExistAction(if_exists)
+        self.if_exists = IfExistAction(if_exists)
 
         super().__init__(**kwargs)
 
@@ -1981,74 +1739,6 @@ class BigQueryGetDatasetTablesOperator(GoogleCloudBaseOperator):
             dataset_id=self.dataset_id,
             project_id=self.project_id,
             max_results=self.max_results,
-        )
-
-
-class BigQueryPatchDatasetOperator(GoogleCloudBaseOperator):
-    """
-    This operator is used to patch dataset for your Project in BigQuery.
-    It only replaces fields that are provided in the submitted dataset resource.
-
-    This operator is deprecated.
-    Please use :class:`airflow.providers.google.cloud.operators.bigquery.BigQueryUpdateTableOperator`
-
-    :param dataset_id: The id of dataset. Don't need to provide,
-        if datasetId in dataset_reference.
-    :param dataset_resource: Dataset resource that will be provided with request body.
-        https://cloud.google.com/bigquery/docs/reference/rest/v2/datasets#resource
-    :param project_id: The name of the project where we want to create the dataset.
-        Don't need to provide, if projectId in dataset_reference.
-    :param gcp_conn_id: (Optional) The connection ID used to connect to Google Cloud.
-    :param impersonation_chain: Optional service account to impersonate using short-term
-        credentials, or chained list of accounts required to get the access_token
-        of the last account in the list, which will be impersonated in the request.
-        If set as a string, the account must grant the originating account
-        the Service Account Token Creator IAM role.
-        If set as a sequence, the identities from the list must grant
-        Service Account Token Creator IAM role to the directly preceding identity, with first
-        account from the list granting this role to the originating account (templated).
-    """
-
-    template_fields: Sequence[str] = (
-        "dataset_id",
-        "project_id",
-        "impersonation_chain",
-    )
-    template_fields_renderers = {"dataset_resource": "json"}
-    ui_color = BigQueryUIColors.DATASET.value
-
-    def __init__(
-        self,
-        *,
-        dataset_id: str,
-        dataset_resource: dict,
-        project_id: str | None = None,
-        gcp_conn_id: str = "google_cloud_default",
-        impersonation_chain: str | Sequence[str] | None = None,
-        **kwargs,
-    ) -> None:
-        warnings.warn(
-            "This operator is deprecated. Please use BigQueryUpdateDatasetOperator.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        self.dataset_id = dataset_id
-        self.project_id = project_id
-        self.gcp_conn_id = gcp_conn_id
-        self.dataset_resource = dataset_resource
-        self.impersonation_chain = impersonation_chain
-        super().__init__(**kwargs)
-
-    def execute(self, context: Context):
-        bq_hook = BigQueryHook(
-            gcp_conn_id=self.gcp_conn_id,
-            impersonation_chain=self.impersonation_chain,
-        )
-
-        return bq_hook.patch_dataset(
-            dataset_id=self.dataset_id,
-            dataset_resource=self.dataset_resource,
-            project_id=self.project_id,
         )
 
 
