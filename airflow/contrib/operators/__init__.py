@@ -91,17 +91,11 @@ __deprecated_classes = {
         'BigQueryDeleteDatasetOperator': (
             'airflow.providers.google.cloud.operators.bigquery.BigQueryDeleteDatasetOperator'
         ),
-        'BigQueryExecuteQueryOperator': (
-            'airflow.providers.google.cloud.operators.bigquery.BigQueryExecuteQueryOperator'
-        ),
         'BigQueryGetDatasetOperator': (
             'airflow.providers.google.cloud.operators.bigquery.BigQueryGetDatasetOperator'
         ),
         'BigQueryGetDatasetTablesOperator': (
             'airflow.providers.google.cloud.operators.bigquery.BigQueryGetDatasetTablesOperator'
-        ),
-        'BigQueryPatchDatasetOperator': (
-            'airflow.providers.google.cloud.operators.bigquery.BigQueryPatchDatasetOperator'
         ),
         'BigQueryUpdateDatasetOperator': (
             'airflow.providers.google.cloud.operators.bigquery.BigQueryUpdateDatasetOperator'
@@ -109,7 +103,6 @@ __deprecated_classes = {
         'BigQueryUpsertTableOperator': (
             'airflow.providers.google.cloud.operators.bigquery.BigQueryUpsertTableOperator'
         ),
-        'BigQueryOperator': 'airflow.providers.google.cloud.operators.bigquery.BigQueryExecuteQueryOperator',
     },
     'bigquery_table_delete_operator': {
         'BigQueryDeleteTableOperator': (
@@ -154,20 +147,11 @@ __deprecated_classes = {
         ),
     },
     'dataflow_operator': {
-        'DataflowCreateJavaJobOperator': (
-            'airflow.providers.google.cloud.operators.dataflow.DataflowCreateJavaJobOperator'
-        ),
-        'DataflowCreatePythonJobOperator': (
-            'airflow.providers.google.cloud.operators.dataflow.DataflowCreatePythonJobOperator'
-        ),
         'DataflowTemplatedJobStartOperator': (
             'airflow.providers.google.cloud.operators.dataflow.DataflowTemplatedJobStartOperator'
         ),
         'DataFlowJavaOperator': (
             'airflow.providers.google.cloud.operators.dataflow.DataflowCreateJavaJobOperator'
-        ),
-        'DataFlowPythonOperator': (
-            'airflow.providers.google.cloud.operators.dataflow.DataflowCreatePythonJobOperator'
         ),
         'DataflowTemplateOperator': (
             'airflow.providers.google.cloud.operators.dataflow.DataflowTemplatedJobStartOperator'
@@ -189,56 +173,14 @@ __deprecated_classes = {
         'DataprocJobBaseOperator': (
             'airflow.providers.google.cloud.operators.dataproc.DataprocJobBaseOperator'
         ),
-        'DataprocScaleClusterOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocScaleClusterOperator'
-        ),
-        'DataprocSubmitHadoopJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitHadoopJobOperator'
-        ),
-        'DataprocSubmitHiveJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitHiveJobOperator'
-        ),
-        'DataprocSubmitPigJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitPigJobOperator'
-        ),
-        'DataprocSubmitPySparkJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitPySparkJobOperator'
-        ),
-        'DataprocSubmitSparkJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitSparkJobOperator'
-        ),
-        'DataprocSubmitSparkSqlJobOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitSparkSqlJobOperator'
-        ),
         'DataprocClusterCreateOperator': (
             'airflow.providers.google.cloud.operators.dataproc.DataprocCreateClusterOperator'
         ),
         'DataprocClusterDeleteOperator': (
             'airflow.providers.google.cloud.operators.dataproc.DataprocDeleteClusterOperator'
         ),
-        'DataprocClusterScaleOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocScaleClusterOperator'
-        ),
-        'DataProcHadoopOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitHadoopJobOperator'
-        ),
-        'DataProcHiveOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitHiveJobOperator'
-        ),
         'DataProcJobBaseOperator': (
             'airflow.providers.google.cloud.operators.dataproc.DataprocJobBaseOperator'
-        ),
-        'DataProcPigOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitPigJobOperator'
-        ),
-        'DataProcPySparkOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitPySparkJobOperator'
-        ),
-        'DataProcSparkOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitSparkJobOperator'
-        ),
-        'DataProcSparkSqlOperator': (
-            'airflow.providers.google.cloud.operators.dataproc.DataprocSubmitSparkSqlJobOperator'
         ),
         'DataprocWorkflowTemplateInstantiateInlineOperator':
             'airflow.providers.google.cloud.operators.dataproc.'
@@ -950,12 +892,6 @@ __deprecated_classes = {
         ),
     },
     'mlengine_operator': {
-        'MLEngineManageModelOperator': (
-            'airflow.providers.google.cloud.operators.mlengine.MLEngineManageModelOperator'
-        ),
-        'MLEngineManageVersionOperator': (
-            'airflow.providers.google.cloud.operators.mlengine.MLEngineManageVersionOperator'
-        ),
         'MLEngineStartBatchPredictionJobOperator': (
             'airflow.providers.google.cloud.operators.mlengine.MLEngineStartBatchPredictionJobOperator'
         ),
@@ -965,14 +901,8 @@ __deprecated_classes = {
         'MLEngineBatchPredictionOperator': (
             'airflow.providers.google.cloud.operators.mlengine.MLEngineStartBatchPredictionJobOperator'
         ),
-        'MLEngineModelOperator': (
-            'airflow.providers.google.cloud.operators.mlengine.MLEngineManageModelOperator'
-        ),
         'MLEngineTrainingOperator': (
             'airflow.providers.google.cloud.operators.mlengine.MLEngineStartTrainingJobOperator'
-        ),
-        'MLEngineVersionOperator': (
-            'airflow.providers.google.cloud.operators.mlengine.MLEngineManageVersionOperator'
         ),
     },
     'mongo_to_s3': {

@@ -21,13 +21,12 @@ from urllib.parse import quote_plus
 
 import pytest
 
-from airflow import DAG
 from airflow.api_connexion.exceptions import EXCEPTIONS_LINK_MAP
 from airflow.models.baseoperator import BaseOperatorLink
 from airflow.models.dagbag import DagBag
 from airflow.models.xcom import XCom
 from airflow.plugins_manager import AirflowPlugin
-from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
+from airflow.providers.google.cloud.operators.bigquery import BigQueryInsertJobOperator
 from airflow.security import permissions
 from airflow.timetables.base import DataInterval
 from airflow.utils import timezone
@@ -91,12 +90,6 @@ class TestGetExtraLinks:
     def teardown_method(self) -> None:
         clear_db_runs()
         clear_db_xcom()
-
-    def _create_dag(self):
-        with DAG(dag_id="TEST_DAG_ID", default_args={"start_date": self.default_time}) as dag:
-            BigQueryExecuteQueryOperator(task_id="TEST_SINGLE_QUERY", sql="SELECT 1")
-            BigQueryExecuteQueryOperator(task_id="TEST_MULTIPLE_QUERY", sql=["SELECT 1", "SELECT 2"])
-        return dag
 
     @pytest.mark.parametrize(
         "url, expected_title, expected_detail",
@@ -207,7 +200,7 @@ class TestGetExtraLinks:
 
         class S3LogLink(BaseOperatorLink):
             name = "S3"
-            operators = [BigQueryExecuteQueryOperator]
+            operators = [BigQueryInsertJobOperator]
 
             def get_link(self, operator, dttm):
                 return (
