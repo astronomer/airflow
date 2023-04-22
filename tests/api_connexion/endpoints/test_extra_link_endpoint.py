@@ -21,6 +21,7 @@ from urllib.parse import quote_plus
 
 import pytest
 
+from airflow import DAG
 from airflow.api_connexion.exceptions import EXCEPTIONS_LINK_MAP
 from airflow.models.baseoperator import BaseOperatorLink
 from airflow.models.dagbag import DagBag
@@ -86,6 +87,12 @@ class TestGetExtraLinks:
         session.flush()
 
         self.client = self.app.test_client()  # type:ignore
+
+    def _create_dag(self):
+        with DAG(dag_id="TEST_DAG_ID", default_args={"start_date": self.default_time}) as dag:
+            BigQueryInsertJobOperator(task_id="TEST_SINGLE_QUERY", sql="SELECT 1")
+            BigQueryInsertJobOperator(task_id="TEST_MULTIPLE_QUERY", sql=["SELECT 1", "SELECT 2"])
+        return dag
 
     def teardown_method(self) -> None:
         clear_db_runs()
