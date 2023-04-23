@@ -54,6 +54,7 @@ class GCSObjectExistenceSensor(BaseSensorOperator):
         Service Account Token Creator IAM role to the directly preceding identity, with first
         account from the list granting this role to the originating account (templated).
     :param retry: (Optional) How to retry the RPC
+    :param deferrable: Run sensor in the deferrable mode.
     """
 
     template_fields: Sequence[str] = (

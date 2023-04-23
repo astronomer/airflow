@@ -137,6 +137,7 @@ class WasbPrefixSensor(BaseSensorOperator):
     :param wasb_conn_id: Reference to the wasb connection.
     :param check_options: Optional keyword arguments that
         `WasbHook.check_for_prefix()` takes.
+    :param deferrable: Run sensor in the deferrable mode.
     """
 
     template_fields: Sequence[str] = ("container_name", "prefix")
