@@ -209,6 +209,7 @@ class SecretsMasker(logging.Filter):
 
     # Default on `max_depth` is to support versions of the OpenLineage plugin (not the provider) which called
     # this function directly. New versions of that provider, and this class itself call it with a value
+    # TODO: Look at adoption of OpenLineage provider in early 2024 -- maybe we can remove this default then
     def _redact_all(self, item: Redactable, depth: int, max_depth: int = MAX_RECURSION_DEPTH) -> Redacted:
         if depth > max_depth or isinstance(item, str):
             return "***"
