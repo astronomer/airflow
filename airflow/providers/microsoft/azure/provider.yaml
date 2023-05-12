@@ -72,7 +72,7 @@ dependencies:
   - azure-storage-file-datalake>=12.9.1
   # TODO: upgrade to newer versions of all the below libraries
   - azure-mgmt-containerinstance>=1.5.0,<2.0
-  - azure-mgmt-datafactory>=1.0.0,<2.0
+  - azure-mgmt-datafactory
   - azure-kusto-data>=0.0.43,<0.1
 
 integrations:
