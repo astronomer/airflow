@@ -76,27 +76,25 @@ class BigQueryInsertJobTrigger(BaseTrigger):
         hook = self._get_async_hook()
         while True:
             try:
-                # Poll for job execution status
-                response_from_hook = await hook.get_job_status(job_id=self.job_id, project_id=self.project_id)
-                self.log.debug("Response from hook: %s", response_from_hook)
+                job_status = await hook.get_job_status(job_id=self.job_id, project_id=self.project_id)
 
-                if response_from_hook == "success":
+                if job_status == "SUCCESS":
                     yield TriggerEvent(
                         {
                             "job_id": self.job_id,
-                            "status": "success",
+                            "status": "SUCCESS",
                             "message": "Job completed",
                         }
                     )
                     return
-                elif response_from_hook == "pending":
-                    self.log.info("Query is still running...")
-                    self.log.info("Sleeping for %s seconds.", self.poll_interval)
-                    await asyncio.sleep(self.poll_interval)
-                else:
-                    yield TriggerEvent({"status": "error", "message": response_from_hook})
+                elif job_status == "ERROR":
+                    yield TriggerEvent({"status": "error"})
                     return
-
+                else:
+                    self.log.info(
+                        "Bigquery job status is %s. Sleeping for %s seconds.", job_status, self.poll_interval
+                    )
+                    await asyncio.sleep(self.poll_interval)
             except Exception as e:
                 self.log.exception("Exception occurred while checking for query completion")
                 yield TriggerEvent({"status": "error", "message": str(e)})
