@@ -25,6 +25,7 @@ Content
     :maxdepth: 1
     :caption: Guides
 
+    Connections <connections/livy>
     Operators <operators>
 
 .. toctree::
