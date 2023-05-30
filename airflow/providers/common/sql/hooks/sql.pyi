@@ -31,7 +31,7 @@
 Definition of the public interface for airflow.providers.common.sql.hooks.sql
 isort:skip_file
 """
-from _typeshed import Incomplete  # noqa: F401
+from _typeshed import Incomplete
 from airflow.hooks.dbapi import DbApiHook as BaseForDbApiHook
 from typing import Any, Callable, Iterable, Mapping, Sequence, Union
 from typing_extensions import Protocol

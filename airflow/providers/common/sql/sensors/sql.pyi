@@ -31,7 +31,7 @@
 Definition of the public interface for airflow.providers.common.sql.sensors.sql
 isort:skip_file
 """
-from _typeshed import Incomplete  # noqa: F401
+from _typeshed import Incomplete
 from airflow.sensors.base import BaseSensorOperator
 from typing import Any, Sequence
 
