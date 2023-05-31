@@ -46,7 +46,7 @@ function updateJSONconf() {
             values[values.length] = lines[j].trim();
           }
         }
-        params[keyName] = values.length === 0 ? null : values;
+        params[keyName] = values.length === 0 ? "" : values;
       } else if (
         elements[i].attributes.valuetype &&
         elements[i].attributes.valuetype.value === "multiselect"
@@ -58,9 +58,9 @@ function updateJSONconf() {
             values[values.length] = options[j].value;
           }
         }
-        params[keyName] = values.length === 0 ? null : values;
+        params[keyName] = values.length === 0 ? "" : values;
       } else if (elements[i].value.length === 0) {
-        params[keyName] = null;
+        params[keyName] = "";
       } else if (
         elements[i].attributes.valuetype &&
         elements[i].attributes.valuetype.value === "object"
@@ -74,7 +74,7 @@ function updateJSONconf() {
               .get(elements[i].name)
               .setValue(JSON.stringify(objValue, null, 4));
           } else {
-            params[keyName] = null;
+            params[keyName] = "";
           }
         } catch (e) {
           // ignore JSON parsing errors
