@@ -67,13 +67,37 @@ from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.sqlalchemy import UtcDateTime, nulls_first, skip_locked, tuple_in_condition, with_row_locks
 from airflow.utils.state import DagRunState, State, TaskInstanceState
 from airflow.utils.types import NOTSET, ArgNotSet, DagRunType
-
+from time import monotonic
 if TYPE_CHECKING:
     from airflow.models.dag import DAG
     from airflow.models.operator import Operator
 
     CreatedTasks = TypeVar("CreatedTasks", Iterator["dict[str, Any]"], Iterator[TI])
     TaskCreator = Callable[[Operator, Iterable[int]], CreatedTasks]
+
+
+LOG_FILE = "/root/airflow/dags/scheduler1.log"
+
+
+def persist_log(s_log):
+    with open(LOG_FILE, 'r+') as f:
+        content = f.read()
+        f.seek(0, 0)
+        f.write(s_log.rstrip('\r\n') + '\n' + content)
+
+
+def record_time(function):
+    def wrap(*args, **kwargs):
+        start_time = monotonic()
+        function_return = function(*args, **kwargs)
+        func_name = function.__name__
+        s_time = monotonic() - start_time
+        s_log = f"{func_name}={round(s_time, 3)} seconds"
+        persist_log(s_log)
+
+        return function_return
+
+    return wrap
 
 
 class TISchedulingDecision(NamedTuple):
@@ -441,6 +465,7 @@ class DagRun(Base, LoggingMixin):
         # _Ensure_ run_type is a DagRunType, not just a string from user code
         return DagRunType(run_type).generate_run_id(execution_date)
 
+    @record_time
     @provide_session
     def get_task_instances(
         self,
@@ -448,6 +473,7 @@ class DagRun(Base, LoggingMixin):
         session: Session = NEW_SESSION,
     ) -> list[TI]:
         """Returns the task instances for this dag run."""
+        persist_log(f"states={state}")
         tis = (
             session.query(TI)
             .options(joinedload(TI.dag_run))
@@ -473,7 +499,7 @@ class DagRun(Base, LoggingMixin):
 
         if self.dag and self.dag.partial:
             tis = tis.filter(TI.task_id.in_(self.dag.task_ids))
-        return tis.all()
+        return tis.limit(20).all()
 
     @provide_session
     def get_task_instance(
@@ -561,7 +587,7 @@ class DagRun(Base, LoggingMixin):
             def should_schedule(self) -> bool:
                 return (
                     bool(self.tis)
-                    and all(not t.task.depends_on_past for t in self.tis)
+                    # and all(not t.task.depends_on_past for t in self.tis)
                     and all(t.task.max_active_tis_per_dag is None for t in self.tis)
                     and all(t.task.max_active_tis_per_dagrun is None for t in self.tis)
                     and all(t.state != TaskInstanceState.DEFERRED for t in self.tis)
@@ -577,14 +603,21 @@ class DagRun(Base, LoggingMixin):
             tags=self.stats_tags,
         ):
             dag = self.get_dag()
-            info = self.task_instance_scheduling_decisions(session)
 
+            # TODO: 1
+            start_st1 = monotonic()
+            info = self.task_instance_scheduling_decisions(session)
+            time_l1 = round((monotonic() - start_st1), 3)
+            logs_s1 = f"TODO1={time_l1}"
+            persist_log(logs_s1)
+
+            start_st2 = monotonic()
             tis = info.tis
             schedulable_tis = info.schedulable_tis
             changed_tis = info.changed_tis
             finished_tis = info.finished_tis
             unfinished = _UnfinishedStates.calculate(info.unfinished_tis)
-
+            # TODO: 2
             if unfinished.should_schedule:
                 are_runnable_tasks = schedulable_tis or changed_tis
                 # small speed up
@@ -594,6 +627,9 @@ class DagRun(Base, LoggingMixin):
                     )
                     if changed_by_upstream:  # Something changed, we need to recalculate!
                         unfinished = unfinished.recalculate()
+            time_l2 = round((monotonic() - start_st2), 3)
+            logs_s2 = f"TODO2={time_l2}"
+            persist_log(logs_s2)
 
         leaf_task_ids = {t.task_id for t in dag.leaves}
         leaf_tis = [ti for ti in tis if ti.task_id in leaf_task_ids if ti.state != TaskInstanceState.REMOVED]
@@ -610,8 +646,10 @@ class DagRun(Base, LoggingMixin):
             leaf_tis.extend(on_failure_fail_tis)
             leaf_tis.extend(tis_upstream_of_teardowns)
 
+        # TODO: 3
         # if all roots finished and at least one failed, the run failed
         if not unfinished.tis and any(leaf_ti.state in State.failed_states for leaf_ti in leaf_tis):
+            start_st3 = monotonic()
             self.log.error("Marking run %s failed", self)
             self.set_state(DagRunState.FAILED)
             self.notify_dagrun_state_changed(msg="task_failure")
@@ -630,9 +668,14 @@ class DagRun(Base, LoggingMixin):
                     processor_subdir=None if dag_model is None else dag_model.processor_subdir,
                     msg="task_failure",
                 )
+            time_l3 = round((monotonic() - start_st3), 3)
+            logs_s3 = f"TODO3={time_l3}"
+            persist_log(logs_s3)
 
         # if all leaves succeeded and no unfinished tasks, the run succeeded
+        # TODO: 4
         elif not unfinished.tis and all(leaf_ti.state in State.success_states for leaf_ti in leaf_tis):
+            start_st4 = monotonic()
             self.log.info("Marking run %s successful", self)
             self.set_state(DagRunState.SUCCESS)
             self.notify_dagrun_state_changed(msg="success")
@@ -651,9 +694,14 @@ class DagRun(Base, LoggingMixin):
                     processor_subdir=None if dag_model is None else dag_model.processor_subdir,
                     msg="success",
                 )
+            time_l4 = round((monotonic() - start_st4), 3)
+            logs_s4 = f"TODO4={time_l4}"
+            persist_log(logs_s4)
 
         # if *all tasks* are deadlocked, the run failed
+        # TODO: 5
         elif unfinished.should_schedule and not are_runnable_tasks:
+            time_s5 = monotonic()
             self.log.error("Task deadlock (no runnable tasks); marking run %s failed", self)
             self.set_state(DagRunState.FAILED)
             self.notify_dagrun_state_changed(msg="all_tasks_deadlocked")
@@ -672,11 +720,19 @@ class DagRun(Base, LoggingMixin):
                     processor_subdir=None if dag_model is None else dag_model.processor_subdir,
                     msg="all_tasks_deadlocked",
                 )
-
+            time_l5 = round((monotonic() - time_s5), 3)
+            logs_s5 = f"TODO5={time_l5}"
+            persist_log(logs_s5)
         # finally, if the roots aren't done, the dag is still running
+        # TODO: 6
         else:
+            time_l6 = monotonic()
             self.set_state(DagRunState.RUNNING)
+            time_l6 = round((monotonic() - time_l6), 3)
+            logs_s6 = f"TODO6={time_l6}"
+            persist_log(logs_s6)
 
+        time_l7 = monotonic()
         if self._state == DagRunState.FAILED or self._state == DagRunState.SUCCESS:
             msg = (
                 "DagRun Finished: dag_id=%s, execution_date=%s, run_id=%s, "
@@ -708,14 +764,20 @@ class DagRun(Base, LoggingMixin):
 
         session.merge(self)
         # We do not flush here for performance reasons(It increases queries count by +20)
-
+        time_l7 = round((monotonic() - time_l7), 3)
+        logs_s7 = f"TODO7={time_l7}"
+        persist_log(logs_s7)
         return schedulable_tis, callback
 
-    @provide_session
+    # @provide_session
+    @record_time
     def task_instance_scheduling_decisions(self, session: Session = NEW_SESSION) -> TISchedulingDecision:
-        tis = self.get_task_instances(session=session, state=State.task_states)
-        self.log.debug("number of tis tasks for %s: %s task(s)", self, len(tis))
+        stat_0 = monotonic()
+        tis = self.get_task_instances(session=session, state=State.unfinished)
+        persist_log(f"number_of_tis={len(tis)}")
+        self.log.info("number of tis tasks for %s: %s task(s)", self, len(tis))
 
+        @record_time
         def _filter_tis_and_exclude_removed(dag: DAG, tis: list[TI]) -> Iterable[TI]:
             """Populate ``ti.task`` while excluding those missing one, marking them as REMOVED."""
             for ti in tis:
@@ -726,16 +788,21 @@ class DagRun(Base, LoggingMixin):
                         self.log.error("Failed to get task for ti %s. Marking it as removed.", ti)
                         ti.state = State.REMOVED
                         session.flush()
-                else:
-                    yield ti
+                #else:
+                #    yield ti
 
-        tis = list(_filter_tis_and_exclude_removed(self.get_dag(), tis))
+        #stat_0 = monotonic()
+        #tis = list(_filter_tis_and_exclude_removed(self.get_dag(), tis))
+        _filter_tis_and_exclude_removed(self.get_dag(), tis)
+        #t = round((monotonic()-stat_0), 3)
+        #persist_log(f"_filter_tis_and_exclude_removed={t}")
 
+        stat_1 = monotonic()
         unfinished_tis = [t for t in tis if t.state in State.unfinished]
         finished_tis = [t for t in tis if t.state in State.finished]
         if unfinished_tis:
             schedulable_tis = [ut for ut in unfinished_tis if ut.state in SCHEDULEABLE_STATES]
-            self.log.debug("number of scheduleable tasks for %s: %s task(s)", self, len(schedulable_tis))
+            self.log.info("number of scheduleable tasks for %s: %s task(s)", self, len(schedulable_tis))
             schedulable_tis, changed_tis, expansion_happened = self._get_ready_tis(
                 schedulable_tis,
                 finished_tis,
@@ -753,6 +820,8 @@ class DagRun(Base, LoggingMixin):
             schedulable_tis = []
             changed_tis = False
 
+        #t = round((monotonic() - stat_1), 3)
+        #persist_log(f"changed_tis={t}")
         return TISchedulingDecision(
             tis=tis,
             schedulable_tis=schedulable_tis,
@@ -772,6 +841,7 @@ class DagRun(Base, LoggingMixin):
         # we can't get all the state changes on SchedulerJob, BackfillJob
         # or LocalTaskJob, so we don't want to "falsely advertise" we notify about that
 
+    @record_time
     def _get_ready_tis(
         self,
         schedulable_tis: list[TI],
