@@ -4006,8 +4006,6 @@ class Airflow(AirflowBaseView):
                     if session.bind.dialect.name == "postgresql":
                         order_by = (order_by[0].nulls_first(), *order_by[1:])
 
-            count_query = session.query(func.count(DatasetModel.id))
-
             has_event_filters = bool(updated_before or updated_after)
 
             query = (
@@ -4025,9 +4023,6 @@ class Airflow(AirflowBaseView):
                 .order_by(*order_by)
             )
 
-            if has_event_filters:
-                count_query = count_query.join(DatasetEvent, DatasetEvent.dataset_id == DatasetModel.id)
-
             filters = [~DatasetModel.is_orphaned]
             if uri_pattern:
                 filters.append(DatasetModel.uri.ilike(f"%{uri_pattern}%"))
@@ -4036,11 +4031,11 @@ class Airflow(AirflowBaseView):
             if updated_before:
                 filters.append(DatasetEvent.timestamp <= updated_before)
 
+            count_query = query.count()
             query = query.filter(*filters).offset(offset).limit(limit)
-            count_query = count_query.filter(*filters)
 
             datasets = [dict(dataset) for dataset in query]
-            data = {"datasets": datasets, "total_entries": count_query.scalar()}
+            data = {"datasets": datasets, "total_entries": count_query}
 
             return (
                 htmlsafe_json_dumps(data, separators=(",", ":"), cls=utils_json.WebEncoder),

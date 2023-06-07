@@ -163,6 +163,7 @@ const DatasetsList = ({ onSelect }: Props) => {
             onClick={() => {
               searchParams.delete(DATE_FILTER_PARAM);
               setSearchParams(searchParams);
+              setOffset(0);
             }}
             variant={!dateFilter ? "solid" : "outline"}
             fontWeight={!dateFilter ? "bold" : "normal"}
@@ -182,6 +183,7 @@ const DatasetsList = ({ onSelect }: Props) => {
                     searchParams.set(DATE_FILTER_PARAM, option);
                   }
                   setSearchParams(searchParams);
+                  setOffset(0);
                 }}
                 variant={isSelected ? "solid" : "outline"}
                 fontWeight={isSelected ? "bold" : "normal"}
