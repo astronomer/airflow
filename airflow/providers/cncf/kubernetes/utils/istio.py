@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from kubernetes.stream import stream
-from packaging.version import parse as semantic_version
+from semver import Version as semantic_version
 
 from airflow.exceptions import AirflowException
 from airflow.utils.log.logging_mixin import LoggingMixin
@@ -99,7 +99,6 @@ class Istio(LoggingMixin):
             AirflowException: if we find an istio-proxy, and we can't shut it down.
         """
         for container in pod.spec.containers:
-
             # Skip unless it's a sidecar named as SidecarNames.ISTIO_PROXY.
             if container.name != SidecarNames.ISTIO_PROXY:
                 continue
@@ -108,7 +107,7 @@ class Istio(LoggingMixin):
             # If we can't tell the version, proceed anyways.
             if ":" in container.image:
                 _, tag = container.image.split(":")
-                if semantic_version(tag) < semantic_version("1.3.0-rc.0"):
+                if semantic_version.parse(tag) < semantic_version.parse("1.3.0-rc.0"):
                     raise AirflowException(
                         "Please use istio version 1.3.0+ for KubernetesExecutor compatibility."
                         f" Detected version {tag}"
