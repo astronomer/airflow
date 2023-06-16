@@ -84,6 +84,7 @@ dependencies:
   #  major changes in the package.
   - kubernetes_asyncio>=18.20.1,<25
   - google-re2>=1.0
+  - semver
 
 integrations:
   - integration-name: Kubernetes
