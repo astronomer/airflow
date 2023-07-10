@@ -463,9 +463,12 @@ class DagRun(Base, LoggingMixin):
         session: Session = NEW_SESSION,
     ) -> list[TI]:
         """Returns the task instances for this dag run."""
+        from sqlalchemy.orm import load_only
+
         tis = (
             select(TI)
             .options(joinedload(TI.dag_run))
+            .options(load_only(TI.dag_id, TI.task_id, TI.state, TI.map_index))
             .where(
                 TI.dag_id == self.dag_id,
                 TI.run_id == self.run_id,

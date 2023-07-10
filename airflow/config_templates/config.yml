@@ -99,7 +99,7 @@ core:
       version_added: ~
       type: string
       example: ~
-      default: "True"
+      default: "False"
     max_active_runs_per_dag:
       description: |
         The maximum number of active DAG runs per DAG. The scheduler will not create more DAG runs
