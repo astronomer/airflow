@@ -33,7 +33,7 @@ import useFilters, {
   FILTER_UPSTREAM_PARAM,
   ROOT_PARAM,
 } from "src/dag/useFilters";
-import type { Task, DagRun, RunOrdering } from "src/types";
+import type { Task, DagRun, RunOrdering, API } from "src/types";
 import { camelCase } from "lodash";
 
 const DAG_ID_PARAM = "dag_id";
@@ -65,6 +65,25 @@ const formatOrdering = (data: GridData) => ({
 
 export const areActiveRuns = (runs: DagRun[] = []) =>
   runs.filter((run) => ["queued", "running"].includes(run.state)).length > 0;
+
+export const areActiveTasks = (
+  tasks: API.TaskInstanceCollection["taskInstances"] = []
+) =>
+  tasks.filter(
+    (task) =>
+      task.state &&
+      [
+        "queued",
+        "running",
+        "scheduled",
+        "deferred",
+        "up_for_retry",
+        "up_for_reschedule",
+        "sensing",
+        "restarting",
+        null,
+      ].includes(task.state)
+  ).length > 0;
 
 const useGridData = () => {
   const { isRefreshOn, stopRefresh } = useAutoRefresh();

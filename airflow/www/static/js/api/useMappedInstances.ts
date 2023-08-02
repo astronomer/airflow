@@ -23,6 +23,7 @@ import { useQuery } from "react-query";
 import { getMetaValue } from "src/utils";
 import { useAutoRefresh } from "src/context/autorefresh";
 import type { API } from "src/types";
+import { areActiveTasks } from "./useGridData";
 
 const mappedInstancesUrl = getMetaValue("mapped_instances_api");
 
@@ -49,7 +50,10 @@ export default function useMappedInstances({
     {
       keepPreviousData: true,
       initialData: { taskInstances: [], totalEntries: 0 },
-      refetchInterval: isRefreshOn && (autoRefreshInterval || 1) * 1000,
+      refetchInterval: (data) =>
+        (areActiveTasks(data?.taskInstances) ||
+          (isRefreshOn && !data?.taskInstances)) &&
+        (autoRefreshInterval || 1) * 1000,
       // staleTime should be similar to the refresh interval
       staleTime: (autoRefreshInterval || 1) * 1000,
     }
