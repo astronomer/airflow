@@ -56,3 +56,24 @@ class TestGetHostname:
             ),
         ):
             net.get_hostname()
+
+
+def test_safe_urljoin_with_trailing_slash_base():
+    base_url = "https://www.example.com/base/path/"
+    relative_url = "subpage"
+    expected_result = "https://www.example.com/base/path/subpage"
+    assert net.safe_urljoin(base_url, relative_url) == expected_result
+
+
+def test_safe_urljoin_no_trailing_slash_base_no_leading_slash_relative():
+    base_url = "https://www.example.com/base/path"
+    relative_url = "subpage"
+    expected_result = "https://www.example.com/base/path/subpage"
+    assert net.safe_urljoin(base_url, relative_url) == expected_result
+
+
+def test_safe_urljoin_leading_slash_relative():
+    base_url = "https://www.example.com/base/path/"
+    relative_url = "/subpage/"
+    expected_result = "https://www.example.com/base/path/subpage/"
+    assert net.safe_urljoin(base_url, relative_url) == expected_result
