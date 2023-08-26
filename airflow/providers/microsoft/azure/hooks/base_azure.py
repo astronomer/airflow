@@ -139,3 +139,68 @@ class AzureBaseHook(BaseHook):
             credentials=credentials,
             subscription_id=subscription_id,
         )
+
+
+class _AzureBaseHook(BaseHook):
+
+    conn_name_attr = "azure_conn_id"
+    default_conn_name = "azure_default"
+    conn_type = "azure"
+    hook_name = "Azure"
+
+    def __init__(self, conn_id: str = "azure_default"):
+        self.conn_id = conn_id
+
+    def get_conn(self) -> Any:
+        from azure.identity import (
+            CertificateCredential,
+            ClientSecretCredential,
+            DefaultAzureCredential,
+            ManagedIdentityCredential,
+            UsernamePasswordCredential,
+            WorkloadIdentityCredential,
+        )
+
+        conn = self.get_connection(self.conn_id)
+        extras = conn.extras
+        auth_method = extras.get("auth_method")
+        tenant_id = extras.get("tenant_id")
+        client_id = extras.get("client_id")
+        if auth_method == "CERT_CRED":
+            certificate_path = extras.get("certificate_path")
+            cert_password = extras.get("cert_password")
+            certificate_data = extras.get("certificate_data")
+            return CertificateCredential(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                certificate_path=certificate_path,
+                certificate_data=certificate_data,
+                password=cert_password,
+            )
+        elif auth_method == "SECRET_CRED":
+            client_secret = extras.get("client_secret")
+            return ClientSecretCredential(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+        elif auth_method == "MANAGED_IDENTITY_CRED":
+            return ManagedIdentityCredential(client_id=client_id)
+        elif auth_method == "USERNAME_PASSWORD_CRED":
+            username = extras.get("username")
+            password = extras.get("usr_password")
+            return UsernamePasswordCredential(client_id=client_id, username=username, password=password)
+        elif auth_method == "WORKLOAD_IDENTITY":
+            token_file_path = extras.get("token_file_path")
+            return WorkloadIdentityCredential(
+                tenant_id=tenant_id,
+                client_id=client_id,
+                token_file_path=token_file_path,
+            )
+        else:
+            return DefaultAzureCredential()
+
+    @staticmethod
+    def _validate_auth_method(self, auth_method: str):
+        if auth_method not in []:
+            raise ValueError(f"{auth_method} is not valid!")
