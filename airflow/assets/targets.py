@@ -34,7 +34,11 @@ if typing.TYPE_CHECKING:
 
 @attrs.define()
 class Template:
-    """Value template to be passed into various things."""
+    """Value template to be passed into various things.
+
+    Unfortunately we can't just use ``jinja2.Template`` since it does not keep
+    the original template string.
+    """
 
     source: str
 
@@ -53,7 +57,7 @@ def _is_pandas_dataframe(obj: typing.Any) -> TypeGuard[pandas.DataFrame]:
 class AssetTarget(typing.Protocol):
     """Base representation of a target where an asset writes to."""
 
-    def get_uri(self) -> str:
+    def as_dataset_uri(self) -> str:
         raise NotImplementedError
 
     def read_pandas_dataframe(self, context: Context) -> pandas.DataFrame:
@@ -75,15 +79,19 @@ class File(AssetTarget):
     path: str | ObjectStoragePath | Template
     fmt: FileFormat
 
-    def get_uri(self) -> str:
+    def as_dataset_uri(self) -> str:
         p = self.path
         if isinstance(p, ObjectStoragePath):
             return p.as_uri()
+        # TODO: Depending on a templated asset location means the dataset URI
+        # is an unrendered template string. This also requires a dataset event
+        # to be emitted with that exact string (instead of the rendered value),
+        # which is not yet done.
         if isinstance(p, Template):
             return p.source
         return p
 
-    def _get_storage_path(self, context: Context) -> ObjectStoragePath:
+    def _render_storage_path(self, context: Context) -> ObjectStoragePath:
         p = self.path
         if isinstance(p, ObjectStoragePath):
             return p
@@ -92,7 +100,7 @@ class File(AssetTarget):
         return ObjectStoragePath(p)
 
     def read_pandas_dataframe(self, context: Context) -> pandas.DataFrame:
-        return self.fmt.read_pandas_dataframe(self._get_storage_path(context))
+        return self.fmt.read_pandas_dataframe(self._render_storage_path(context))
 
     def write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
-        return self.fmt.write_pandas_dataframe(self._get_storage_path(context), data)
+        return self.fmt.write_pandas_dataframe(self._render_storage_path(context), data)

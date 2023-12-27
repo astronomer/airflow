@@ -51,6 +51,8 @@ class _AssetOperator(PythonOperator):
     def execute(self, context: Context) -> typing.Any:
         inputs = AssetInputs(assets=self.assets, logical_date=context["logical_date"])
 
+        # TODO: Add assets to the formal context definition and generate the
+        # accessor in TaskInstance.get_template_context() instead.
         context["assets"] = inputs  # type: ignore[typeddict-unknown-key]
         result = super().execute(context)
 
@@ -78,13 +80,17 @@ class Asset(typing.Generic[F]):
     def task_id(self) -> str:
         return self.function.__name__
 
+    # TODO: Since currently Airflow doesn't recognize an asset, we need to call
+    # this explicitly to create a DAG in the DAG file for Airflow to pick it up.
+    # Eventually Airflow will be able to pick up an asset automatically and
+    # eliminate the need to call this manually.
     def as_dag(self) -> DAG:
         with contextlib.suppress(AttributeError):
             return self.__created_dag
 
         if isinstance(self.schedule, collections.abc.Mapping):
             assets = self.schedule
-            schedule: ScheduleArg = [Dataset(target.at.get_uri()) for target in assets.values()]
+            schedule: ScheduleArg = [Dataset(target.at.as_dataset_uri()) for target in assets.values()]
         else:
             assets = {}
             schedule = self.schedule

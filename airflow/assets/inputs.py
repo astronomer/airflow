@@ -42,6 +42,8 @@ class AssetInput:
     source: TaskInstance
 
     def as_df(self) -> pandas.DataFrame:
+        # Note that we need to use the context from the *source* ti because
+        # that's what the asset used when it wrote the data.
         return self.target.read_pandas_dataframe(self.source.get_template_context())
 
 
@@ -61,6 +63,8 @@ class AssetInputs(typing.Mapping[str, AssetInput]):
     def __getitem__(self, key: str) -> AssetInput:
         asset = self.assets[key]
         with create_session() as session:
+            # TODO: Maybe instead of rebuilding the asset from ti, maybe we can
+            # use the dataset table instead? Not sure.
             source: TaskInstance | None = session.scalar(
                 sa.select(TaskInstance)
                 .where(
@@ -73,6 +77,6 @@ class AssetInputs(typing.Mapping[str, AssetInput]):
                 .limit(1)
             )
         if source is None:  # No previous input found.
-            raise KeyError(key)
+            raise KeyError(key)  # TODO: Should this raise something better?
         source.refresh_from_task(asset.as_dag().get_task(asset.task_id))
         return AssetInput(target=asset.at, source=source)

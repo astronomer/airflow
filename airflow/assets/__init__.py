@@ -41,4 +41,5 @@ class AssetDecorator:
         return Asset(at=self.at, function=f, schedule=self.schedule)
 
 
+# So we can do @asset(...) on a function.
 asset = AssetDecorator
