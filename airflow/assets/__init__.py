@@ -27,8 +27,6 @@ if typing.TYPE_CHECKING:
     from airflow.assets.targets import AssetTarget
     from airflow.timetables.base import Timetable
 
-F = typing.TypeVar("F", bound=typing.Callable)
-
 
 @attrs.define(kw_only=True)
 class AssetDecorator:
@@ -37,7 +35,7 @@ class AssetDecorator:
     at: AssetTarget
     schedule: str | Timetable | dict[str, Asset]
 
-    def __call__(self, f: F) -> Asset[F]:
+    def __call__(self, f: typing.Callable) -> Asset:
         return Asset(at=self.at, function=f, schedule=self.schedule)
 
 

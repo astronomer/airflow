@@ -37,8 +37,6 @@ if typing.TYPE_CHECKING:
 
 __all__ = ["Asset"]
 
-F = typing.TypeVar("F", bound=typing.Callable)
-
 
 class _AssetOperator(PythonOperator):
     custom_operator_name = "@asset"
@@ -61,11 +59,11 @@ class _AssetOperator(PythonOperator):
 
 
 @attrs.define(kw_only=True)
-class Asset(typing.Generic[F]):
+class Asset:
     """Representation of an asset."""
 
     at: AssetTarget
-    function: F
+    function: typing.Callable
     schedule: str | Timetable | dict[str, Asset]
 
     # We don't want to recreate the DAG repeated (it wouldn't work well with
