@@ -28,6 +28,9 @@ if typing.TYPE_CHECKING:
 class FileFormat(typing.Protocol):
     """Base file format."""
 
+    def read_pandas_dataframe(self, path: ObjectStoragePath) -> pandas.DataFrame:
+        raise NotImplementedError
+
     def write_pandas_dataframe(self, path: ObjectStoragePath, df: pandas.DataFrame) -> None:
         raise NotImplementedError
 
@@ -37,6 +40,12 @@ class ParquetFormat(FileFormat):
 
     engine: typing.Literal["auto", "pyarrow", "fastparquet"] = "auto"
     compression: typing.Literal["snappy", "gzip", "brotli"] | None = "snappy"
+
+    def read_pandas_dataframe(self, path: ObjectStoragePath) -> pandas.DataFrame:
+        import pandas
+
+        with path.open("rb") as f:
+            return pandas.read_parquet(f, engine=self.engine)
 
     def write_pandas_dataframe(self, path: ObjectStoragePath, df: pandas.DataFrame) -> None:
         with path.open("wb") as f:

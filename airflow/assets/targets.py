@@ -32,6 +32,16 @@ if typing.TYPE_CHECKING:
     from airflow.utils.context import Context
 
 
+@attrs.define()
+class Template:
+    """Value template to be passed into various things."""
+
+    source: str
+
+    def render(self, context: Context) -> str:
+        return jinja2.Template(self.source).render(context)
+
+
 def _is_pandas_dataframe(obj: typing.Any) -> TypeGuard[pandas.DataFrame]:
     try:
         import pandas
@@ -43,12 +53,18 @@ def _is_pandas_dataframe(obj: typing.Any) -> TypeGuard[pandas.DataFrame]:
 class AssetTarget(typing.Protocol):
     """Base representation of a target where an asset writes to."""
 
-    def _write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
+    def get_uri(self) -> str:
+        raise NotImplementedError
+
+    def read_pandas_dataframe(self, context: Context) -> pandas.DataFrame:
+        raise NotImplementedError
+
+    def write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
         raise NotImplementedError
 
     def write_data(self, data: typing.Any, context: Context) -> None:
         if _is_pandas_dataframe(data):
-            return self._write_pandas_dataframe(data, context)
+            return self.write_pandas_dataframe(data, context)
         raise TypeError(f"cannot write data of type {type(data).__name__!r}")
 
 
@@ -56,16 +72,27 @@ class AssetTarget(typing.Protocol):
 class File(AssetTarget):
     """File target to write into."""
 
-    path: str | ObjectStoragePath | jinja2.Template
+    path: str | ObjectStoragePath | Template
     fmt: FileFormat
+
+    def get_uri(self) -> str:
+        p = self.path
+        if isinstance(p, ObjectStoragePath):
+            return p.as_uri()
+        if isinstance(p, Template):
+            return p.source
+        return p
 
     def _get_storage_path(self, context: Context) -> ObjectStoragePath:
         p = self.path
         if isinstance(p, ObjectStoragePath):
             return p
-        if isinstance(p, jinja2.Template):
-            return ObjectStoragePath(p.render(**context))
+        if isinstance(p, Template):
+            return ObjectStoragePath(p.render(context))
         return ObjectStoragePath(p)
 
-    def _write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
+    def read_pandas_dataframe(self, context: Context) -> pandas.DataFrame:
+        return self.fmt.read_pandas_dataframe(self._get_storage_path(context))
+
+    def write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
         return self.fmt.write_pandas_dataframe(self._get_storage_path(context), data)

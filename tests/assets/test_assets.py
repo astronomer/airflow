@@ -16,14 +16,20 @@
 # under the License.
 from __future__ import annotations
 
+import collections.abc
 import pathlib
+import typing
 
 import pandas
 
 from airflow.assets import asset
+from airflow.assets.assets import Asset
 from airflow.assets.fileformats import ParquetFormat
 from airflow.assets.targets import File
 from airflow.utils.state import DagRunState
+
+if typing.TYPE_CHECKING:
+    from airflow.assets.inputs import AssetInput
 
 
 def test_create_asset_dag(tmp_path: pathlib.Path) -> None:
@@ -34,7 +40,9 @@ def test_create_asset_dag(tmp_path: pathlib.Path) -> None:
         schedule="@daily",
     )
     def first():
-        return pandas.DataFrame(data={"a": [1], "b": [2]})
+        return pandas.DataFrame([[1, 2]], columns=["a", "b"])
+
+    assert isinstance(first, Asset)
 
     dag = first.as_dag()
     assert dag.dag_id == "first"
@@ -50,3 +58,30 @@ def test_create_asset_dag(tmp_path: pathlib.Path) -> None:
 
     df = pandas.read_parquet(target_path)
     assert df.to_dict() == {"a": {0: 1}, "b": {0: 2}}
+
+
+def test_depend_asset(tmp_path: pathlib.Path) -> None:
+    path1 = tmp_path.joinpath("1")
+    path2 = tmp_path.joinpath("2")
+
+    @asset(
+        at=File(path1.as_uri(), fmt=ParquetFormat()),
+        schedule="@daily",
+    )
+    def first():
+        return pandas.DataFrame(data={"a": [1], "b": [2]})
+
+    @asset(
+        at=File(path2.as_uri(), fmt=ParquetFormat()),
+        schedule={"data": first},
+    )
+    def second(*, assets: collections.abc.Mapping[str, AssetInput]):
+        return assets["data"].as_df().rename(columns=str.upper)
+
+    dr1 = first.as_dag().test()
+    assert dr1.state == DagRunState.SUCCESS
+    assert pandas.read_parquet(path1).to_dict() == {"a": {0: 1}, "b": {0: 2}}
+
+    dr2 = second.as_dag().test()
+    assert dr2.state == DagRunState.SUCCESS
+    assert pandas.read_parquet(path2).to_dict() == {"A": {0: 1}, "B": {0: 2}}

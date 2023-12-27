@@ -35,7 +35,7 @@ class AssetDecorator:
     """Decorator to create an asset DAG."""
 
     at: AssetTarget
-    schedule: str | Timetable
+    schedule: str | Timetable | dict[str, Asset]
 
     def __call__(self, f: F) -> Asset[F]:
         return Asset(at=self.at, function=f, schedule=self.schedule)
