@@ -42,6 +42,8 @@ class AssetInput:
     source: TaskInstance
 
     def as_df(self) -> pandas.DataFrame:
+        # TODO: We probably need some parameters for slicing? Say read only data
+        # after a certain date. This is especially useful for database tables.
         # Note that we need to use the context from the *source* ti because
         # that's what the asset used when it wrote the data.
         return self.target.read_pandas_dataframe(self.source.get_template_context())

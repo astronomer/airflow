@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import collections.abc
 import pathlib
+import sqlite3
+import tempfile
 import typing
 
 import pandas
@@ -25,7 +27,7 @@ import pandas
 from airflow.assets import asset
 from airflow.assets.assets import Asset
 from airflow.assets.fileformats import ParquetFormat
-from airflow.assets.targets import File
+from airflow.assets.targets import File, Table
 from airflow.utils.state import DagRunState
 
 if typing.TYPE_CHECKING:
@@ -33,25 +35,25 @@ if typing.TYPE_CHECKING:
 
 
 def test_create_asset_dag(tmp_path: pathlib.Path) -> None:
-    target_path = tmp_path.joinpath("first")
+    target_path = tmp_path.joinpath("target")
 
     @asset(
         at=File(target_path.as_uri(), fmt=ParquetFormat()),
         schedule="@daily",
     )
-    def first():
-        return pandas.DataFrame([[1, 2]], columns=["a", "b"])
+    def abc() -> pandas.DataFrame:
+        return pandas.DataFrame({"a": [1], "b": [2]})
 
-    assert isinstance(first, Asset)
+    assert isinstance(abc, Asset)
 
-    dag = first.as_dag()
-    assert dag.dag_id == "first"
+    dag = abc.as_dag()
+    assert dag.dag_id == "abc"
 
     tasks = dag.tasks
     assert len(tasks) == 1
 
     task = tasks[0]
-    assert task.task_id == "first"
+    assert task.task_id == "abc"
 
     dr = dag.test()
     assert dr.state == DagRunState.SUCCESS
@@ -60,28 +62,61 @@ def test_create_asset_dag(tmp_path: pathlib.Path) -> None:
     assert df.to_dict() == {"a": {0: 1}, "b": {0: 2}}
 
 
+def _connect_default_sqlite() -> sqlite3.Connection:
+    # This is where the database file is created in by Airflow.
+    # See ``airflow.utils.db.create_default_connections``.
+    return sqlite3.connect(pathlib.Path(tempfile.gettempdir(), "sqlite_default.db"))
+
+
+def test_table_asset(tmp_path: pathlib.Path) -> None:
+    @asset(
+        at=Table("sqlite_default", name="test_table_asset", mode="replace"),
+        schedule="@hourly",
+    )
+    def abc() -> pandas.DataFrame:
+        return pandas.DataFrame({"a": [1], "b": [2]})
+
+    dag = abc.as_dag()
+    dr = dag.test()
+    assert dr.state == DagRunState.SUCCESS
+
+    with _connect_default_sqlite() as conn:
+        rows = conn.execute("""SELECT a, b FROM test_table_asset""").fetchall()
+    assert rows == [(1, 2)]
+
+
 def test_depend_asset(tmp_path: pathlib.Path) -> None:
     path1 = tmp_path.joinpath("1")
     path2 = tmp_path.joinpath("2")
 
     @asset(
-        at=File(path1.as_uri(), fmt=ParquetFormat()),
-        schedule="@daily",
+        at=Table("sqlite_default", name="test_depend_asset", mode="replace"),
+        schedule="@hourly",
     )
-    def first():
-        return pandas.DataFrame(data={"a": [1], "b": [2]})
+    def zero() -> pandas.DataFrame:
+        return pandas.DataFrame({"a": [1], "b": [2]})
+
+    @asset(
+        at=File(path1.as_uri(), fmt=ParquetFormat()),
+        schedule={"data": zero},
+    )
+    def one(*, assets: collections.abc.Mapping[str, AssetInput]):
+        return assets["data"].as_df().rename(columns=str.upper)
 
     @asset(
         at=File(path2.as_uri(), fmt=ParquetFormat()),
-        schedule={"data": first},
+        schedule={"data": one},
     )
-    def second(*, assets: collections.abc.Mapping[str, AssetInput]):
-        return assets["data"].as_df().rename(columns=str.upper)
+    def two(*, assets: collections.abc.Mapping[str, AssetInput]):
+        dep = assets["data"].as_df().filter(["A", "B"])
+        return pandas.concat([dep, pandas.DataFrame({"A": [3], "B": [4]})], ignore_index=True)
 
-    dr1 = first.as_dag().test()
+    dr0 = zero.as_dag().test()
+    assert dr0.state == DagRunState.SUCCESS
+
+    dr1 = one.as_dag().test()
     assert dr1.state == DagRunState.SUCCESS
-    assert pandas.read_parquet(path1).to_dict() == {"a": {0: 1}, "b": {0: 2}}
 
-    dr2 = second.as_dag().test()
+    dr2 = two.as_dag().test()
     assert dr2.state == DagRunState.SUCCESS
-    assert pandas.read_parquet(path2).to_dict() == {"A": {0: 1}, "B": {0: 2}}
+    assert pandas.read_parquet(path2).to_dict() == {"A": {0: 1, 1: 3}, "B": {0: 2, 1: 4}}

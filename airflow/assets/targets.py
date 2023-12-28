@@ -17,18 +17,21 @@
 
 from __future__ import annotations
 
+import pathlib
 import typing
 
 import attrs
 import jinja2
 
+from airflow.hooks.base import BaseHook
 from airflow.io.path import ObjectStoragePath
 
 if typing.TYPE_CHECKING:
     import pandas
+    import sqlalchemy.engine
 
     from airflow.assets.fileformats import FileFormat
-    from airflow.typing_compat import TypeGuard
+    from airflow.typing_compat import Literal, TypeGuard
     from airflow.utils.context import Context
 
 
@@ -77,7 +80,7 @@ class File(AssetTarget):
     """File target to write into."""
 
     path: str | ObjectStoragePath | Template
-    fmt: FileFormat
+    fmt: FileFormat = attrs.field(kw_only=True)
 
     def as_dataset_uri(self) -> str:
         p = self.path
@@ -104,3 +107,48 @@ class File(AssetTarget):
 
     def write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
         return self.fmt.write_pandas_dataframe(self._render_storage_path(context), data)
+
+
+@attrs.define()
+class Table(AssetTarget):
+    """Table (in a relational database) target to write into."""
+
+    conn_id: str
+    name: str = attrs.field(kw_only=True)
+    mode: Literal["insert", "replace"] = attrs.field(kw_only=True)
+
+    def _get_sqlalchemy_engine(self) -> sqlalchemy.engine.Engine:
+        from airflow.providers.common.sql.hooks.sql import DbApiHook
+
+        hook = BaseHook.get_connection(self.conn_id).get_hook()
+        if not isinstance(hook, DbApiHook):
+            raise RuntimeError(f"Connection {self.conn_id} does not point to a database")
+        return hook.get_sqlalchemy_engine()
+
+    def as_dataset_uri(self) -> str:
+        # TODO: Put URI formatting logic into the providers, and use
+        # ProvidersManager to dispatch logic.
+        connection = BaseHook.get_connection(self.conn_id)
+        if connection.conn_type != "sqlite":
+            raise NotImplementedError("Only SQLite is supported at the moment")
+        # A SQLite database is a file, so tables in it are tracked by its URI.
+        # Don't try to understand this, Airflow Connection's URI logic is bs.
+        if connection.host and not connection.host.startswith("/"):
+            raise ValueError("can't use relative path in assets")
+        return pathlib.Path(connection.host or "/", connection.schema or "").as_uri()
+
+    def read_pandas_dataframe(self, context: Context) -> pandas.DataFrame:
+        import pandas
+
+        return pandas.read_sql_table(self.name, self._get_sqlalchemy_engine())
+
+    def write_pandas_dataframe(self, data: pandas.DataFrame, context: Context) -> None:
+        # TODO: Probably need to add some column filtering? Sometimes maybe
+        # DataFrame metadata (e.g. index) shouldn't get into the database?
+
+        def _as_pandas_if_exists() -> Literal["append", "replace"]:
+            if self.mode == "insert":
+                return "append"
+            return self.mode
+
+        data.to_sql(self.name, self._get_sqlalchemy_engine(), if_exists=_as_pandas_if_exists())
