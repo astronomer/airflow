@@ -41,8 +41,23 @@ __all__ = ["Asset"]
 class _AssetOperator(PythonOperator):
     custom_operator_name = "@asset"
 
-    def __init__(self, *, assets: dict[str, Asset], target: AssetTarget, **kwargs: typing.Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        python_callable: typing.Callable,
+        assets: dict[str, Asset],
+        target: AssetTarget,
+        **kwargs: typing.Any,
+    ) -> None:
+        super().__init__(
+            task_id=task_id,
+            python_callable=python_callable,
+            outlets=[Dataset(target.as_dataset_uri())],
+            do_xcom_push=False,
+            show_return_value_in_logs=False,
+            **kwargs,
+        )
         self.assets = assets
         self.target = target
 
@@ -104,8 +119,6 @@ class Asset:
                 python_callable=self.function,
                 assets=assets,
                 target=self.at,
-                do_xcom_push=False,
-                show_return_value_in_logs=False,
             )
 
         self.__created_dag = dag
