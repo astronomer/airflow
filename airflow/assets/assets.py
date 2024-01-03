@@ -84,6 +84,7 @@ class Asset:
     # We don't want to recreate the DAG repeated (it wouldn't work well with
     # DagBag anyway), this caches the result from as_dag().
     __created_dag: DAG = attrs.field(init=False)
+    __created_task: _AssetOperator = attrs.field(init=False)
 
     @property
     def dag_id(self) -> str:
@@ -91,7 +92,14 @@ class Asset:
 
     @property
     def task_id(self) -> str:
-        return self.function.__name__
+        return "__airflow_output_asset__"
+
+    # TODO: We need to do this since Airflow does not allow setting task
+    # dependencies without a DAG. Not sure what the best interface is here...
+    @contextlib.contextmanager
+    def attach(self) -> collections.abc.Generator[_AssetOperator, None, None]:
+        with self.as_dag():
+            yield self.__created_task
 
     # TODO: Since currently Airflow doesn't recognize an asset, we need to call
     # this explicitly to create a DAG in the DAG file for Airflow to pick it up.
@@ -109,13 +117,13 @@ class Asset:
             schedule = self.schedule
 
         with DAG(
-            dag_id=self.function.__name__,
+            dag_id=self.dag_id,
             schedule=schedule,
             start_date=datetime.datetime.min,
             catchup=False,
         ) as dag:
-            _AssetOperator(
-                task_id=self.function.__name__,
+            self.__created_task = _AssetOperator(
+                task_id=self.task_id,
                 python_callable=self.function,
                 assets=assets,
                 target=self.at,
