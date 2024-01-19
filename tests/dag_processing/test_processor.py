@@ -1041,3 +1041,17 @@ class TestProcessorAgent:
         self.processor_agent.start()
         self.processor_agent.run_single_parsing_loop()
         self.processor_agent.wait_until_finished()
+
+
+def test_manage_slas_query():
+    max_tis_query = DagFileProcessor._max_tis_query("hello")
+    expected = [
+        "SELECT task_instance.task_id, task_instance.dag_id, task_instance.run_id, task_instance.map_index",
+        "FROM task_instance JOIN (SELECT sq1.task_id AS task_id, sq1.execution_date AS execution_date, dag_run.dag_id AS dag_id, dag_run.run_id AS run_id",
+        "FROM (SELECT task_instance.task_id AS task_id, max(dag_run.execution_date) AS execution_date",
+        "FROM task_instance JOIN dag_run ON dag_run.dag_id = task_instance.dag_id AND dag_run.run_id = task_instance.run_id",
+        "WHERE task_instance.dag_id = :dag_id_1 AND task_instance.state IN (__[POSTCOMPILE_state_1]) GROUP BY task_instance.task_id) AS sq1 JOIN dag_run ON dag_run.dag_id = sq1.execution_date) AS sq2 ON task_instance.task_id = sq2.task_id AND task_instance.dag_id = sq2.dag_id AND task_instance.run_id = sq2.run_id",
+    ]
+    actual = [x.strip() for x in str(max_tis_query.compile()).splitlines()]
+    assert actual == expected
+    print("\n".join(actual))

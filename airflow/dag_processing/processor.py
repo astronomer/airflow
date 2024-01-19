@@ -28,7 +28,8 @@ from datetime import timedelta
 from typing import TYPE_CHECKING, Iterable, Iterator
 
 from setproctitle import setproctitle
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import and_, delete, func, select
+from sqlalchemy.orm import lazyload, load_only
 
 from airflow import settings
 from airflow.api_internal.internal_api_call import internal_api_call
@@ -415,6 +416,41 @@ class DagFileProcessor(LoggingMixin):
         self.dag_warnings: set[tuple[str, str]] = set()
 
     @classmethod
+    def _max_tis_query(cls, dag_id: str):
+        subquery1 = (
+            select(TI.task_id, func.max(DR.execution_date).label("execution_date"))
+            .join(TI.dag_run)
+            .where(
+                TI.dag_id == dag_id,
+                TI.state.in_((TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED)),
+            )
+            .group_by(TI.task_id)
+            .subquery("sq1")
+        )
+        subquery2 = (
+            select(subquery1.c.task_id, subquery1.c.execution_date, DR.dag_id, DR.run_id)
+            .join(
+                DR, DR.dag_id == subquery1.c.execution_date, DR.execution_date == subquery1.c.execution_date
+            )
+            .subquery("sq2")
+        )
+
+        max_tis_query = (
+            select(TI)
+            .options(load_only(TI.dag_id, TI.task_id, TI.run_id, TI.map_index))
+            .options(lazyload("dag_run"))
+            .join(
+                subquery2,
+                and_(
+                    TI.task_id == subquery2.c.task_id,
+                    TI.dag_id == subquery2.c.dag_id,
+                    TI.run_id == subquery2.c.run_id,
+                ),
+            )
+        )
+        return max_tis_query
+
+    @classmethod
     @internal_api_call
     @provide_session
     def manage_slas(cls, dag_folder, dag_id: str, session: Session = NEW_SESSION) -> None:
@@ -432,28 +468,16 @@ class DagFileProcessor(LoggingMixin):
         if not any(isinstance(ti.sla, timedelta) for ti in dag.tasks):
             cls.logger().info("Skipping SLA check for %s because no tasks in DAG have SLAs", dag)
             return
-        qry = (
-            select(TI.task_id, func.max(DR.execution_date).label("max_ti"))
-            .join(TI.dag_run)
-            .where(TI.dag_id == dag.dag_id)
-            .where(or_(TI.state == TaskInstanceState.SUCCESS, TI.state == TaskInstanceState.SKIPPED))
-            .where(TI.task_id.in_(dag.task_ids))
-            .group_by(TI.task_id)
-            .subquery("sq")
-        )
         # get recorded SlaMiss
-        recorded_slas_query = set(
+        recorded_sla_misses = set(
             session.execute(
                 select(SlaMiss.dag_id, SlaMiss.task_id, SlaMiss.execution_date).where(
                     SlaMiss.dag_id == dag.dag_id, SlaMiss.task_id.in_(dag.task_ids)
                 )
             )
         )
-        max_tis: Iterator[TI] = session.scalars(
-            select(TI)
-            .join(TI.dag_run)
-            .where(TI.dag_id == dag.dag_id, TI.task_id == qry.c.task_id, DR.execution_date == qry.c.max_ti)
-        )
+        max_tis_query = cls._max_tis_query(dag_id=dag.dag_id)
+        max_tis: Iterator[TI] = session.scalars(max_tis_query)
 
         ts = timezone.utcnow()
 
@@ -475,7 +499,7 @@ class DagFileProcessor(LoggingMixin):
 
                 if next_info is None:
                     break
-                if (ti.dag_id, ti.task_id, next_info.logical_date) in recorded_slas_query:
+                if (ti.dag_id, ti.task_id, next_info.logical_date) in recorded_sla_misses:
                     continue
                 if next_info.logical_date + task.sla < ts:
                     sla_miss = SlaMiss(
