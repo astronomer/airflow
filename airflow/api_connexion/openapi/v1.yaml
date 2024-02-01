@@ -986,6 +986,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /dags/{dag_id}/addClearEvent:
+    parameters:
+      - $ref: "#/components/parameters/DAGID"
+    post:
+      summary: Add clear event
+      description: |
+        Add clear event
+      x-openapi-router-controller: airflow.api_connexion.endpoints.clear_event_endpoint
+      operationId: add_clear_event
+      tags: [ClearEvent]
+      requestBody:
+        # description: Parameters of set DagRun note.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClearEvent"
+
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearEvent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/AlreadyExists"
+        "403":
+          $ref: "#/components/responses/PermissionDenied"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /eventLogs:
     get:
       summary: List log entries
@@ -2441,6 +2477,17 @@ paths:
 components:
   # Reusable schemas (data models)
   schemas:
+    ClearEvent:
+      description: |
+        A ClearEvent item.
+      type: object
+      properties:
+        dag_id:
+          type: string
+          readOnly: true
+        cutoff_date:
+          type: string
+
     # Database entities
     UserCollectionItem:
       description: |

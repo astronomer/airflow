@@ -336,3 +336,30 @@ class DatasetEvent(Base):
         ]:
             args.append(f"{attr}={getattr(self, attr)!r}")
         return f"{self.__class__.__name__}({', '.join(args)})"
+
+
+class ClearEvent(Base):
+    """A table to store datasets clear events."""
+
+    dag_id = Column(StringID(), primary_key=True, nullable=False)
+    cutoff_time = Column(UtcDateTime, primary_key=True, default=timezone.utcnow, nullable=False)
+
+    __tablename__ = "clear_event"
+    __table_args__ = (
+        PrimaryKeyConstraint(dag_id, cutoff_time, name="clearevent_pkey"),
+        ForeignKeyConstraint(
+            columns=(dag_id,),
+            refcolumns=["dag.dag_id"],
+            name="clearevent_dag_id_fkey",
+            ondelete="CASCADE",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        args = []
+        for attr in [
+            "dag_id",
+            "cutoff_time",
+        ]:
+            args.append(f"{attr}={getattr(self, attr)!r}")
+        return f"{self.__class__.__name__}({', '.join(args)})"
