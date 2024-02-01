@@ -25,7 +25,7 @@ from sqlalchemy.orm import joinedload
 from airflow.configuration import conf
 from airflow.datasets import Dataset
 from airflow.listeners.listener import get_listener_manager
-from airflow.models.dataset import DatasetDagRunQueue, DatasetEvent, DatasetModel
+from airflow.models.dataset import ClearEvent, DatasetDagRunQueue, DatasetEvent, DatasetModel
 from airflow.stats import Stats
 from airflow.utils.log.logging_mixin import LoggingMixin
 
@@ -69,6 +69,7 @@ class DatasetManager(LoggingMixin):
             .where(DatasetModel.uri == dataset.uri)
             .options(joinedload(DatasetModel.consuming_dags))
         )
+
         if not dataset_model:
             self.log.warning("DatasetModel %s not found", dataset)
             return
@@ -87,7 +88,13 @@ class DatasetManager(LoggingMixin):
         self.notify_dataset_changed(dataset=dataset)
 
         Stats.incr("dataset.updates")
-        if dataset_model.consuming_dags:
+
+        clear_event = session.scalar(
+            select(ClearEvent).where(
+                ClearEvent.dag_id == task_instance.dag_id, ClearEvent.cutoff_date > dataset_model.timestamp
+            )
+        )
+        if dataset_model.consuming_dags and not clear_event:
             self._queue_dagruns(dataset_model, session)
         session.flush()
 
