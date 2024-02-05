@@ -204,6 +204,7 @@ class KubernetesPodOperator(BaseOperator):
         of KubernetesPodOperator.
     :param progress_callback: Callback function for receiving k8s container logs.
         `progress_callback` is deprecated, please use :param `callbacks` instead.
+    :param periodic_pod_log: Fetch log periodically from container to webserver
     """
 
     # !!! Changes in KubernetesPodOperator's arguments should be also reflected in !!!
@@ -298,6 +299,7 @@ class KubernetesPodOperator(BaseOperator):
         active_deadline_seconds: int | None = None,
         callbacks: type[KubernetesPodOperatorCallback] | None = None,
         progress_callback: Callable[[str], None] | None = None,
+        periodic_pod_log: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -324,6 +326,7 @@ class KubernetesPodOperator(BaseOperator):
         self.cluster_context = cluster_context
         self.reattach_on_restart = reattach_on_restart
         self.get_logs = get_logs
+        self.periodic_pod_log = periodic_pod_log
         self.container_logs = container_logs
         if self.container_logs == KubernetesPodOperator.BASE_CONTAINER_NAME:
             self.container_logs = base_container_name or self.BASE_CONTAINER_NAME
@@ -663,6 +666,7 @@ class KubernetesPodOperator(BaseOperator):
                 on_finish_action=self.on_finish_action.value,
                 label_selector=label_selector,
                 last_log_time=last_log_time,
+                periodic_pod_log=self.periodic_pod_log,
             ),
             method_name="execute_complete",
         )
