@@ -23,12 +23,15 @@ import warnings
 from asyncio import CancelledError
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, AsyncIterator
-
-from airflow.exceptions import AirflowProviderDeprecationWarning
+from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
+from kubernetes.client import CoreV1Api
+from airflow.exceptions import AirflowProviderDeprecationWarning, AirflowException
+from airflow.providers.cncf.kubernetes.callbacks import KubernetesPodOperatorCallback
 from airflow.providers.cncf.kubernetes.hooks.kubernetes import AsyncKubernetesHook
-from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodPhase
+from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodPhase, PodManager
 from airflow.triggers.base import BaseTrigger, TriggerEvent
+from pendulum import DateTime
+from kubernetes.client import CoreV1Api, V1Pod, models as k8s
 
 if TYPE_CHECKING:
     from kubernetes_asyncio.client.models import V1Pod
@@ -70,6 +73,7 @@ class KubernetesPodTrigger(BaseTrigger):
         state, or the execution is interrupted. If True (default), delete the
         pod; if False, leave the pod.
         Deprecated - use `on_finish_action` instead.
+    :param last_log_time: where to resume logs from
     """
 
     def __init__(
@@ -88,6 +92,8 @@ class KubernetesPodTrigger(BaseTrigger):
         startup_check_interval: int = 1,
         on_finish_action: str = "delete_pod",
         should_delete_pod: bool | None = None,
+        last_log_time: DateTime | None = None,
+        label_selector: str | None = None,
     ):
         super().__init__()
         self.pod_name = pod_name
@@ -102,6 +108,8 @@ class KubernetesPodTrigger(BaseTrigger):
         self.get_logs = get_logs
         self.startup_timeout = startup_timeout
         self.startup_check_interval = startup_check_interval
+        self.last_log_time = last_log_time
+        self.label_selector = label_selector
 
         if should_delete_pod is not None:
             warnings.warn(
@@ -137,8 +145,32 @@ class KubernetesPodTrigger(BaseTrigger):
                 "trigger_start_time": self.trigger_start_time,
                 "should_delete_pod": self.should_delete_pod,
                 "on_finish_action": self.on_finish_action.value,
+                "last_log_time": self.last_log_time,
+                "label_selector": self.label_selector,
             },
         )
+
+    @cached_property
+    def _pod_manager(self) -> PodManager:
+        return PodManager(kube_client=self._client)
+
+    @cached_property
+    def _client(self) -> CoreV1Api:
+        return self.hook.core_v1_client
+
+    @cached_property
+    def _pod(self) -> k8s.V1Pod | None:
+        """Return an already-running pod for this task instance if one exists."""
+        pod_list = self._client.list_namespaced_pod(
+            namespace=self.pod_namespace,
+            label_selector=self.label_selector,
+        ).items
+
+        pod = None
+        num_pods = len(pod_list)
+        if num_pods > 1:
+            raise AirflowException(f"More than one pod running with labels {self.label_selector}")
+        return pod
 
     async def run(self) -> AsyncIterator[TriggerEvent]:  # type: ignore[override]
         """Get current pod status and yield a TriggerEvent."""
@@ -190,6 +222,12 @@ class KubernetesPodTrigger(BaseTrigger):
                             await asyncio.sleep(self.startup_check_interval)
                     else:
                         self.log.info("Sleeping for %s seconds.", self.poll_interval)
+                        self._pod_manager.fetch_container_logs(
+                            pod=self._pod,
+                            container_name=self.base_container_name,
+                            follow=False,
+                            since_time=self.last_log_time,
+                        )
                         await asyncio.sleep(self.poll_interval)
                 else:
                     yield TriggerEvent(

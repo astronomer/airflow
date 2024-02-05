@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import re
@@ -622,6 +623,7 @@ class KubernetesPodOperator(BaseOperator):
 
     def execute_async(self, context: Context):
         self.pod_request_obj = self.build_pod_request_obj(context)
+        last_log_time = utcnow()
         self.pod = self.get_or_create_pod(  # must set `self.pod` for `on_kill`
             pod_request_obj=self.pod_request_obj,
             context=context,
@@ -635,10 +637,13 @@ class KubernetesPodOperator(BaseOperator):
         ti = context["ti"]
         ti.xcom_push(key="pod_name", value=self.pod.metadata.name)
         ti.xcom_push(key="pod_namespace", value=self.pod.metadata.namespace)
+        label_selector = self._build_find_pod_label_selector(context)
 
-        self.invoke_defer_method()
+        self.invoke_defer_method(label_selector, last_log_time)
 
-    def invoke_defer_method(self):
+    def invoke_defer_method(
+        self, label_selector: str | None = None, last_log_time: datetime.datetime | None = None
+    ):
         """Redefine triggers which are being used in child classes."""
         trigger_start_time = utcnow()
         self.defer(
@@ -656,6 +661,8 @@ class KubernetesPodOperator(BaseOperator):
                 startup_check_interval=self.startup_check_interval_seconds,
                 base_container_name=self.base_container_name,
                 on_finish_action=self.on_finish_action.value,
+                label_selector=label_selector,
+                last_log_time=last_log_time,
             ),
             method_name="execute_complete",
         )
