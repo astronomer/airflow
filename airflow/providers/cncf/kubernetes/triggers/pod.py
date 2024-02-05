@@ -233,11 +233,13 @@ class KubernetesPodTrigger(BaseTrigger):
                             )
                             return
                         else:
-                            self.last_log_time = self._fetch_pod_log()
+                            if self.get_logs and self.periodic_pod_log:
+                                self.last_log_time = self._fetch_pod_log()
                             self.log.info("Sleeping for %s seconds.", self.startup_check_interval)
                             await asyncio.sleep(self.startup_check_interval)
                     else:
-                        self.last_log_time = self._fetch_pod_log()
+                        if self.get_logs and self.periodic_pod_log:
+                            self.last_log_time = self._fetch_pod_log()
                         self.log.info("Sleeping for %s seconds.", self.poll_interval)
                         await asyncio.sleep(self.poll_interval)
                 else:
