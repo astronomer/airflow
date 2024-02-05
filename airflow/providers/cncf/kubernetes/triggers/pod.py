@@ -23,15 +23,15 @@ import warnings
 from asyncio import CancelledError
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable
-from kubernetes.client import CoreV1Api
-from airflow.exceptions import AirflowProviderDeprecationWarning, AirflowException
-from airflow.providers.cncf.kubernetes.callbacks import KubernetesPodOperatorCallback
-from airflow.providers.cncf.kubernetes.hooks.kubernetes import AsyncKubernetesHook
-from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodPhase, PodManager
-from airflow.triggers.base import BaseTrigger, TriggerEvent
-from pendulum import DateTime
+from typing import TYPE_CHECKING, Any, AsyncIterator
+
 from kubernetes.client import CoreV1Api, V1Pod, models as k8s
+from pendulum import DateTime
+
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
+from airflow.providers.cncf.kubernetes.hooks.kubernetes import AsyncKubernetesHook
+from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodManager, PodPhase
+from airflow.triggers.base import BaseTrigger, TriggerEvent
 
 if TYPE_CHECKING:
     from kubernetes_asyncio.client.models import V1Pod
@@ -94,6 +94,7 @@ class KubernetesPodTrigger(BaseTrigger):
         should_delete_pod: bool | None = None,
         last_log_time: DateTime | None = None,
         label_selector: str | None = None,
+        periodic_pod_log: bool = False
     ):
         super().__init__()
         self.pod_name = pod_name
@@ -110,6 +111,7 @@ class KubernetesPodTrigger(BaseTrigger):
         self.startup_check_interval = startup_check_interval
         self.last_log_time = last_log_time
         self.label_selector = label_selector
+        self.periodic_pod_log = periodic_pod_log
 
         if should_delete_pod is not None:
             warnings.warn(
@@ -147,6 +149,7 @@ class KubernetesPodTrigger(BaseTrigger):
                 "on_finish_action": self.on_finish_action.value,
                 "last_log_time": self.last_log_time,
                 "label_selector": self.label_selector,
+                "periodic_pod_log": self.periodic_pod_log,
             },
         )
 
@@ -171,6 +174,18 @@ class KubernetesPodTrigger(BaseTrigger):
         if num_pods > 1:
             raise AirflowException(f"More than one pod running with labels {self.label_selector}")
         return pod
+
+    def _fetch_pod_log(self):
+        try:
+            pod_logging_status = self._pod_manager.fetch_container_logs(
+                pod=self._pod,
+                container_name=self.base_container_name,
+                follow=False,
+                since_time=self.last_log_time,
+            )
+            return pod_logging_status.last_log_time
+        except Exception as e:
+            self.log.error(f"Failed to fetch pod log {e}")
 
     async def run(self) -> AsyncIterator[TriggerEvent]:  # type: ignore[override]
         """Get current pod status and yield a TriggerEvent."""
@@ -218,16 +233,12 @@ class KubernetesPodTrigger(BaseTrigger):
                             )
                             return
                         else:
+                            self.last_log_time = self._fetch_pod_log()
                             self.log.info("Sleeping for %s seconds.", self.startup_check_interval)
                             await asyncio.sleep(self.startup_check_interval)
                     else:
+                        self.last_log_time = self._fetch_pod_log()
                         self.log.info("Sleeping for %s seconds.", self.poll_interval)
-                        self._pod_manager.fetch_container_logs(
-                            pod=self._pod,
-                            container_name=self.base_container_name,
-                            follow=False,
-                            since_time=self.last_log_time,
-                        )
                         await asyncio.sleep(self.poll_interval)
                 else:
                     yield TriggerEvent(
