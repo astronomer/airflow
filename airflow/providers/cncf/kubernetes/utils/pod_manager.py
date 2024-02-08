@@ -793,7 +793,7 @@ class PodManager(LoggingMixin):
         return container_is_running(pod=remote_pod, container_name=container_name)
 
     async def a_container_is_running(self, pod: V1Pod, container_name: str):
-        remote_pod = self.a_read_pod(pod)
+        remote_pod = await self.a_read_pod(pod)
         return container_is_running(pod=remote_pod, container_name=container_name)
 
     def container_is_terminated(self, pod: V1Pod, container_name: str) -> bool:
@@ -873,10 +873,10 @@ class PodManager(LoggingMixin):
             raise AirflowException(f"There was an error reading the kubernetes API: {e}")
 
     @tenacity.retry(stop=tenacity.stop_after_attempt(3), wait=tenacity.wait_exponential(), reraise=True)
-    def a_read_pod(self, pod: a_V1Pod) -> V1Pod:
+    async def a_read_pod(self, pod: a_V1Pod) -> V1Pod:
         """Read POD information."""
         try:
-            return self._client.read_namespaced_pod(pod.metadata.name, pod.metadata.namespace)
+            return await self._client.read_namespaced_pod(pod.metadata.name, pod.metadata.namespace)
         except HTTPError as e:
             raise AirflowException(f"There was an error reading the kubernetes API: {e}")
 
