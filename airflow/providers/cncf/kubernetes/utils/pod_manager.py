@@ -530,7 +530,7 @@ class PodManager(LoggingMixin):
         last_log_time = since_time
         while True:
             last_log_time, exc = await consume_logs(since_time=last_log_time)
-            if not self.a_container_is_running(pod, container_name=container_name):
+            if not await self.a_container_is_running(pod, container_name=container_name):
                 return PodLoggingStatus(running=False, last_log_time=last_log_time)
             if not follow:
                 return PodLoggingStatus(running=True, last_log_time=last_log_time)
