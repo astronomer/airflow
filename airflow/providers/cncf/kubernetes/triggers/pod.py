@@ -255,10 +255,9 @@ class KubernetesPodTrigger(BaseTrigger):
     def _a_client(self) -> CoreV1Api:
         return self.hook.core_v1_client
 
-    @cached_property
-    def _pod(self) -> V1Pod | None:
+    async def _pod(self) -> V1Pod | None:
         """Return an already-running pod for this task instance if one exists."""
-        pod_list = self._a_client.list_namespaced_pod(
+        pod_list = await self._a_client.list_namespaced_pod(
             namespace=self.pod_namespace,
             label_selector=self.label_selector,
         ).items
@@ -272,7 +271,7 @@ class KubernetesPodTrigger(BaseTrigger):
     async def _fetch_pod_log(self):
         try:
             pod_logging_status = await self._pod_manager.a_fetch_container_logs(
-                pod=self._pod,
+                pod=await self._pod(),
                 container_name=self.base_container_name,
                 follow=False,
                 since_time=self.last_log_time,
