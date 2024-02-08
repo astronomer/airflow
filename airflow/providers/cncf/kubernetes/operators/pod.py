@@ -30,6 +30,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Sequence
 
 import kubernetes
+import pendulum
 from kubernetes.client import CoreV1Api, V1Pod, models as k8s
 from kubernetes.stream import stream
 from urllib3.exceptions import HTTPError
@@ -77,6 +78,7 @@ from airflow.version import version as airflow_version
 
 if TYPE_CHECKING:
     import jinja2
+    from pendulum import DateTime
     from typing_extensions import Literal
 
     from airflow.providers.cncf.kubernetes.secret import Secret
@@ -622,6 +624,7 @@ class KubernetesPodOperator(BaseOperator):
 
     def execute_async(self, context: Context):
         self.pod_request_obj = self.build_pod_request_obj(context)
+        last_log_time = pendulum.now()
         self.pod = self.get_or_create_pod(  # must set `self.pod` for `on_kill`
             pod_request_obj=self.pod_request_obj,
             context=context,
@@ -635,16 +638,16 @@ class KubernetesPodOperator(BaseOperator):
         ti = context["ti"]
         ti.xcom_push(key="pod_name", value=self.pod.metadata.name)
         ti.xcom_push(key="pod_namespace", value=self.pod.metadata.namespace)
+        label_selector = self._build_find_pod_label_selector(context)
+        self.invoke_defer_method(label_selector=label_selector, last_log_time=last_log_time)
 
-        self.invoke_defer_method()
-
-    def invoke_defer_method(self):
+    def invoke_defer_method(self, label_selector: str | None = None, last_log_time: DateTime | None = None):
         """Redefine triggers which are being used in child classes."""
         trigger_start_time = utcnow()
         self.defer(
             trigger=KubernetesPodTrigger(
-                pod_name=self.pod.metadata.name,
-                pod_namespace=self.pod.metadata.namespace,
+                pod_name=self.pod.metadata.name,  # type: ignore[union-attr]
+                pod_namespace=self.pod.metadata.namespace,  # type: ignore[union-attr]
                 trigger_start_time=trigger_start_time,
                 kubernetes_conn_id=self.kubernetes_conn_id,
                 cluster_context=self.cluster_context,
@@ -656,6 +659,8 @@ class KubernetesPodOperator(BaseOperator):
                 startup_check_interval=self.startup_check_interval_seconds,
                 base_container_name=self.base_container_name,
                 on_finish_action=self.on_finish_action.value,
+                label_selector=label_selector,
+                last_log_time=last_log_time,
             ),
             method_name="execute_complete",
         )

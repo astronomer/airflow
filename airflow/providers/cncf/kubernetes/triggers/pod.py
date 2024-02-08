@@ -25,13 +25,15 @@ from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
-from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarning
 from airflow.providers.cncf.kubernetes.hooks.kubernetes import AsyncKubernetesHook
-from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodPhase
+from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodManager, PodPhase
 from airflow.triggers.base import BaseTrigger, TriggerEvent
 
 if TYPE_CHECKING:
+    from kubernetes_asyncio.client import CoreV1Api
     from kubernetes_asyncio.client.models import V1Pod
+    from pendulum import DateTime
 
 
 class ContainerState(str, Enum):
@@ -88,6 +90,8 @@ class KubernetesPodTrigger(BaseTrigger):
         startup_check_interval: int = 1,
         on_finish_action: str = "delete_pod",
         should_delete_pod: bool | None = None,
+        label_selector: str | None = None,
+        last_log_time: DateTime | None = None,
     ):
         super().__init__()
         self.pod_name = pod_name
@@ -102,6 +106,8 @@ class KubernetesPodTrigger(BaseTrigger):
         self.get_logs = get_logs
         self.startup_timeout = startup_timeout
         self.startup_check_interval = startup_check_interval
+        self.last_log_time = last_log_time
+        self.label_selector = label_selector
 
         if should_delete_pod is not None:
             warnings.warn(
@@ -137,6 +143,8 @@ class KubernetesPodTrigger(BaseTrigger):
                 "trigger_start_time": self.trigger_start_time,
                 "should_delete_pod": self.should_delete_pod,
                 "on_finish_action": self.on_finish_action.value,
+                "last_log_time": self.last_log_time,
+                "label_selector": self.label_selector,
             },
         )
 
@@ -186,9 +194,13 @@ class KubernetesPodTrigger(BaseTrigger):
                             )
                             return
                         else:
+                            if self.get_logs:
+                                self.last_log_time = await self._fetch_pod_log()
                             self.log.info("Sleeping for %s seconds.", self.startup_check_interval)
                             await asyncio.sleep(self.startup_check_interval)
                     else:
+                        if self.get_logs:
+                            self.last_log_time = await self._fetch_pod_log()
                         self.log.info("Sleeping for %s seconds.", self.poll_interval)
                         await asyncio.sleep(self.poll_interval)
                 else:
@@ -234,6 +246,40 @@ class KubernetesPodTrigger(BaseTrigger):
                     "stack_trace": traceback.format_exc(),
                 }
             )
+
+    @cached_property
+    def _pod_manager(self) -> PodManager:
+        return PodManager(kube_client=self._a_client)
+
+    @cached_property
+    def _a_client(self) -> CoreV1Api:
+        return self.hook.core_v1_client
+
+    @cached_property
+    def _pod(self) -> V1Pod | None:
+        """Return an already-running pod for this task instance if one exists."""
+        pod_list = self._a_client.list_namespaced_pod(
+            namespace=self.pod_namespace,
+            label_selector=self.label_selector,
+        ).items
+
+        pod = None
+        num_pods = len(pod_list)
+        if num_pods > 1:
+            raise AirflowException(f"More than one pod running with labels {self.label_selector}")
+        return pod
+
+    async def _fetch_pod_log(self):
+        try:
+            pod_logging_status = await self._pod_manager.a_fetch_container_logs(
+                pod=self._pod,
+                container_name=self.base_container_name,
+                follow=False,
+                since_time=self.last_log_time,
+            )
+            return pod_logging_status.last_log_time
+        except Exception as e:
+            self.log.error("Failed to fetch pod log %s", e)
 
     def _get_async_hook(self) -> AsyncKubernetesHook:
         # TODO: Remove this method when the min version of kubernetes provider is 7.12.0 in Google provider.
