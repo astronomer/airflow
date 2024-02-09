@@ -29,6 +29,7 @@ from airflow.exceptions import AirflowException, AirflowProviderDeprecationWarni
 from airflow.providers.cncf.kubernetes.hooks.kubernetes import AsyncKubernetesHook
 from airflow.providers.cncf.kubernetes.utils.pod_manager import OnFinishAction, PodManager, PodPhase
 from airflow.triggers.base import BaseTrigger, TriggerEvent
+from kubernetes_asyncio import client as async_client
 
 if TYPE_CHECKING:
     from kubernetes_asyncio.client import CoreV1Api
@@ -194,7 +195,8 @@ class KubernetesPodTrigger(BaseTrigger):
                             )
                             return
                         else:
-                            if self.get_logs:
+                            if self.get_logs and container_state == ContainerState.RUNNING:
+                                self.log.info("container running fetching logs")
                                 self.last_log_time = await self._fetch_pod_log()
                             self.log.info("Sleeping for %s seconds.", self.startup_check_interval)
                             await asyncio.sleep(self.startup_check_interval)
@@ -248,37 +250,60 @@ class KubernetesPodTrigger(BaseTrigger):
             )
 
     @cached_property
-    def _pod_manager(self) -> PodManager:
-        return PodManager(kube_client=self._a_client)
+    async def _pod_manager(self) -> PodManager:
+        a_client = await self._a_client
+        return PodManager(kube_client=a_client)
 
     @cached_property
-    def _a_client(self) -> CoreV1Api:
-        return self.hook.core_v1_client
+    async def _a_client(self) -> CoreV1Api:
+        client = await self.hook._get_client()
+        # api_v1 = async_client.CoreV1Api(client)
+        # pod = await self._pod()
+        # resp = await api_v1.read_namespaced_pod_log(
+        #     name=pod.metadata.name,
+        #     namespace=pod.metadata.namespace,
+        #     container=self.base_container_name,
+        #     # follow=False,
+        #     # timestamps=timestamps,
+        #     # _preload_content=False,
+        #     # **additional_kwargs,
+        # )
+        # print("testign")
+        # print(resp)
+        return async_client.CoreV1Api(client)
+        # async with self.hook.get_conn() as connection:
+        #     v1_api = async_client.CoreV1Api(connection)
+        #     return v1_api
 
     async def _pod(self) -> V1Pod | None:
         """Return an already-running pod for this task instance if one exists."""
-        pod_list = await self._a_client.list_namespaced_pod(
-            namespace=self.pod_namespace,
-            label_selector=self.label_selector,
-        ).items
+        async with self.hook.get_conn() as connection:
+            v1_api = async_client.CoreV1Api(connection)
+            pod_list = (await v1_api.list_namespaced_pod(
+                namespace=self.pod_namespace,
+                label_selector=self.label_selector,
+            )).items
 
+        print(pod_list)
         pod = None
         num_pods = len(pod_list)
         if num_pods > 1:
             raise AirflowException(f"More than one pod running with labels {self.label_selector}")
-        return pod
+        return pod_list[0]
 
     async def _fetch_pod_log(self):
-        try:
-            pod_logging_status = await self._pod_manager.a_fetch_container_logs(
-                pod=await self._pod(),
-                container_name=self.base_container_name,
-                follow=False,
-                since_time=self.last_log_time,
-            )
-            return pod_logging_status.last_log_time
-        except Exception as e:
-            self.log.error("Failed to fetch pod log %s", e)
+        # try:
+        pod = await self._pod()
+        pod_mgr = await self._pod_manager
+        pod_logging_status = await pod_mgr.a_fetch_container_logs(
+            pod=pod,
+            container_name=self.base_container_name,
+            follow=False,
+            since_time=self.last_log_time,
+        )
+        return pod_logging_status.last_log_time
+        # except Exception as e:
+        #     self.log.error("Failed to fetch pod log %s", e)
 
     def _get_async_hook(self) -> AsyncKubernetesHook:
         # TODO: Remove this method when the min version of kubernetes provider is 7.12.0 in Google provider.

@@ -27,10 +27,12 @@ from collections.abc import Iterable
 from contextlib import closing, suppress
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import TYPE_CHECKING, Callable, Generator, Protocol, cast
+from types import coroutine
+from typing import TYPE_CHECKING, Callable, Generator, Protocol, cast, Coroutine
 
 import pendulum
 import tenacity
+from kubernetes_asyncio import client as async_client
 from deprecated import deprecated
 from kubernetes import client, watch
 from kubernetes.client.rest import ApiException
@@ -255,6 +257,9 @@ class PodLogsConsumer:
 
     def logs_available(self):
         remote_pod = self.read_pod()
+        if isinstance(remote_pod, Coroutine):
+            remote_pod = await remote_pod
+
         if container_is_running(pod=remote_pod, container_name=self.container_name):
             return True
         container_status = get_container_status(pod=remote_pod, container_name=self.container_name)
@@ -477,7 +482,7 @@ class PodManager(LoggingMixin):
                     ),
                     follow=follow,
                     post_termination_timeout=post_termination_timeout,
-                    _request_timeout=(connection_timeout, read_timeout),
+                    _request_timeout=read_timeout,
                 )
                 message_to_log = None
                 message_timestamp = None
@@ -493,6 +498,7 @@ class PodManager(LoggingMixin):
                                 progress_callback_lines.append(line)
                             else:
                                 for line in progress_callback_lines:
+                                    # check sync or async
                                     self._progress_callback(line)
                                     if self._callbacks:
                                         self._callbacks.progress_callback(
@@ -529,6 +535,7 @@ class PodManager(LoggingMixin):
 
         last_log_time = since_time
         while True:
+            self.log.info("last_log_time %s %s", last_log_time, type(last_log_time))
             last_log_time, exc = await consume_logs(since_time=last_log_time)
             if not await self.a_container_is_running(pod, container_name=container_name):
                 return PodLoggingStatus(running=False, last_log_time=last_log_time)
@@ -815,8 +822,8 @@ class PodManager(LoggingMixin):
     ) -> PodLogsConsumer:
         """Read log from the POD."""
         additional_kwargs = {}
-        if since_seconds:
-            additional_kwargs["since_seconds"] = since_seconds
+        # if since_seconds:
+        #     additional_kwargs["since_seconds"] = since_seconds
 
         if tail_lines:
             additional_kwargs["tail_lines"] = tail_lines

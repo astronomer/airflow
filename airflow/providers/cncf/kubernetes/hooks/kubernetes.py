@@ -470,6 +470,10 @@ class AsyncKubernetesHook(KubernetesHook):
         super().__init__(*args, **kwargs)
         self._extras: dict | None = None
 
+    @cached_property
+    def core_v1_client(self) -> async_client.CoreV1Api:
+        return async_client.CoreV1Api(api_client=self.api_client)
+
     async def _load_config(self):
         """Return Kubernetes API session for use with requests."""
         in_cluster = self._coalesce_param(self.in_cluster, await self._get_field("in_cluster"))
@@ -553,6 +557,10 @@ class AsyncKubernetesHook(KubernetesHook):
         finally:
             if kube_client is not None:
                 await kube_client.close()
+
+    async def _get_client(self) -> async_client.ApiClient:
+        kube_client = await self._load_config() or async_client.ApiClient()
+        return async_client.ApiClient() # kube_client
 
     async def get_pod(self, name: str, namespace: str) -> V1Pod:
         """
