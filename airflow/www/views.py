@@ -43,6 +43,7 @@ import flask.json
 import lazy_object_proxy
 import nvd3
 import re2
+import requests
 import sqlalchemy as sqla
 from croniter import croniter
 from flask import (
@@ -1653,6 +1654,118 @@ class Airflow(AirflowBaseView):
             root=root,
             wrapped=conf.getboolean("webserver", "default_wrap"),
         )
+
+    @expose("/log_help")
+    @auth.has_access_dag("GET", DagAccessEntity.TASK_LOGS)
+    @provide_session
+    def log_help(self, session: Session = NEW_SESSION):
+        """Retrieve suggestion for based on log."""
+        dag_id = request.args["dag_id"]
+        task_id = request.args.get("task_id")
+        map_index = request.args.get("map_index", -1, type=int)
+        execution_date = request.args.get("execution_date")
+        try_number = request.args.get("try_number", type=int)
+        metadata_str = request.args.get("metadata", "{}")
+
+        # Validate JSON metadata
+        try:
+            metadata: dict = json.loads(metadata_str) or {}
+        except json.decoder.JSONDecodeError:
+            return {"error": "Invalid JSON metadata"}, 400
+
+        if execution_date:
+            dttm = _safe_parse_datetime(execution_date)
+        else:
+            dttm = None
+
+        dag_model = DagModel.get_dagmodel(dag_id)
+
+        ti = session.scalar(
+            select(models.TaskInstance)
+            .filter_by(dag_id=dag_id, task_id=task_id, execution_date=dttm, map_index=map_index)
+            .limit(1)
+        )
+        ask_airflow_response = {}
+        log_tuples: list[tuple[tuple[str, str]]] = []
+        if ti is not None:
+            try:
+                task_log_reader = TaskLogReader()
+                if task_log_reader.supports_read:
+                    log_tuples, metadata = task_log_reader.read_log_chunks(ti, try_number, metadata)
+
+                    logs = []
+                    for log_chunk in log_tuples:
+                        for timestamp, message in log_chunk:
+                            logs.append(f"{timestamp} {message}")
+
+                    combined_logs = "\n".join(logs)
+                    if combined_logs:
+                        ask_airflow_response = self._analyze_log_with_airflow_doctor(combined_logs)
+
+            except Exception as e:
+                logs = [f"Error fetching logs: {e}"]
+
+        root = request.args.get("root", "")
+
+        return self.render_template(
+            "airflow/ti_log_help.html",
+            show_trigger_form_if_no_params=conf.getboolean("webserver", "show_trigger_form_if_no_params"),
+            logs=log_tuples,
+            ask_airflow_response=ask_airflow_response,
+            dag=dag_model,
+            title="Log by attempts",
+            dag_id=dag_id,
+            task_id=task_id,
+            execution_date=execution_date,
+            map_index=map_index,
+            root=root,
+            wrapped=conf.getboolean("webserver", "default_wrap"),
+        )
+
+    def _send_initial_ask_astro_request(self, prompt):
+        """Send the initial POST request to the API."""
+        url = "https://ask-astro-dev-sxjq32dlaa-uk.a.run.app/requests"
+        headers = {
+            "accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        data = {"prompt": prompt}
+
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()
+
+    def _get_ask_astro_request_status(self, request_uuid):
+        """Poll the API for the status of a request."""
+        url = f"https://ask-astro-dev-sxjq32dlaa-uk.a.run.app/requests/{request_uuid}"
+        headers = {"accept": "application/json"}
+
+        while True:
+            response = requests.get(url, headers=headers)
+            # This will raise an exception for HTTP errors
+            response.raise_for_status()
+            response_data = response.json()
+
+            status = response_data.get("status")
+            if status == "complete":
+                return response_data
+            elif status != "in_progress":
+                # If status is neither "complete" nor "in_progress", something unexpected happened
+                raise Exception(f"Unexpected status: {status}")
+
+    def _analyze_log_with_airflow_doctor(self, log_data):
+        """Send log data to Airflow Doctor and waits for the analysis to complete."""
+        prompt = (
+            "Highlight any error in the following airflow task log? If there are any errors how can we fix it?\n"
+            + log_data
+        )
+        initial_response = self._send_initial_ask_astro_request(prompt)
+
+        request_uuid = initial_response.get("request_uuid")
+        if not request_uuid:
+            raise ValueError("No request UUID in response")
+
+        return self._get_ask_astro_request_status(request_uuid)
 
     @expose("/redirect_to_external_log")
     @auth.has_access_dag("GET", DagAccessEntity.TASK_LOGS)
