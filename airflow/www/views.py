@@ -2941,6 +2941,64 @@ class Airflow(AirflowBaseView):
             ),
         )
 
+    @expose("/code_analysis/<string:dag_id>")
+    @auth.has_access_dag("GET", DagAccessEntity.TASK_INSTANCE)
+    @gzipped
+    @provide_session
+    def code_analysis(self, dag_id: str, session: Session = NEW_SESSION):
+        """Get Dag's grid view."""
+        from airflow.models.dagcode import DagCode
+
+        dag = get_airflow_app().dag_bag.get_dag(dag_id, session=session)
+        dag_model = DagModel.get_dagmodel(dag_id, session=session)
+        if not dag:
+            flash(f'DAG "{dag_id}" seems to be missing from DagBag.', "error")
+            return redirect(url_for("Airflow.index"))
+        wwwutils.check_import_errors(dag.fileloc, session)
+        wwwutils.check_dag_warnings(dag.dag_id, session)
+
+        root = request.args.get("root")
+        if root:
+            dag = dag.partial_subset(task_ids_or_regex=root, include_downstream=False, include_upstream=True)
+
+        num_runs = request.args.get("num_runs", type=int)
+        if num_runs is None:
+            num_runs = conf.getint("webserver", "default_dag_run_display_number")
+
+        doc_md = wwwutils.wrapped_markdown(getattr(dag, "doc_md", None))
+
+        task_log_reader = TaskLogReader()
+        if task_log_reader.supports_external_link:
+            external_log_name = task_log_reader.log_handler.log_name
+        else:
+            external_log_name = None
+
+        dag_code = DagCode.get_code_by_fileloc(dag.fileloc)
+        ask_airflow_response = None
+        if dag_code:
+            prompt = (
+                "Highlight if there is any problems (for example: review idempotency, check is secrets "
+                "are exposed, keep tasks atomic,avoid top-level code in your DAG file, use of a "
+                "consistent method for task dependencies, use DAG name and start date properly, set "
+                "retries, use deferable operators in possible cases etc) with the following DAG code? "
+                "Rewrite the DAG with good DAG writing practices. \n"
+            ) + dag_code
+            ask_airflow_response = self._analyze_log_with_airflow_doctor(prompt)
+
+        return self.render_template(
+            "airflow/code_analysis.html",
+            show_trigger_form_if_no_params=conf.getboolean("webserver", "show_trigger_form_if_no_params"),
+            root=root,
+            dag=dag,
+            ask_airflow_response=ask_airflow_response,
+            doc_md=doc_md,
+            num_runs=num_runs,
+            show_external_log_redirect=task_log_reader.supports_external_link,
+            external_log_name=external_log_name,
+            dag_model=dag_model,
+            auto_refresh_interval=conf.getint("webserver", "auto_refresh_interval"),
+        )
+
     @expose("/calendar")
     def legacy_calendar(self):
         """Redirect from url param."""
