@@ -18,7 +18,22 @@
  */
 
 import React from "react";
-import { Card, CardBody, CardHeader, Heading } from "@chakra-ui/react";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Heading,
+  Text,
+  Flex,
+  Table,
+  Tbody,
+  Tr,
+  Td,
+  Code,
+  Box,
+  Thead,
+  Th,
+} from "@chakra-ui/react";
 import InfoTooltip from "src/components/InfoTooltip";
 import FilterBar from "src/cluster-activity/nav/FilterBar";
 import useFilters from "src/cluster-activity/useFilters";
@@ -29,7 +44,6 @@ import { SimpleStatus } from "src/dag/StatusBox";
 import { ClipboardText } from "src/components/Clipboard";
 import { formatDuration, getDuration } from "src/datetime_utils";
 import Time from "src/components/Time";
-import { Text, Flex, Table, Tbody, Tr, Td, Code, Box, Thead, Th } from "@chakra-ui/react";
 
 const DagAnomalies = () => {
   const {
@@ -42,41 +56,35 @@ const DagAnomalies = () => {
         <CardHeader>
           <Flex alignItems="center">
             <Heading size="md">Dag Anomalies</Heading>
-            {/*<InfoTooltip*/}
-            {/*  label="Based on historical data. You can adjust the period by setting a different start and end date filter."*/}
-            {/*  size={18}*/}
-            {/*/>*/}
+            {/* <InfoTooltip */}
+            {/*  label="Based on historical data. You can adjust the period by setting a different start and end date filter." */}
+            {/*  size={18} */}
+            {/* /> */}
           </Flex>
         </CardHeader>
         <CardBody>
-          {/*<FilterBar />*/}
+          {/* <FilterBar /> */}
           <Flex justifyContent="center" minH="200px" alignItems="center">
             <LoadingWrapper hasData={!!data} isError={isError}>
               <Flex flexWrap="wrap" width="100%">
                 <Table variant="striped">
-        <Tbody>
-                  <Thead>
-                    <Tr>
-                      <Th>Dag Id</Th>
-                      <Th>Duration</Th>
-                    </Tr>
-                  </Thead>
-          {(data?.dagAnomalies || []).map((d) => {
-            return (
-                    <Tr key={d.dagId}>
-                      <Td>{d.dagId}</Td>
-                      <Td>
-                        <Code fontSize="md">
-                          {d.reason}
-                        </Code>
-                      </Td>
-                    </Tr>
-                  );
-              }
-              )}
-        </Tbody>
-      </Table>
-
+                  <Tbody>
+                    <Thead>
+                      <Tr>
+                        <Th>Dag Id</Th>
+                        <Th>Duration</Th>
+                      </Tr>
+                    </Thead>
+                    {(data?.dagAnomalies || []).map((d) => (
+                      <Tr key={d.dagId}>
+                        <Td>{d.dagId}</Td>
+                        <Td>
+                          <Code fontSize="md">{d.reason}</Code>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
               </Flex>
             </LoadingWrapper>
           </Flex>

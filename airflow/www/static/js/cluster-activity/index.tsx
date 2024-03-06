@@ -25,10 +25,10 @@ import createCache from "@emotion/cache";
 import { Flex, Heading } from "@chakra-ui/react";
 
 import App from "src/App";
-import LiveMetrics from "./live-metrics";
-import HistoricalMetrics from "./historical-metrics";
 import TaskAnomalies from "src/cluster-activity/task-anomalies";
 import DagAnomalies from "src/cluster-activity/dag-anomalies";
+import LiveMetrics from "./live-metrics";
+import HistoricalMetrics from "./historical-metrics";
 
 // create shadowRoot
 const root = document.querySelector("#root");
@@ -49,7 +49,7 @@ const ClusterActivity = () => (
       Anomaly Detection
     </Heading>
     <DagAnomalies />
-    {/*<TaskAnomalies />*/}
+    <TaskAnomalies />
     <Heading mt={3} mb={2} fontWeight="normal" size="lg">
       Cluster Activity
     </Heading>

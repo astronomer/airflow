@@ -227,17 +227,15 @@ interface TaskAnomaliesData {
 }
 
 interface TakingLongTimeData {
-  dagId: string,
-  latestMonthMedian: number,
-  allTimeMedian: number,
-  allTimeSd: number,
-  medianMult: number,
-  reason: string,
+  dagId: string;
+  latestMonthMedian: number;
+  allTimeMedian: number;
+  allTimeSd: number;
+  medianMult: number;
+  reason: string;
 }
 interface DagAnomaliesData {
-  dagAnomalies: [
-    TakingLongTimeData,
-  ];
+  dagAnomalies: [TakingLongTimeData];
 }
 
 export type {

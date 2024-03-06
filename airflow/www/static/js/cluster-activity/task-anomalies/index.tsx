@@ -17,20 +17,67 @@
  * under the License.
  */
 
-import React from "react";
-import { Card, CardBody, CardHeader, Flex, Heading } from "@chakra-ui/react";
+import React, { useState, useEffect } from "react";
+import {
+  Card,
+  CardBody,
+  CardHeader,
+  Flex,
+  Heading,
+  Table,
+  Thead,
+  Tr,
+  Th,
+  Tbody,
+  Td,
+  Box,
+  Tooltip,
+} from "@chakra-ui/react";
 import InfoTooltip from "src/components/InfoTooltip";
 import FilterBar from "src/cluster-activity/nav/FilterBar";
 import useFilters from "src/cluster-activity/useFilters";
 import { useTaskAnomaliesData } from "src/api";
-import PieChart from "src/cluster-activity/historical-metrics/PieChart";
 import LoadingWrapper from "src/components/LoadingWrapper";
+
+const mockTaskAnomalies = [
+  {
+    taskId: "task_0",
+    period: "Last Month",
+    duration: 960,
+    deviation: "1.8 SDs",
+    median: 850,
+  },
+  {
+    taskId: "task_1",
+    period: "Last Month",
+    duration: 1200,
+    deviation: "2.0 SDs",
+    median: 1150,
+  },
+  {
+    taskId: "task_2",
+    period: "Last Week",
+    duration: 300,
+    deviation: "1.5 SDs",
+    median: 250,
+  },
+];
 
 const TaskAnomalies = () => {
   const {
     filters: { startDate, endDate },
   } = useFilters();
-  const { data, isError } = useTaskAnomaliesData(startDate, endDate);
+  const { data: fetchedData, isError } = useTaskAnomaliesData(
+    startDate,
+    endDate
+  );
+
+  const [data, setData] = useState([]);
+
+  useEffect(() => {
+    setData(mockTaskAnomalies);
+  }, [fetchedData]);
+
   return (
     <Flex w="100%">
       <Card w="100%">
@@ -45,45 +92,55 @@ const TaskAnomalies = () => {
         </CardHeader>
         <CardBody>
           <FilterBar />
-          <Flex justifyContent="center" minH="200px" alignItems="center">
+          <Flex direction="column" minH="200px" alignItems="center">
             <LoadingWrapper hasData={!!data} isError={isError}>
-              <Flex flexWrap="wrap" width="100%">
-                <PieChart
-                  title="Dag Run States"
-                  data={data?.dagRunStates}
-                  width="33.33%"
-                  minW="300px"
-                  minH="350px"
-                  pr={4}
-                  colorPalette={{
-                    failed: stateColors.failed,
-                    queued: stateColors.queued,
-                    running: stateColors.running,
-                    success: stateColors.success,
-                  }}
-                />
-                <PieChart
-                  title="Dag Run Types"
-                  data={data?.dagRunTypes}
-                  width="33.33%"
-                  minW="300px"
-                  minH="350px"
-                  pr={4}
-                  colorPalette={{
-                    backfill: stateColors.deferred,
-                    datasetTriggered: stateColors.queued,
-                    manual: stateColors.success,
-                    scheduled: stateColors.scheduled,
-                  }}
-                />
-                <PieChart
-                  title="Task Instance States"
-                  data={data?.taskInstanceStates}
-                  width="33.33%"
-                  minW="300px"
-                  minH="350px"
-                />
-              </Flex>
+              <Box w="100%">
+                <Table variant="striped">
+                  <Thead>
+                    <Tr>
+                      <Th>Task ID</Th>
+                      <Th>Period</Th>
+                      <Th>Duration (s)</Th>
+                      <Th>Median (s)</Th>
+                      <Th>Deviation</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {data &&
+                      data.map((d) => (
+                        <Tr key={d.taskId}>
+                          <Td>
+                            <Tooltip label="Unique identifier for the task">
+                              <span>{d.taskId}</span>
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <Tooltip label="Time frame of the anomaly (e.g., Last Month, Last Week)">
+                              <span>{d.period}</span>
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <Tooltip label="Actual time taken for the task to complete in seconds">
+                              <span>{d.duration}</span>
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <Tooltip label="Typical time taken for task completion based on historical data, in seconds">
+                              <span>{d.median}</span>
+                            </Tooltip>
+                          </Td>
+                          <Td>
+                            <Tooltip
+                              label={`Deviation from the median time, indicating the significance of the anomaly (${d.deviation})`}
+                            >
+                              <span>{d.deviation}</span>
+                            </Tooltip>
+                          </Td>
+                        </Tr>
+                      ))}
+                  </Tbody>
+                </Table>
+              </Box>
             </LoadingWrapper>
           </Flex>
         </CardBody>
