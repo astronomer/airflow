@@ -214,6 +214,32 @@ interface HistoricalMetricsData {
   };
 }
 
+interface TaskAnomaliesData {
+  dagRunStates: {
+    [K in CamelCase<RunState>]: number;
+  };
+  dagRunTypes: {
+    [K in CamelCase<DagRun["runType"]>]: number;
+  };
+  taskInstanceStates: {
+    [K in TaskState extends string ? CamelCase<K> : never]: number;
+  };
+}
+
+interface TakingLongTimeData {
+  dagId: string,
+  latestMonthMedian: number,
+  allTimeMedian: number,
+  allTimeSd: number,
+  medianMult: number,
+  reason: string,
+}
+interface DagAnomaliesData {
+  dagAnomalies: [
+    TakingLongTimeData,
+  ];
+}
+
 export type {
   API,
   Dag,
@@ -230,4 +256,6 @@ export type {
   TaskState,
   KeyboardShortcutKeys,
   KeyboardShortcutIdentifier,
+  TaskAnomaliesData,
+  DagAnomaliesData,
 };

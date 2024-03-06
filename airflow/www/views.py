@@ -73,7 +73,7 @@ from jinja2.utils import htmlsafe_json_dumps, pformat  # type: ignore
 from markupsafe import Markup, escape
 from pendulum.datetime import DateTime
 from pendulum.parsing.exceptions import ParserError
-from sqlalchemy import and_, case, desc, func, inspect, select, union_all
+from sqlalchemy import and_, case, desc, func, inspect, select, text, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from wtforms import BooleanField, validators
@@ -281,7 +281,48 @@ def get_date_time_num_runs_dag_runs_form_data(www_request, session, dag):
         "dr_state": dr_state,
     }
 
-
+super_ugly_query = """
+set TIMEZONE='utc';
+SELECT
+    latest_month.dag_id,
+--    latest_month.month,
+    latest_month.median,
+    all_time.median,
+    all_time.sd,
+    (latest_month.median - all_time.median) / all_time.sd as median_mult
+FROM (
+    SELECT
+        a.dag_id,
+        a.month,
+        a.median_runtime_seconds AS median
+    FROM (
+        SELECT
+            dag_run.dag_id,
+            cast(date_trunc('month', dag_run.start_date) AS DATE) AS "month",
+            percentile_cont(0.5) WITHIN GROUP ( ORDER BY extract('epoch' FROM dag_run.end_date - dag_run.start_date) ) AS median_runtime_seconds
+        FROM dag_run
+        GROUP BY
+            1, 2
+         ) a
+    WHERE
+        a.month + INTERVAL '1 month' = date_trunc('month', current_date)::DATE
+     ) AS latest_month
+JOIN (
+        SELECT
+            a.dag_id,
+            percentile_cont(.5) WITHIN GROUP (ORDER BY a.duration) AS median,
+            stddev(a.duration) AS sd
+        FROM (
+            SELECT
+                dag_run.dag_id,
+                extract('epoch' FROM dag_run.end_date - dag_run.start_date) AS duration
+            FROM dag_run
+             ) a
+        GROUP BY 1
+     ) all_time
+    ON all_time.dag_id = latest_month.dag_id
+        AND latest_month.median > (all_time.median + all_time.sd)
+"""
 def _safe_parse_datetime(v, *, allow_empty=False, strict=True) -> datetime.datetime | None:
     """
     Parse datetime and return error message for invalid dates.
@@ -3724,6 +3765,106 @@ class Airflow(AirflowBaseView):
                     **{ti_state.value: 0 for ti_state in TaskInstanceState},
                     **{ti_state or "no_status": sum_value for ti_state, sum_value in task_instance_states},
                 },
+            }
+
+        return (
+            htmlsafe_json_dumps(data, separators=(",", ":"), dumps=flask.json.dumps),
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+
+    @expose("/object/task_anomalies_data")
+    @auth.has_access_view(AccessView.CLUSTER_ACTIVITY)
+    def task_anomalies_data(self):
+        """Return cluster activity historical metrics."""
+        start_date = _safe_parse_datetime(request.args.get("start_date"))
+        end_date = _safe_parse_datetime(request.args.get("end_date"))
+
+        with create_session() as session:
+            # DagRuns
+            dag_run_types = session.execute(
+                select(DagRun.run_type, func.count(DagRun.run_id))
+                .where(
+                    DagRun.start_date >= start_date,
+                    func.coalesce(DagRun.end_date, timezone.utcnow()) <= end_date,
+                )
+                .group_by(DagRun.run_type)
+            ).all()
+
+            dag_run_states = session.execute(
+                select(DagRun.state, func.count(DagRun.run_id))
+                .where(
+                    DagRun.start_date >= start_date,
+                    func.coalesce(DagRun.end_date, timezone.utcnow()) <= end_date,
+                )
+                .group_by(DagRun.state)
+            ).all()
+
+            # TaskInstances
+            task_instance_states = session.execute(
+                select(TaskInstance.state, func.count(TaskInstance.run_id))
+                .join(TaskInstance.dag_run)
+                .where(
+                    DagRun.start_date >= start_date,
+                    func.coalesce(DagRun.end_date, timezone.utcnow()) <= end_date,
+                )
+                .group_by(TaskInstance.state)
+            ).all()
+
+            data = {
+                "dag_run_types": {
+                    **{dag_run_type.value: 0 for dag_run_type in DagRunType},
+                    **dict(dag_run_types),
+                },
+                "dag_run_states": {
+                    **{dag_run_state.value: 0 for dag_run_state in DagRunState},
+                    **dict(dag_run_states),
+                },
+                "task_instance_states": {
+                    "no_status": 0,
+                    **{ti_state.value: 0 for ti_state in TaskInstanceState},
+                    **{ti_state or "no_status": sum_value for ti_state, sum_value in task_instance_states},
+                },
+            }
+
+        return (
+            htmlsafe_json_dumps(data, separators=(",", ":"), dumps=flask.json.dumps),
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+
+    @expose("/object/dag_anomalies_data")
+    @auth.has_access_view(AccessView.CLUSTER_ACTIVITY)
+    def dag_anomalies_data(self):
+        """Return cluster activity historical metrics."""
+        start_date = _safe_parse_datetime(request.args.get("start_date"))
+        end_date = _safe_parse_datetime(request.args.get("end_date"))
+
+        with create_session() as session:
+            result = session.execute(super_ugly_query).all()
+            cols = [
+                "dag_id",
+                "latest_month_median",
+                "all_time_median",
+                "all_time_sd",
+                "median_mult",
+            ]
+
+            result = [dict(zip(cols, row)) for row in result]
+            for r in result:
+                mult = r["median_mult"]
+                mult = round(mult, 1)
+                latest_med = r["latest_month_median"]
+                all_time_med = r["all_time_median"]
+                r["reason"] = f"Latest month took {latest_med}, {mult} SDs longer than all time median of {all_time_med}"
+            # todo ideas:
+            # month over month variation
+            # day of the week variation
+            # time of day variation
+            dags = session.scalars(select(DagModel.dag_id)).all()
+            slog = logging.getLogger("sqlalchemy")
+            slog.setLevel(logging.INFO)
+            slog.setLevel(logging.WARNING)
+            data = {
+                "dag_anomalies": result,
             }
 
         return (

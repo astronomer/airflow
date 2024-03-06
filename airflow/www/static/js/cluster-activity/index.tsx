@@ -27,6 +27,8 @@ import { Flex, Heading } from "@chakra-ui/react";
 import App from "src/App";
 import LiveMetrics from "./live-metrics";
 import HistoricalMetrics from "./historical-metrics";
+import TaskAnomalies from "src/cluster-activity/task-anomalies";
+import DagAnomalies from "src/cluster-activity/dag-anomalies";
 
 // create shadowRoot
 const root = document.querySelector("#root");
@@ -43,6 +45,11 @@ const ClusterActivity = () => (
     flexDirection="column"
     justifyContent="space-between"
   >
+    <Heading mt={3} mb={2} fontWeight="normal" size="lg">
+      Anomaly Detection
+    </Heading>
+    <DagAnomalies />
+    {/*<TaskAnomalies />*/}
     <Heading mt={3} mb={2} fontWeight="normal" size="lg">
       Cluster Activity
     </Heading>
