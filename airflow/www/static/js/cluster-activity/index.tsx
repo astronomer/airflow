@@ -29,6 +29,7 @@ import TaskAnomalies from "src/cluster-activity/task-anomalies";
 import DagAnomalies from "src/cluster-activity/dag-anomalies";
 import LiveMetrics from "./live-metrics";
 import HistoricalMetrics from "./historical-metrics";
+import ResourceAnomalies from "src/cluster-activity/resource-anomalies";
 
 // create shadowRoot
 const root = document.querySelector("#root");
@@ -50,6 +51,7 @@ const ClusterActivity = () => (
     </Heading>
     <DagAnomalies />
     <TaskAnomalies />
+    <ResourceAnomalies />
     <Heading mt={3} mb={2} fontWeight="normal" size="lg">
       Cluster Activity
     </Heading>

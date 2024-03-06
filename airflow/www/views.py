@@ -3872,6 +3872,147 @@ class Airflow(AirflowBaseView):
             {"Content-Type": "application/json; charset=utf-8"},
         )
 
+    @expose("/object/resource_anomalies_data")
+    @auth.has_access_view(AccessView.CLUSTER_ACTIVITY)
+    def resource_anomalies_data(self):
+        mock_data = [
+            {
+                "worker_id": "1",
+                "size": "2Gi",
+                "used": "1.9 ",
+                "available": "0.1",
+                "time": 1709709345
+            },
+            {
+                "worker_id": "2",
+                "size": "2Gi",
+                "used": "1.1 ",
+                "available": "0.9",
+                "time": 1709709345
+            },
+            {
+                "worker_id": "3",
+                "size": "2Gi",
+                "used": "0.9 ",
+                "available": "1.1",
+                "time": 1709709345
+            },
+            {
+                "worker_id": "4",
+                "size": "2Gi",
+                "used": "1.0 ",
+                "available": "1.0",
+                "time": 1709709345
+            },
+            {
+                "worker_id": "1",
+                "size": "2Gi",
+                "used": "1.9 ",
+                "available": "0.1",
+                "time": 1709709445
+            },
+            {
+                "worker_id": "2",
+                "size": "2Gi",
+                "used": "1.1 ",
+                "available": "0.9",
+                "time": 1709709445
+            },
+            {
+                "worker_id": "3",
+                "size": "2Gi",
+                "used": "0.9 ",
+                "available": "1.1",
+                "time": 1709709445
+            },
+            {
+                "worker_id": "4",
+                "size": "2Gi",
+                "used": "1.0 ",
+                "available": "1.0",
+                "time": 1709709445
+            },
+            {
+                "worker_id": "1",
+                "size": "2Gi",
+                "used": "1.9 ",
+                "available": "0.1",
+                "time": 1709709545
+            },
+            {
+                "worker_id": "2",
+                "size": "2Gi",
+                "used": "1.1 ",
+                "available": "0.9",
+                "time": 1709709545
+            },
+            {
+                "worker_id": "3",
+                "size": "2Gi",
+                "used": "0.9 ",
+                "available": "1.1",
+                "time": 1709709545
+            },
+            {
+                "worker_id": "4",
+                "size": "2Gi",
+                "used": "1.0 ",
+                "available": "1.0",
+                "time": 1709709545
+            },
+            {
+                "worker_id": "1",
+                "size": "2Gi",
+                "used": "1.9 ",
+                "available": "0.1",
+                "time": 1709709645
+            },
+            {
+                "worker_id": "2",
+                "size": "2Gi",
+                "used": "1.1 ",
+                "available": "0.9",
+                "time": 1709709645
+            },
+            {
+                "worker_id": "3",
+                "size": "2Gi",
+                "used": "1.1 ",
+                "available": "0.9",
+                "time": 1709709645
+            },
+            {
+                "worker_id": "4",
+                "size": "2Gi",
+                "used": "1.0 ",
+                "available": "1.0",
+                "time": 1709709645
+            }
+        ]
+        prompt = f"""
+        based on the worker memory consumption suggest which worker memory can be increase or decrease
+        {mock_data} in short 1 sentence
+        """
+        response = ""
+        try:
+            init_response = self._send_initial_ask_astro_request(prompt)
+            request_uuid = init_response.get("request_uuid")
+            if not request_uuid:
+                return ()
+            response = self._get_ask_astro_request_status(request_uuid)
+        except:
+            pass
+        json_response = {
+            "worker": response.get("response"),
+            "scheduler": "TODO",
+            "trigger": "TODO",
+            "webserver": "TODO"
+        }
+        return (
+            htmlsafe_json_dumps(json_response, separators=(",", ":"), dumps=flask.json.dumps),
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
+
     @expose("/object/next_run_datasets/<string:dag_id>")
     @auth.has_access_dag("GET", DagAccessEntity.RUN)
     @auth.has_access_dataset("GET")

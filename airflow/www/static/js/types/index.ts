@@ -226,6 +226,15 @@ interface TaskAnomaliesData {
   };
 }
 
+interface ResourceAnomaliesData {
+  resourceAnomalies: [
+       worker: string,
+       scheduler: string,
+       trigger: string,
+       webserver: string
+  ]
+}
+
 interface TakingLongTimeData {
   dagId: string;
   latestMonthMedian: number;
@@ -256,4 +265,5 @@ export type {
   KeyboardShortcutIdentifier,
   TaskAnomaliesData,
   DagAnomaliesData,
+  ResourceAnomaliesData,
 };
