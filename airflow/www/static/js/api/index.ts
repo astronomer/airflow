@@ -103,5 +103,5 @@ export {
   useEventLogs,
   useTaskAnomaliesData,
   useDagAnomaliesData,
-  useResourceAnomaliesData
+  useResourceAnomaliesData,
 };

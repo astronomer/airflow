@@ -68,13 +68,13 @@ const DagAnomalies = () => {
             <LoadingWrapper hasData={!!data} isError={isError}>
               <Flex flexWrap="wrap" width="100%">
                 <Table variant="striped">
+                  <Thead>
+                    <Tr>
+                      <Th>Dag Id</Th>
+                      <Th>Duration</Th>
+                    </Tr>
+                  </Thead>
                   <Tbody>
-                    <Thead>
-                      <Tr>
-                        <Th>Dag Id</Th>
-                        <Th>Duration</Th>
-                      </Tr>
-                    </Thead>
                     {(data?.dagAnomalies || []).map((d) => (
                       <Tr key={d.dagId}>
                         <Td>{d.dagId}</Td>

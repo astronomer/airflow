@@ -73,7 +73,7 @@ from jinja2.utils import htmlsafe_json_dumps, pformat  # type: ignore
 from markupsafe import Markup, escape
 from pendulum.datetime import DateTime
 from pendulum.parsing.exceptions import ParserError
-from sqlalchemy import and_, case, desc, func, inspect, select, text, union_all
+from sqlalchemy import and_, case, desc, func, inspect, select, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 from wtforms import BooleanField, validators
@@ -281,6 +281,7 @@ def get_date_time_num_runs_dag_runs_form_data(www_request, session, dag):
         "dr_state": dr_state,
     }
 
+
 super_ugly_query = """
 set TIMEZONE='utc';
 SELECT
@@ -323,6 +324,8 @@ JOIN (
     ON all_time.dag_id = latest_month.dag_id
         AND latest_month.median > (all_time.median + all_time.sd)
 """
+
+
 def _safe_parse_datetime(v, *, allow_empty=False, strict=True) -> datetime.datetime | None:
     """
     Parse datetime and return error message for invalid dates.
@@ -3854,7 +3857,9 @@ class Airflow(AirflowBaseView):
                 mult = round(mult, 1)
                 latest_med = r["latest_month_median"]
                 all_time_med = r["all_time_median"]
-                r["reason"] = f"Latest month took {latest_med}, {mult} SDs longer than all time median of {all_time_med}"
+                r[
+                    "reason"
+                ] = f"Latest month this DAG took {latest_med}, which is {mult} standard deviations  longer than all time median of {all_time_med}."
             # todo ideas:
             # month over month variation
             # day of the week variation
@@ -3876,118 +3881,22 @@ class Airflow(AirflowBaseView):
     @auth.has_access_view(AccessView.CLUSTER_ACTIVITY)
     def resource_anomalies_data(self):
         mock_data = [
-            {
-                "worker_id": "1",
-                "size": "2Gi",
-                "used": "1.9 ",
-                "available": "0.1",
-                "time": 1709709345
-            },
-            {
-                "worker_id": "2",
-                "size": "2Gi",
-                "used": "1.1 ",
-                "available": "0.9",
-                "time": 1709709345
-            },
-            {
-                "worker_id": "3",
-                "size": "2Gi",
-                "used": "0.9 ",
-                "available": "1.1",
-                "time": 1709709345
-            },
-            {
-                "worker_id": "4",
-                "size": "2Gi",
-                "used": "1.0 ",
-                "available": "1.0",
-                "time": 1709709345
-            },
-            {
-                "worker_id": "1",
-                "size": "2Gi",
-                "used": "1.9 ",
-                "available": "0.1",
-                "time": 1709709445
-            },
-            {
-                "worker_id": "2",
-                "size": "2Gi",
-                "used": "1.1 ",
-                "available": "0.9",
-                "time": 1709709445
-            },
-            {
-                "worker_id": "3",
-                "size": "2Gi",
-                "used": "0.9 ",
-                "available": "1.1",
-                "time": 1709709445
-            },
-            {
-                "worker_id": "4",
-                "size": "2Gi",
-                "used": "1.0 ",
-                "available": "1.0",
-                "time": 1709709445
-            },
-            {
-                "worker_id": "1",
-                "size": "2Gi",
-                "used": "1.9 ",
-                "available": "0.1",
-                "time": 1709709545
-            },
-            {
-                "worker_id": "2",
-                "size": "2Gi",
-                "used": "1.1 ",
-                "available": "0.9",
-                "time": 1709709545
-            },
-            {
-                "worker_id": "3",
-                "size": "2Gi",
-                "used": "0.9 ",
-                "available": "1.1",
-                "time": 1709709545
-            },
-            {
-                "worker_id": "4",
-                "size": "2Gi",
-                "used": "1.0 ",
-                "available": "1.0",
-                "time": 1709709545
-            },
-            {
-                "worker_id": "1",
-                "size": "2Gi",
-                "used": "1.9 ",
-                "available": "0.1",
-                "time": 1709709645
-            },
-            {
-                "worker_id": "2",
-                "size": "2Gi",
-                "used": "1.1 ",
-                "available": "0.9",
-                "time": 1709709645
-            },
-            {
-                "worker_id": "3",
-                "size": "2Gi",
-                "used": "1.1 ",
-                "available": "0.9",
-                "time": 1709709645
-            },
-            {
-                "worker_id": "4",
-                "size": "2Gi",
-                "used": "1.0 ",
-                "available": "1.0",
-                "time": 1709709645
-            }
+            {"worker_id": "1", "size": "2Gi", "used": "1.95Gi", "available": "0.05Gi", "time": 1709709345},
+            {"worker_id": "2", "size": "2Gi", "used": "0.5Gi", "available": "1.5Gi", "time": 1709709345},
+            {"worker_id": "3", "size": "2Gi", "used": "0.4Gi", "available": "1.6Gi", "time": 1709709345},
+            {"worker_id": "4", "size": "2Gi", "used": "0.6Gi", "available": "1.4Gi", "time": 1709709345},
+            {"worker_id": "1", "size": "2Gi", "used": "1.95Gi", "available": "0.05Gi", "time": 1709709445},
+            {"worker_id": "2", "size": "2Gi", "used": "0.5Gi", "available": "1.5Gi", "time": 1709709445},
+            {"worker_id": "3", "size": "2Gi", "used": "0.4Gi", "available": "1.6Gi", "time": 1709709445},
+            {"worker_id": "4", "size": "2Gi", "used": "0.6Gi", "available": "1.4Gi", "time": 1709709445},
+            {"worker_id": "1", "size": "2Gi", "used": "1.95Gi", "available": "0.05Gi", "time": 1709709545},
+            {"worker_id": "2", "size": "2Gi", "used": "0.5Gi", "available": "1.5Gi", "time": 1709709545},
+            {"worker_id": "3", "size": "2Gi", "used": "0.4Gi", "available": "1.6Gi", "time": 1709709545},
+            {"worker_id": "4", "size": "2Gi", "used": "0.6Gi", "available": "1.4Gi", "time": 1709709545},
+            {"worker_id": "1", "size": "2Gi", "used": "1.95Gi", "available": "0.05Gi", "time": 1709709645},
+            {"worker_id": "2", "size": "2Gi", "used": "0.5Gi", "available": "1.5Gi", "time": 1709709645},
+            {"worker_id": "3", "size": "2Gi", "used": "0.4Gi", "available": "1.6Gi", "time": 1709709645},
+            {"worker_id": "4", "size": "2Gi", "used": "0.6Gi", "available": "1.4Gi", "time": 1709709645},
         ]
         prompt = f"""
         based on the worker memory consumption suggest which worker memory can be increase or decrease
@@ -4002,11 +3911,22 @@ class Airflow(AirflowBaseView):
             response = self._get_ask_astro_request_status(request_uuid)
         except:
             pass
+
+        worker_suggestion = ""
+        response_on_worker = response.get("response")
+        cost_prompt = f"Based on the following suggestion. If all workers currently are A20 on Astro Deployments.What should be the ideal worker type based on following suggestion. {response_on_worker} and following worker memory consumption data {mock_data}. Explain in short 2 sentences."
+        try:
+            cost_init_response = self._send_initial_ask_astro_request(cost_prompt)
+            cost_request_uuid = cost_init_response.get("request_uuid")
+            if not cost_request_uuid:
+                return ()
+            worker_suggestion = self._get_ask_astro_request_status(cost_request_uuid)
+        except:
+            pass
+
         json_response = {
-            "worker": response.get("response"),
-            "scheduler": "TODO",
-            "trigger": "TODO",
-            "webserver": "TODO"
+            "workers_insights": response.get("response"),
+            "cost_insights": worker_suggestion.get("response"),
         }
         return (
             htmlsafe_json_dumps(json_response, separators=(",", ":"), dumps=flask.json.dumps),

@@ -44,19 +44,19 @@
   {{ super() }}
   {% if ask_airflow_response %}
     <div class="ask-airflow-response">
-    <h3>Response from Airflow Doctor:</h3>
     <pre>{{ ask_airflow_response.response }}</pre>
     {% if ask_airflow_response.sources %}
-        <h4>Sources:</h4>
+        <h4>Relevant Sources:</h4>
         <ul>
         {% for source in ask_airflow_response.sources %}
             <li>
-                <strong>Source:</strong> <a href="{{ source.url }}" target="_blank">{{ source.name }}</a>
+              <a href="{{ source.url }}" target="_blank">{{ source.name }}</a>
                 <br>
-                <strong>Snippet:</strong> <pre>{{ source.snippet }}</pre>
             </li>
+
         {% endfor %}
         </ul>
+        <ul><a>Airflow SmartSuggest can make mistakes. Consider checking important information. </a></ul>
     {% endif %}
     </div>
   {% else %}

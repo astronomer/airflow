@@ -36,7 +36,6 @@
     <div id="react-container"></div>
      <!-- Display Ask Airflow Doctor Response -->
     <div id="ask-airflow-response" style="margin-top: 20px;">
-      <h3>Ask Airflow Doctor Response:</h3>
       <p><pre><code>{{ ask_airflow_response.response }}</code></pre></p>
     </div>
     <!-- End Ask Airflow Doctor Response -->
@@ -47,10 +46,12 @@
       <ul>
         {% for source in ask_airflow_response.sources %}
           <li>
-            <a href="{{ source.name }}"><pre><code>{{ source.name }}</code></pre></a>: <pre><code>{{ source.snippet }}</code></pre>
+             <a href="{{ source.url }}" target="_blank">{{ source.name }}</a>
+            <br>
           </li>
         {% endfor %}
       </ul>
+      <ul><a>Airflow SmartSuggest can make mistakes. Consider checking important information. </a></ul>
     </div>
     <!-- End Ask Airflow Sources -->
   </div>

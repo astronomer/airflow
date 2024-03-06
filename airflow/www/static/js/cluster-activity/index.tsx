@@ -27,9 +27,9 @@ import { Flex, Heading } from "@chakra-ui/react";
 import App from "src/App";
 import TaskAnomalies from "src/cluster-activity/task-anomalies";
 import DagAnomalies from "src/cluster-activity/dag-anomalies";
+import ResourceAnomalies from "src/cluster-activity/resource-anomalies";
 import LiveMetrics from "./live-metrics";
 import HistoricalMetrics from "./historical-metrics";
-import ResourceAnomalies from "src/cluster-activity/resource-anomalies";
 
 // create shadowRoot
 const root = document.querySelector("#root");
