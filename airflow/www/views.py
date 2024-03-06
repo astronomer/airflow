@@ -3914,7 +3914,7 @@ class Airflow(AirflowBaseView):
 
         worker_suggestion = ""
         response_on_worker = response.get("response")
-        cost_prompt = f"Based on the following suggestion. If all workers currently are A20 on Astro Deployments.What should be the ideal worker type based on following suggestion. {response_on_worker} and following worker memory consumption data {mock_data}. Explain in short 2 sentences."
+        cost_prompt = f"Based on the following suggestion. If all workers currently are A20 on Astro Deployments.What should be the ideal worker type based on following suggestion. {response_on_worker} and following worker memory profile {mock_data}. Explain in short 2 sentences."
         try:
             cost_init_response = self._send_initial_ask_astro_request(cost_prompt)
             cost_request_uuid = cost_init_response.get("request_uuid")
@@ -3925,8 +3925,9 @@ class Airflow(AirflowBaseView):
             pass
 
         json_response = {
-            "workers_insights": response.get("response"),
-            "cost_insights": worker_suggestion.get("response"),
+            "Workers": response.get("response"),
+            "Cost": "Currently all workers on Astro deployment are of type A20. "
+            + worker_suggestion.get("response"),
         }
         return (
             htmlsafe_json_dumps(json_response, separators=(",", ":"), dumps=flask.json.dumps),
