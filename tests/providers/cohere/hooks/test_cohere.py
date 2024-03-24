@@ -41,6 +41,4 @@ class TestCohereHook:
         ), patch("cohere.Client") as client:
             hook = CohereHook(timeout=timeout, max_retries=max_retries)
             _ = hook.get_conn
-            client.assert_called_once_with(
-                api_key=api_key, timeout=timeout, max_retries=max_retries, api_url=api_url
-            )
+            client.assert_called_once_with(api_key=api_key, timeout=timeout, base_url=api_url)

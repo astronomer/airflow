@@ -18,9 +18,12 @@
 from __future__ import annotations
 
 from functools import cached_property
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import cohere
+
+if TYPE_CHECKING:
+    from cohere.core.request_options import RequestOptions
 
 from airflow.hooks.base import BaseHook
 
@@ -51,18 +54,17 @@ class CohereHook(BaseHook):
         self.conn_id = conn_id
         self.timeout = timeout
         self.max_retries = max_retries
+        self._request_options: RequestOptions = {"max_retries": self.max_retries}
 
     @cached_property
     def get_conn(self) -> cohere.Client:  # type: ignore[override]
         conn = self.get_connection(self.conn_id)
-        return cohere.Client(
-            api_key=conn.password, timeout=self.timeout, max_retries=self.max_retries, api_url=conn.host
-        )
+        return cohere.Client(api_key=conn.password, timeout=self.timeout, base_url=conn.host)
 
     def create_embeddings(
         self, texts: list[str], model: str = "embed-multilingual-v2.0"
     ) -> list[list[float]]:
-        response = self.get_conn.embed(texts=texts, model=model)
+        response = self.get_conn.embed(texts=texts, model=model, request_options=self._request_options)
         embeddings = response.embeddings
         return embeddings
 
@@ -77,7 +79,7 @@ class CohereHook(BaseHook):
 
     def test_connection(self) -> tuple[bool, str]:
         try:
-            self.get_conn.generate("Test", max_tokens=10)
+            self.get_conn.generate(prompt="Test", max_tokens=10)
             return True, "Connection established"
         except Exception as e:
             return False, str(e)
