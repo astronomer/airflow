@@ -72,6 +72,8 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
+logger = logging.getLogger(__name__)
+
 
 class DagParsingStat(NamedTuple):
     """Information on processing progress."""
@@ -574,6 +576,7 @@ class DagFileProcessorManager(LoggingMixin):
                     pass
                 elif isinstance(agent_signal, CallbackRequest):
                     self._add_callback_to_queue(agent_signal)
+                    self.log.warning("_add_callback_to_queue; agent signal; %s", agent_signal)
                 else:
                     raise ValueError(f"Invalid message {type(agent_signal)}")
 
@@ -598,7 +601,7 @@ class DagFileProcessorManager(LoggingMixin):
                         self.waitables.pop(sentinel)
                         self._processors.pop(processor.file_path)
 
-            if self.standalone_dag_processor:
+            if True:
                 self._fetch_callbacks(max_callbacks_per_loop)
             self._scan_stale_dags()
             DagWarning.purge_inactive_dag_warnings()
@@ -676,7 +679,7 @@ class DagFileProcessorManager(LoggingMixin):
     @retry_db_transaction
     def _fetch_callbacks_with_retries(self, max_callbacks: int, session: Session):
         """Fetch callbacks from database and add them to the internal queue for execution."""
-        self.log.debug("Fetching callbacks from the database.")
+        self.log.warning("Fetching callbacks from the database.")
         with prohibit_commit(session) as guard:
             query = select(DbCallbackRequest)
             if self.standalone_dag_processor:
@@ -761,7 +764,7 @@ class DagFileProcessorManager(LoggingMixin):
             self.set_file_paths(self._file_paths)
 
             try:
-                self.log.debug("Removing old import errors")
+                self.log.warning("Removing old import errors")
                 DagFileProcessorManager.clear_nonexistent_import_errors(
                     file_paths=self._file_paths, processor_subdir=self.get_dag_directory()
                 )

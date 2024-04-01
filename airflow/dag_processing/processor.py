@@ -763,7 +763,19 @@ class DagFileProcessor(LoggingMixin):
             DAG.execute_callback(callbacks, context, dag.dag_id)
 
     def _execute_task_callbacks(self, dagbag: DagBag | None, request: TaskCallbackRequest, session: Session):
-        if not request.is_failure_callback:
+        try:
+            callback_type = TaskInstanceState(request.task_callback_type)
+        except Exception:
+            callback_type = None
+        is_remote = callback_type in (TaskInstanceState.SUCCESS, TaskInstanceState.FAILED)
+
+        # previously we ignored any request besides failures. now if given callback type directly,
+        # then we respect it and execute it. additionally because in this scenario the callback
+        # is submitted remotely, we assume there is no need to mess with state; we simply run
+        # the callback
+
+        if not is_remote and not request.is_failure_callback:
+            self.log.warning("not failure callback: %s", request)
             return
 
         simple_ti = request.simple_task_instance
@@ -795,8 +807,15 @@ class DagFileProcessor(LoggingMixin):
         if task:
             ti.refresh_from_task(task)
 
-        ti.handle_failure(error=request.msg, test_mode=self.UNIT_TEST_MODE, session=session)
-        self.log.info("Executed failure callback for %s in state %s", ti, ti.state)
+        if callback_type is TaskInstanceState.SUCCESS:
+            context = ti.get_template_context(session=session)
+            if callback_type is TaskInstanceState.SUCCESS:
+                callbacks = ti.task.on_success_callback
+                ti._run_finished_callback(callbacks=callbacks, context=context, callback_type="on_success")
+                self.log.info("Executed callback for %s in state %s", ti, ti.state)
+        elif not is_remote or callback_type is TaskInstanceState.FAILED:
+            ti.handle_failure(error=request.msg, test_mode=self.UNIT_TEST_MODE, session=session)
+            self.log.info("Executed callback for %s in state %s", ti, ti.state)
         session.flush()
 
     @classmethod

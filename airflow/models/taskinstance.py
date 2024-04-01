@@ -709,6 +709,12 @@ def _execute_task(task_instance: TaskInstance | TaskInstancePydantic, context: C
         execute_callable = task_to_execute.resume_execution
         execute_callable_kwargs["next_method"] = task_instance.next_method
         execute_callable_kwargs["next_kwargs"] = task_instance.next_kwargs
+    elif task_instance.next_method == TaskDeferred.TRIGGER_EXIT:
+        raise AirflowException(
+            "Task is resuming from deferral without next_method specified. "
+            "You must either set `method_name` when deferring, or use a trigger "
+            "that is designed to exit the task."
+        )
     else:
         execute_callable = task_to_execute.execute
         if execute_callable.__name__ == "execute":
