@@ -73,14 +73,10 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
             # If the target datetime is in the past, return immediately
             return True
         try:
-            trigger = DateTimeTrigger(moment=target_dttm)
+            trigger = DateTimeTrigger(moment=target_dttm, end_task=True)
         except (TypeError, ValueError) as e:
             if self.soft_fail:
                 raise AirflowSkipException("Skipping due to soft_fail is set to True.") from e
             raise
 
-        self.defer(trigger=trigger, method_name="execute_complete")
-
-    def execute_complete(self, context, event=None) -> None:
-        """Execute for when the trigger fires - return immediately."""
-        return None
+        self.defer(trigger=trigger)
