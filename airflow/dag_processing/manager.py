@@ -1075,6 +1075,7 @@ class DagFileProcessorManager(LoggingMixin):
     @staticmethod
     def _create_process(file_path, pickle_dags, dag_ids, dag_directory, callback_requests):
         """Create DagFileProcessorProcess instance."""
+        logger.warning("creating processor with callbacks: %s", callback_requests)
         return DagFileProcessorProcess(
             file_path=file_path,
             pickle_dags=pickle_dags,
