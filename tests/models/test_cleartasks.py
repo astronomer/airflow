@@ -177,7 +177,7 @@ class TestClearTasks:
         clear_task_instances(qry, session, dag_run_state=state, dag=dag)
         session.flush()
 
-        session.refresh(dr)
+        # session.refresh(dr)
 
         assert dr.state == state
         assert dr.start_date is None if state == DagRunState.QUEUED else dr.start_date
@@ -214,7 +214,7 @@ class TestClearTasks:
         clear_task_instances(qry, session, dag=dag)
         session.flush()
 
-        session.refresh(dr)
+        # session.refresh(dr)
 
         assert dr.state == state
         if state == DagRunState.QUEUED:
@@ -262,7 +262,7 @@ class TestClearTasks:
         clear_task_instances(qry, session, dag=dag)
         session.flush()
 
-        session.refresh(dr)
+        # session.refresh(dr)
 
         assert dr.state == DagRunState.QUEUED
         assert dr.start_date is None

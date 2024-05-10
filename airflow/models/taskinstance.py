@@ -119,6 +119,7 @@ from airflow.utils.context import (
 from airflow.utils.email import send_email
 from airflow.utils.helpers import prune_dict, render_template_to_string
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.utils.log.task_context_logger import TaskContextLogger
 from airflow.utils.net import get_hostname
 from airflow.utils.operator_helpers import ExecutionCallableRunner, context_to_airflow_vars
 from airflow.utils.platform import getuser
@@ -267,6 +268,8 @@ def clear_task_instances(
         lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
     )
     dag_bag = DagBag(read_dags_from_db=True)
+    cleared = []
+    logger = TaskContextLogger("webserver", call_site_logger=log)
     for ti in tis:
         if ti.state == TaskInstanceState.RUNNING:
             if ti.job_id:
@@ -274,6 +277,7 @@ def clear_task_instances(
                 # the task is terminated and becomes eligible for retry.
                 ti.state = TaskInstanceState.RESTARTING
                 job_ids.append(ti.job_id)
+                cleared.append(ti)
         else:
             ti_dag = dag if dag and dag.dag_id == ti.dag_id else dag_bag.get_dag(ti.dag_id, session=session)
             task_id = ti.task_id
@@ -292,6 +296,7 @@ def clear_task_instances(
             ti.state = None
             ti.external_executor_id = None
             ti.clear_next_method_args()
+            cleared.append(ti)
             session.merge(ti)
 
         task_id_by_key[ti.dag_id][ti.run_id][ti.map_index][ti.try_number].add(ti.task_id)
@@ -371,6 +376,10 @@ def clear_task_instances(
                     dr.last_scheduling_decision = None
                     dr.start_date = None
                     dr.clear_number += 1
+
+    for ti in cleared:
+        logger.info("Task was manually cleared", ti=ti)
+
     session.flush()
 
 
