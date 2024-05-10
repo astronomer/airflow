@@ -73,6 +73,7 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
     task_id = Column(StringID(), primary_key=True)
     run_id = Column(StringID(), primary_key=True)
     map_index = Column(Integer, primary_key=True, server_default=text("-1"))
+    try_number = Column(Integer, primary_key=True)
     rendered_fields = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=False)
     k8s_pod_yaml = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=True)
 
@@ -82,15 +83,17 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
             "task_id",
             "run_id",
             "map_index",
+            "try_number",
             name="rendered_task_instance_fields_pkey",
         ),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index],
+            [dag_id, task_id, run_id, map_index, try_number],
             [
                 "task_instance.dag_id",
                 "task_instance.task_id",
                 "task_instance.run_id",
                 "task_instance.map_index",
+                "task_instance.try_number",
             ],
             name="rtif_ti_fkey",
             ondelete="CASCADE",
@@ -120,6 +123,7 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
         self.task_id = ti.task_id
         self.run_id = ti.run_id
         self.map_index = ti.map_index
+        self.try_number = ti.try_number
         self.ti = ti
         if render_templates:
             ti.render_templates()

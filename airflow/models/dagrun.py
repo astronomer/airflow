@@ -666,7 +666,13 @@ class DagRun(Base, LoggingMixin):
         :param session: Sqlalchemy ORM Session
         """
         return session.scalars(
-            select(TI).filter_by(dag_id=dag_id, run_id=dag_run_id, task_id=task_id, map_index=map_index)
+            select(TI).filter_by(
+                dag_id=dag_id,
+                run_id=dag_run_id,
+                task_id=task_id,
+                map_index=map_index,
+                is_latest_try=True,
+            )
         ).one_or_none()
 
     def get_dag(self) -> DAG:
@@ -1075,7 +1081,9 @@ class DagRun(Base, LoggingMixin):
         # Check if any ti changed state
         tis_filter = TI.filter_for_tis(old_states)
         if tis_filter is not None:
-            fresh_tis = session.scalars(select(TI).where(tis_filter)).all()
+            fresh_tis = session.scalars(
+                select(TI).where(tis_filter, TI.is_latest_try == True, TI.retry_after < timezone.utcnow())
+            ).all()
             changed_tis = any(ti.state != old_states[ti.key] for ti in fresh_tis)
 
         return ready_tis, changed_tis, expansion_happened
@@ -1451,6 +1459,7 @@ class DagRun(Base, LoggingMixin):
             )
             session.flush()
 
+        # TODO: try_number
         for index in range(total_length):
             if index in existing_indexes:
                 continue
@@ -1545,8 +1554,8 @@ class DagRun(Base, LoggingMixin):
                 and not ti.task.on_success_callback
                 and not ti.task.outlets
             ):
-                if ti.state != TaskInstanceState.UP_FOR_RESCHEDULE:
-                    ti.try_number += 1
+                # if ti.state != TaskInstanceState.UP_FOR_RESCHEDULE:
+                #    ti.try_number += 1
                 ti.defer_task(
                     defer=TaskDeferred(trigger=ti.task.start_trigger, method_name=ti.task.next_method),
                     session=session,
@@ -1570,13 +1579,13 @@ class DagRun(Base, LoggingMixin):
                     )
                     .values(
                         state=TaskInstanceState.SCHEDULED,
-                        try_number=case(
-                            (
-                                or_(TI.state.is_(None), TI.state != TaskInstanceState.UP_FOR_RESCHEDULE),
-                                TI.try_number + 1,
-                            ),
-                            else_=TI.try_number,
-                        ),
+                        # try_number=case(
+                        #    (
+                        #        or_(TI.state.is_(None), TI.state != TaskInstanceState.UP_FOR_RESCHEDULE),
+                        #        TI.try_number + 1,
+                        #    ),
+                        #    else_=TI.try_number,
+                        # ),
                     )
                     .execution_options(synchronize_session=False)
                 ).rowcount

@@ -33,7 +33,6 @@ from sqlalchemy import (
     LargeBinary,
     PrimaryKeyConstraint,
     String,
-    delete,
     select,
     text,
 )
@@ -82,6 +81,7 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
     dag_run_id = Column(Integer(), nullable=False, primary_key=True)
     task_id = Column(String(ID_LEN, **COLLATION_ARGS), nullable=False, primary_key=True)
     map_index = Column(Integer, primary_key=True, nullable=False, server_default=text("-1"))
+    try_number = Column(Integer, primary_key=True, nullable=False)
     key = Column(String(512, **COLLATION_ARGS), nullable=False, primary_key=True)
 
     # Denormalized for easier lookup.
@@ -97,14 +97,15 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
         # separately, and enforce uniqueness with DagRun.id instead.
         Index("idx_xcom_key", key),
         Index("idx_xcom_task_instance", dag_id, task_id, run_id, map_index),
-        PrimaryKeyConstraint("dag_run_id", "task_id", "map_index", "key", name="xcom_pkey"),
+        PrimaryKeyConstraint("dag_run_id", "task_id", "map_index", "key", "try_number", name="xcom_pkey"),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index],
+            [dag_id, task_id, run_id, map_index, try_number],
             [
                 "task_instance.dag_id",
                 "task_instance.task_id",
                 "task_instance.run_id",
                 "task_instance.map_index",
+                "task_instance.try_number",
             ],
             name="xcom_task_instance_fkey",
             ondelete="CASCADE",
@@ -192,6 +193,7 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
         *,
         run_id: str | None = None,
         map_index: int = -1,
+        try_number: int,
     ) -> None:
         """Store an XCom value.
 
@@ -252,15 +254,15 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
         )
 
         # Remove duplicate XComs and insert a new one.
-        session.execute(
-            delete(cls).where(
-                cls.key == key,
-                cls.run_id == run_id,
-                cls.task_id == task_id,
-                cls.dag_id == dag_id,
-                cls.map_index == map_index,
-            )
-        )
+        # session.execute(
+        #    delete(cls).where(
+        #        cls.key == key,
+        #        cls.run_id == run_id,
+        #        cls.task_id == task_id,
+        #        cls.dag_id == dag_id,
+        #        cls.map_index == map_index,
+        #    )
+        # )
         new = cast(Any, cls)(  # Work around Mypy complaining model not defining '__init__'.
             dag_run_id=dag_run_id,
             key=key,
@@ -269,6 +271,7 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
             task_id=task_id,
             dag_id=dag_id,
             map_index=map_index,
+            try_number=try_number,
         )
         session.add(new)
         session.flush()

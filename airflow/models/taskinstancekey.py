@@ -30,9 +30,9 @@ class TaskInstanceKey(NamedTuple):
     map_index: int = -1
 
     @property
-    def primary(self) -> tuple[str, str, str, int]:
+    def primary(self) -> tuple[str, str, str, int, int]:
         """Return task instance primary key part of the key."""
-        return self.dag_id, self.task_id, self.run_id, self.map_index
+        return self.dag_id, self.task_id, self.run_id, self.map_index, self.try_number
 
     @property
     def reduced(self) -> TaskInstanceKey:
@@ -44,6 +44,7 @@ class TaskInstanceKey(NamedTuple):
 
     def with_try_number(self, try_number: int) -> TaskInstanceKey:
         """Return TaskInstanceKey with provided ``try_number``."""
+        # todo: deprecate this method
         return TaskInstanceKey(self.dag_id, self.task_id, self.run_id, try_number, self.map_index)
 
     @property

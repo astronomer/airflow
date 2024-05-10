@@ -58,14 +58,17 @@ class TaskReschedule(TaskInstanceDependencies):
     reschedule_date = Column(UtcDateTime, nullable=False)
 
     __table_args__ = (
-        Index("idx_task_reschedule_dag_task_run", dag_id, task_id, run_id, map_index, unique=False),
+        Index(
+            "idx_task_reschedule_dag_task_run", dag_id, task_id, run_id, map_index, try_number, unique=False
+        ),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index],
+            [dag_id, task_id, run_id, map_index, try_number],
             [
                 "task_instance.dag_id",
                 "task_instance.task_id",
                 "task_instance.run_id",
                 "task_instance.map_index",
+                "task_instance.try_number",
             ],
             name="task_reschedule_ti_fkey",
             ondelete="CASCADE",

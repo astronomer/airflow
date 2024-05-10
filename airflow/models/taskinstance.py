@@ -41,6 +41,7 @@ import pendulum
 from deprecated import deprecated
 from jinja2 import TemplateAssertionError, UndefinedError
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -529,6 +530,7 @@ def _refresh_from_db(
         task_id=task_instance.task_id,
         run_id=task_instance.run_id,
         map_index=task_instance.map_index,
+        try_number=task_instance.try_number,
         lock_for_update=lock_for_update,
         session=session,
     )
@@ -559,6 +561,7 @@ def _refresh_from_db(
         task_instance.trigger_id = ti.trigger_id
         task_instance.next_method = ti.next_method
         task_instance.next_kwargs = ti.next_kwargs
+        task_instance.retry_after = ti.retry_after
     else:
         task_instance.state = None
 
@@ -1288,12 +1291,13 @@ class TaskInstance(Base, LoggingMixin):
     dag_id = Column(StringID(), primary_key=True, nullable=False)
     run_id = Column(StringID(), primary_key=True, nullable=False)
     map_index = Column(Integer, primary_key=True, nullable=False, server_default=text("-1"))
+    try_number = Column(Integer, primary_key=True, nullable=False, default=1)
 
+    is_latest_try = Column(Boolean, default=True)
     start_date = Column(UtcDateTime)
     end_date = Column(UtcDateTime)
     duration = Column(Float)
     state = Column(String(20))
-    try_number = Column(Integer, default=0)
     max_tries = Column(Integer, server_default=text("-1"))
     hostname = Column(String(1000))
     unixname = Column(String(1000))
@@ -1332,6 +1336,8 @@ class TaskInstance(Base, LoggingMixin):
     # If adding new fields here then remember to add them to
     # refresh_from_db() or they won't display in the UI correctly
 
+    retry_after = Column(UtcDateTime, nullable=True)
+
     __table_args__ = (
         Index("ti_dag_state", dag_id, state),
         Index("ti_dag_run", dag_id, run_id),
@@ -1340,7 +1346,9 @@ class TaskInstance(Base, LoggingMixin):
         Index("ti_pool", pool, state, priority_weight),
         Index("ti_job_id", job_id),
         Index("ti_trigger_id", trigger_id),
-        PrimaryKeyConstraint("dag_id", "task_id", "run_id", "map_index", name="task_instance_pkey"),
+        PrimaryKeyConstraint(
+            "dag_id", "task_id", "run_id", "map_index", "try_number", name="task_instance_pkey"
+        ),
         ForeignKeyConstraint(
             [trigger_id],
             ["trigger.id"],
@@ -1395,11 +1403,15 @@ class TaskInstance(Base, LoggingMixin):
         run_id: str | None = None,
         state: str | None = None,
         map_index: int = -1,
+        try_number: int = 1,
+        retry_after: datetime | None = None,
     ):
         super().__init__()
         self.dag_id = task.dag_id
         self.task_id = task.task_id
         self.map_index = map_index
+        self.try_number = try_number
+        self.retry_after = retry_after
         self.refresh_from_task(task)
         if TYPE_CHECKING:
             assert self.task
@@ -1443,7 +1455,6 @@ class TaskInstance(Base, LoggingMixin):
 
         self.run_id = run_id
 
-        self.try_number = 0
         self.max_tries = self.task.retries
         self.unixname = getuser()
         if state:
@@ -1489,6 +1500,7 @@ class TaskInstance(Base, LoggingMixin):
 
         :meta private:
         """
+        # TODO: try_number!
         priority_weight = task.weight_rule.get_weight(
             TaskInstance(task=task, run_id=run_id, map_index=map_index)
         )
@@ -1787,6 +1799,7 @@ class TaskInstance(Base, LoggingMixin):
         run_id: str,
         task_id: str,
         map_index: int,
+        try_number: int,
         lock_for_update: bool = False,
         session: Session = NEW_SESSION,
     ) -> TaskInstance | TaskInstancePydantic | None:
@@ -1798,6 +1811,7 @@ class TaskInstance(Base, LoggingMixin):
                 run_id=run_id,
                 task_id=task_id,
                 map_index=map_index,
+                try_number=try_number,
             )
         )
 
@@ -2110,6 +2124,9 @@ class TaskInstance(Base, LoggingMixin):
 
         For exponential backoff, retry_delay is used as base and will be converted to seconds.
         """
+        if self.retry_after:
+            return self.retry_after
+
         from airflow.models.abstractoperator import MAX_RETRY_DELAY
 
         delay = self.task.retry_delay
@@ -2146,6 +2163,7 @@ class TaskInstance(Base, LoggingMixin):
             delay = timedelta(seconds=delay_backoff_in_seconds)
             if self.task.max_retry_delay:
                 delay = min(self.task.max_retry_delay, delay)
+
         return self.end_date + delay
 
     def ready_for_retry(self) -> bool:
@@ -2925,7 +2943,7 @@ class TaskInstance(Base, LoggingMixin):
             session.add(Log(TaskInstanceState.FAILED.value, ti))
 
             # Log failure duration
-            session.add(TaskFail(ti=ti))
+            # session.add(TaskFail(ti=ti))
 
         ti.clear_next_method_args()
 
@@ -2973,7 +2991,22 @@ class TaskInstance(Base, LoggingMixin):
                     #  e.g. we could make refresh_from_db return a TI and replace ti with that
                     raise RuntimeError("Expected TaskInstance here. Further AIP-44 work required.")
                 # We increase the try_number to fail the task if it fails to start after sometime
-            ti.state = State.UP_FOR_RETRY
+
+            # create a new TI with the next try_number
+            ti.state = TaskInstanceState.FAILED
+            ti.is_latest_try = False
+
+            next_try = TaskInstance(
+                task=ti.task,
+                run_id=ti.run_id,
+                map_index=ti.map_index,
+                try_number=ti.try_number + 1,
+                state=TaskInstanceState.UP_FOR_RETRY,
+                retry_after=ti.next_retry_datetime(),
+            )
+            session.add(next_try)
+            session.flush()
+
             email_for_state = operator.attrgetter("email_on_retry")
             callbacks = task.on_retry_callback if task else None
 
@@ -3219,6 +3252,7 @@ class TaskInstance(Base, LoggingMixin):
             dag_id=self.dag_id,
             run_id=self.run_id,
             map_index=self.map_index,
+            try_number=self.try_number,
             session=session,
         )
 
@@ -3345,6 +3379,8 @@ class TaskInstance(Base, LoggingMixin):
     @staticmethod
     def filter_for_tis(tis: Iterable[TaskInstance | TaskInstanceKey]) -> BooleanClauseList | None:
         """Return SQLAlchemy filter to query selected task instances."""
+        # TODO: DOUBLE CHECK LOGIC IN HERE
+        # TODO: Can this be vastly simplified with uuid PKs?
         # DictKeys type, (what we often pass here from the scheduler) is not directly indexable :(
         # Or it might be a generator, but we need to be able to iterate over it more than once
         tis = list(tis)
@@ -3357,41 +3393,65 @@ class TaskInstance(Base, LoggingMixin):
         dag_id = first.dag_id
         run_id = first.run_id
         map_index = first.map_index
+        try_number = first.try_number
         first_task_id = first.task_id
 
         # pre-compute the set of dag_id, run_id, map_indices and task_ids
-        dag_ids, run_ids, map_indices, task_ids = set(), set(), set(), set()
+        dag_ids, run_ids, map_indices, task_ids, try_numbers = set(), set(), set(), set(), set()
         for t in tis:
             dag_ids.add(t.dag_id)
             run_ids.add(t.run_id)
             map_indices.add(t.map_index)
+            try_numbers.add(t.try_number)
             task_ids.add(t.task_id)
 
-        # Common path optimisations: when all TIs are for the same dag_id and run_id, or same dag_id
-        # and task_id -- this can be over 150x faster for huge numbers of TIs (20k+)
-        if dag_ids == {dag_id} and run_ids == {run_id} and map_indices == {map_index}:
+        # Common path optimisations: these can be over 150x faster for huge numbers of TIs (20k+)
+        # when all TIs are for the same dag_id / run_id / map_index / try_number
+        if (
+            dag_ids == {dag_id}
+            and run_ids == {run_id}
+            and map_indices == {map_index}
+            and try_numbers == {try_number}
+        ):
             return and_(
                 TaskInstance.dag_id == dag_id,
                 TaskInstance.run_id == run_id,
                 TaskInstance.map_index == map_index,
+                TaskInstance.try_number == try_number,
                 TaskInstance.task_id.in_(task_ids),
             )
-        if dag_ids == {dag_id} and task_ids == {first_task_id} and map_indices == {map_index}:
+        # or same dag_id / task_id / map_index / try_number
+        if (
+            dag_ids == {dag_id}
+            and task_ids == {first_task_id}
+            and map_indices == {map_index}
+            and try_numbers == {try_number}
+        ):
             return and_(
                 TaskInstance.dag_id == dag_id,
                 TaskInstance.run_id.in_(run_ids),
                 TaskInstance.map_index == map_index,
+                TaskInstance.try_number == try_number,
                 TaskInstance.task_id == first_task_id,
             )
-        if dag_ids == {dag_id} and run_ids == {run_id} and task_ids == {first_task_id}:
+        # or same dag_id / run_id / task_id / try_number
+        if (
+            dag_ids == {dag_id}
+            and run_ids == {run_id}
+            and task_ids == {first_task_id}
+            and try_numbers == {try_number}
+        ):
             return and_(
                 TaskInstance.dag_id == dag_id,
                 TaskInstance.run_id == run_id,
                 TaskInstance.map_index.in_(map_indices),
+                TaskInstance.try_number == try_number,
                 TaskInstance.task_id == first_task_id,
             )
+        # TODO: we don't need a dag/run/task/map_index, with varying tries, right? What other common paths might we want?
 
         filter_condition = []
+        # TODO: make the rest of this try_number aware
         # create 2 nested groups, both primarily grouped by dag_id and run_id,
         # and in the nested group 1 grouped by task_id the other by map_index.
         task_id_groups: dict[tuple, dict[Any, list[Any]]] = defaultdict(lambda: defaultdict(list))
@@ -3790,6 +3850,7 @@ class TaskInstanceNote(TaskInstanceDependencies):
     dag_id = Column(StringID(), primary_key=True, nullable=False)
     run_id = Column(StringID(), primary_key=True, nullable=False)
     map_index = Column(Integer, primary_key=True, nullable=False)
+    try_number = Column(Integer, primary_key=True, nullable=False)
     content = Column(String(1000).with_variant(Text(1000), "mysql"))
     created_at = Column(UtcDateTime, default=timezone.utcnow, nullable=False)
     updated_at = Column(UtcDateTime, default=timezone.utcnow, onupdate=timezone.utcnow, nullable=False)
@@ -3797,14 +3858,17 @@ class TaskInstanceNote(TaskInstanceDependencies):
     task_instance = relationship("TaskInstance", back_populates="task_instance_note")
 
     __table_args__ = (
-        PrimaryKeyConstraint("task_id", "dag_id", "run_id", "map_index", name="task_instance_note_pkey"),
+        PrimaryKeyConstraint(
+            "task_id", "dag_id", "run_id", "map_index", "try_number", name="task_instance_note_pkey"
+        ),
         ForeignKeyConstraint(
-            (dag_id, task_id, run_id, map_index),
+            (dag_id, task_id, run_id, map_index, try_number),
             [
                 "task_instance.dag_id",
                 "task_instance.task_id",
                 "task_instance.run_id",
                 "task_instance.map_index",
+                "task_instance.try_number",
             ],
             name="task_instance_note_ti_fkey",
             ondelete="CASCADE",

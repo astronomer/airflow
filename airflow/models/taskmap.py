@@ -58,6 +58,7 @@ class TaskMap(TaskInstanceDependencies):
     task_id = Column(String(ID_LEN, **COLLATION_ARGS), primary_key=True)
     run_id = Column(String(ID_LEN, **COLLATION_ARGS), primary_key=True)
     map_index = Column(Integer, primary_key=True)
+    try_number = Column(Integer, primary_key=True)
 
     length = Column(Integer, nullable=False)
     keys = Column(ExtendedJSON, nullable=True)
@@ -65,12 +66,13 @@ class TaskMap(TaskInstanceDependencies):
     __table_args__ = (
         CheckConstraint(length >= 0, name="task_map_length_not_negative"),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index],
+            [dag_id, task_id, run_id, map_index, try_number],
             [
                 "task_instance.dag_id",
                 "task_instance.task_id",
                 "task_instance.run_id",
                 "task_instance.map_index",
+                "task_instance.try_number",
             ],
             name="task_map_task_instance_fkey",
             ondelete="CASCADE",

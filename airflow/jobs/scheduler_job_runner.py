@@ -682,15 +682,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         """Respond to executor events."""
         if not self._standalone_dag_processor and not self.processor_agent:
             raise ValueError("Processor agent is not started.")
-        ti_primary_key_to_try_number_map: dict[tuple[str, str, str, int], int] = {}
         event_buffer = self.job.executor.get_event_buffer()
         tis_with_right_state: list[TaskInstanceKey] = []
 
         # Report execution
         for ti_key, (state, _) in event_buffer.items():
-            # We create map (dag_id, task_id, execution_date) -> in-memory try_number
-            ti_primary_key_to_try_number_map[ti_key.primary] = ti_key.try_number
-
             self.log.info("Received executor event with state %s for task instance %s", state, ti_key)
             if state in (
                 TaskInstanceState.FAILED,
@@ -712,9 +708,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         tis_query: Query = with_row_locks(query, of=TI, session=session, skip_locked=True)
         tis: Iterator[TI] = session.scalars(tis_query)
         for ti in tis:
-            try_number = ti_primary_key_to_try_number_map[ti.key.primary]
-            buffer_key = ti.key.with_try_number(try_number)
-            state, info = event_buffer.pop(buffer_key)
+            state, info = event_buffer.pop(ti.key)
 
             if state in (TaskInstanceState.QUEUED, TaskInstanceState.RUNNING):
                 ti.external_executor_id = info
@@ -739,7 +733,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 ti.duration,
                 ti.state,
                 state,
-                try_number,
+                ti.try_number,
                 ti.max_tries,
                 ti.job_id,
                 ti.pool,
@@ -761,7 +755,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             # All of this could also happen if the state is "running",
             # but that is handled by the zombie detection.
 
-            ti_queued = ti.try_number == buffer_key.try_number and ti.state == TaskInstanceState.QUEUED
+            ti_queued = ti.try_number == ti.try_number and ti.state == TaskInstanceState.QUEUED
             ti_requeued = (
                 ti.queued_by_job_id != self.job.id  # Another scheduler has queued this task again
                 or self.job.executor.has_task(ti)  # This scheduler has this task already
