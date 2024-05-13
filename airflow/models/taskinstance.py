@@ -1467,6 +1467,7 @@ class TaskInstance(Base, LoggingMixin):
         self.test_mode = False
 
     def __hash__(self):
+        # TODO: try_number
         return hash((self.task_id, self.dag_id, self.run_id, self.map_index))
 
     @property
@@ -1500,7 +1501,6 @@ class TaskInstance(Base, LoggingMixin):
 
         :meta private:
         """
-        # TODO: try_number!
         priority_weight = task.weight_rule.get_weight(
             TaskInstance(task=task, run_id=run_id, map_index=map_index)
         )
@@ -1509,7 +1509,7 @@ class TaskInstance(Base, LoggingMixin):
             "dag_id": task.dag_id,
             "task_id": task.task_id,
             "run_id": run_id,
-            "try_number": 0,
+            "try_number": 1,
             "hostname": "",
             "unixname": getuser(),
             "queue": task.queue,
@@ -2116,7 +2116,7 @@ class TaskInstance(Base, LoggingMixin):
         prefix = f"<TaskInstance: {self.dag_id}.{self.task_id} {self.run_id} "
         if self.map_index != -1:
             prefix += f"map_index={self.map_index} "
-        return prefix + f"[{self.state}]>"
+        return prefix + f"{self.try_number} [{self.state}]>"
 
     def next_retry_datetime(self):
         """
@@ -3883,7 +3883,7 @@ class TaskInstanceNote(TaskInstanceDependencies):
         prefix = f"<{self.__class__.__name__}: {self.dag_id}.{self.task_id} {self.run_id}"
         if self.map_index != -1:
             prefix += f" map_index={self.map_index}"
-        return prefix + ">"
+        return prefix + f" {self.try_number}>"
 
 
 STATICA_HACK = True

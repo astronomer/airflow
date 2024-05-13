@@ -541,6 +541,7 @@ class DagRun(Base, LoggingMixin):
                 TI.dag_id == dag_id,
                 TI.run_id == run_id,
             )
+            .where(TI.is_latest_try == True)
         )
 
         if state:
@@ -1576,6 +1577,7 @@ class DagRun(Base, LoggingMixin):
                         TI.dag_id == self.dag_id,
                         TI.run_id == self.run_id,
                         tuple_in_condition((TI.task_id, TI.map_index), schedulable_ti_ids_chunk),
+                        TI.is_latest_try == True,
                     )
                     .values(
                         state=TaskInstanceState.SCHEDULED,
