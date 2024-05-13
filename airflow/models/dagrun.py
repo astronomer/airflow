@@ -45,7 +45,7 @@ from sqlalchemy import (
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import declared_attr, joinedload, relationship, synonym, validates
-from sqlalchemy.sql.expression import case, false, select, true
+from sqlalchemy.sql.expression import false, select, true
 
 from airflow import settings
 from airflow.api_internal.internal_api_call import internal_api_call

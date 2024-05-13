@@ -1883,10 +1883,11 @@ class DAG(LoggingMixin):
 
         # Do we want full objects, or just the primary columns?
         if as_pk_tuple:
-            tis = select(TI.dag_id, TI.task_id, TI.run_id, TI.map_index)
+            tis = select(TI.dag_id, TI.task_id, TI.run_id, TI.map_index, TI.try_number)
         else:
             tis = select(TaskInstance)
         tis = tis.join(TaskInstance.dag_run)
+        tis = tis.where(TI.is_latest_try == True)
 
         if include_subdags:
             # Crafting the right filter for dag_id and task_ids combo

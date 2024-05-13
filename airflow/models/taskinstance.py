@@ -264,76 +264,88 @@ def clear_task_instances(
     """
     job_ids = []
     # Keys: dag_id -> run_id -> map_indexes -> try_numbers -> task_id
-    task_id_by_key: dict[str, dict[str, dict[int, dict[int, set[str]]]]] = defaultdict(
-        lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
-    )
+    # task_id_by_key: dict[str, dict[str, dict[int, dict[int, set[str]]]]] = defaultdict(
+    #    lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    # )
     dag_bag = DagBag(read_dags_from_db=True)
     for ti in tis:
-        if ti.state == TaskInstanceState.RUNNING:
-            if ti.job_id:
-                # If a task is cleared when running, set its state to RESTARTING so that
-                # the task is terminated and becomes eligible for retry.
-                ti.state = TaskInstanceState.RESTARTING
-                job_ids.append(ti.job_id)
+        if ti.state in State.unfinished:
+            # TODO: Save the job_id so we can nuke that. Why though?
+            if ti.state == TaskInstanceState.RUNNING:
+                if ti.job_id:
+                    job_ids.append(ti.job_id)
+            ti.state = TaskInstanceState.SHUTDOWN
+        ti.is_latest_try = False
+
+        ti_dag = dag if dag and dag.dag_id == ti.dag_id else dag_bag.get_dag(ti.dag_id, session=session)
+        task_id = ti.task_id
+        if ti_dag and ti_dag.has_task(task_id):
+            task = ti_dag.get_task(task_id)
+            ti.refresh_from_task(task)
+            if TYPE_CHECKING:
+                assert ti.task
+            max_tries = ti.try_number + task.retries
         else:
-            ti_dag = dag if dag and dag.dag_id == ti.dag_id else dag_bag.get_dag(ti.dag_id, session=session)
-            task_id = ti.task_id
-            if ti_dag and ti_dag.has_task(task_id):
-                task = ti_dag.get_task(task_id)
-                ti.refresh_from_task(task)
-                if TYPE_CHECKING:
-                    assert ti.task
-                ti.max_tries = ti.try_number + task.retries
-            else:
-                # Ignore errors when updating max_tries if the DAG or
-                # task are not found since database records could be
-                # outdated. We make max_tries the maximum value of its
-                # original max_tries or the last attempted try number.
-                ti.max_tries = max(ti.max_tries, ti.try_number)
-            ti.state = None
-            ti.external_executor_id = None
-            ti.clear_next_method_args()
-            session.merge(ti)
+            # Ignore errors when updating max_tries if the DAG or
+            # task are not found since database records could be
+            # outdated. We make max_tries the maximum value of its
+            # original max_tries or the last attempted try number.
+            max_tries = max(ti.max_tries, ti.try_number)
 
-        task_id_by_key[ti.dag_id][ti.run_id][ti.map_index][ti.try_number].add(ti.task_id)
+        session.merge(ti)
 
-    if task_id_by_key:
-        # Clear all reschedules related to the ti to clear
-
-        # This is an optimization for the common case where all tis are for a small number
-        # of dag_id, run_id, try_number, and map_index. Use a nested dict of dag_id,
-        # run_id, try_number, map_index, and task_id to construct the where clause in a
-        # hierarchical manner. This speeds up the delete statement by more than 40x for
-        # large number of tis (50k+).
-        conditions = or_(
-            and_(
-                TR.dag_id == dag_id,
-                or_(
-                    and_(
-                        TR.run_id == run_id,
-                        or_(
-                            and_(
-                                TR.map_index == map_index,
-                                or_(
-                                    and_(TR.try_number == try_number, TR.task_id.in_(task_ids))
-                                    for try_number, task_ids in task_tries.items()
-                                ),
-                            )
-                            for map_index, task_tries in map_indexes.items()
-                        ),
-                    )
-                    for run_id, map_indexes in run_ids.items()
-                ),
-            )
-            for dag_id, run_ids in task_id_by_key.items()
+        print(f"max_tries: {max_tries}")
+        next_try = TaskInstance(
+            task=ti.task,
+            run_id=ti.run_id,
+            map_index=ti.map_index,
+            try_number=ti.try_number + 1,
+            max_tries=max_tries,
+            state=None,
         )
+        session.add(next_try)
 
-        delete_qry = TR.__table__.delete().where(conditions)
-        session.execute(delete_qry)
+        # task_id_by_key[ti.dag_id][ti.run_id][ti.map_index][ti.try_number].add(ti.task_id)
+
+    # TODO: TaskReschedules go away, right?
+    # if task_id_by_key:
+    #    # Clear all reschedules related to the ti to clear
+
+    #    # This is an optimization for the common case where all tis are for a small number
+    #    # of dag_id, run_id, try_number, and map_index. Use a nested dict of dag_id,
+    #    # run_id, try_number, map_index, and task_id to construct the where clause in a
+    #    # hierarchical manner. This speeds up the delete statement by more than 40x for
+    #    # large number of tis (50k+).
+    #    conditions = or_(
+    #        and_(
+    #            TR.dag_id == dag_id,
+    #            or_(
+    #                and_(
+    #                    TR.run_id == run_id,
+    #                    or_(
+    #                        and_(
+    #                            TR.map_index == map_index,
+    #                            or_(
+    #                                and_(TR.try_number == try_number, TR.task_id.in_(task_ids))
+    #                                for try_number, task_ids in task_tries.items()
+    #                            ),
+    #                        )
+    #                        for map_index, task_tries in map_indexes.items()
+    #                    ),
+    #                )
+    #                for run_id, map_indexes in run_ids.items()
+    #            ),
+    #        )
+    #        for dag_id, run_ids in task_id_by_key.items()
+    #    )
+
+    #    delete_qry = TR.__table__.delete().where(conditions)
+    #    session.execute(delete_qry)
 
     if job_ids:
         from airflow.jobs.job import Job
 
+        # TODO: Why???
         session.execute(update(Job).where(Job.id.in_(job_ids)).values(state=JobState.RESTARTING))
 
     if activate_dag_runs is not None:
@@ -1405,6 +1417,7 @@ class TaskInstance(Base, LoggingMixin):
         map_index: int = -1,
         try_number: int = 1,
         retry_after: datetime | None = None,
+        max_tries: int | None = None,
     ):
         super().__init__()
         self.dag_id = task.dag_id
@@ -1455,7 +1468,10 @@ class TaskInstance(Base, LoggingMixin):
 
         self.run_id = run_id
 
-        self.max_tries = self.task.retries
+        if max_tries is not None:
+            self.max_tries = max_tries
+        else:
+            self.max_tries = self.task.retries
         self.unixname = getuser()
         if state:
             self.state = state
