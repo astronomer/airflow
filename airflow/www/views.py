@@ -74,6 +74,7 @@ from pendulum.parsing.exceptions import ParserError
 from sqlalchemy import and_, case, desc, func, inspect, or_, select, union_all
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
+from sqlalchemy.sql import expression
 from wtforms import BooleanField, validators
 
 import airflow
@@ -325,6 +326,7 @@ def dag_to_grid(dag: DagModel, dag_runs: Sequence[DagRun], session: Session) -> 
         .where(
             TaskInstance.dag_id == dag.dag_id,
             TaskInstance.run_id.in_([dag_run.run_id for dag_run in dag_runs]),
+            TaskInstance.is_latest_try == expression.true(),
         )
         .group_by(TaskInstance.task_id, TaskInstance.run_id, TaskInstance.state, TaskInstance.try_number)
         .order_by(TaskInstance.task_id, TaskInstance.run_id)
@@ -475,6 +477,7 @@ def dag_to_grid(dag: DagModel, dag_runs: Sequence[DagRun], session: Session) -> 
                     TaskInstance.dag_id == dag.dag_id,
                     TaskInstance.task_id.in_(child["id"] for child in children),
                     TaskInstance.run_id.in_(r.run_id for r in dag_runs),
+                    TaskInstance.is_latest_try == expression.true(),
                 )
                 .order_by(TaskInstance.task_id, TaskInstance.run_id)
             )
@@ -1625,6 +1628,7 @@ class Airflow(AirflowBaseView):
                 TaskInstance.dag_id == dag_id,
                 TaskInstance.execution_date == execution_date,
                 TaskInstance.map_index == map_index,
+                TaskInstance.is_latest_try == expression.true(),
             )
             .join(TaskInstance.dag_run)
             .options(joinedload(TaskInstance.trigger).joinedload(Trigger.triggerer_job))
@@ -1721,7 +1725,13 @@ class Airflow(AirflowBaseView):
 
         ti = session.scalar(
             select(models.TaskInstance)
-            .filter_by(dag_id=dag_id, task_id=task_id, execution_date=dttm, map_index=map_index)
+            .filter_by(
+                dag_id=dag_id,
+                task_id=task_id,
+                execution_date=dttm,
+                map_index=map_index,
+                is_latest_try=expression.true(),
+            )
             .limit(1)
         )
 
@@ -1767,7 +1777,13 @@ class Airflow(AirflowBaseView):
                 joinedload(TaskInstance.queued_by_job, innerjoin=False),
                 joinedload(TaskInstance.trigger, innerjoin=False),
             )
-            .filter_by(execution_date=dttm, dag_id=dag_id, task_id=task_id, map_index=map_index)
+            .filter_by(
+                execution_date=dttm,
+                dag_id=dag_id,
+                task_id=task_id,
+                map_index=map_index,
+                is_latest_try=expression.true(),
+            )
         )
         if ti is None:
             ti_attrs: list[tuple[str, Any]] | None = None
@@ -1882,7 +1898,9 @@ class Airflow(AirflowBaseView):
         root = request.args.get("root", "")
         dag = DagModel.get_dagmodel(dag_id)
         ti: TaskInstance = session.scalar(
-            select(TaskInstance).filter_by(dag_id=dag_id, task_id=task_id).limit(1)
+            select(TaskInstance)
+            .filter_by(dag_id=dag_id, task_id=task_id, is_latest_try=expression.true())
+            .limit(1)
         )
 
         if not ti:
@@ -2514,6 +2532,7 @@ class Airflow(AirflowBaseView):
                 select(TaskInstance.task_id).where(
                     TaskInstance.dag_id == dag.dag_id,
                     TaskInstance.run_id == dag_run_id,
+                    TaskInstance.is_latest_try == expression.true(),
                 )
             )
 
@@ -3159,7 +3178,13 @@ class Airflow(AirflowBaseView):
 
         ti = session.scalar(
             select(TaskInstance)
-            .filter_by(dag_id=dag_id, task_id=task_id, execution_date=dttm, map_index=map_index)
+            .filter_by(
+                dag_id=dag_id,
+                task_id=task_id,
+                execution_date=dttm,
+                map_index=map_index,
+                is_latest_try=expression.true(),
+            )
             .options(joinedload(TaskInstance.dag_run))
             .limit(1)
         )
@@ -3312,6 +3337,7 @@ class Airflow(AirflowBaseView):
                 .where(
                     DagRun.start_date >= start_date,
                     func.coalesce(DagRun.end_date, timezone.utcnow()) <= end_date,
+                    TaskInstance.is_latest_try == expression.true(),
                 )
                 .group_by(TaskInstance.state)
             ).all()
@@ -5161,6 +5187,7 @@ class TaskInstanceModelView(AirflowModelView):
         "state",
         "dag_id",
         "task_id",
+        "is_latest_try",
         "run_id",
         "map_index",
         "dag_run.execution_date",
@@ -5202,6 +5229,7 @@ class TaskInstanceModelView(AirflowModelView):
         "queued_dttm",
         "pool",
         "queued_by_job_id",
+        "is_latest_try",
     ]
     # todo: don't use prev_attempted_tries; just use try_number
     label_columns = {"dag_run.execution_date": "Logical Date", "prev_attempted_tries": "Try Number"}

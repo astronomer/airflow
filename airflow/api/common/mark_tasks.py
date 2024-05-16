@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Collection, Iterable, Iterator, NamedTuple
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import lazyload
+from sqlalchemy.sql import expression
 
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance
@@ -197,9 +198,13 @@ def get_all_dag_task_query(
         TaskInstance.ti_selector_condition(task_ids),
     )
 
-    qry_dag = qry_dag.where(or_(TaskInstance.state.is_(None), TaskInstance.state != state)).options(
-        lazyload(TaskInstance.dag_run)
-    )
+    qry_dag = qry_dag.where(
+        or_(
+            TaskInstance.state.is_(None),
+            TaskInstance.state != state,
+            TaskInstance.is_latest_try == expression.true(),
+        )
+    ).options(lazyload(TaskInstance.dag_run))
     return qry_dag
 
 
