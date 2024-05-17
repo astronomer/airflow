@@ -19,7 +19,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKeyConstraint, Index, Integer, text
+from sqlalchemy import Column, Index, Integer, text
 from sqlalchemy.orm import relationship
 
 from airflow.models.base import StringID, TaskInstanceDependencies
@@ -36,25 +36,13 @@ class TaskFail(TaskInstanceDependencies):
     dag_id = Column(StringID(), nullable=False)
     run_id = Column(StringID(), nullable=False)
     map_index = Column(Integer, nullable=False, server_default=text("-1"))
-    try_number = Column(Integer, nullable=False)
     start_date = Column(UtcDateTime)
     end_date = Column(UtcDateTime)
     duration = Column(Integer)
 
     __table_args__ = (
-        Index("idx_task_fail_task_instance", dag_id, task_id, run_id, map_index, try_number),
-        ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index, try_number],
-            [
-                "task_instance.dag_id",
-                "task_instance.task_id",
-                "task_instance.run_id",
-                "task_instance.map_index",
-                "task_instance.try_number",
-            ],
-            name="task_fail_ti_fkey",
-            ondelete="CASCADE",
-        ),
+        Index("idx_task_fail_task_instance", dag_id, task_id, run_id, map_index),
+        # No FK to TI as TI now has try_number as part of its logical key.
     )
 
     # We don't need a DB level FK here, as we already have that to TI (which has one to DR) but by defining

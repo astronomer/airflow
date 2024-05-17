@@ -26,18 +26,17 @@ import sqlalchemy_jsonfield
 from sqlalchemy import (
     Column,
     ForeignKeyConstraint,
-    Integer,
     PrimaryKeyConstraint,
     delete,
     exists,
     select,
-    text,
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
+from sqlalchemy_utils import UUIDType
 
 from airflow.configuration import conf
-from airflow.models.base import StringID, TaskInstanceDependencies
+from airflow.models.base import TaskInstanceDependencies
 from airflow.serialization.helpers import serialize_template_field
 from airflow.settings import json
 from airflow.utils.retries import retry_db_transaction
@@ -69,32 +68,15 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
 
     __tablename__ = "rendered_task_instance_fields"
 
-    dag_id = Column(StringID(), primary_key=True)
-    task_id = Column(StringID(), primary_key=True)
-    run_id = Column(StringID(), primary_key=True)
-    map_index = Column(Integer, primary_key=True, server_default=text("-1"))
-    try_number = Column(Integer, primary_key=True)
+    task_instance_id = Column(UUIDType, primary_key=True)
     rendered_fields = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=False)
     k8s_pod_yaml = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=True)
 
     __table_args__ = (
-        PrimaryKeyConstraint(
-            "dag_id",
-            "task_id",
-            "run_id",
-            "map_index",
-            "try_number",
-            name="rendered_task_instance_fields_pkey",
-        ),
+        PrimaryKeyConstraint("task_instance_id", name="rendered_task_instance_fields_pkey"),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index, try_number],
-            [
-                "task_instance.dag_id",
-                "task_instance.task_id",
-                "task_instance.run_id",
-                "task_instance.map_index",
-                "task_instance.try_number",
-            ],
+            [task_instance_id],
+            ["task_instance.id"],
             name="rtif_ti_fkey",
             ondelete="CASCADE",
         ),
@@ -104,26 +86,29 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
         lazy="joined",
         back_populates="rendered_task_instance_fields",
     )
+    # backcompat
+    dag_id = association_proxy("task_instance", "dag_id")
+    task_id = association_proxy("task_instance", "task_id")
+    run_id = association_proxy("task_instance", "run_id")
+    map_index = association_proxy("task_instance", "map_index")
+    try_number = association_proxy("task_instance", "try_number")
 
     # We don't need a DB level FK here, as we already have that to TI (which has one to DR) but by defining
     # the relationship we can more easily find the execution date for these rows
-    dag_run = relationship(
-        "DagRun",
-        primaryjoin="""and_(
-            RenderedTaskInstanceFields.dag_id == foreign(DagRun.dag_id),
-            RenderedTaskInstanceFields.run_id == foreign(DagRun.run_id),
-        )""",
-        viewonly=True,
-    )
+    # dag_run = relationship(
+    #    "DagRun",
+    #    primaryjoin="""and_(
+    #        RenderedTaskInstanceFields.dag_id == foreign(DagRun.dag_id),
+    #        RenderedTaskInstanceFields.run_id == foreign(DagRun.run_id),
+    #    )""",
+    #    viewonly=True,
+    # )
+    dag_run = association_proxy("task_instance", "dag_run")
 
     execution_date = association_proxy("dag_run", "execution_date")
 
     def __init__(self, ti: TaskInstance, render_templates=True, rendered_fields=None):
-        self.dag_id = ti.dag_id
-        self.task_id = ti.task_id
-        self.run_id = ti.run_id
-        self.map_index = ti.map_index
-        self.try_number = ti.try_number
+        self.task_instance_id = ti.id
         self.ti = ti
         if render_templates:
             ti.render_templates()

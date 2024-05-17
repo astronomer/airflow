@@ -29,22 +29,21 @@ from sqlalchemy import (
     Column,
     ForeignKeyConstraint,
     Index,
-    Integer,
     LargeBinary,
     PrimaryKeyConstraint,
     String,
     select,
-    text,
 )
 from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import Query, reconstructor, relationship
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy_utils import UUIDType
 
 from airflow.api_internal.internal_api_call import internal_api_call
 from airflow.configuration import conf
 from airflow.exceptions import RemovedInAirflow3Warning
-from airflow.models.base import COLLATION_ARGS, ID_LEN, TaskInstanceDependencies
+from airflow.models.base import COLLATION_ARGS, TaskInstanceDependencies
 from airflow.utils import timezone
 from airflow.utils.db import LazySelectSequence
 from airflow.utils.helpers import exactly_one, is_container
@@ -78,47 +77,33 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
 
     __tablename__ = "xcom"
 
-    dag_run_id = Column(Integer(), nullable=False, primary_key=True)
-    task_id = Column(String(ID_LEN, **COLLATION_ARGS), nullable=False, primary_key=True)
-    map_index = Column(Integer, primary_key=True, nullable=False, server_default=text("-1"))
-    try_number = Column(Integer, primary_key=True, nullable=False)
+    task_instance_id = Column(UUIDType, primary_key=True)
     key = Column(String(512, **COLLATION_ARGS), nullable=False, primary_key=True)
-
-    # Denormalized for easier lookup.
-    dag_id = Column(String(ID_LEN, **COLLATION_ARGS), nullable=False)
-    run_id = Column(String(ID_LEN, **COLLATION_ARGS), nullable=False)
 
     value = Column(LargeBinary().with_variant(LONGBLOB, "mysql"))
     timestamp = Column(UtcDateTime, default=timezone.utcnow, nullable=False)
 
     __table_args__ = (
-        # Ideally we should create a unique index over (key, dag_id, task_id, run_id),
-        # but it goes over MySQL's index length limit. So we instead index 'key'
-        # separately, and enforce uniqueness with DagRun.id instead.
         Index("idx_xcom_key", key),
-        Index("idx_xcom_task_instance", dag_id, task_id, run_id, map_index),
-        PrimaryKeyConstraint("dag_run_id", "task_id", "map_index", "key", "try_number", name="xcom_pkey"),
+        PrimaryKeyConstraint("task_instance_id", "key", name="xcom_pkey"),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index, try_number],
-            [
-                "task_instance.dag_id",
-                "task_instance.task_id",
-                "task_instance.run_id",
-                "task_instance.map_index",
-                "task_instance.try_number",
-            ],
+            [task_instance_id],
+            ["task_instance.id"],
             name="xcom_task_instance_fkey",
             ondelete="CASCADE",
         ),
     )
 
-    dag_run = relationship(
-        "DagRun",
-        primaryjoin="BaseXCom.dag_run_id == foreign(DagRun.id)",
-        uselist=False,
-        lazy="joined",
-        passive_deletes="all",
-    )
+    task_instance = relationship("TaskInstance")
+
+    # backcompat
+    dag_id = association_proxy("task_instance", "dag_id")
+    task_id = association_proxy("task_instance", "task_id")
+    run_id = association_proxy("task_instance", "run_id")
+    map_index = association_proxy("task_instance", "map_index")
+    try_number = association_proxy("task_instance", "try_number")
+
+    dag_run = association_proxy("task_instance", "dag_run")
     execution_date = association_proxy("dag_run", "execution_date")
 
     @reconstructor

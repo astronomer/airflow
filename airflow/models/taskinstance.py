@@ -26,6 +26,7 @@ import math
 import operator
 import os
 import signal
+import uuid
 import warnings
 from collections import defaultdict
 from contextlib import nullcontext
@@ -52,6 +53,7 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     String,
     Text,
+    UniqueConstraint,
     and_,
     delete,
     false,
@@ -66,6 +68,7 @@ from sqlalchemy.ext.mutable import MutableDict
 from sqlalchemy.orm import lazyload, reconstructor, relationship
 from sqlalchemy.orm.attributes import NO_VALUE, set_committed_value
 from sqlalchemy.sql.expression import case, select
+from sqlalchemy_utils import UUIDType
 
 from airflow import settings
 from airflow.api_internal.internal_api_call import InternalApiConfig, internal_api_call
@@ -95,7 +98,6 @@ from airflow.models.log import Log
 from airflow.models.mappedoperator import MappedOperator
 from airflow.models.param import process_params
 from airflow.models.renderedtifields import get_serialized_template_fields
-from airflow.models.taskfail import TaskFail
 from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.models.taskmap import TaskMap
 from airflow.models.taskreschedule import TaskReschedule
@@ -1299,11 +1301,17 @@ class TaskInstance(Base, LoggingMixin):
     """
 
     __tablename__ = "task_instance"
-    task_id = Column(StringID(), primary_key=True, nullable=False)
-    dag_id = Column(StringID(), primary_key=True, nullable=False)
-    run_id = Column(StringID(), primary_key=True, nullable=False)
-    map_index = Column(Integer, primary_key=True, nullable=False, server_default=text("-1"))
-    try_number = Column(Integer, primary_key=True, nullable=False, default=1)
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+
+    # Logical key
+    task_id = Column(StringID(), nullable=False)
+    dag_run_id = Column(Integer, nullable=False)
+    map_index = Column(Integer, nullable=False, server_default=text("-1"))
+    try_number = Column(Integer, nullable=False, default=1)
+
+    # Nice for humans and backcompat
+    dag_id = Column(StringID(), nullable=False)
+    run_id = Column(StringID(), nullable=False)
 
     is_latest_try = Column(Boolean, default=True)
     start_date = Column(UtcDateTime)
@@ -1358,8 +1366,9 @@ class TaskInstance(Base, LoggingMixin):
         Index("ti_pool", pool, state, priority_weight),
         Index("ti_job_id", job_id),
         Index("ti_trigger_id", trigger_id),
-        PrimaryKeyConstraint(
-            "dag_id", "task_id", "run_id", "map_index", "try_number", name="task_instance_pkey"
+        PrimaryKeyConstraint("id", name="task_instance_pkey"),
+        UniqueConstraint(
+            "dag_run_id", "task_id", "map_index", "try_number", name="task_instance_logical_key"
         ),
         ForeignKeyConstraint(
             [trigger_id],
@@ -1368,8 +1377,8 @@ class TaskInstance(Base, LoggingMixin):
             ondelete="CASCADE",
         ),
         ForeignKeyConstraint(
-            [dag_id, run_id],
-            ["dag_run.dag_id", "dag_run.run_id"],
+            [dag_run_id],
+            ["dag_run.id"],
             name="task_instance_dag_run_fkey",
             ondelete="CASCADE",
         ),
@@ -1389,11 +1398,17 @@ class TaskInstance(Base, LoggingMixin):
     dag_run = relationship("DagRun", back_populates="task_instances", lazy="joined", innerjoin=True)
     rendered_task_instance_fields = relationship("RenderedTaskInstanceFields", lazy="noload", uselist=False)
     execution_date = association_proxy("dag_run", "execution_date")
+
     task_instance_note = relationship(
         "TaskInstanceNote",
-        back_populates="task_instance",
+        primaryjoin="""and_(
+            TaskInstance.dag_id == foreign(TaskInstanceNote.dag_id),
+            TaskInstance.task_id == foreign(TaskInstanceNote.task_id),
+            TaskInstance.run_id == foreign(TaskInstanceNote.run_id),
+            TaskInstance.map_index == foreign(TaskInstanceNote.map_index),
+        )""",
         uselist=False,
-        cascade="all, delete, delete-orphan",
+        # cascade="all, delete, delete-orphan",
     )
     note = association_proxy("task_instance_note", "content", creator=_creator_note)
 
@@ -2958,9 +2973,6 @@ class TaskInstance(Base, LoggingMixin):
         if not test_mode:
             session.add(Log(TaskInstanceState.FAILED.value, ti))
 
-            # Log failure duration
-            # session.add(TaskFail(ti=ti))
-
         ti.clear_next_method_args()
 
         # In extreme cases (zombie in case of dag with parse error) we might _not_ have a Task.
@@ -3712,7 +3724,6 @@ class TaskInstance(Base, LoggingMixin):
         from airflow.models.renderedtifields import RenderedTaskInstanceFields
 
         tables: list[type[TaskInstanceDependencies]] = [
-            TaskFail,
             TaskInstanceNote,
             TaskReschedule,
             XCom,
@@ -3866,29 +3877,13 @@ class TaskInstanceNote(TaskInstanceDependencies):
     dag_id = Column(StringID(), primary_key=True, nullable=False)
     run_id = Column(StringID(), primary_key=True, nullable=False)
     map_index = Column(Integer, primary_key=True, nullable=False)
-    try_number = Column(Integer, primary_key=True, nullable=False)
     content = Column(String(1000).with_variant(Text(1000), "mysql"))
     created_at = Column(UtcDateTime, default=timezone.utcnow, nullable=False)
     updated_at = Column(UtcDateTime, default=timezone.utcnow, onupdate=timezone.utcnow, nullable=False)
 
-    task_instance = relationship("TaskInstance", back_populates="task_instance_note")
-
     __table_args__ = (
-        PrimaryKeyConstraint(
-            "task_id", "dag_id", "run_id", "map_index", "try_number", name="task_instance_note_pkey"
-        ),
-        ForeignKeyConstraint(
-            (dag_id, task_id, run_id, map_index, try_number),
-            [
-                "task_instance.dag_id",
-                "task_instance.task_id",
-                "task_instance.run_id",
-                "task_instance.map_index",
-                "task_instance.try_number",
-            ],
-            name="task_instance_note_ti_fkey",
-            ondelete="CASCADE",
-        ),
+        PrimaryKeyConstraint("task_id", "dag_id", "run_id", "map_index", name="task_instance_note_pkey"),
+        # No FK for TaskIntance - we want the note for the task + run, not the specific try
     )
 
     def __init__(self, content, user_id=None):

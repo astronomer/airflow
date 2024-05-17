@@ -23,9 +23,12 @@ import collections.abc
 import enum
 from typing import TYPE_CHECKING, Any, Collection
 
-from sqlalchemy import CheckConstraint, Column, ForeignKeyConstraint, Integer, String
+from sqlalchemy import CheckConstraint, Column, ForeignKeyConstraint, Integer
+from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.orm import relationship
+from sqlalchemy_utils import UUIDType
 
-from airflow.models.base import COLLATION_ARGS, ID_LEN, TaskInstanceDependencies
+from airflow.models.base import TaskInstanceDependencies
 from airflow.utils.sqlalchemy import ExtendedJSON
 
 if TYPE_CHECKING:
@@ -54,11 +57,7 @@ class TaskMap(TaskInstanceDependencies):
     __tablename__ = "task_map"
 
     # Link to upstream TaskInstance creating this dynamic mapping information.
-    dag_id = Column(String(ID_LEN, **COLLATION_ARGS), primary_key=True)
-    task_id = Column(String(ID_LEN, **COLLATION_ARGS), primary_key=True)
-    run_id = Column(String(ID_LEN, **COLLATION_ARGS), primary_key=True)
-    map_index = Column(Integer, primary_key=True)
-    try_number = Column(Integer, primary_key=True)
+    task_instance_id = Column(UUIDType, primary_key=True)
 
     length = Column(Integer, nullable=False)
     keys = Column(ExtendedJSON, nullable=True)
@@ -66,33 +65,27 @@ class TaskMap(TaskInstanceDependencies):
     __table_args__ = (
         CheckConstraint(length >= 0, name="task_map_length_not_negative"),
         ForeignKeyConstraint(
-            [dag_id, task_id, run_id, map_index, try_number],
-            [
-                "task_instance.dag_id",
-                "task_instance.task_id",
-                "task_instance.run_id",
-                "task_instance.map_index",
-                "task_instance.try_number",
-            ],
+            [task_instance_id],
+            ["task_instance.id"],
             name="task_map_task_instance_fkey",
             ondelete="CASCADE",
-            onupdate="CASCADE",
         ),
     )
+    task_instance = relationship("TaskInstance")
+    # backcompat
+    dag_id = association_proxy("task_instance", "dag_id")
+    task_id = association_proxy("task_instance", "task_id")
+    run_id = association_proxy("task_instance", "run_id")
+    map_index = association_proxy("task_instance", "map_index")
+    try_number = association_proxy("task_instance", "try_number")
 
     def __init__(
         self,
-        dag_id: str,
-        task_id: str,
-        run_id: str,
-        map_index: int,
+        task_instance: TaskInstance | TaskInstancePydantic,
         length: int,
         keys: list[Any] | None,
     ) -> None:
-        self.dag_id = dag_id
-        self.task_id = task_id
-        self.run_id = run_id
-        self.map_index = map_index
+        self.task_instance_id = task_instance.id
         self.length = length
         self.keys = keys
 
