@@ -19,6 +19,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
+from sqlalchemy_utils import UUIDType
 from typing_extensions import Annotated
 
 from airflow.models import Operator
@@ -75,6 +76,7 @@ PydanticOperator = Annotated[
 class TaskInstancePydantic(BaseModelPydantic, LoggingMixin):
     """Serializable representation of the TaskInstance ORM SqlAlchemyModel used by internal API."""
 
+    id: UUIDType
     task_id: str
     dag_id: str
     run_id: str

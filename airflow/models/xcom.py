@@ -27,8 +27,10 @@ from typing import TYPE_CHECKING, Any, Iterable, cast, overload
 
 from sqlalchemy import (
     Column,
+    ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     LargeBinary,
     PrimaryKeyConstraint,
     String,
@@ -82,6 +84,7 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
 
     value = Column(LargeBinary().with_variant(LONGBLOB, "mysql"))
     timestamp = Column(UtcDateTime, default=timezone.utcnow, nullable=False)
+    dag_run_id = Column(Integer, ForeignKey("dag_run.id"))
 
     __table_args__ = (
         Index("idx_xcom_key", key),
@@ -103,7 +106,12 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
     map_index = association_proxy("task_instance", "map_index")
     try_number = association_proxy("task_instance", "try_number")
 
-    dag_run = association_proxy("task_instance", "dag_run")
+    dag_run = relationship(
+        "DagRun",
+        uselist=False,
+        lazy="joined",
+        passive_deletes="all",
+    )
     execution_date = association_proxy("dag_run", "execution_date")
 
     @reconstructor

@@ -22,7 +22,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKeyConstraint, Integer, asc, desc, select
+from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, Integer, asc, desc, select
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils import UUIDType
@@ -53,6 +53,7 @@ class TaskReschedule(TaskInstanceDependencies):
     end_date = Column(UtcDateTime, nullable=False)
     duration = Column(Integer, nullable=False)
     reschedule_date = Column(UtcDateTime, nullable=False)
+    dag_run_id = Column(Integer, ForeignKey("dag_run.id"))
 
     __table_args__ = (
         ForeignKeyConstraint(
@@ -70,7 +71,12 @@ class TaskReschedule(TaskInstanceDependencies):
     map_index = association_proxy("task_instance", "map_index")
     try_number = association_proxy("task_instance", "try_number")
 
-    dag_run = association_proxy("task_instance", "dag_run")
+    dag_run = relationship(
+        "DagRun",
+        uselist=False,
+        lazy="joined",
+        passive_deletes="all",
+    )
     execution_date = association_proxy("dag_run", "execution_date")
 
     def __init__(
