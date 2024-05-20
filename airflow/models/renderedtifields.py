@@ -25,7 +25,8 @@ from typing import TYPE_CHECKING
 import sqlalchemy_jsonfield
 from sqlalchemy import (
     Column,
-    ForeignKeyConstraint,
+    ForeignKey,
+    Integer,
     PrimaryKeyConstraint,
     delete,
     exists,
@@ -68,19 +69,15 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
 
     __tablename__ = "rendered_task_instance_fields"
 
-    task_instance_id = Column(UUIDType, primary_key=True)
+    task_instance_id = Column(
+        UUIDType,
+        ForeignKey("task_instance.id", name="rtif_ti_fkey", ondelete="CASCADE"),
+        primary_key=True,
+    )
     rendered_fields = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=False)
     k8s_pod_yaml = Column(sqlalchemy_jsonfield.JSONField(json=json), nullable=True)
 
-    __table_args__ = (
-        PrimaryKeyConstraint("task_instance_id", name="rendered_task_instance_fields_pkey"),
-        ForeignKeyConstraint(
-            [task_instance_id],
-            ["task_instance.id"],
-            name="rtif_ti_fkey",
-            ondelete="CASCADE",
-        ),
-    )
+    __table_args__ = (PrimaryKeyConstraint("task_instance_id", name="rendered_task_instance_fields_pkey"),)
     task_instance = relationship(
         "TaskInstance",
         lazy="joined",
@@ -93,6 +90,8 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
     map_index = association_proxy("task_instance", "map_index")
     try_number = association_proxy("task_instance", "try_number")
 
+    dag_run_id = Column(Integer, ForeignKey("dag_run.id"), nullable=False)
+
     # We don't need a DB level FK here, as we already have that to TI (which has one to DR) but by defining
     # the relationship we can more easily find the execution date for these rows
     # dag_run = relationship(
@@ -103,13 +102,14 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
     #    )""",
     #    viewonly=True,
     # )
-    dag_run = association_proxy("task_instance", "dag_run")
-
+    #
+    dag_run = relationship("DagRun")
     execution_date = association_proxy("dag_run", "execution_date")
 
     def __init__(self, ti: TaskInstance, render_templates=True, rendered_fields=None):
         self.task_instance_id = ti.id
         self.ti = ti
+        self.dag_run_id = ti.dag_run_id
         if render_templates:
             ti.render_templates()
 
@@ -181,10 +181,7 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
         """
         result = session.scalar(
             select(cls).where(
-                cls.dag_id == ti.dag_id,
-                cls.task_id == ti.task_id,
-                cls.run_id == ti.run_id,
-                cls.map_index == ti.map_index,
+                cls.task_instance_id == ti.id,
             )
         )
         return result.k8s_pod_yaml if result else None
@@ -224,7 +221,7 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
         from airflow.models.dagrun import DagRun
 
         tis_to_keep_query = (
-            select(cls.dag_id, cls.task_id, cls.run_id, DagRun.execution_date)
+            select(cls.task_instance_id, DagRun.execution_date)
             .where(cls.dag_id == dag_id, cls.task_id == task_id)
             .join(cls.dag_run)
             .distinct()
@@ -251,16 +248,13 @@ class RenderedTaskInstanceFields(TaskInstanceDependencies):
         session: Session,
     ) -> None:
         # This query might deadlock occasionally and it should be retried if fails (see decorator)
-
         stmt = (
             delete(cls)
             .where(
                 cls.dag_id == dag_id,
                 cls.task_id == task_id,
                 ~exists(1).where(
-                    ti_clause.c.dag_id == cls.dag_id,
-                    ti_clause.c.task_id == cls.task_id,
-                    ti_clause.c.run_id == cls.run_id,
+                    ti_clause.c.task_instance_id == cls.task_instance_id,
                 ),
             )
             .execution_options(synchronize_session=False)

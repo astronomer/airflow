@@ -1331,7 +1331,7 @@ class DagRun(Base, LoggingMixin):
             def create_ti_mapping(task: Operator, indexes: Iterable[int]) -> Iterator[dict[str, Any]]:
                 created_counts[task.task_type] += 1
                 for map_index in indexes:
-                    yield TI.insert_mapping(self.run_id, task, map_index=map_index)
+                    yield TI.insert_mapping(self.run_id, task, map_index=map_index, dag_run_id=self.id)
 
             creator = create_ti_mapping
 
@@ -1339,7 +1339,7 @@ class DagRun(Base, LoggingMixin):
 
             def create_ti(task: Operator, indexes: Iterable[int]) -> Iterator[TI]:
                 for map_index in indexes:
-                    ti = TI(task, run_id=self.run_id, map_index=map_index)
+                    ti = TI(task, run_id=self.run_id, map_index=map_index, dag_run_id=self.id)
                     ti_mutation_hook(ti)
                     created_counts[ti.operator] += 1
                     yield ti

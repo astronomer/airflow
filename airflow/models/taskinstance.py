@@ -1305,7 +1305,11 @@ class TaskInstance(Base, LoggingMixin):
 
     # Logical key
     task_id = Column(StringID(), nullable=False)
-    dag_run_id = Column(Integer, nullable=False)
+    dag_run_id = Column(
+        Integer,
+        ForeignKey("dag_run.id", name="task_instance_dag_run_fkey", ondelete="CASCADE"),
+        nullable=False,
+    )
     map_index = Column(Integer, nullable=False, server_default=text("-1"))
     try_number = Column(Integer, nullable=False, default=1)
 
@@ -1376,12 +1380,6 @@ class TaskInstance(Base, LoggingMixin):
             name="task_instance_trigger_id_fkey",
             ondelete="CASCADE",
         ),
-        ForeignKeyConstraint(
-            [dag_run_id],
-            ["dag_run.id"],
-            name="task_instance_dag_run_fkey",
-            ondelete="CASCADE",
-        ),
     )
 
     dag_model: DagModel = relationship(
@@ -1433,10 +1431,12 @@ class TaskInstance(Base, LoggingMixin):
         try_number: int = 1,
         retry_after: datetime | None = None,
         max_tries: int | None = None,
+        dag_run_id: int | None = None,
     ):
         super().__init__()
         self.dag_id = task.dag_id
         self.task_id = task.task_id
+        self.dag_run_id = dag_run_id
         self.map_index = map_index
         self.try_number = try_number
         self.retry_after = retry_after
@@ -1527,19 +1527,20 @@ class TaskInstance(Base, LoggingMixin):
         return _stats_tags(task_instance=self)
 
     @staticmethod
-    def insert_mapping(run_id: str, task: Operator, map_index: int) -> dict[str, Any]:
+    def insert_mapping(run_id: str, task: Operator, map_index: int, dag_run_id: int) -> dict[str, Any]:
         """Insert mapping.
 
         :meta private:
         """
         priority_weight = task.weight_rule.get_weight(
-            TaskInstance(task=task, run_id=run_id, map_index=map_index)
+            TaskInstance(task=task, run_id=run_id, map_index=map_index, dag_run_id=dag_run_id)
         )
 
         return {
             "dag_id": task.dag_id,
             "task_id": task.task_id,
             "run_id": run_id,
+            "dag_run_id": dag_run_id,
             "try_number": 1,
             "hostname": "",
             "unixname": getuser(),

@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING, Any, Iterable, cast, overload
 from sqlalchemy import (
     Column,
     ForeignKey,
-    ForeignKeyConstraint,
     Index,
     Integer,
     LargeBinary,
@@ -79,7 +78,11 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
 
     __tablename__ = "xcom"
 
-    task_instance_id = Column(UUIDType, primary_key=True)
+    task_instance_id = Column(
+        UUIDType,
+        ForeignKey("task_instance.id", name="xcom_task_instance_fkey", ondelete="CASCADE"),
+        primary_key=True,
+    )
     key = Column(String(512, **COLLATION_ARGS), nullable=False, primary_key=True)
 
     value = Column(LargeBinary().with_variant(LONGBLOB, "mysql"))
@@ -89,12 +92,6 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
     __table_args__ = (
         Index("idx_xcom_key", key),
         PrimaryKeyConstraint("task_instance_id", "key", name="xcom_pkey"),
-        ForeignKeyConstraint(
-            [task_instance_id],
-            ["task_instance.id"],
-            name="xcom_task_instance_fkey",
-            ondelete="CASCADE",
-        ),
     )
 
     task_instance = relationship("TaskInstance")

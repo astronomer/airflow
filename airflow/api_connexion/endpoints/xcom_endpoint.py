@@ -72,7 +72,7 @@ def get_xcom_entries(
     if xcom_key is not None:
         query = query.where(XCom.key == xcom_key)
     # Match idx_xcom_task_instance + idx_xcom_key for performance.
-    query = query.order_by(XCom.dag_id, XCom.task_id, XCom.run_id, XCom.map_index, XCom.key)
+    query = query.order_by(XCom.task_instance_id, XCom.key)
     total_entries = get_query_count(query, session=session)
     query = session.scalars(query.offset(offset).limit(limit))
     return xcom_collection_schema.dump(XComCollection(xcom_entries=query, total_entries=total_entries))
