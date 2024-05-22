@@ -566,6 +566,7 @@ def _refresh_from_db(
         task_instance.trigger_id = ti.trigger_id
         task_instance.next_method = ti.next_method
         task_instance.next_kwargs = ti.next_kwargs
+        task_instance.try_uuid = ti.try_uuid
     else:
         task_instance.state = None
 
@@ -1339,6 +1340,8 @@ class TaskInstance(Base, LoggingMixin):
     _task_display_property_value = Column("task_display_name", String(2000), nullable=True)
     # If adding new fields here then remember to add them to
     # refresh_from_db() or they won't display in the UI correctly
+
+    try_uuid = Column(StringID())
 
     __table_args__ = (
         Index("ti_dag_state", dag_id, state),

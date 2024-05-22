@@ -22,6 +22,7 @@ import os
 import warnings
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, NamedTuple, Sequence, TypeVar, overload
+from uuid import uuid4
 
 import re2
 from sqlalchemy import (
@@ -1547,6 +1548,7 @@ class DagRun(Base, LoggingMixin):
             ):
                 if ti.state != TaskInstanceState.UP_FOR_RESCHEDULE:
                     ti.try_number += 1
+                    ti.try_uuid = uuid4()
                 ti.defer_task(
                     defer=TaskDeferred(trigger=ti.task.start_trigger, method_name=ti.task.next_method),
                     session=session,
@@ -1576,6 +1578,13 @@ class DagRun(Base, LoggingMixin):
                                 TI.try_number + 1,
                             ),
                             else_=TI.try_number,
+                        ),
+                        try_uuid=case(
+                            (
+                                or_(TI.state.is_(None), TI.state != TaskInstanceState.UP_FOR_RESCHEDULE),
+                                text("gen_random_uuid() :: varchar"),
+                            ),
+                            else_=TI.try_uuid,
                         ),
                     )
                     .execution_options(synchronize_session=False)
