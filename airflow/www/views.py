@@ -3556,6 +3556,52 @@ class Airflow(AirflowBaseView):
                 {"Content-Type": "application/json; charset=utf-8"},
             )
 
+    @expose("/object/task_instance_history")
+    @auth.has_access_dag("GET", DagAccessEntity.TASK_INSTANCE)
+    def ti_history(self):
+        dag_id = request.args.get("dag_id")
+        task_id = request.args.get("task_id")
+        run_id = request.args.get("run_id")
+        map_index = request.args.get("map_index", -1, type=int)
+
+        from airflow.models.taskinstancehistory import TaskInstanceHistory as TIHistory
+
+        with create_session() as session:
+            history = (
+                session.query(TIHistory)
+                .filter(
+                    TIHistory.dag_id == dag_id,
+                    TIHistory.task_id == task_id,
+                    TIHistory.run_id == run_id,
+                    TIHistory.map_index == map_index,
+                )
+                .order_by(TIHistory.try_number.asc())
+                .all()
+            )
+
+            # records = []
+            # for h in history:
+            #    ti = TaskInstance(
+
+            # from airflow.api_connexion.schemas.task_instance_schema import (
+            #    TaskInstanceCollection,
+            #    task_instance_collection_schema,
+            # )
+
+            # return task_instance_collection_schema.dump(
+            #    TaskInstanceCollection(task_instances=history, total_entries=len(history))
+            # )
+
+            # attrs = {"state", "start_date", "end_date", "duration", "try_number"}
+            attrs = TaskInstance.__table__.columns.keys()
+            print(attrs)
+            data = [{attr: getattr(ti, attr) for attr in attrs} for ti in history]
+
+            return (
+                htmlsafe_json_dumps(data, separators=(",", ":"), cls=utils_json.WebEncoder),
+                {"Content-Type": "application/json; charset=utf-8"},
+            )
+
     @expose("/robots.txt")
     @action_logging
     def robots(self):
