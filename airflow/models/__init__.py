@@ -64,6 +64,7 @@ def import_all_models():
     import airflow.models.errors
     import airflow.models.serialized_dag
     import airflow.models.tasklog
+    import airflow.models.taskinstancehistory
 
 
 def __getattr__(name):

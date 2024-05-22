@@ -268,6 +268,13 @@ def clear_task_instances(
     )
     dag_bag = DagBag(read_dags_from_db=True)
     for ti in tis:
+        # stamp ti history record
+        from airflow.models.taskinstancehistory import TaskInstanceHistory
+
+        # what about non terminal state
+        ti_history = TaskInstanceHistory(ti, state=ti.state)
+        session.add(ti_history)
+
         if ti.state == TaskInstanceState.RUNNING:
             if ti.job_id:
                 # If a task is cleared when running, set its state to RESTARTING so that
@@ -2974,6 +2981,21 @@ class TaskInstance(Base, LoggingMixin):
                     #  e.g. we could make refresh_from_db return a TI and replace ti with that
                     raise RuntimeError("Expected TaskInstance here. Further AIP-44 work required.")
                 # We increase the try_number to fail the task if it fails to start after sometime
+
+            # stamp ti history record
+            from airflow.models.taskinstancehistory import TaskInstanceHistory
+
+            # what about non terminal state
+            ti_history = TaskInstanceHistory(ti, state=ti.state)
+
+            session.add(ti_history)
+            session.commit()
+            import time
+
+            for _ in range(10):
+                print("sleeping for 5")
+                time.sleep(5)
+
             ti.state = State.UP_FOR_RETRY
             email_for_state = operator.attrgetter("email_on_retry")
             callbacks = task.on_retry_callback if task else None
