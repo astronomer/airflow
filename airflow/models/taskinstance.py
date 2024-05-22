@@ -2985,16 +2985,8 @@ class TaskInstance(Base, LoggingMixin):
             # stamp ti history record
             from airflow.models.taskinstancehistory import TaskInstanceHistory
 
-            # what about non terminal state
-            ti_history = TaskInstanceHistory(ti, state=ti.state)
-
+            ti_history = TaskInstanceHistory(ti, state=TaskInstanceState.FAILED)
             session.add(ti_history)
-            session.commit()
-            import time
-
-            for _ in range(10):
-                print("sleeping for 5")
-                time.sleep(5)
 
             ti.state = State.UP_FOR_RETRY
             email_for_state = operator.attrgetter("email_on_retry")

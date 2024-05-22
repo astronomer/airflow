@@ -215,13 +215,14 @@ class TaskInstanceHistory(Base):
     ):
         super().__init__()
         for k, v in ti.__dict__.items():
-            self.__dict__[k] = v
+            if not k.startswith("_"):
+                setattr(self, k, v)
 
         if state:
             self.state = state
 
-    def __hash__(self):
-        return hash((self.task_id, self.dag_id, self.run_id, self.map_index))
+    # def __hash__(self):
+    #    return hash((self.task_id, self.dag_id, self.run_id, self.map_index))
 
 
 for column in TaskInstance.__table__.columns:
