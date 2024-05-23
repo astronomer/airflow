@@ -59,9 +59,8 @@ class TaskInstanceHistory(Base):
         state: str | None = None,
     ):
         super().__init__()
-        for k, v in ti.__dict__.items():
-            if not k.startswith("_"):
-                setattr(self, k, v)
+        for column in self.__table__.columns:
+            setattr(self, column.name, getattr(ti, column.name))
 
         if state:
             self.state = state
