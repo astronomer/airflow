@@ -51,7 +51,6 @@ from typing import (
     overload,
 )
 from urllib.parse import urlsplit
-from uuid import uuid4
 
 import jinja2
 import pendulum
@@ -2951,7 +2950,6 @@ class DAG(LoggingMixin):
                 for s in schedulable_tis:
                     if s.state != TaskInstanceState.UP_FOR_RESCHEDULE:
                         s.try_number += 1
-                        s.try_uuid = uuid4()
                     s.state = TaskInstanceState.SCHEDULED
                 session.commit()
                 # triggerer may mark tasks scheduled so we read from DB

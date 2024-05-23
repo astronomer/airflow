@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Any, Iterable, Iterator, Mapping, Sequence
-from uuid import uuid4
 
 import attr
 import pendulum
@@ -437,7 +436,6 @@ class BackfillJobRunner(BaseJobRunner, LoggingMixin):
                 if ti in schedulable_tis:
                     if ti.state != TaskInstanceState.UP_FOR_RESCHEDULE:
                         ti.try_number += 1
-                        ti.try_uuid = uuid4()
                     ti.set_state(TaskInstanceState.SCHEDULED)
                 if ti.state != TaskInstanceState.REMOVED:
                     tasks_to_run[ti.key] = ti
@@ -529,7 +527,6 @@ class BackfillJobRunner(BaseJobRunner, LoggingMixin):
                             ti_status.running.pop(key)
                         # Reset the failed task in backfill to scheduled state
                         ti.try_number += 1
-                        ti.try_uuid = uuid4()
                         ti.set_state(TaskInstanceState.SCHEDULED, session=session)
                         if ti.dag_run not in ti_status.active_runs:
                             ti_status.active_runs.add(ti.dag_run)
@@ -575,7 +572,6 @@ class BackfillJobRunner(BaseJobRunner, LoggingMixin):
                             # but i am not going to look too closely since we need
                             # to nuke the current backfill approach anyway.
                             ti.try_number += 1
-                            ti.try_uuid = uuid4()
                         ti.state = TaskInstanceState.QUEUED
                         ti.queued_by_job_id = self.job.id
                         ti.queued_dttm = timezone.utcnow()
@@ -752,7 +748,6 @@ class BackfillJobRunner(BaseJobRunner, LoggingMixin):
 
                 for new_ti in new_mapped_tis:
                     new_ti.try_number += 1
-                    ti.try_uuid = uuid4()
                     new_ti.set_state(TaskInstanceState.SCHEDULED, session=session)
 
             # Set state to failed for running TIs that are set up for retry if disable-retry flag is set
