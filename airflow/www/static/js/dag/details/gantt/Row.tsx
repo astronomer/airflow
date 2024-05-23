@@ -53,7 +53,7 @@ const Row = ({
     dagId,
     taskId: task.id || "",
     runId: runId || "",
-    enabled: !!(instance?.tryNumber && instance?.tryNumber > 1) && !!task.id, // Only try to look up task fails if it even has a try number > 1
+    enabled: !!(instance?.tryNumber && instance?.tryNumber > 1) && !!task.id, // Only try to look up task tries if try number > 1
   });
 
   const isSelected = taskId === instance?.taskId;
