@@ -17,7 +17,6 @@
 # under the License.
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -30,18 +29,13 @@ from sqlalchemy import (
 from airflow.models.base import Base, StringID
 from airflow.models.taskinstance import TaskInstance
 
-_CURRENT_CONTEXT: list[Context] = []
-log = logging.getLogger(__name__)
-
-
 if TYPE_CHECKING:
     from airflow.serialization.pydantic.taskinstance import TaskInstancePydantic
-    from airflow.utils.context import Context
 
 
 class TaskInstanceHistory(Base):
     """
-    TBD.
+    Store old tries of TaskInstances.
 
     :meta private:
     """
@@ -57,26 +51,7 @@ class TaskInstanceHistory(Base):
         PrimaryKeyConstraint(
             "dag_id", "task_id", "run_id", "map_index", "try_number", name="task_instance_history_pkey"
         ),
-        # ForeignKeyConstraint(
-        #    ["dag_id", "run_id"],
-        #    ["dag_run.dag_id", "dag_run.run_id"],
-        #    name="task_instance_dag_run_fkey",
-        #    ondelete="CASCADE",
-        # ),
     )
-
-    # dag_model: DagModel = relationship(
-    #    "DagModel",
-    #    primaryjoin="TaskInstance.dag_id == DagModel.dag_id",
-    #    foreign_keys="dag_id",
-    #    uselist=False,
-    #    innerjoin=True,
-    #    viewonly=True,
-    # )
-
-    # dag_run = relationship("DagRun", back_populates="task_instances", lazy="joined", innerjoin=True)
-    # rendered_task_instance_fields = relationship("RenderedTaskInstanceFields", lazy="noload", uselist=False)
-    # execution_date = association_proxy("dag_run", "execution_date")
 
     def __init__(
         self,
@@ -90,9 +65,6 @@ class TaskInstanceHistory(Base):
 
         if state:
             self.state = state
-
-    # def __hash__(self):
-    #    return hash((self.task_id, self.dag_id, self.run_id, self.map_index))
 
 
 for column in TaskInstance.__table__.columns:

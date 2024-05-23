@@ -108,6 +108,7 @@ from airflow.models.dataset import DagScheduleDatasetReference, DatasetDagRunQue
 from airflow.models.errors import ParseImportError
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance, TaskInstanceNote
+from airflow.models.taskinstancehistory import TaskInstanceHistory as TIHistory
 from airflow.plugins_manager import PLUGINS_ATTRIBUTES_TO_DUMP
 from airflow.providers_manager import ProvidersManager
 from airflow.security import permissions
@@ -3564,8 +3565,6 @@ class Airflow(AirflowBaseView):
         run_id = request.args.get("run_id")
         map_index = request.args.get("map_index", -1, type=int)
 
-        from airflow.models.taskinstancehistory import TaskInstanceHistory as TIHistory
-
         with create_session() as session:
             history = (
                 session.query(TIHistory)
@@ -3579,28 +3578,18 @@ class Airflow(AirflowBaseView):
                 .all()
             )
 
-            # records = []
-            # for h in history:
-            #    ti = TaskInstance(
+        attrs = TaskInstance.__table__.columns.keys()
 
-            # from airflow.api_connexion.schemas.task_instance_schema import (
-            #    TaskInstanceCollection,
-            #    task_instance_collection_schema,
-            # )
+        data = [{attr: getattr(ti, attr) for attr in attrs} for ti in history]
 
-            # return task_instance_collection_schema.dump(
-            #    TaskInstanceCollection(task_instances=history, total_entries=len(history))
-            # )
+        for entity in data:
+            entity["dag_run_id"] = entity.pop("run_id")
+            entity["queued_when"] = entity.pop("queued_dttm")
 
-            # attrs = {"state", "start_date", "end_date", "duration", "try_number"}
-            attrs = TaskInstance.__table__.columns.keys()
-            print(attrs)
-            data = [{attr: getattr(ti, attr) for attr in attrs} for ti in history]
-
-            return (
-                htmlsafe_json_dumps(data, separators=(",", ":"), cls=utils_json.WebEncoder),
-                {"Content-Type": "application/json; charset=utf-8"},
-            )
+        return (
+            htmlsafe_json_dumps(data, separators=(",", ":"), cls=utils_json.WebEncoder),
+            {"Content-Type": "application/json; charset=utf-8"},
+        )
 
     @expose("/robots.txt")
     @action_logging
