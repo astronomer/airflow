@@ -21,10 +21,12 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Column,
+    ForeignKeyConstraint,
     Integer,
     PrimaryKeyConstraint,
     text,
 )
+from sqlalchemy.orm import relationship
 
 from airflow.models.base import Base, StringID
 from airflow.models.taskinstance import TaskInstance
@@ -51,7 +53,20 @@ class TaskInstanceHistory(Base):
         PrimaryKeyConstraint(
             "dag_id", "task_id", "run_id", "map_index", "try_number", name="task_instance_history_pkey"
         ),
+        ForeignKeyConstraint(
+            [dag_id, task_id, run_id, map_index],
+            [
+                "task_instance.dag_id",
+                "task_instance.task_id",
+                "task_instance.run_id",
+                "task_instance.map_index",
+            ],
+            name="task_instance_history_ti_fkey",
+            ondelete="CASCADE",
+        ),
     )
+
+    task_instance = relationship("TaskInstance", back_populates="try_history")
 
     def __init__(
         self,
