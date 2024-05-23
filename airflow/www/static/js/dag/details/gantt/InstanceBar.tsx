@@ -47,19 +47,18 @@ const InstanceBar = ({
 
   const runDuration = getDuration(ganttStartDate, ganttEndDate);
 
+  const queuedAt = (instance as any)?.queuedWhen || instance?.queuedDttm;
   const hasValidQueuedDttm =
-    !!instance?.queuedDttm &&
-    (instance?.startDate && instance?.queuedDttm
-      ? instance.queuedDttm < instance.startDate
-      : true);
+    !!queuedAt &&
+    (instance?.startDate && queuedAt ? queuedAt < instance.startDate : true);
 
   // Calculate durations in ms
   const taskDuration = getDuration(instance?.startDate, instance?.endDate);
   const queuedDuration = hasValidQueuedDttm
-    ? getDuration(instance?.queuedDttm, instance?.startDate)
+    ? getDuration(queuedAt, instance?.startDate)
     : 0;
   const taskStartOffset = hasValidQueuedDttm
-    ? getDuration(ganttStartDate, instance?.queuedDttm || instance?.startDate)
+    ? getDuration(ganttStartDate, queuedAt || instance?.startDate)
     : getDuration(ganttStartDate, instance?.startDate);
 
   // Percent of each duration vs the overall dag run
