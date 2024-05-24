@@ -70,7 +70,7 @@ const Details = ({ gridInstance, taskInstance, group }: Props) => {
       : gridInstance || taskInstance;
 
   const state =
-    instance.state ||
+    instance?.state ||
     (instance?.state === "none" ? null : instance?.state) ||
     null;
   const isMapped = group?.isMapped;
