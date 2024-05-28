@@ -269,7 +269,7 @@ def clear_task_instances(
     )
     dag_bag = DagBag(read_dags_from_db=True)
     cleared = []
-    logger = TaskContextLogger("webserver", call_site_logger=log)
+
     for ti in tis:
         if ti.state == TaskInstanceState.RUNNING:
             if ti.job_id:
@@ -377,10 +377,11 @@ def clear_task_instances(
                     dr.start_date = None
                     dr.clear_number += 1
 
+    logger = TaskContextLogger("webserver", call_site_logger=log)
     for ti in cleared:
-        logger.info("Task was manually cleared", ti=ti)
+        logger.info("Task was manually cleared", ti=ti.key)
 
-    session.flush()
+    session.commit()
 
 
 def _is_mappable_value(value: Any) -> TypeGuard[Collection]:
