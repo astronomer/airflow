@@ -24,10 +24,12 @@ from airflow.callbacks.callback_requests import TaskCallbackRequest
 from airflow.callbacks.database_callback_sink import DatabaseCallbackSink
 from airflow.models.taskinstance import SimpleTaskInstance
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.utils.session import NEW_SESSION
+from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from airflow.models import TaskInstance
 
 log = logging.getLogger(__name__)
@@ -127,7 +129,8 @@ class TriggerEvent:
             return other.payload == self.payload
         return False
 
-    def handle_submit(self, *, task_instance: TaskInstance):
+    @provide_session
+    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION):
         """
         Handle the submit event for a given task instance.
 
@@ -136,6 +139,7 @@ class TriggerEvent:
         into the kwargs for the task.
 
         :param task_instance: The task instance to handle the submit event for.
+        :param session: The session to be used for the database callback sink.
         """
         # Get the next kwargs of the task instance, or an empty dictionary if it doesn't exist
         next_kwargs = task_instance.next_kwargs or {}
@@ -170,7 +174,8 @@ class BaseTaskEndEvent(TriggerEvent):
         super().__init__(payload=self.task_instance_state)
         self.xcoms = xcoms
 
-    def handle_submit(self, *, task_instance: TaskInstance, session=NEW_SESSION):
+    @provide_session
+    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION):
         """
         Submit event for the given task instance.
 
