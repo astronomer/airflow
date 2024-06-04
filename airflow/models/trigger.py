@@ -202,7 +202,7 @@ class Trigger(Base):
                 TaskInstance.trigger_id == trigger_id, TaskInstance.state == TaskInstanceState.DEFERRED
             )
         ):
-            event.handle_submit(task_instance=task_instance, session=session)
+            event.handle_submit(task_instance=task_instance)
 
     @classmethod
     @internal_api_call
