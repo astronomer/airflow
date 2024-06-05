@@ -56,7 +56,7 @@ def test_datetime_trigger_serialization():
     trigger = DateTimeTrigger(moment)
     classpath, kwargs = trigger.serialize()
     assert classpath == "airflow.triggers.temporal.DateTimeTrigger"
-    assert kwargs == {"moment": moment}
+    assert kwargs == {"moment": moment, "end_task": False}
 
 
 def test_timedelta_trigger_serialization():
