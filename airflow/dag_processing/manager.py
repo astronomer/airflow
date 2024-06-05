@@ -601,7 +601,7 @@ class DagFileProcessorManager(LoggingMixin):
                         self.waitables.pop(sentinel)
                         self._processors.pop(processor.file_path)
 
-            if True:
+            if self.standalone_dag_processor:
                 self._fetch_callbacks(max_callbacks_per_loop)
             self._scan_stale_dags()
             DagWarning.purge_inactive_dag_warnings()
