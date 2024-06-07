@@ -685,7 +685,7 @@ class DagFileProcessorManager(LoggingMixin):
     @retry_db_transaction
     def _fetch_callbacks_with_retries(self, max_callbacks: int, session: Session):
         """Fetch callbacks from database and add them to the internal queue for execution."""
-        self.log.warning("Fetching callbacks from the database.")
+        self.log.debug("Fetching callbacks from the database.")
         with prohibit_commit(session) as guard:
             query = select(DbCallbackRequest)
             if self.standalone_dag_processor:
@@ -770,7 +770,7 @@ class DagFileProcessorManager(LoggingMixin):
             self.set_file_paths(self._file_paths)
 
             try:
-                self.log.warning("Removing old import errors")
+                self.log.debug("Removing old import errors")
                 DagFileProcessorManager.clear_nonexistent_import_errors(
                     file_paths=self._file_paths, processor_subdir=self.get_dag_directory()
                 )
