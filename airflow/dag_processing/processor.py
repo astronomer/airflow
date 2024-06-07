@@ -785,7 +785,7 @@ class DagFileProcessor(LoggingMixin):
         # the callback
 
         if not is_remote and not request.is_failure_callback:
-            self.log.warning("not failure callback: %s", request)
+            self.log.debug("not failure callback: %s", request)
             return
 
         simple_ti = request.simple_task_instance
