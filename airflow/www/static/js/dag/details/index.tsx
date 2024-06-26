@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import {
   Flex,
   Divider,
@@ -33,7 +33,7 @@ import { useSearchParams } from "react-router-dom";
 
 import useSelection from "src/dag/useSelection";
 import { getTask, getMetaValue } from "src/utils";
-import { useGridData, useTaskInstance } from "src/api";
+import { useGridData, useGridPlugins, useTaskInstance } from "src/api";
 import {
   MdDetails,
   MdAccountTree,
@@ -100,6 +100,7 @@ const tabToIndex = (tab?: string) => {
     case "calendar":
       return 6;
     case "rendered_k8s":
+    case "plugin":
       return 7;
     case "details":
     default:
@@ -142,6 +143,7 @@ const indexToTab = (
       return undefined;
     case 7:
       if (isTaskInstance && isK8sExecutor) return "rendered_k8s";
+      if (isTaskInstance) return "plugin";
       return undefined;
     default:
       return undefined;
@@ -171,6 +173,7 @@ const Details = ({
   const children = group?.children;
   const isMapped = group?.isMapped;
   const isGroup = !!children;
+  const pluginRef = useRef<HTMLDivElement>(null);
 
   const isMappedTaskSummary = !!(
     taskId &&
@@ -229,6 +232,8 @@ const Details = ({
     onChangeTab,
   ]);
 
+  const { data: plugins } = useGridPlugins();
+
   const run = dagRuns.find((r) => r.runId === runId);
   const { data: mappedTaskInstance } = useTaskInstance({
     dagId,
@@ -237,6 +242,8 @@ const Details = ({
     mapIndex,
     enabled: mapIndex !== undefined,
   });
+
+  const plugin = plugins?.find((p) => p.pluginName === "Tab Test");
 
   const instance =
     mapIndex !== undefined && mapIndex > -1
@@ -376,6 +383,13 @@ const Details = ({
               </Text>
             </Tab>
           )}
+          {isTaskInstance && plugin && (
+            <Tab>
+              <Text as="strong" ml={1}>
+                {plugin.pluginName}
+              </Text>
+            </Tab>
+          )}
           {/* Match the styling of a tab but its actually a button */}
           {!!taskId && !!runId && (
             <Button
@@ -503,6 +517,16 @@ const Details = ({
           {isTaskInstance && isK8sExecutor && (
             <TabPanel height="100%">
               <RenderedK8s />
+            </TabPanel>
+          )}
+          {isTaskInstance && !!plugin && (
+            <TabPanel height="100%">
+              <div ref={pluginRef}>
+                {/* TODO put this in a shadow dom to keep separate from the rest of
+                the UI */}
+                <div id="plugin-test" />
+                <script type="module" src={plugin.link} />
+              </div>
             </TabPanel>
           )}
         </TabPanels>

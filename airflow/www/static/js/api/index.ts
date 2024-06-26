@@ -57,6 +57,7 @@ import useCreateDatasetEvent from "./useCreateDatasetEvent";
 import useRenderedK8s from "./useRenderedK8s";
 import useTaskDetail from "./useTaskDetail";
 import useTIHistory from "./useTIHistory";
+import useGridPlugins from "./useGridPlugins";
 
 axios.interceptors.request.use((config) => {
   config.paramsSerializer = {
@@ -110,4 +111,5 @@ export {
   useRenderedK8s,
   useTaskDetail,
   useTIHistory,
+  useGridPlugins,
 };
