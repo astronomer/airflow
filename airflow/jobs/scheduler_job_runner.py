@@ -721,6 +721,17 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 ti.external_executor_id = info
                 self.log.info("Setting external_id for %s to %s", ti, info)
                 continue
+            if ti.state in State.finished:
+                # Get task from the Serialized DAG
+                try:
+                    dag = self.dagbag.get_dag(ti.dag_id)
+                    task = dag.get_task(ti.task_id)
+                except Exception:
+                    self.log.exception("Marking task instance %s as %s", ti, state)
+                    continue
+                downstream_task_ids = task.get_direct_relative_ids(upstream=False)
+                for task_id in downstream_task_ids:
+                    ti.dag_run.get_task_instance(task_id, session=session).blocked_by_upstream = False
 
             msg = (
                 "TaskInstance Finished: dag_id=%s, task_id=%s, run_id=%s, map_index=%s, "

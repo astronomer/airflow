@@ -948,7 +948,7 @@ class DagRun(Base, LoggingMixin):
 
         tis = list(_filter_tis_and_exclude_removed(self.get_dag(), tis))
 
-        unfinished_tis = [t for t in tis if t.state in State.unfinished]
+        unfinished_tis = [t for t in tis if t.state in State.unfinished and t.blocked_by_upstream is False]
         finished_tis = [t for t in tis if t.state in State.finished]
         if unfinished_tis:
             schedulable_tis = [ut for ut in unfinished_tis if ut.state in SCHEDULEABLE_STATES]
@@ -1054,6 +1054,8 @@ class DagRun(Base, LoggingMixin):
             old_state = schedulable.state
             if not schedulable.are_dependencies_met(session=session, dep_context=dep_context):
                 old_states[schedulable.key] = old_state
+                if old_state != TaskInstanceState.UP_FOR_RETRY:
+                    schedulable.blocked_by_upstream = True
                 continue
             # If schedulable is not yet expanded, try doing it now. This is
             # called in two places: First and ideally in the mini scheduler at

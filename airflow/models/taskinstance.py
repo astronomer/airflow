@@ -41,6 +41,7 @@ import pendulum
 from deprecated import deprecated
 from jinja2 import TemplateAssertionError, UndefinedError
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     Float,
@@ -1789,6 +1790,7 @@ class TaskInstance(Base, LoggingMixin):
     _task_display_property_value = Column("task_display_name", String(2000), nullable=True)
     # If adding new fields here then remember to add them to
     # refresh_from_db() or they won't display in the UI correctly
+    blocked_by_upstream = Column(Boolean, default=False)
 
     __table_args__ = (
         Index("ti_dag_state", dag_id, state),
