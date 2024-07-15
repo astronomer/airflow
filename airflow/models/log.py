@@ -40,9 +40,10 @@ class Log(Base):
     owner = Column(String(500))
     owner_display_name = Column(String(500))
     extra = Column(Text)
+    try_number = Column(Integer)
 
     __table_args__ = (
-        Index("idx_log_dag", dag_id),
+        Index("idx_log_ti_pk", dag_id, task_id, run_id, map_index, try_number),
         Index("idx_log_dttm", dttm),
         Index("idx_log_event", event),
     )
@@ -73,6 +74,8 @@ class Log(Base):
             self.run_id = kwargs["run_id"]
         if "map_index" in kwargs:
             self.map_index = kwargs["map_index"]
+        if "try_number" in kwargs:
+            self.try_number = kwargs["try_number"]
 
         self.owner = owner or task_owner
         self.owner_display_name = owner_display_name or None
