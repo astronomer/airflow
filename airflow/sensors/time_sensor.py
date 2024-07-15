@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING
 
+from airflow.exceptions import TaskDeferred
 from airflow.sensors.base import BaseSensorOperator
 from airflow.triggers.temporal import DateTimeTrigger
 from airflow.utils import timezone
@@ -62,7 +63,7 @@ class TimeSensorAsync(BaseSensorOperator):
         :ref:`howto/operator:TimeSensorAsync`
     """
 
-    def __init__(self, *, target_time, **kwargs):
+    def __init__(self, *, target_time: datetime.time, **kwargs) -> None:
         super().__init__(**kwargs)
         self.target_time = target_time
 
@@ -72,5 +73,8 @@ class TimeSensorAsync(BaseSensorOperator):
 
         self.target_datetime = timezone.convert_to_utc(aware_time)
 
-    def execute(self, context: Context):
-        self.defer(trigger=DateTimeTrigger(moment=self.target_datetime, end_task=True))
+    def execute(self, context: Context) -> None:
+        self.defer(
+            method_name=TaskDeferred.TRIGGER_EXIT,
+            trigger=DateTimeTrigger(moment=self.target_datetime, end_task=True),
+        )

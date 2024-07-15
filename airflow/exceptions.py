@@ -385,7 +385,7 @@ class TaskDeferred(BaseException):
         self,
         *,
         trigger,
-        method_name: str = TRIGGER_EXIT,
+        method_name: str,
         kwargs: dict[str, Any] | None = None,
         timeout: datetime.timedelta | None = None,
     ):

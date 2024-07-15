@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, NoReturn
 
-from airflow.exceptions import AirflowSkipException
+from airflow.exceptions import AirflowSkipException, TaskDeferred
 from airflow.sensors.base import BaseSensorOperator
 from airflow.triggers.temporal import DateTimeTrigger
 from airflow.utils import timezone
@@ -79,4 +79,4 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
                 raise AirflowSkipException("Skipping due to soft_fail is set to True.") from e
             raise
 
-        self.defer(trigger=trigger)
+        self.defer(trigger=trigger, method_name=TaskDeferred.TRIGGER_EXIT)
