@@ -152,7 +152,7 @@ class TriggerEvent:
         return False
 
     @provide_session
-    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION):
+    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION) -> None:
         """
         Handle the submit event for a given task instance.
 
@@ -197,7 +197,7 @@ class BaseTaskEndEvent(TriggerEvent):
         self.xcoms = xcoms
 
     @provide_session
-    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION):
+    def handle_submit(self, *, task_instance: TaskInstance, session: Session = NEW_SESSION) -> None:
         """
         Submit event for the given task instance.
 
@@ -213,7 +213,7 @@ class BaseTaskEndEvent(TriggerEvent):
         self._submit_callback_if_necessary(task_instance=task_instance, session=session)
         self._push_xcoms_if_necessary(task_instance=task_instance)
 
-    def _submit_callback_if_necessary(self, *, task_instance: TaskInstance, session):
+    def _submit_callback_if_necessary(self, *, task_instance: TaskInstance, session) -> None:
         """Submit a callback request if the task state is SUCCESS or FAILED."""
         is_failure = self.task_instance_state == TaskInstanceState.FAILED
         if self.task_instance_state in [TaskInstanceState.SUCCESS, TaskInstanceState.FAILED]:
@@ -223,13 +223,13 @@ class BaseTaskEndEvent(TriggerEvent):
                 is_failure_callback=is_failure,
                 task_callback_type=self.task_instance_state,
             )
-            log.warning("Sending callback: %s", request)
+            log.info("Sending callback: %s", request)
             try:
                 DatabaseCallbackSink().send(callback=request, session=session)
             except Exception as e:
                 log.error("Failed to send callback: %s", e)
 
-    def _push_xcoms_if_necessary(self, *, task_instance: TaskInstance):
+    def _push_xcoms_if_necessary(self, *, task_instance: TaskInstance) -> None:
         """Pushes XComs to the database if they are provided."""
         if self.xcoms:
             for key, value in self.xcoms.items():

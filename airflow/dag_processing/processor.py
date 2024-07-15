@@ -775,7 +775,7 @@ class DagFileProcessor(LoggingMixin):
         """
         try:
             callback_type = TaskInstanceState(request.task_callback_type)
-        except Exception:
+        except ValueError:
             callback_type = None
         is_remote = callback_type in (TaskInstanceState.SUCCESS, TaskInstanceState.FAILED)
 
@@ -820,12 +820,11 @@ class DagFileProcessor(LoggingMixin):
 
         if callback_type is TaskInstanceState.SUCCESS:
             context = ti.get_template_context(session=session)
-            if callback_type is TaskInstanceState.SUCCESS:
-                if not ti.task:
-                    return
-                callbacks = ti.task.on_success_callback
-                _run_finished_callback(callbacks=callbacks, context=context)
-                self.log.info("Executed callback for %s in state %s", ti, ti.state)
+            if not ti.task:
+                return
+            callbacks = ti.task.on_success_callback
+            _run_finished_callback(callbacks=callbacks, context=context)
+            self.log.info("Executed callback for %s in state %s", ti, ti.state)
         elif not is_remote or callback_type is TaskInstanceState.FAILED:
             ti.handle_failure(error=request.msg, test_mode=self.UNIT_TEST_MODE, session=session)
             self.log.info("Executed callback for %s in state %s", ti, ti.state)
