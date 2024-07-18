@@ -785,7 +785,6 @@ class DagFileProcessor(LoggingMixin):
         # the callback
 
         if not is_remote and not request.is_failure_callback:
-            self.log.debug("not failure callback: %s", request)
             return
 
         simple_ti = request.simple_task_instance
@@ -820,8 +819,8 @@ class DagFileProcessor(LoggingMixin):
 
         if callback_type is TaskInstanceState.SUCCESS:
             context = ti.get_template_context(session=session)
-            if not ti.task:
-                return
+            if TYPE_CHECKING:
+                assert ti.task
             callbacks = ti.task.on_success_callback
             _run_finished_callback(callbacks=callbacks, context=context)
             self.log.info("Executed callback for %s in state %s", ti, ti.state)

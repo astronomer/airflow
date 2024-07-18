@@ -18,9 +18,8 @@
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
-from airflow.exceptions import TaskDeferred
 from airflow.sensors.base import BaseSensorOperator
 from airflow.triggers.temporal import DateTimeTrigger
 from airflow.utils import timezone
@@ -41,11 +40,11 @@ class TimeSensor(BaseSensorOperator):
 
     """
 
-    def __init__(self, *, target_time, **kwargs):
+    def __init__(self, *, target_time: datetime.time, **kwargs) -> None:
         super().__init__(**kwargs)
         self.target_time = target_time
 
-    def poke(self, context: Context):
+    def poke(self, context: Context) -> bool:
         self.log.info("Checking if the time (%s) has come", self.target_time)
         return timezone.make_naive(timezone.utcnow(), self.dag.timezone).time() > self.target_time
 
@@ -73,8 +72,7 @@ class TimeSensorAsync(BaseSensorOperator):
 
         self.target_datetime = timezone.convert_to_utc(aware_time)
 
-    def execute(self, context: Context) -> None:
+    def execute(self, context: Context) -> NoReturn:
         self.defer(
-            method_name=TaskDeferred.TRIGGER_EXIT,
             trigger=DateTimeTrigger(moment=self.target_datetime, end_task=True),
         )

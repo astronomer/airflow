@@ -18,9 +18,8 @@
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, NoReturn, Sequence
 
-from airflow.exceptions import TaskDeferred
 from airflow.sensors.base import BaseSensorOperator
 from airflow.triggers.temporal import DateTimeTrigger
 from airflow.utils import timezone
@@ -91,8 +90,7 @@ class DateTimeSensorAsync(DateTimeSensor):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
-    def execute(self, context: Context) -> None:
+    def execute(self, context: Context) -> NoReturn:
         self.defer(
-            method_name=TaskDeferred.TRIGGER_EXIT,
             trigger=DateTimeTrigger(moment=timezone.parse(self.target_time), end_task=True),
         )
