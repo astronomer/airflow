@@ -163,19 +163,10 @@ class TriggerEvent:
         :param task_instance: The task instance to handle the submit event for.
         :param session: The session to be used for the database callback sink.
         """
-        # Get the next kwargs of the task instance, or an empty dictionary if it doesn't exist
         next_kwargs = task_instance.next_kwargs or {}
-
-        # Add the event's payload into the kwargs for the task
         next_kwargs["event"] = self.payload
-
-        # Update the next kwargs of the task instance
         task_instance.next_kwargs = next_kwargs
-
-        # Remove ourselves as its trigger
         task_instance.trigger_id = None
-
-        # Set the state of the task instance to scheduled
         task_instance.state = TaskInstanceState.SCHEDULED
 
 
