@@ -75,4 +75,5 @@ class TimeSensorAsync(BaseSensorOperator):
     def execute(self, context: Context) -> NoReturn:
         self.defer(
             trigger=DateTimeTrigger(moment=self.target_datetime, end_task=True),
+            method_name="__trigger_exit__",
         )

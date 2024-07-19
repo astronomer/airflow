@@ -79,4 +79,4 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
                 raise AirflowSkipException("Skipping due to soft_fail is set to True.") from e
             raise
 
-        self.defer(trigger=trigger)
+        self.defer(trigger=trigger, method_name="__trigger_exit__")
