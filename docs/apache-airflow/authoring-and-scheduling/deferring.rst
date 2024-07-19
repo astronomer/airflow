@@ -213,6 +213,70 @@ This is particularly useful when deferring is the only thing the ``execute`` met
             # We have no more work to do here. Mark as complete.
             return
 
+Exiting deferred task from Triggers
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ .. versionadded:: 2.10.0
+
+If you want to exit your task directly from the triggerer without going into the worker, you can specific operator level attribute ``end_from_trigger`` with the attributes to your deferrable operator other discussed above.
+
+Triggers can have two options: they can either send execution back to the worker or end the task instance directly. If the trigger ends the task instance itself, the ``method_name`` does not matter and can be ``None``. Otherwise, provide the name of the ``method_name`` that should be used when resuming execution in the task.
+
+.. code-block:: python
+
+    class DateTimeSensorAsync(DateTimeSensor):
+        def __init__(self, end_from_trigger: bool = True, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.end_from_trigger = end_from_trigger
+
+        def execute(self, context: Context) -> NoReturn:
+            self.defer(
+                method_name="execute_complete",
+                trigger=DateTimeTrigger(
+                    moment=timezone.parse(self.target_time), end_from_trigger=self.end_from_trigger
+                ),
+            )
+
+        def execute_complete(self, context, event=None) -> None:
+            return None
+
+``TaskSuccessEvent`` and ``TaskFailureEvent`` are the two events that can be used to end the task instance directly. This marks the task with the state ``task_instance_state`` and optionally pushes xcom if applicable. Here's an example of how to use these events:
+
+.. code-block:: python
+
+
+    class DateTimeTrigger(BaseTrigger):
+        def __init__(self, moment: datetime.datetime, *, end_from_trigger: bool = False):
+            super().__init__()
+            if not isinstance(moment, datetime.datetime):
+                raise TypeError(f"Expected datetime.datetime type for moment. Got {type(moment)}")
+            elif moment.tzinfo is None:
+                raise ValueError("You cannot pass naive datetimes")
+            else:
+                self.moment: pendulum.DateTime = timezone.convert_to_utc(moment)
+            self.end_from_trigger = end_from_trigger
+
+        def serialize(self) -> tuple[str, dict[str, Any]]:
+            return (
+                "airflow.triggers.temporal.DateTimeTrigger",
+                {"moment": self.moment, "end_from_trigger": self.end_from_trigger},
+            )
+
+        async def run(self) -> AsyncIterator[TriggerEvent]:
+            for step in 3600, 60, 10:
+                seconds_remaining = (self.moment - pendulum.instance(timezone.utcnow())).total_seconds()
+                while seconds_remaining > 2 * step:
+                    await asyncio.sleep(step)
+                    seconds_remaining = (self.moment - pendulum.instance(timezone.utcnow())).total_seconds()
+            while self.moment > pendulum.instance(timezone.utcnow()):
+                await asyncio.sleep(1)
+            if self.end_from_trigger:
+                yield TaskSuccessEvent()
+            else:
+                yield TriggerEvent(self.moment)
+
+In the above example, the trigger will end the task instance directly if ``end_from_trigger`` is set to ``True`` by yielding ``TaskSuccessEvent``. Otherwise, it will resume the task instance with the method specified in the operator.
+
 Writing Triggers
 ~~~~~~~~~~~~~~~~
 
