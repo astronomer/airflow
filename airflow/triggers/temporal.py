@@ -36,11 +36,11 @@ class DateTimeTrigger(BaseTrigger):
     The provided datetime MUST be in UTC.
 
     :param moment: when to yield event
-    :param end_task: whether the trigger should mark the task successful after time condition
+    :param end_from_trigger: whether the trigger should mark the task successful after time condition
         reached or resume the task after time condition reached.
     """
 
-    def __init__(self, moment: datetime.datetime, *, end_task: bool = False):
+    def __init__(self, moment: datetime.datetime, *, end_from_trigger: bool = False):
         super().__init__()
         if not isinstance(moment, datetime.datetime):
             raise TypeError(f"Expected datetime.datetime type for moment. Got {type(moment)}")
@@ -49,12 +49,12 @@ class DateTimeTrigger(BaseTrigger):
             raise ValueError("You cannot pass naive datetimes")
         else:
             self.moment: pendulum.DateTime = timezone.convert_to_utc(moment)
-        self.end_task = end_task
+        self.end_from_trigger = end_from_trigger
 
     def serialize(self) -> tuple[str, dict[str, Any]]:
         return (
             "airflow.triggers.temporal.DateTimeTrigger",
-            {"moment": self.moment, "end_task": self.end_task},
+            {"moment": self.moment, "end_from_trigger": self.end_from_trigger},
         )
 
     async def run(self) -> AsyncIterator[TriggerEvent]:
@@ -78,7 +78,7 @@ class DateTimeTrigger(BaseTrigger):
         while self.moment > pendulum.instance(timezone.utcnow()):
             self.log.info("sleeping 1 second...")
             await asyncio.sleep(1)
-        if self.end_task:
+        if self.end_from_trigger:
             self.log.info("Sensor time condition reached; marking task successful and exiting")
             yield TaskSuccessEvent()
         else:
@@ -97,9 +97,9 @@ class TimeDeltaTrigger(DateTimeTrigger):
     DateTimeTrigger class, since they're operationally the same.
 
     :param delta: how long to wait
-    :param end_task: whether the trigger should mark the task successful after time condition
+    :param end_from_trigger: whether the trigger should mark the task successful after time condition
         reached or resume the task after time condition reached.
     """
 
-    def __init__(self, delta: datetime.timedelta, *, end_task: bool = False):
-        super().__init__(moment=timezone.utcnow() + delta, end_task=end_task)
+    def __init__(self, delta: datetime.timedelta, *, end_from_trigger: bool = False):
+        super().__init__(moment=timezone.utcnow() + delta, end_from_trigger=end_from_trigger)

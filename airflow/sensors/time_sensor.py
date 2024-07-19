@@ -56,14 +56,16 @@ class TimeSensorAsync(BaseSensorOperator):
     This frees up a worker slot while it is waiting.
 
     :param target_time: time after which the job succeeds
+    :param end_from_trigger: End the task directly from the triggerer without going into the worker.
 
     .. seealso::
         For more information on how to use this sensor, take a look at the guide:
         :ref:`howto/operator:TimeSensorAsync`
     """
 
-    def __init__(self, *, target_time: datetime.time, **kwargs) -> None:
+    def __init__(self, *, end_from_trigger: bool = False, target_time: datetime.time, **kwargs) -> None:
         super().__init__(**kwargs)
+        self.end_from_trigger = end_from_trigger
         self.target_time = target_time
 
         aware_time = timezone.coerce_datetime(
@@ -74,6 +76,10 @@ class TimeSensorAsync(BaseSensorOperator):
 
     def execute(self, context: Context) -> NoReturn:
         self.defer(
-            trigger=DateTimeTrigger(moment=self.target_datetime, end_task=True),
-            method_name="__trigger_exit__",
+            trigger=DateTimeTrigger(moment=self.target_datetime, end_from_trigger=self.end_from_trigger),
+            method_name="execute_complete",
         )
+
+    def execute_complete(self, context, event=None):
+        """Handle the event when the trigger fires and return immediately."""
+        return None

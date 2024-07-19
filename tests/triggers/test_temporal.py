@@ -57,7 +57,7 @@ def test_datetime_trigger_serialization():
     trigger = DateTimeTrigger(moment)
     classpath, kwargs = trigger.serialize()
     assert classpath == "airflow.triggers.temporal.DateTimeTrigger"
-    assert kwargs == {"moment": moment, "end_task": False}
+    assert kwargs == {"moment": moment, "end_from_trigger": False}
 
 
 def test_timedelta_trigger_serialization():
@@ -75,7 +75,7 @@ def test_timedelta_trigger_serialization():
 
 
 @pytest.mark.parametrize(
-    "tz, end_task",
+    "tz, end_from_trigger",
     [
         (pendulum.timezone("UTC"), True),
         (pendulum.timezone("UTC"), False),  # only really need to test one
@@ -84,7 +84,7 @@ def test_timedelta_trigger_serialization():
     ],
 )
 @pytest.mark.asyncio
-async def test_datetime_trigger_timing(tz, end_task):
+async def test_datetime_trigger_timing(tz, end_from_trigger):
     """
     Tests that the DateTimeTrigger only goes off on or after the appropriate
     time.
@@ -93,7 +93,7 @@ async def test_datetime_trigger_timing(tz, end_task):
     future_moment = pendulum.instance((timezone.utcnow() + datetime.timedelta(seconds=60)).astimezone(tz))
 
     # Create a task that runs the trigger for a short time then cancels it
-    trigger = DateTimeTrigger(future_moment, end_task=end_task)
+    trigger = DateTimeTrigger(future_moment, end_from_trigger=end_from_trigger)
     trigger_task = asyncio.create_task(trigger.run().__anext__())
     await asyncio.sleep(0.5)
 
@@ -102,14 +102,14 @@ async def test_datetime_trigger_timing(tz, end_task):
     trigger_task.cancel()
 
     # Now, make one waiting for en event in the past and do it again
-    trigger = DateTimeTrigger(past_moment, end_task=end_task)
+    trigger = DateTimeTrigger(past_moment, end_from_trigger=end_from_trigger)
     trigger_task = asyncio.create_task(trigger.run().__anext__())
     await asyncio.sleep(0.5)
 
     assert trigger_task.done() is True
     result = trigger_task.result()
     assert isinstance(result, TriggerEvent)
-    expected_payload = TaskInstanceState.SUCCESS if end_task else past_moment
+    expected_payload = TaskInstanceState.SUCCESS if end_from_trigger else past_moment
     assert result.payload == expected_payload
 
 

@@ -59,12 +59,18 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
     Will defers itself to avoid taking up a worker slot while it is waiting.
 
     :param delta: time length to wait after the data interval before succeeding.
+    :param end_from_trigger: End the task directly from the triggerer without going into the worker.
 
     .. seealso::
         For more information on how to use this sensor, take a look at the guide:
         :ref:`howto/operator:TimeDeltaSensorAsync`
 
     """
+
+    def __init__(self, *, end_from_trigger: bool = False, delta, **kwargs):
+        super().__init__(delta=delta, **kwargs)
+        self.end_from_trigger = end_from_trigger
+        self.delta = delta
 
     def execute(self, context: Context) -> bool | NoReturn:
         target_dttm = context["data_interval_end"]
@@ -73,10 +79,14 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
             # If the target datetime is in the past, return immediately
             return True
         try:
-            trigger = DateTimeTrigger(moment=target_dttm, end_task=True)
+            trigger = DateTimeTrigger(moment=target_dttm, end_from_trigger=self.end_from_trigger)
         except (TypeError, ValueError) as e:
             if self.soft_fail:
                 raise AirflowSkipException("Skipping due to soft_fail is set to True.") from e
             raise
 
-        self.defer(trigger=trigger, method_name="__trigger_exit__")
+        self.defer(trigger=trigger, method_name="execute_complete")
+
+    def execute_complete(self, context, event=None):
+        """Handle the event when the trigger fires and return immediately."""
+        return None
