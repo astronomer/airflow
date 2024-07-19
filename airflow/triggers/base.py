@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator
 
 from airflow.callbacks.callback_requests import TaskCallbackRequest
 from airflow.callbacks.database_callback_sink import DatabaseCallbackSink
+from airflow.listeners.listener import get_listener_manager
 from airflow.models.taskinstance import SimpleTaskInstance
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.session import NEW_SESSION, provide_session
@@ -204,9 +205,40 @@ class BaseTaskEndEvent(TriggerEvent):
         # Mark the task with terminal state and prevent it from resuming on worker
         task_instance.trigger_id = None
         task_instance.state = self.task_instance_state
-
         self._submit_callback_if_necessary(task_instance=task_instance, session=session)
+        self._notify_listener(task_instance=task_instance, session=session)
         self._push_xcoms_if_necessary(task_instance=task_instance)
+
+    def _notify_listener(self, *, task_instance: TaskInstance, session: Session) -> None:
+        """Notify the listener."""
+        self._notify_taskinstance_listeners(task_instance=task_instance, session=session)
+        self._register_dataset_listeners(task_instance=task_instance, session=session)
+
+    def _notify_taskinstance_listeners(self, *, task_instance: TaskInstance, session: Session) -> None:
+        """Notify the task instance listeners about the task instance state change."""
+        if task_instance.state == TaskInstanceState.SUCCESS:
+            get_listener_manager().hook.on_task_instance_success(
+                previous_state=TaskInstanceState.DEFERRED,
+                task_instance=task_instance,
+                session=session,
+            )
+        elif task_instance.state == TaskInstanceState.FAILED:
+            get_listener_manager().hook.on_task_instance_failed(
+                previous_state=TaskInstanceState.DEFERRED,
+                task_instance=task_instance,
+                session=session,
+            )
+
+    def _register_dataset_listeners(self, *, task_instance: TaskInstance, session: Session) -> None:
+        """Notify the dataset listeners about the task instance state change."""
+        if task_instance.state == TaskInstanceState.SUCCESS:
+            from airflow.models import DagBag
+
+            dag_bag = DagBag()
+            dag = dag_bag.get_dag(task_instance.dag_id)
+            task_instance.task = dag.get_task(task_instance.task_id)
+            context = task_instance.get_template_context(session=session)
+            task_instance._register_dataset_changes(events=context["outlet_events"], session=session)
 
     def _submit_callback_if_necessary(self, *, task_instance: TaskInstance, session) -> None:
         """Submit a callback request if the task state is SUCCESS or FAILED."""
