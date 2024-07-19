@@ -40,7 +40,7 @@ class DateTimeTrigger(BaseTrigger):
         reached or resume the task after time condition reached.
     """
 
-    def __init__(self, moment: datetime.datetime, *, end_from_trigger: bool = False):
+    def __init__(self, moment: datetime.datetime, *, end_from_trigger: bool = False) -> None:
         super().__init__()
         if not isinstance(moment, datetime.datetime):
             raise TypeError(f"Expected datetime.datetime type for moment. Got {type(moment)}")
@@ -101,5 +101,5 @@ class TimeDeltaTrigger(DateTimeTrigger):
         reached or resume the task after time condition reached.
     """
 
-    def __init__(self, delta: datetime.timedelta, *, end_from_trigger: bool = False):
+    def __init__(self, delta: datetime.timedelta, *, end_from_trigger: bool = False) -> None:
         super().__init__(moment=timezone.utcnow() + delta, end_from_trigger=end_from_trigger)

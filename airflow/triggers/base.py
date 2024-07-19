@@ -171,7 +171,11 @@ class TriggerEvent:
 
 
 class BaseTaskEndEvent(TriggerEvent):
-    """Base event class to end the task without resuming on worker."""
+    """
+    Base event class to end the task without resuming on worker.
+
+    :meta private:
+    """
 
     task_instance_state: TaskInstanceState
 
@@ -207,7 +211,7 @@ class BaseTaskEndEvent(TriggerEvent):
     def _submit_callback_if_necessary(self, *, task_instance: TaskInstance, session) -> None:
         """Submit a callback request if the task state is SUCCESS or FAILED."""
         is_failure = self.task_instance_state == TaskInstanceState.FAILED
-        if self.task_instance_state in [TaskInstanceState.SUCCESS, TaskInstanceState.FAILED]:
+        if self.task_instance_state in (TaskInstanceState.SUCCESS, TaskInstanceState.FAILED):
             request = TaskCallbackRequest(
                 full_filepath=task_instance.dag_model.fileloc,
                 simple_task_instance=SimpleTaskInstance.from_ti(task_instance),
@@ -217,8 +221,8 @@ class BaseTaskEndEvent(TriggerEvent):
             log.info("Sending callback: %s", request)
             try:
                 DatabaseCallbackSink().send(callback=request, session=session)
-            except Exception as e:
-                log.error("Failed to send callback: %s", e)
+            except Exception:
+                log.exception("Failed to send callback.")
 
     def _push_xcoms_if_necessary(self, *, task_instance: TaskInstance) -> None:
         """Pushes XComs to the database if they are provided."""

@@ -17,7 +17,7 @@
 # under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
 
 from airflow.exceptions import AirflowSkipException
 from airflow.sensors.base import BaseSensorOperator
@@ -67,10 +67,9 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
 
     """
 
-    def __init__(self, *, end_from_trigger: bool = False, delta, **kwargs):
+    def __init__(self, *, end_from_trigger: bool = False, delta, **kwargs) -> None:
         super().__init__(delta=delta, **kwargs)
         self.end_from_trigger = end_from_trigger
-        self.delta = delta
 
     def execute(self, context: Context) -> bool | NoReturn:
         target_dttm = context["data_interval_end"]
@@ -87,6 +86,6 @@ class TimeDeltaSensorAsync(TimeDeltaSensor):
 
         self.defer(trigger=trigger, method_name="execute_complete")
 
-    def execute_complete(self, context, event=None):
+    def execute_complete(self, context: Context, event: Any = None) -> None:
         """Handle the event when the trigger fires and return immediately."""
         return None
