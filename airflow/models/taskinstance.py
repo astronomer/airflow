@@ -83,7 +83,6 @@ from airflow.exceptions import (
     AirflowTaskTimeout,
     DagRunNotFound,
     RemovedInAirflow3Warning,
-    TaskDeferralError,
     TaskDeferred,
     UnmappableXComLengthPushed,
     UnmappableXComTypePushed,
@@ -716,13 +715,6 @@ def _execute_task(task_instance: TaskInstance | TaskInstancePydantic, context: C
             if not task_instance.next_kwargs:
                 task_instance.next_kwargs = {}
             task_instance.next_kwargs[f"{task_to_execute.__class__.__name__}__sentinel"] = _sentinel
-        elif task_instance.next_method == "__trigger_exit__":
-            log.error("Task is resuming from deferral without next_method specified.")
-            raise TaskDeferralError(
-                "Task is resuming from deferral without next_method specified. "
-                "You must either set `method_name` when deferring, or use a trigger "
-                "that is designed to exit the task."
-            )
         execute_callable = task_to_execute.resume_execution
         execute_callable_kwargs["next_method"] = task_instance.next_method
         execute_callable_kwargs["next_kwargs"] = task_instance.next_kwargs

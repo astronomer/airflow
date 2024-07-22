@@ -277,6 +277,9 @@ Triggers can have two options: they can either send execution back to the worker
 
 In the above example, the trigger will end the task instance directly if ``end_from_trigger`` is set to ``True`` by yielding ``TaskSuccessEvent``. Otherwise, it will resume the task instance with the method specified in the operator.
 
+.. note::
+    Currently, there is a limitation where deferrable tasks with the ``end_from_trigger`` attribute set to ``True`` cannot be parsed during the DAG parsing phase when listeners are integrated. This will raise an exception during parsing to indicate the the same. While writing the custom trigger, ensure that the trigger is not set to end the task instance directly if the listeners are added from plugins. If the ``end_from_trigger`` attribute is changed to different attribute by author of trigger, the DAG parsing would not raise any exception and the listeners dependent on this task would not work. This limitation will be addressed in future releases.
+
 Writing Triggers
 ~~~~~~~~~~~~~~~~
 
