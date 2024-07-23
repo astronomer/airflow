@@ -182,9 +182,6 @@ This is particularly useful when deferring is the only thing the ``execute`` met
 
 ``start_from_trigger`` and ``trigger_kwargs`` can also be modified at the instance level for more flexible configuration.
 
-.. warning::
-    Dynamic task mapping is not supported when ``trigger_kwargs`` is modified at instance level.
-
 .. code-block:: python
 
     from datetime import timedelta
@@ -279,6 +276,49 @@ In the above example, the trigger will end the task instance directly if ``end_f
 
 .. note::
     Currently, there is a limitation where deferrable tasks with the ``end_from_trigger`` attribute set to ``True`` cannot be parsed during the DAG parsing phase when listeners are integrated. This will raise an exception during parsing to indicate the the same. While writing the custom trigger, ensure that the trigger is not set to end the task instance directly if the listeners are added from plugins. If the ``end_from_trigger`` attribute is changed to different attribute by author of trigger, the DAG parsing would not raise any exception and the listeners dependent on this task would not work. This limitation will be addressed in future releases.
+
+To enable Dynamic Task Mapping support, you can define ``start_from_trigger`` and ``trigger_kwargs`` in the parameter of "__init__". Note that you don't need to define both of them to use this feature, but you do need to use the exact same parameter name. For example, if you define an argument as ``t_kwargs`` and assign this value to ``self.start_trigger_args.trigger_kwargs``, it will not work. Note that this works different from mapping an operator without ``start_from_trigger`` support. The whole ``__init__`` method is skipped when mapping an operator whose ``start_from_trigger`` is set to True. Only argument ``trigger_kwargs`` is used and passed into ``trigger_cls``.
+
+.. code-block:: python
+
+    from datetime import timedelta
+    from typing import Any
+
+    from airflow.sensors.base import BaseSensorOperator
+    from airflow.triggers.temporal import TimeDeltaTrigger
+    from airflow.utils.context import Context
+
+
+    class WaitTwoHourSensor(BaseSensorOperator):
+        start_trigger_args = StartTriggerArgs(
+            trigger_cls="airflow.triggers.temporal.TimeDeltaTrigger",
+            trigger_kwargs={},
+            next_method="execute_complete",
+            timeout=None,
+        )
+
+        def __init__(
+            self,
+            *args: list[Any],
+            trigger_kwargs: dict[str, Any] | None,
+            start_from_trigger: bool,
+            **kwargs: dict[str, Any],
+        ) -> None:
+            super().__init__(*args, **kwargs)
+            self.start_trigger_args.trigger_kwargs = trigger_kwargs
+            self.start_from_trigger = start_from_trigger
+
+        def execute_complete(self, context: Context, event: dict[str, Any] | None = None) -> None:
+            # We have no more work to do here. Mark as complete.
+            return
+
+These parameters can be mapped using the ``expand`` and ``partial`` methods. Note that XCom values won't be resolved at this stage.
+
+.. code-block:: python
+
+    WaitTwoHourSensor.partial(task_id="transform", start_from_trigger=True).expand(
+        trigger_kwargs=[{"moment": timedelta(hours=2)}, {"moment": timedelta(hours=2)}]
+    )
 
 Writing Triggers
 ~~~~~~~~~~~~~~~~
