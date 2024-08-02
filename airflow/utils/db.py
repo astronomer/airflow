@@ -94,7 +94,7 @@ T = TypeVar("T")
 log = logging.getLogger(__name__)
 
 _REVISION_HEADS_MAP = {
-    "3.0.0": "ff6b78394492",
+    "3.0.0": "044f740568ec",
 }
 
 
