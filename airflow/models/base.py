@@ -22,7 +22,9 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import Column, Integer, MetaData, String, text
 from sqlalchemy.orm import registry
 
+from airflow import settings
 from airflow.configuration import conf
+from airflow.utils.log.logging_mixin import LoggingMixin
 
 SQL_ALCHEMY_SCHEMA = conf.get("database", "SQL_ALCHEMY_SCHEMA")
 
@@ -94,3 +96,69 @@ class TaskInstanceDependencies(Base):
     dag_id = Column(StringID(), nullable=False)
     run_id = Column(StringID(), nullable=False)
     map_index = Column(Integer, nullable=False, server_default=text("-1"))
+
+
+class AbstractAttribute:
+    def __get__(self, obj, type):
+        raise NotImplementedError("This attribute was not set in a subclass")
+
+
+class BaseDBManager(LoggingMixin):
+    migration_dir = AbstractAttribute()
+    alembic_file = AbstractAttribute()
+    version_table_name = AbstractAttribute()
+
+    def __init__(self, session):
+        super().__init__()
+        self.session = session
+
+    def get_alembic_config(self):
+        from alembic.config import Config
+
+        config = Config(self.alembic_file)
+        config.set_main_option("script_location", self.migration_dir.replace("%", "%%"))
+        config.set_main_option("sqlalchemy.url", settings.SQL_ALCHEMY_CONN.replace("%", "%%"))
+        return config
+
+    def get_current_revision(self):
+        from alembic.migration import MigrationContext
+
+        conn = self.session.connection()
+
+        migration_ctx = MigrationContext.configure(conn, opts={"version_table": self.version_table_name})
+
+        return migration_ctx.get_current_revision()
+
+    def _create_db_from_orm(self):
+        """Should be called inside Airflow create db from ORM method"""
+        from alembic import command
+
+        engine = self.session.get_bind().engine
+        metadata.create_all(engine)
+        config = self.get_alembic_config()
+        command.stamp(config, "head")
+
+    def initdb(self):
+        """
+        Initialize the database.
+        """
+        db_exists = self.get_current_revision()
+        if db_exists:
+            self.upgradedb()
+        else:
+            self._create_db_from_orm()
+
+    def upgradedb(self):
+        from alembic import command
+
+        config = self.get_alembic_config()
+        command.upgrade(config, "heads")
+
+    def downgrade(self):
+        """
+        Downgrade the database.
+        """
+        from alembic import command
+
+        config = self.get_alembic_config()
+        command.downgrade(config, "base")

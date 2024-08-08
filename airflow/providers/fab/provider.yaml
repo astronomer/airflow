@@ -82,6 +82,22 @@ config:
         type: string
         example: ~
         default: "True"
+      sql_alchemy_schema:
+        description: |
+          The schema to use for the SQLAlchemy connection.
+        version_added: ~
+        type: string
+        example: ~
+        default: ""
+      alembic_version_table:
+        description: |
+          The name of the alembic version table in the database.
+        version_added: ~
+        type: string
+        example: ~
+        default: "fab_alembic_version"
 
 auth-managers:
   - airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+db-manager:
+  - airflow.providers.fab.db_manager.fab_db_manager.FabDbManager

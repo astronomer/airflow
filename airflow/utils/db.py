@@ -747,7 +747,6 @@ def _create_db_from_orm(session):
     from alembic import command
 
     from airflow.models.base import Base
-    from airflow.providers.fab.auth_manager.models import Model
 
     def _create_flask_session_tbl(sql_database_uri):
         db = _get_flask_db(sql_database_uri)
@@ -756,7 +755,6 @@ def _create_db_from_orm(session):
     with create_global_lock(session=session, lock=DBLocks.MIGRATIONS):
         engine = session.get_bind().engine
         Base.metadata.create_all(engine)
-        Model.metadata.create_all(engine)
         _create_flask_session_tbl(engine.url)
         # stamp the migration head
         config = _get_alembic_config()
@@ -773,6 +771,9 @@ def initdb(session: Session = NEW_SESSION, load_connections: bool = True):
         upgradedb(session=session)
     else:
         _create_db_from_orm(session=session)
+    from airflow.providers.fab.auth_manager.models.db import FABDBManager
+
+    FABDBManager(session=session).initdb()
     if conf.getboolean("database", "LOAD_DEFAULT_CONNECTIONS") and load_connections:
         create_default_connections(session=session)
     # Add default pool & sync log_template
@@ -1646,6 +1647,9 @@ def upgradedb(
             os.environ["AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_SIZE"] = "1"
             settings.reconfigure_orm(pool_class=sqlalchemy.pool.SingletonThreadPool)
             command.upgrade(config, revision=to_revision or "heads")
+            from airflow.providers.fab.auth_manager.models.db import FABDBManager
+
+            FABDBManager(session=session).upgradedb()
         finally:
             if val is None:
                 os.environ.pop("AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_SIZE")

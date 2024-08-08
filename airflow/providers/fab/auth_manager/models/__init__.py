@@ -32,6 +32,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    MetaData,
     String,
     Table,
     UniqueConstraint,
@@ -39,16 +40,39 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy.orm import backref, declared_attr, relationship
+from sqlalchemy.orm import backref, declared_attr, registry, relationship
 
 from airflow.auth.managers.models.base_user import BaseUser
-from airflow.models.base import Base
+from airflow.configuration import conf
 
 """
 Compatibility note: The models in this file are duplicated from Flask AppBuilder.
 """
+
+SQL_ALCHEMY_SCHEMA = ""  # conf.get("fab", "sql_alchemy_schema", "")
+
+# For more information about what the tokens in the naming convention
+# below mean, see:
+# https://docs.sqlalchemy.org/en/14/core/metadata.html#sqlalchemy.schema.MetaData.params.naming_convention
+naming_convention = {
+    "ix": "idx_%(column_0_N_label)s",
+    "uq": "%(table_name)s_%(column_0_N_name)s_uq",
+    "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "fk": "%(table_name)s_%(column_0_name)s_fkey",
+    "pk": "%(table_name)s_pkey",
+}
+
+
+def _get_schema():
+    if not SQL_ALCHEMY_SCHEMA or SQL_ALCHEMY_SCHEMA.isspace():
+        return None
+    return SQL_ALCHEMY_SCHEMA
+
+
+metadata = MetaData(schema=_get_schema(), naming_convention=naming_convention)
+mapper_registry = registry(metadata=metadata)
 # Use airflow metadata to create the tables
-Model.metadata = Base.metadata
+Model.metadata = metadata
 
 if TYPE_CHECKING:
     try:
@@ -62,10 +86,10 @@ class Action(Model):
 
     __tablename__ = "ab_permission"
     id = Column(Integer, primary_key=True)
-    name = Column(String(100), unique=True, nullable=False)
+    names = Column(String(100), unique=True, nullable=False)
 
     def __repr__(self):
-        return self.name
+        return self.names
 
 
 class Resource(Model):
