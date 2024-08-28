@@ -310,7 +310,7 @@ class ShortCircuitOperator(PythonOperator, SkipMixin):
             self.skip(
                 dag_run=dag_run,
                 tasks=to_skip,
-                execution_date=cast("DateTime", dag_run.execution_date),  # type: ignore[call-arg]
+                execution_date=cast("DateTime", dag_run.execution_date),  # type: ignore[call-arg, union-attr]
                 map_index=context["ti"].map_index,
             )
 
@@ -379,16 +379,17 @@ class _BasePythonVirtualenvOperator(PythonOperator, metaclass=ABCMeta):
     PENDULUM_SERIALIZABLE_CONTEXT_KEYS = {
         "data_interval_end",
         "data_interval_start",
-        "execution_date",
         "logical_date",
-        "next_execution_date",
+        "next_logical_date" if AIRFLOW_V_3_0_PLUS else "next_execution_date",
         "prev_data_interval_end_success",
         "prev_data_interval_start_success",
-        "prev_execution_date",
-        "prev_execution_date_success",
+        "prev_logical_date" if AIRFLOW_V_3_0_PLUS else "prev_execution_date",
+        "prev_logical_date_success" if AIRFLOW_V_3_0_PLUS else "prev_execution_date_success",
         "prev_start_date_success",
         "prev_end_date_success",
     }
+    if not AIRFLOW_V_3_0_PLUS:
+        PENDULUM_SERIALIZABLE_CONTEXT_KEYS.add("execution_date")
 
     AIRFLOW_SERIALIZABLE_CONTEXT_KEYS = {
         "macros",

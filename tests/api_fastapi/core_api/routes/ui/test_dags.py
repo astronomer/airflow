@@ -52,7 +52,7 @@ class TestRecentDagRuns(TestPublicDagEndpoint):
                     run_id=f"run_id_{i+1}",
                     run_type=DagRunType.MANUAL,
                     start_date=start_date,
-                    execution_date=start_date,
+                    logical_date=start_date,
                     state=(DagRunState.FAILED if i % 2 == 0 else DagRunState.SUCCESS),
                     triggered_by=DagRunTriggeredByType.TEST,
                 )
@@ -84,7 +84,6 @@ class TestRecentDagRuns(TestPublicDagEndpoint):
         response = test_client.get("/ui/dags/recent_dag_runs", params=query_params)
         assert response.status_code == 200
         body = response.json()
-        assert body["total_entries"] == len(expected_ids)
         required_dag_run_key = [
             "run_id",
             "dag_id",

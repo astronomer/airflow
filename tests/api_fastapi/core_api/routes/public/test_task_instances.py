@@ -119,7 +119,7 @@ class TestTaskInstanceEndpoint:
                 dr = DagRun(
                     run_id=run_id,
                     dag_id=dag_id,
-                    execution_date=execution_date,
+                    logical_date=execution_date,
                     run_type=DagRunType.MANUAL,
                     state=dag_run_state,
                 )

@@ -68,7 +68,7 @@ class TestEventLogsEndpoint:
             dag_id=DAG_ID,
             task_id=TASK_ID,
             run_id=DAG_RUN_ID,
-            execution_date=DAG_EXECUTION_DATE,
+            logical_date=DAG_EXECUTION_DATE,
         )
         normal_log = Log(
             event=EVENT_NORMAL,

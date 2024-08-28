@@ -149,15 +149,26 @@ class BasePythonTest:
 
     def create_dag_run(self) -> DagRun:
         triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
-        return self.dag_maker.create_dagrun(
-            state=DagRunState.RUNNING,
-            start_date=self.dag_maker.start_date,
-            session=self.dag_maker.session,
-            execution_date=self.default_date,
-            run_type=DagRunType.MANUAL,
-            data_interval=(self.default_date, self.default_date),
-            **triggered_by_kwargs,  # type: ignore
-        )
+        if AIRFLOW_V_3_0_PLUS:
+            return self.dag_maker.create_dagrun(
+                state=DagRunState.RUNNING,
+                start_date=self.dag_maker.start_date,
+                session=self.dag_maker.session,
+                logical_date=self.default_date,
+                run_type=DagRunType.MANUAL,
+                data_interval=(self.default_date, self.default_date),
+                **triggered_by_kwargs,  # type: ignore
+            )
+        else:
+            return self.dag_maker.create_dagrun(
+                state=DagRunState.RUNNING,
+                start_date=self.dag_maker.start_date,
+                session=self.dag_maker.session,
+                execution_date=self.default_date,
+                run_type=DagRunType.MANUAL,
+                data_interval=(self.default_date, self.default_date),
+                **triggered_by_kwargs,  # type: ignore
+            )
 
     def create_ti(self, fn, **kwargs) -> TI:
         """Create TaskInstance for class defined Operator."""
@@ -167,7 +178,7 @@ class BasePythonTest:
             **self.default_kwargs(**kwargs),
             dag_id=self.dag_id,
             task_id=self.task_id,
-            execution_date=self.default_date,
+            logical_date=self.default_date,
         )
 
     def run_as_operator(self, fn, **kwargs):
@@ -1454,10 +1465,10 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             yesterday_ds,
             yesterday_ds_nodash,
             # pendulum-specific
-            execution_date,
-            next_execution_date,
-            prev_execution_date,
-            prev_execution_date_success,
+            logical_date,
+            next_logical_date,
+            prev_logical_date,
+            prev_logical_date_success,
             prev_start_date_success,
             prev_end_date_success,
             # airflow-specific
@@ -1502,10 +1513,7 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             yesterday_ds,
             yesterday_ds_nodash,
             # pendulum-specific
-            execution_date,
-            next_execution_date,
-            prev_execution_date,
-            prev_execution_date_success,
+            logical_date,
             prev_start_date_success,
             prev_end_date_success,
             # other
