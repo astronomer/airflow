@@ -44,7 +44,7 @@ from airflow.cli.cli_config import (
     GroupCommand,
 )
 from airflow.configuration import conf
-from airflow.exceptions import AirflowConfigException, AirflowException
+from airflow.exceptions import AirflowException
 from airflow.models import DagModel
 from airflow.providers.fab.auth_manager.cli_commands.definition import (
     ROLES_COMMANDS,
@@ -52,6 +52,10 @@ from airflow.providers.fab.auth_manager.cli_commands.definition import (
     USERS_COMMANDS,
 )
 from airflow.providers.fab.auth_manager.models import Permission, Role, User
+from airflow.providers.fab.www.extensions.init_appbuilder import init_appbuilder
+from airflow.providers.fab.www.extensions.init_appbuilder_links import init_appbuilder_links
+from airflow.providers.fab.www.extensions.init_appbuilder_views import init_appbuilder_views
+from airflow.providers.fab.www.extensions.init_session import init_airflow_session_interface
 from airflow.security import permissions
 from airflow.security.permissions import (
     RESOURCE_AUDIT_LOG,
@@ -128,6 +132,15 @@ class FabAuthManager(BaseAuthManager):
 
     This auth manager is responsible for providing a backward compatible user management experience to users.
     """
+
+    def __init__(self, app):
+        super().__init__(app)
+        init_appbuilder(app)
+        self.appbuilder = app.appbuilder
+
+        init_appbuilder_views(app)
+        init_appbuilder_links(app)
+        init_airflow_session_interface(app)
 
     @staticmethod
     def get_cli_commands() -> list[CLICommand]:
@@ -337,13 +350,13 @@ class FabAuthManager(BaseAuthManager):
             FabAirflowSecurityManagerOverride,
         )
 
-        sm_from_config = self.appbuilder.get_app.config.get("SECURITY_MANAGER_CLASS")
-        if sm_from_config:
-            if not issubclass(sm_from_config, FabAirflowSecurityManagerOverride):
-                raise AirflowConfigException(
-                    """Your CUSTOM_SECURITY_MANAGER must extend FabAirflowSecurityManagerOverride."""
-                )
-            return sm_from_config(self.appbuilder)
+        # sm_from_config = self.appbuilder.get_app.config.get("SECURITY_MANAGER_CLASS")
+        # if sm_from_config:
+        #    if not issubclass(sm_from_config, FabAirflowSecurityManagerOverride):
+        #        raise AirflowConfigException(
+        #            """Your CUSTOM_SECURITY_MANAGER must extend FabAirflowSecurityManagerOverride."""
+        #        )
+        #    return sm_from_config(self.appbuilder)
 
         return FabAirflowSecurityManagerOverride(self.appbuilder)
 

@@ -2320,6 +2320,7 @@ def initialize_auth_manager() -> BaseAuthManager:
             "Please specify one using section/key [core/auth_manager]."
         )
 
+    # TODO: never called :(
     return auth_manager_cls()
 
 

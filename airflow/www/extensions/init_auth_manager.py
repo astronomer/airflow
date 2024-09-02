@@ -45,7 +45,7 @@ def get_auth_manager_cls() -> type[BaseAuthManager]:
     return auth_manager_cls
 
 
-def init_auth_manager(appbuilder: AirflowAppBuilder) -> BaseAuthManager:
+def init_auth_manager(app) -> BaseAuthManager:
     """
     Initialize the auth manager.
 
@@ -53,7 +53,7 @@ def init_auth_manager(appbuilder: AirflowAppBuilder) -> BaseAuthManager:
     """
     global auth_manager
     auth_manager_cls = get_auth_manager_cls()
-    auth_manager = auth_manager_cls(appbuilder)
+    auth_manager = auth_manager_cls(app)
     return auth_manager
 
 

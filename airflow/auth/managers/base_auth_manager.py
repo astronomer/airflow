@@ -66,12 +66,12 @@ class BaseAuthManager(LoggingMixin):
 
     Auth managers are responsible for any user management related operation such as login, logout, authz, ...
 
-    :param appbuilder: the flask app builder
+    :param app: the flask app
     """
 
-    def __init__(self, appbuilder: AirflowAppBuilder) -> None:
+    def __init__(self, app) -> None:
         super().__init__()
-        self.appbuilder = appbuilder
+        self.app = app
 
     @staticmethod
     def get_cli_commands() -> list[CLICommand]:
@@ -442,4 +442,4 @@ class BaseAuthManager(LoggingMixin):
         """
         from airflow.www.security_manager import AirflowSecurityManagerV2
 
-        return AirflowSecurityManagerV2(self.appbuilder)
+        return AirflowSecurityManagerV2(self.app)

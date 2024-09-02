@@ -86,9 +86,10 @@ class AirflowSecurityManagerV2(LoggingMixin):
     It's named V2 to differentiate it from the obsolete airflow.www.security.AirflowSecurityManager.
     """
 
-    def __init__(self, appbuilder) -> None:
+    def __init__(self, app) -> None:
         super().__init__()
-        self.appbuilder = appbuilder
+        self.app = app
+        self.appbuilder = self.app.appbuilder
 
         # Setup Flask-Limiter
         self.limiter = self.create_limiter()
