@@ -17,19 +17,28 @@
  * under the License.
  */
 
-import { Box } from "@chakra-ui/react";
-import { DagsList } from "src/views/DagsList";
-import { Nav } from "src/nav";
+import { Skeleton } from "@chakra-ui/react";
+import type { ColumnDef } from "@tanstack/react-table";
 
-export const App = () => {
-  return (
-    <div>
-      <Nav />
-      <Box p={3} ml={24}>
-        <DagsList />
-      </Box>
-    </div>
-  );
-};
+function createSkeleton<TData, TValue>(
+  skeletonCount: number,
+  columnDefs: ColumnDef<TData, TValue>[]
+) {
+  const colDefs = columnDefs.map((colDef) => ({
+    ...colDef,
+    cell: () => (
+      <Skeleton
+        data-testid="skeleton"
+        width="100%"
+        height={2.5}
+        display="inline-block"
+      />
+    ),
+  }));
 
-export const AppSimple = () => <div>Something</div>;
+  const data = [...Array(skeletonCount)].map(() => ({}) as TData);
+
+  return { columns: colDefs, data };
+}
+
+export default createSkeleton;

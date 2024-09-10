@@ -31,7 +31,13 @@ const columns: ColumnDef<{ name: string }>[] = [
   },
 ];
 
-const data = [{ name: "John Doe" }, { name: "Jane Doe" }];
+const data = [
+  { name: "John Doe" },
+  { name: "Jane Doe" },
+  { name: "Person 3" },
+  { name: "Person 4" },
+  { name: "Person 5" },
+];
 
 const pagination: PaginationState = { pageIndex: 0, pageSize: 1 };
 const onStateChange = vi.fn();
@@ -41,10 +47,11 @@ describe("DataTable", () => {
     render(
       <DataTable
         data={data}
-        total={2}
+        total={data.length}
         columns={columns}
         initialState={{ pagination, sorting: [] }}
         onStateChange={onStateChange}
+        title="Name"
       />
     );
 
@@ -56,32 +63,108 @@ describe("DataTable", () => {
     render(
       <DataTable
         data={data}
-        total={2}
+        total={data.length}
         columns={columns}
         initialState={{ pagination, sorting: [] }}
         onStateChange={onStateChange}
+        title="Name"
       />
     );
 
-    expect(screen.getByText("<<")).toBeDisabled();
-    expect(screen.getByText("<")).toBeDisabled();
+    expect(screen.getByTestId("previous-page")).toBeDisabled();
   });
 
   it("disables next button when on last page", () => {
     render(
       <DataTable
         data={data}
-        total={2}
+        total={data.length}
         columns={columns}
         initialState={{
-          pagination: { pageIndex: 1, pageSize: 10 },
+          pagination: { pageIndex: 4, pageSize: 1 },
           sorting: [],
         }}
-        onStateChange={onStateChange}
+        onStateChange={() => {}}
+        title="Name"
       />
     );
 
-    expect(screen.getByText(">>")).toBeDisabled();
-    expect(screen.getByText(">")).toBeDisabled();
+    expect(screen.getByTestId("next-page")).toBeDisabled();
+  });
+
+  it("shows second and second to last button when on third page", () => {
+    render(
+      <DataTable
+        data={data}
+        total={data.length}
+        columns={columns}
+        initialState={{
+          pagination: { pageIndex: 2, pageSize: 1 },
+          sorting: [],
+        }}
+        onStateChange={() => {}}
+        title="Name"
+      />
+    );
+
+    expect(screen.getByTestId("second-page")).toBeDefined();
+    expect(screen.getByTestId("second-last-page")).toBeDefined();
+  });
+
+  it("shows ellipsis between 1 and current page when index > 2", () => {
+    render(
+      <DataTable
+        data={data}
+        total={data.length}
+        columns={columns}
+        initialState={{
+          pagination: { pageIndex: 3, pageSize: 1 },
+          sorting: [],
+        }}
+        onStateChange={() => {}}
+        title="Name"
+      />
+    );
+
+    expect(screen.getByTestId("ellipsis")).toBeDefined();
+  });
+
+  it("shows ellipsis between current page and last when index < 3", () => {
+    render(
+      <DataTable
+        data={data}
+        total={data.length}
+        columns={columns}
+        initialState={{
+          pagination: { pageIndex: 1, pageSize: 1 },
+          sorting: [],
+        }}
+        onStateChange={() => {}}
+        title="Name"
+      />
+    );
+
+    expect(screen.getByTestId("ellipsis")).toBeDefined();
+  });
+
+  it("Does not show any pagination when its only one page", () => {
+    render(
+      <DataTable
+        data={data}
+        total={data.length}
+        columns={columns}
+        initialState={{
+          pagination: { pageIndex: 0, pageSize: 5 },
+          sorting: [],
+        }}
+        onStateChange={() => {}}
+        title="Name"
+      />
+    );
+
+    expect(screen.queryByTestId("first-page")).toBeNull();
+    expect(screen.queryByTestId("last-page")).toBeNull();
+    expect(screen.queryByTestId("next-page")).toBeNull();
+    expect(screen.queryByTestId("previous-page")).toBeNull();
   });
 });

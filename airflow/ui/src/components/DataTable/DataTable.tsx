@@ -31,9 +31,9 @@ import {
   Updater,
 } from "@tanstack/react-table";
 import {
-  Box,
-  Button,
   Table as ChakraTable,
+  Heading,
+  HStack,
   TableContainer,
   Tbody,
   Td,
@@ -41,6 +41,7 @@ import {
   Thead,
   Tr,
   useColorModeValue,
+  VStack,
 } from "@chakra-ui/react";
 import React, { Fragment, useCallback, useRef } from "react";
 import {
@@ -48,7 +49,12 @@ import {
   TiArrowSortedUp,
   TiArrowUnsorted,
 } from "react-icons/ti";
+
+import { pluralize } from "src/utils/pluralize";
+
 import type { TableState } from "./types";
+import { TablePaginator } from "./TablePaginator";
+import createSkeleton from "./createSkeleton";
 
 type DataTableProps<TData> = {
   data: TData[];
@@ -60,69 +66,8 @@ type DataTableProps<TData> = {
   getRowCanExpand?: (row: Row<TData>) => boolean;
   initialState?: TableState;
   onStateChange?: (state: TableState) => void;
-};
-
-type PaginatorProps<TData> = {
-  table: TanStackTable<TData>;
-};
-
-const TablePaginator = <TData,>({ table }: PaginatorProps<TData>) => {
-  const pageInterval = 3;
-  const currentPageNumber = table.getState().pagination.pageIndex + 1;
-  const startPageNumber = Math.max(1, currentPageNumber - pageInterval);
-  const endPageNumber = Math.min(
-    table.getPageCount(),
-    startPageNumber + pageInterval * 2
-  );
-  const pageNumbers = [];
-
-  for (let index = startPageNumber; index <= endPageNumber; index++) {
-    pageNumbers.push(
-      <Button
-        borderRadius={0}
-        key={index}
-        isDisabled={index === currentPageNumber}
-        onClick={() => table.setPageIndex(index - 1)}
-      >
-        {index}
-      </Button>
-    );
-  }
-
-  return (
-    <Box mt={2} mb={2}>
-      <Button
-        borderRadius={0}
-        onClick={() => table.firstPage()}
-        isDisabled={!table.getCanPreviousPage()}
-      >
-        {"<<"}
-      </Button>
-
-      <Button
-        borderRadius={0}
-        onClick={() => table.previousPage()}
-        isDisabled={!table.getCanPreviousPage()}
-      >
-        {"<"}
-      </Button>
-      {pageNumbers}
-      <Button
-        borderRadius={0}
-        onClick={() => table.nextPage()}
-        isDisabled={!table.getCanNextPage()}
-      >
-        {">"}
-      </Button>
-      <Button
-        borderRadius={0}
-        onClick={() => table.lastPage()}
-        isDisabled={!table.getCanNextPage()}
-      >
-        {">>"}
-      </Button>
-    </Box>
-  );
+  isLoading?: boolean;
+  title: string;
 };
 
 export const DataTable = <TData,>({
@@ -133,6 +78,8 @@ export const DataTable = <TData,>({
   getRowCanExpand = () => false,
   initialState,
   onStateChange,
+  isLoading,
+  title,
 }: DataTableProps<TData>) => {
   const ref = useRef<{ tableRef: TanStackTable<TData> | undefined }>({
     tableRef: undefined,
@@ -163,6 +110,7 @@ export const DataTable = <TData,>({
     getExpandedRowModel: getExpandedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     onStateChange: handleStateChange,
+    ...(isLoading ? createSkeleton(25, columns) : {}),
     rowCount: total,
     manualPagination: true,
     manualSorting: true,
@@ -174,86 +122,95 @@ export const DataTable = <TData,>({
   const theadBg = useColorModeValue("white", "gray.800");
 
   return (
-    <TableContainer overflowY="auto" maxH="calc(100vh - 10rem)">
-      <ChakraTable colorScheme="blue">
-        <Thead position="sticky" top={0} bg={theadBg} zIndex={1}>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <Tr key={headerGroup.id}>
-              {headerGroup.headers.map(
-                ({ column, id, colSpan, getContext, isPlaceholder }) => {
-                  const sort = column.getIsSorted();
-                  const canSort = column.getCanSort();
-                  return (
-                    <Th
-                      key={id}
-                      colSpan={colSpan}
-                      whiteSpace="nowrap"
-                      cursor={column.getCanSort() ? "pointer" : undefined}
-                      onClick={column.getToggleSortingHandler()}
-                    >
-                      {isPlaceholder ? null : (
-                        <>{flexRender(column.columnDef.header, getContext())}</>
-                      )}
-                      {canSort && !sort && (
-                        <TiArrowUnsorted
-                          aria-label="unsorted"
-                          style={{ display: "inline" }}
-                          size="1em"
-                        />
-                      )}
-                      {canSort &&
-                        sort &&
-                        (sort === "desc" ? (
-                          <TiArrowSortedDown
-                            aria-label="sorted descending"
-                            style={{ display: "inline" }}
-                            size="1em"
-                          />
-                        ) : (
-                          <TiArrowSortedUp
-                            aria-label="sorted ascending"
-                            style={{ display: "inline" }}
-                            size="1em"
-                          />
-                        ))}
-                    </Th>
-                  );
-                }
-              )}
-            </Tr>
-          ))}
-        </Thead>
-        <Tbody>
-          {table.getRowModel().rows.map((row) => {
-            return (
-              <Fragment key={row.id}>
-                <Tr>
-                  {/* first row is a normal row */}
-                  {row.getVisibleCells().map((cell) => {
+    <VStack alignItems="none" mt={2} spacing={0}>
+      <HStack justifyContent="space-between">
+        <Heading size="md" pt={2}>
+          {pluralize(title, total)}
+        </Heading>
+        <TablePaginator table={table} />
+      </HStack>
+      <TableContainer overflowY="auto" maxH="calc(100vh - 10rem)">
+        <ChakraTable colorScheme="blue">
+          <Thead position="sticky" top={0} bg={theadBg} zIndex={1}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <Tr key={headerGroup.id}>
+                {headerGroup.headers.map(
+                  ({ column, id, colSpan, getContext, isPlaceholder }) => {
+                    const sort = column.getIsSorted();
+                    const canSort = column.getCanSort();
                     return (
-                      <Td key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
+                      <Th
+                        key={id}
+                        colSpan={colSpan}
+                        whiteSpace="nowrap"
+                        cursor={column.getCanSort() ? "pointer" : undefined}
+                        onClick={column.getToggleSortingHandler()}
+                      >
+                        {isPlaceholder ? null : (
+                          <>
+                            {flexRender(column.columnDef.header, getContext())}
+                          </>
                         )}
-                      </Td>
+                        {canSort && !sort && (
+                          <TiArrowUnsorted
+                            aria-label="unsorted"
+                            style={{ display: "inline" }}
+                            size="1em"
+                          />
+                        )}
+                        {canSort &&
+                          sort &&
+                          (sort === "desc" ? (
+                            <TiArrowSortedDown
+                              aria-label="sorted descending"
+                              style={{ display: "inline" }}
+                              size="1em"
+                            />
+                          ) : (
+                            <TiArrowSortedUp
+                              aria-label="sorted ascending"
+                              style={{ display: "inline" }}
+                              size="1em"
+                            />
+                          ))}
+                      </Th>
                     );
-                  })}
-                </Tr>
-                {row.getIsExpanded() && (
-                  <Tr>
-                    {/* 2nd row is a custom 1 cell row */}
-                    <Td colSpan={row.getVisibleCells().length}>
-                      {renderSubComponent({ row })}
-                    </Td>
-                  </Tr>
+                  }
                 )}
-              </Fragment>
-            );
-          })}
-        </Tbody>
-      </ChakraTable>
-      <TablePaginator table={table} />
-    </TableContainer>
+              </Tr>
+            ))}
+          </Thead>
+          <Tbody>
+            {table.getRowModel().rows.map((row) => {
+              return (
+                <Fragment key={row.id}>
+                  <Tr>
+                    {/* first row is a normal row */}
+                    {row.getVisibleCells().map((cell) => {
+                      return (
+                        <Td key={cell.id}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </Td>
+                      );
+                    })}
+                  </Tr>
+                  {row.getIsExpanded() && (
+                    <Tr>
+                      {/* 2nd row is a custom 1 cell row */}
+                      <Td colSpan={row.getVisibleCells().length}>
+                        {renderSubComponent({ row })}
+                      </Td>
+                    </Tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </Tbody>
+        </ChakraTable>
+      </TableContainer>
+    </VStack>
   );
 };
