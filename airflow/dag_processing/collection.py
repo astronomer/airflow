@@ -188,7 +188,7 @@ class DagModelOperation(NamedTuple):
         processor_subdir: str | None = None,
         session: Session,
     ) -> None:
-        run_info = _RunInfo.calculate(self.dags, session=session)
+        latest_runs_dict, active_runs_dict = _RunInfo.calculate(self.dags, session=session)
 
         for dag_id, dm in sorted(orm_dags.items()):
             dag = self.dags[dag_id]
@@ -212,12 +212,12 @@ class DagModelOperation(NamedTuple):
             dm.dataset_expression = dag.timetable.asset_condition.as_expression()
             dm.processor_subdir = processor_subdir
 
-            last_automated_run: DagRun | None = run_info.latest_runs.get(dag.dag_id)
+            last_automated_run: DagRun | None = latest_runs_dict.get(dag.dag_id)
             if last_automated_run is None:
                 last_automated_data_interval = None
             else:
                 last_automated_data_interval = dag.get_run_data_interval(last_automated_run)
-            if run_info.num_active_runs.get(dag.dag_id, 0) >= dm.max_active_runs:
+            if active_runs_dict.get(dag.dag_id, 0) >= dm.max_active_runs:
                 dm.next_dagrun_create_after = None
             else:
                 dm.calculate_dagrun_date_fields(dag, last_automated_data_interval)
