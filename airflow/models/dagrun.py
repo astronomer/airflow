@@ -155,7 +155,6 @@ class DagRun(Base, LoggingMixin):
     # This number is incremented only when the DagRun is re-Queued,
     # when the DagRun is cleared.
     clear_number = Column(Integer, default=0, nullable=False, server_default="0")
-    backfill_id = Column(Integer, ForeignKey("backfill.id"), nullable=True)
 
     # Remove this `if` after upgrading Sphinx-AutoAPI
     if not TYPE_CHECKING and "BUILDING_AIRFLOW_DOCS" in os.environ:
@@ -200,10 +199,6 @@ class DagRun(Base, LoggingMixin):
         uselist=False,
         cascade="all, delete, delete-orphan",
     )
-    backfill = relationship("Backfill", uselist=False)
-    backfill_max_active_runs = association_proxy("backfill", "max_active_runs")
-    max_active_runs = association_proxy("dag_model", "max_active_runs")
-
     note = association_proxy("dag_run_note", "content", creator=_creator_note)
 
     DEFAULT_DAGRUNS_TO_EXAMINE = airflow_conf.getint(
@@ -227,7 +222,6 @@ class DagRun(Base, LoggingMixin):
         creating_job_id: int | None = None,
         data_interval: tuple[datetime, datetime] | None = None,
         triggered_by: DagRunTriggeredByType | None = None,
-        backfill_id: int | None = None,
     ):
         if data_interval is None:
             # Legacy: Only happen for runs created prior to Airflow 2.2.
@@ -250,7 +244,6 @@ class DagRun(Base, LoggingMixin):
         self.run_type = run_type
         self.dag_hash = dag_hash
         self.creating_job_id = creating_job_id
-        self.backfill_id = backfill_id
         self.clear_number = 0
         self.triggered_by = triggered_by
         super().__init__()
