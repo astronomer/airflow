@@ -38,6 +38,7 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     func,
+    not_,
     or_,
     text,
     update,
@@ -46,6 +47,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import declared_attr, joinedload, relationship, synonym, validates
 from sqlalchemy.sql.expression import case, false, select, true
+from sqlalchemy.sql.functions import coalesce
 
 from airflow import settings
 from airflow.api_internal.internal_api_call import internal_api_call
@@ -69,7 +71,7 @@ from airflow.utils.helpers import chunks, is_container, prune_dict
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.retries import retry_db_transaction
 from airflow.utils.session import NEW_SESSION, provide_session
-from airflow.utils.sqlalchemy import UtcDateTime, nulls_first, tuple_in_condition, with_row_locks
+from airflow.utils.sqlalchemy import UtcDateTime, tuple_in_condition, with_row_locks
 from airflow.utils.state import DagRunState, State, TaskInstanceState
 from airflow.utils.types import NOTSET, DagRunTriggeredByType, DagRunType
 
@@ -379,20 +381,24 @@ class DagRun(Base, LoggingMixin):
     def active_runs_of_dags(
         cls,
         dag_ids: Iterable[str] | None = None,
-        only_running: bool = False,
+        include_backfill: bool = False,
         session: Session = NEW_SESSION,
     ) -> dict[str, int]:
         """Get the number of active dag runs for each dag."""
-        query = select(cls.dag_id, func.count("*"))
+        query = (
+            select(
+                cls.dag_id,
+                func.count("*"),
+            )
+            .where(
+                cls.state.in_((DagRunState.RUNNING, DagRunState.QUEUED)),
+            )
+            .group_by(cls.dag_id)
+        )
+        if not include_backfill:
+            query = query.where(cls.run_type != DagRunType.BACKFILL_JOB)
         if dag_ids is not None:
-            # 'set' called to avoid duplicate dag_ids, but converted back to 'list'
-            # because SQLAlchemy doesn't accept a set here.
             query = query.where(cls.dag_id.in_(set(dag_ids)))
-        if only_running:
-            query = query.where(cls.state == DagRunState.RUNNING)
-        else:
-            query = query.where(cls.state.in_((DagRunState.RUNNING, DagRunState.QUEUED)))
-        query = query.group_by(cls.dag_id)
         return dict(iter(session.execute(query)))
 
     @classmethod
@@ -407,31 +413,31 @@ class DagRun(Base, LoggingMixin):
 
         :meta private:
         """
+        from airflow.models.backfill import BackfillDagRun
         from airflow.models.dag import DagModel
 
         query = (
             select(cls)
             .with_hint(cls, "USE INDEX (idx_dag_run_running_dags)", dialect_name="mysql")
-            .where(cls.state == DagRunState.RUNNING, cls.run_type != DagRunType.BACKFILL_JOB)
+            .where(cls.state == DagRunState.RUNNING)
             .join(DagModel, DagModel.dag_id == cls.dag_id)
-            .where(DagModel.is_paused == false(), DagModel.is_active == true())
+            .join(BackfillDagRun, BackfillDagRun.dag_run_id == DagRun.id, isouter=True)
+            .where(
+                DagModel.is_paused == false(),
+                DagModel.is_active == true(),
+            )
             .order_by(
-                nulls_first(cls.last_scheduling_decision, session=session),
+                BackfillDagRun.sort_ordinal.nulls_first(),
+                cls.last_scheduling_decision.nulls_first(),
                 cls.execution_date,
             )
+            .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
 
         if not settings.ALLOW_FUTURE_EXEC_DATES:
             query = query.where(DagRun.execution_date <= func.now())
 
-        return session.scalars(
-            with_row_locks(
-                query.limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE),
-                of=cls,
-                session=session,
-                skip_locked=True,
-            )
-        )
+        return session.scalars(with_row_locks(query, of=cls, session=session, skip_locked=True))
 
     @classmethod
     @retry_db_transaction
@@ -445,40 +451,65 @@ class DagRun(Base, LoggingMixin):
 
         :meta private:
         """
+        from airflow.models.backfill import Backfill, BackfillDagRun
         from airflow.models.dag import DagModel
 
         # For dag runs in the queued state, we check if they have reached the max_active_runs limit
         # and if so we drop them
         running_drs = (
-            select(DagRun.dag_id, func.count(DagRun.state).label("num_running"))
+            select(
+                DagRun.dag_id,
+                DagRun.backfill_id,
+                func.count(DagRun.id).label("num_running"),
+            )
             .where(DagRun.state == DagRunState.RUNNING)
-            .group_by(DagRun.dag_id)
+            .group_by(DagRun.dag_id, DagRun.backfill_id)
             .subquery()
         )
+
         query = (
             select(cls)
-            .where(cls.state == DagRunState.QUEUED, cls.run_type != DagRunType.BACKFILL_JOB)
-            .join(DagModel, DagModel.dag_id == cls.dag_id)
-            .where(DagModel.is_paused == false(), DagModel.is_active == true())
-            .outerjoin(running_drs, running_drs.c.dag_id == DagRun.dag_id)
-            .where(func.coalesce(running_drs.c.num_running, 0) < DagModel.max_active_runs)
+            .where(cls.state == DagRunState.QUEUED)
+            .join(
+                DagModel,
+                and_(
+                    DagModel.dag_id == cls.dag_id,
+                    DagModel.is_paused == false(),
+                    DagModel.is_active == true(),
+                ),
+            )
+            .join(BackfillDagRun, BackfillDagRun.dag_run_id == DagRun.id, isouter=True)
+            .join(Backfill, isouter=True)
+            .join(
+                running_drs,
+                and_(
+                    running_drs.c.dag_id == DagRun.dag_id,
+                    coalesce(running_drs.c.backfill_id, text("-1"))
+                    == coalesce(DagRun.backfill_id, text("-1")),
+                ),
+                isouter=True,
+            )
+            .where(
+                coalesce(running_drs.c.num_running, text("0"))
+                < coalesce(Backfill.max_active_runs, DagModel.max_active_runs),
+                not_(coalesce(Backfill.is_paused, False)),
+            )
             .order_by(
-                nulls_first(cls.last_scheduling_decision, session=session),
+                case(
+                    (cls.run_type == DagRunType.BACKFILL_JOB, text("0")), else_=text("1")
+                ),  # prioritize non-backfill
+                case((cls.run_type == DagRunType.BACKFILL_JOB, text("0")), else_=BackfillDagRun.sort_ordinal),
+                cls.last_scheduling_decision.nulls_first(),
+                coalesce(running_drs.c.num_running, text("0")),  # many running -> lower priority
                 cls.execution_date,
             )
+            .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
 
         if not settings.ALLOW_FUTURE_EXEC_DATES:
             query = query.where(DagRun.execution_date <= func.now())
 
-        return session.scalars(
-            with_row_locks(
-                query.limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE),
-                of=cls,
-                session=session,
-                skip_locked=True,
-            )
-        )
+        return session.scalars(with_row_locks(query, of=cls, session=session, skip_locked=True))
 
     @classmethod
     @provide_session
