@@ -30,7 +30,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Collection, Iterable, Iterator
 
-from sqlalchemy import and_, delete, func, not_, or_, select, text, update
+from sqlalchemy import and_, delete, exists, func, not_, or_, select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import lazyload, load_only, make_transient, selectinload
 from sqlalchemy.sql import expression
@@ -51,6 +51,7 @@ from airflow.models.asset import (
     DagScheduleAssetReference,
     TaskOutletAssetReference,
 )
+from airflow.models.backfill import Backfill, BackfillDagRun
 from airflow.models.dag import DAG, DagModel
 from airflow.models.dagbag import DagBag
 from airflow.models.dagrun import DagRun
@@ -342,14 +343,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             num_starved_tasks = len(starved_tasks)
             num_starved_tasks_task_dagrun_concurrency = len(starved_tasks_task_dagrun_concurrency)
 
-            # Get task instances associated with scheduled
-            # DagRuns which are not backfilled, in the given states,
-            # and the dag is not paused
             query = (
                 select(TI)
                 .with_hint(TI, "USE INDEX (ti_state)", dialect_name="mysql")
                 .join(TI.dag_run)
-                .where(DR.run_type != DagRunType.BACKFILL_JOB, DR.state == DagRunState.RUNNING)
+                .where(DR.state == DagRunState.RUNNING)
                 .join(TI.dag_model)
                 .where(not_(DM.is_paused))
                 .where(TI.state == TaskInstanceState.SCHEDULED)
@@ -1020,7 +1018,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .where(
                     DagModel.is_paused == expression.true(),
                     DagRun.state == DagRunState.RUNNING,
-                    DagRun.run_type != DagRunType.BACKFILL_JOB,
                 )
                 .having(DagRun.last_scheduling_decision <= func.max(TI.updated_at))
                 .group_by(DagRun)
@@ -1065,6 +1062,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         timers.call_regular_interval(
             conf.getfloat("scheduler", "trigger_timeout_check_interval", fallback=15.0),
             self.check_trigger_timeouts,
+        )
+
+        timers.call_regular_interval(
+            30,
+            self._mark_backfills_complete,
         )
 
         timers.call_regular_interval(
@@ -1292,6 +1294,33 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         guard.commit()
         # END: create dagruns
 
+    @provide_session
+    def _mark_backfills_complete(self, session: Session = NEW_SESSION) -> None:
+        """Mark completed backfills as completed."""
+        self.log.info("checking for completed backfills.")
+        unfinished_states = (DagRunState.RUNNING, DagRunState.QUEUED)
+        now = timezone.utcnow()
+        query = select(Backfill).where(
+            Backfill.completed_at.is_(None),
+            ~exists(
+                select(DagRun.id)
+                .join(
+                    BackfillDagRun,
+                    and_(
+                        BackfillDagRun.dag_run_id == DagRun.id,
+                        BackfillDagRun.backfill_id == Backfill.id,
+                    ),
+                )
+                .where(DagRun.state.in_(unfinished_states))
+            ),
+        )
+        backfills = session.scalars(query).all()
+        if not backfills:
+            return
+        self.log.info("marking %s backfills as complete", len(backfills))
+        for b in backfills:
+            b.completed_at = now
+
     @add_span
     def _create_dag_runs(self, dag_models: Collection[DagModel], session: Session) -> None:
         """Create a DAG run and update the dag_model to control if/when the next DAGRun should be created."""
@@ -1312,8 +1341,14 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             .all()
         )
 
+        # backfill runs are not created by scheduler and their concurrency is separate
+        # so we exclude them here
         active_runs_of_dags = Counter(
-            DagRun.active_runs_of_dags(dag_ids=(dm.dag_id for dm in dag_models), session=session),
+            DagRun.active_runs_of_dags(
+                dag_ids=(dm.dag_id for dm in dag_models),
+                include_backfill=False,
+                session=session,
+            ),
         )
 
         for dag_model in dag_models:
@@ -1506,11 +1541,19 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     def _start_queued_dagruns(self, session: Session) -> None:
         """Find DagRuns in queued state and decide moving them to running state."""
         # added all() to save runtime, otherwise query is executed more than once
-        dag_runs: Collection[DagRun] = DagRun.get_queued_dag_runs_to_set_running(session).all()
+        dag_runs: Collection[tuple[DagRun, int]] = DagRun.get_queued_dag_runs_to_set_running(session).all()
 
-        active_runs_of_dags = Counter(
-            DagRun.active_runs_of_dags((dr.dag_id for dr in dag_runs), only_running=True, session=session),
+        query = (
+            select(
+                DagRun.dag_id,
+                BackfillDagRun.backfill_id,
+                func.count(DagRun.id).label("num_running"),
+            )
+            .join(BackfillDagRun, BackfillDagRun.dag_run_id == DagRun.id)
+            .where(DagRun.state == DagRunState.RUNNING)
+            .group_by(DagRun.dag_id, BackfillDagRun.backfill_id)
         )
+        active_runs_of_dags = Counter({(dag_id, br_id): num for dag_id, br_id, num in session.execute(query)})
 
         @add_span
         def _update_state(dag: DAG, dag_run: DagRun):
@@ -1551,34 +1594,49 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         )
 
         span = Trace.get_current_span()
-        for dag_run in dag_runs:
-            dag = dag_run.dag = cached_get_dag(dag_run.dag_id)
-
+        for dag_run, backfill_id in dag_runs:
+            dag_id = dag_run.dag_id
+            run_id = dag_run.run_id
+            backfill = dag_run.backfill
+            dag = dag_run.dag = cached_get_dag(dag_id)
             if not dag:
                 self.log.error("DAG '%s' not found in serialized_dag table", dag_run.dag_id)
                 continue
-            active_runs = active_runs_of_dags[dag_run.dag_id]
-
-            if dag.max_active_runs and active_runs >= dag.max_active_runs:
-                self.log.debug(
-                    "DAG %s already has %d active runs, not moving any more runs to RUNNING state %s",
-                    dag.dag_id,
-                    active_runs,
-                    dag_run.execution_date,
-                )
-            else:
-                if span.is_recording():
-                    span.add_event(
-                        name="dag_run",
-                        attributes={
-                            "run_id": dag_run.run_id,
-                            "dag_id": dag_run.dag_id,
-                            "conf": str(dag_run.conf),
-                        },
+            active_runs = active_runs_of_dags[(dag_id, backfill_id)]
+            if backfill_id is not None:
+                if active_runs >= backfill.max_active_runs:
+                    self.log.info(
+                        "dag cannot be started due to backfill max_active_runs constraint; "
+                        "active_runs=%s max_active_runs=%s dag_id=%s run_id=%s",
+                        active_runs,
+                        backfill.max_active_runs,
+                        dag_id,
+                        run_id,
                     )
-                active_runs_of_dags[dag_run.dag_id] += 1
-                _update_state(dag, dag_run)
-                dag_run.notify_dagrun_state_changed()
+                    continue
+            elif dag.max_active_runs:
+                if active_runs > dag.max_active_runs:
+                    self.log.info(
+                        "dag cannot be started due to dag max_active_runs constraint; "
+                        "active_runs=%s max_active_runs=%s dag_id=%s run_id=%s",
+                        active_runs,
+                        dag_run.max_active_runs,
+                        dag_run.dag_id,
+                        dag_run.run_id,
+                    )
+                    continue
+            if span.is_recording():
+                span.add_event(
+                    name="dag_run",
+                    attributes={
+                        "run_id": dag_run.run_id,
+                        "dag_id": dag_run.dag_id,
+                        "conf": str(dag_run.conf),
+                    },
+                )
+            active_runs_of_dags[dag_run.dag_id] += 1
+            _update_state(dag, dag_run)
+            dag_run.notify_dagrun_state_changed()
 
     @retry_db_transaction
     def _schedule_all_dag_runs(
@@ -1838,10 +1896,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         .join(TI.queued_by_job)
                         .where(Job.state.is_distinct_from(JobState.RUNNING))
                         .join(TI.dag_run)
-                        .where(
-                            DagRun.run_type != DagRunType.BACKFILL_JOB,
-                            DagRun.state == DagRunState.RUNNING,
-                        )
+                        .where(DagRun.state == DagRunState.RUNNING)
                         .options(load_only(TI.dag_id, TI.task_id, TI.run_id))
                     )
 
