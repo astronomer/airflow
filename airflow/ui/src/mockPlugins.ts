@@ -16,16 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import type { ButtonProps } from "@chakra-ui/react";
 
-export const navButtonProps: ButtonProps = {
-  alignItems: "center",
-  borderRadius: "none",
-  flexDir: "column",
-  height: 16,
-  textAlign: "center",
-  transition: "0.2s background-color ease-in-out",
-  variant: "ghost",
-  whiteSpace: "wrap",
-  width: 24,
-};
+export const mockPlugins = [
+  {
+    icon: "",
+    location: "nav",
+    route: "test-plugin",
+    src: "http://localhost:4173/test-react-plugin.js",
+    title: "3rd party plugin",
+    type: "react",
+  },
+];

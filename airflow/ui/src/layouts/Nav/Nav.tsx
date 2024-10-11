@@ -36,12 +36,25 @@ import {
   FiSettings,
   FiSun,
 } from "react-icons/fi";
+import { TbPlug } from "react-icons/tb";
 
 import { AirflowPin } from "src/assets/AirflowPin";
 import { DagIcon } from "src/assets/DagIcon";
+import { mockPlugins } from "src/mockPlugins";
 
 import { DocsButton } from "./DocsButton";
 import { NavButton } from "./NavButton";
+
+// const pluginManifests = import.meta.glob(
+//   "../../../../../files/plugins/*/plugin_manifest.json",
+// );
+
+// const plugins = await Promise.all(
+//   Object.keys(pluginManifests).map(async (key) => {
+//     const module = await pluginManifests[key]();
+//     return module.default;
+//   }),
+// );
 
 export const Nav = () => {
   const { colorMode, toggleColorMode } = useColorMode();
@@ -97,6 +110,16 @@ export const Nav = () => {
           isDisabled
           title="Admin"
         />
+        {mockPlugins
+          .filter((plugin) => plugin.location === "nav")
+          .map((plugin) => (
+            <NavButton
+              icon={<TbPlug size="1.75rem" />}
+              key={plugin.title}
+              title={plugin.title}
+              to={plugin.route}
+            />
+          ))}
       </Flex>
       <Flex flexDir="column">
         <NavButton
