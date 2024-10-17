@@ -83,6 +83,7 @@ PRE_COMMIT_LIST = [
     "check-template-context-variable-in-sync",
     "check-template-fields-valid",
     "check-tests-in-the-right-folders",
+    "check-tests-named-test",
     "check-tests-unittest-testcase",
     "check-urlparse-usage-in-code",
     "check-usage-of-re2-over-re",

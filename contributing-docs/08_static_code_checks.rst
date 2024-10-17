@@ -236,6 +236,8 @@ require Breeze Docker image to be built locally.
 +-----------------------------------------------------------+--------------------------------------------------------+---------+
 | check-tests-in-the-right-folders                          | Check if tests are in the right folders                |         |
 +-----------------------------------------------------------+--------------------------------------------------------+---------+
+| check-tests-named-test                                    | Check if test files are named correctly                |         |
++-----------------------------------------------------------+--------------------------------------------------------+---------+
 | check-tests-unittest-testcase                             | Unit tests do not inherit from unittest.TestCase       |         |
 +-----------------------------------------------------------+--------------------------------------------------------+---------+
 | check-urlparse-usage-in-code                              | Don't use urlparse in code                             |         |

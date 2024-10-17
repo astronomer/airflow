@@ -940,6 +940,13 @@ repos:
         pass_filenames: true
         require_serial: true
         additional_dependencies: ['rich>=12.4.4']
+      - id: check-tests-named-test
+        name: Check if test files are named correctly
+        entry: ./scripts/ci/pre_commit/check_tests_named_test.py
+        language: python
+        files: ^tests/.*\.py
+        pass_filenames: true
+        additional_dependencies: ['rich>=12.4.4']
       - id: check-system-tests-present
         name: Check if system tests have required segments of code
         entry: ./scripts/ci/pre_commit/check_system_tests.py
