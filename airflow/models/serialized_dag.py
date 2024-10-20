@@ -101,7 +101,7 @@ class SerializedDagModel(Base):
         innerjoin=True,
         backref=backref("serialized_dag", uselist=False, innerjoin=True),
     )
-    dag_version_id = Column(UUIDType(), ForeignKey("dag_version.id", ondelete="CASCADE"))
+    dag_version_id = Column(UUIDType, ForeignKey("dag_version.id", ondelete="CASCADE"))
     dag_version = relationship("DagVersion", back_populates="serialized_dag", cascade_backrefs=False)
 
     load_op_links = True
