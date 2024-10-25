@@ -40,24 +40,54 @@ airflow_version = "3.0.0"
 
 # PostgreSQL-specific UUID v7 function
 pg_uuid7_fn = """
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DO $$
+DECLARE
+    pgcrypto_installed BOOLEAN;
+BEGIN
+    -- Check if pgcrypto is already installed
+    pgcrypto_installed := EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto');
 
-CREATE OR REPLACE FUNCTION
-  uuid_generate_v7(p_timestamp timestamp with time zone)
-RETURNS
-  uuid
-LANGUAGE
-  plpgsql
+    -- Attempt to create pgcrypto if it is not installed
+    IF NOT pgcrypto_installed THEN
+        BEGIN
+            CREATE EXTENSION pgcrypto;
+            pgcrypto_installed := TRUE;
+            RAISE NOTICE 'pgcrypto extension successfully created.';
+        EXCEPTION
+            WHEN insufficient_privilege THEN
+                RAISE NOTICE 'pgcrypto extension could not be installed due to insufficient privileges; using fallback';
+                pgcrypto_installed := FALSE;
+            WHEN OTHERS THEN
+                RAISE NOTICE 'An unexpected error occurred while attempting to install pgcrypto; using fallback';
+                pgcrypto_installed := FALSE;
+        END;
+    END IF;
+END $$;
+
+CREATE OR REPLACE FUNCTION uuid_generate_v7(p_timestamp timestamp with time zone)
+RETURNS uuid
+LANGUAGE plpgsql
 PARALLEL SAFE
 AS $$
-  DECLARE
+DECLARE
     unix_time_ms CONSTANT bytea NOT NULL DEFAULT substring(int8send((extract(epoch FROM p_timestamp) * 1000)::bigint) from 3);
-    buffer bytea NOT NULL DEFAULT unix_time_ms || gen_random_bytes(10);
-  BEGIN
-    buffer = set_byte(buffer, 6, (b'0111' || get_byte(buffer, 6)::bit(4))::bit(8)::int);
-    buffer = set_byte(buffer, 8, (b'10'   || get_byte(buffer, 8)::bit(6))::bit(8)::int);
-    RETURN encode(buffer, 'hex');
-  END
+    buffer bytea;
+    pgcrypto_installed BOOLEAN := EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto');
+BEGIN
+    -- Use pgcrypto if available, otherwise use the fallback
+    -- fallback from https://brandur.org/fragments/secure-bytes-without-pgcrypto
+    IF pgcrypto_installed THEN
+        buffer := unix_time_ms || gen_random_bytes(10);
+    ELSE
+        buffer := unix_time_ms || substring(uuid_send(gen_random_uuid()) FROM 1 FOR 5) ||
+                  substring(uuid_send(gen_random_uuid()) FROM 12 FOR 5);
+    END IF;
+
+    -- Set UUID version and variant bits
+    buffer := set_byte(buffer, 6, (b'0111' || get_byte(buffer, 6)::bit(4))::bit(8)::int);
+    buffer := set_byte(buffer, 8, (b'10'   || get_byte(buffer, 8)::bit(6))::bit(8)::int);
+    RETURN encode(buffer, 'hex')::uuid;
+END
 $$;
 """
 
