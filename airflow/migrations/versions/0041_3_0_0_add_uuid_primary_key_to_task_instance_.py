@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
@@ -92,7 +93,7 @@ $$;
 """
 
 pg_uuid7_fn_drop = """
-DROP FUNCTION uuid_generate_v7(timestamp with time zone);
+DROP FUNCTION IF EXISTS uuid_generate_v7(timestamp with time zone);
 """
 
 # MySQL-specific UUID v7 function
@@ -130,8 +131,33 @@ END;
 """
 
 mysql_uuid7_fn_drop = """
-DROP FUNCTION uuid_generate_v7;
+DROP FUNCTION IF EXISTS uuid_generate_v7;
 """
+
+ti_table = "task_instance"
+
+# Foreign key columns from task_instance
+ti_fk_cols = ["dag_id", "task_id", "run_id", "map_index"]
+
+# Foreign key constraints from other tables to task_instance
+ti_fk_constrains = [
+    {"table": "rendered_task_instance_fields", "fk": "rtif_ti_fkey"},
+    {"table": "task_fail", "fk": "task_fail_ti_fkey"},
+    {"table": "task_instance_history", "fk": "task_instance_history_ti_fkey"},
+    {"table": "task_instance_note", "fk": "task_instance_note_ti_fkey"},
+    {"table": "task_map", "fk": "task_map_task_instance_fkey"},
+    {"table": "task_reschedule", "fk": "task_reschedule_ti_fkey"},
+    {"table": "xcom", "fk": "xcom_task_instance_fkey"},
+]
+
+
+def _get_type_id_column(dialect_name: str) -> sa.types.TypeEngine:
+    # For PostgreSQL, use the UUID type directly
+    if dialect_name == "postgresql":
+        return postgresql.UUID(as_uuid=True)
+    # For other databases, use String(36) to match UUID format
+    else:
+        return sa.String(36)
 
 
 def upgrade():
@@ -139,16 +165,10 @@ def upgrade():
     conn = op.get_bind()
     dialect_name = conn.dialect.name
 
-    if dialect_name == "postgresql":
-        op.add_column(
-            "task_instance",
-            sa.Column(
-                "id",
-                sa.String(length=32).with_variant(postgresql.UUID(), "postgresql"),
-                nullable=True,
-            ),
-        )
+    # Add new "id" column
+    op.add_column("task_instance", sa.Column("id", _get_type_id_column(dialect_name), nullable=True))
 
+    if dialect_name == "postgresql":
         op.execute(pg_uuid7_fn)
 
         # TODO: Add batching to handle updates in smaller chunks for large tables to avoid locking
@@ -156,28 +176,13 @@ def upgrade():
         op.execute(
             "UPDATE task_instance SET id = uuid_generate_v7(coalesce(queued_dttm, start_date, clock_timestamp()))"
         )
-        with op.batch_alter_table("task_instance") as batch_op:
-            batch_op.alter_column("id", exiting_nullable=True, nullable=False)
-            batch_op.create_index(
-                "idx_ti_denormalized", ["task_id", "dag_id", "run_id", "map_index"], unique=True
-            )
 
-        # TODO: Convert the following into a Alembic operation
-        # that way, we can capture the foreign key constraints which can be used
-        # while downgrade too
-        # So instead of cascading, we explicitly drop the constraint.
-        op.execute("""
-            ALTER TABLE task_instance
-                DROP CONSTRAINT task_instance_pkey CASCADE,
-                ADD CONSTRAINT task_instance_pkey PRIMARY KEY (id)
-        """)
-
-        # Drop the UUID v7 function after use
         op.execute(pg_uuid7_fn_drop)
 
+        # Drop existing primary key constraint to task_instance table
+        op.execute("ALTER TABLE IF EXISTS task_instance DROP CONSTRAINT task_instance_pkey CASCADE")
+
     elif dialect_name == "mysql":
-        op.add_column("task_instance", sa.Column("id", sa.String(length=36), nullable=True))
-        # Apply the MySQL UUID v7 function
         op.execute(mysql_uuid7_fn)
 
         # Migrate existing rows with UUID v7
@@ -187,26 +192,48 @@ def upgrade():
             WHERE id IS NULL
         """)
 
-        with op.batch_alter_table("task_instance") as batch_op:
-            batch_op.alter_column("id", existing_type=sa.String(length=36), nullable=False)
-            batch_op.create_index(
-                "idx_ti_denormalized", ["task_id", "dag_id", "run_id", "map_index"], unique=True
-            )
-
-        # TODO: Add command to manually drop foreign key constraints
-        # as MySQL does not support dropping foreign key constraints using CASCADE
-
-        with op.batch_alter_table("task_instance") as batch_op:
-            batch_op.drop_constraint("task_instance_pkey", type_="primary")
-            batch_op.create_primary_key("task_instance_pkey", ["id"])
-
-        # Drop the MySQL UUID v7 function after use
         op.execute(mysql_uuid7_fn_drop)
+        for fk in ti_fk_constrains:
+            op.drop_constraint(fk["fk"], fk["table"], type_="foreignkey")
+        op.execute("ALTER TABLE task_instance DROP PRIMARY KEY")
+    elif dialect_name == "sqlite":
+        from uuid6 import uuid7
 
-    else:
-        # TODO: Add support for Sqlite via the `uuid6` package using `uuid6.uuid7()`
-        # https://pypi.org/project/uuid6/
-        raise RuntimeError(f"TODO: Add support for {dialect_name} using the `uuid6` package")
+        stmt = text("SELECT COUNT(*) FROM task_instance WHERE id IS NULL")
+        task_instances = conn.execute(stmt).scalar()
+        uuid_values = [str(uuid7()) for _ in range(task_instances)]
+
+        # Ensure `uuid_values` is a list or iterable with the UUIDs for the update.
+        stmt = text("""
+            UPDATE task_instance
+            SET id = :uuid
+            WHERE id IS NULL
+        """)
+
+        for uuid_value in uuid_values:
+            conn.execute(stmt.bindparams(uuid=uuid_value))
+        conn.commit()
+
+        # TODO: Since sqlite does not support dropping constraints, we need to drop the table and recreate it
+
+    # Add primary key and unique constraint to task_instance table
+    with op.batch_alter_table("task_instance") as batch_op:
+        batch_op.alter_column("id", type_=_get_type_id_column(dialect_name), nullable=False)
+        batch_op.create_unique_constraint("task_instance_composite_key", ti_fk_cols)
+        batch_op.create_primary_key("task_instance_pkey", ["id"])
+        # TODO: Verify if the index is needed
+        batch_op.create_index("ti_denormalized", ti_fk_cols, unique=False)
+
+    # Create foreign key constraints
+    for fk in ti_fk_constrains:
+        with op.batch_alter_table(fk["table"]) as batch_op:
+            batch_op.create_foreign_key(
+                constraint_name=fk["fk"],
+                referent_table=ti_table,
+                local_cols=ti_fk_cols,
+                remote_cols=ti_fk_cols,
+                ondelete="CASCADE",
+            )
 
 
 def downgrade():
@@ -214,15 +241,34 @@ def downgrade():
     conn = op.get_bind()
     dialect_name = conn.dialect.name
 
-    with op.batch_alter_table("task_instance") as batch_op:
-        batch_op.drop_constraint("task_instance_pkey", type_="primary")
-        batch_op.create_primary_key("task_instance_pkey", ["task_id", "dag_id", "run_id", "map_index"])
-        batch_op.drop_index("idx_ti_denormalized")
-        batch_op.drop_column("id")
-
-    # TODO: Re-add foreign key constraints
     if dialect_name == "postgresql":
+        op.execute("ALTER TABLE IF EXISTS task_instance DROP CONSTRAINT task_instance_composite_key CASCADE")
         op.execute(pg_uuid7_fn_drop)
 
     elif dialect_name == "mysql":
+        for fk in ti_fk_constrains:
+            op.drop_constraint(fk["fk"], fk["table"], type_="foreignkey")
+
+        op.execute("ALTER TABLE task_instance DROP INDEX task_instance_composite_key")
         op.execute(mysql_uuid7_fn_drop)
+
+    elif dialect_name == "sqlite":
+        # TODO: Drop the `id` column
+        pass
+
+    with op.batch_alter_table("task_instance") as batch_op:
+        batch_op.drop_constraint("task_instance_pkey", type_="primary")
+        batch_op.drop_column("id")
+        batch_op.create_primary_key("task_instance_pkey", ti_fk_cols)
+        batch_op.drop_index("ti_denormalized")
+
+    # Re-add foreign key constraints
+    for fk in ti_fk_constrains:
+        with op.batch_alter_table(fk["table"]) as batch_op:
+            batch_op.create_foreign_key(
+                constraint_name=fk["fk"],
+                referent_table=ti_table,
+                local_cols=ti_fk_cols,
+                remote_cols=ti_fk_cols,
+                ondelete="CASCADE",
+            )
