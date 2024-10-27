@@ -152,7 +152,7 @@ ti_fk_constrains = [
 
 
 def _get_type_id_column(dialect_name: str) -> sa.types.TypeEngine:
-    # For PostgreSQL, use the UUID type directly
+    # For PostgreSQL, use the UUID type directly as it is more efficient
     if dialect_name == "postgresql":
         return postgresql.UUID(as_uuid=True)
     # For other databases, use String(36) to match UUID format
@@ -165,7 +165,6 @@ def upgrade():
     conn = op.get_bind()
     dialect_name = conn.dialect.name
 
-    # Add new "id" column
     op.add_column("task_instance", sa.Column("id", _get_type_id_column(dialect_name), nullable=True))
 
     if dialect_name == "postgresql":

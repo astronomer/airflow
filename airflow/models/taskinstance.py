@@ -1950,6 +1950,7 @@ class TaskInstance(Base, LoggingMixin):
         self.run_id = run_id
         self.try_number = 0
         self.max_tries = self.task.retries
+        self.id = self.id or str(uuid6.uuid7())
         self.unixname = getuser()
         if state:
             self.state = state
