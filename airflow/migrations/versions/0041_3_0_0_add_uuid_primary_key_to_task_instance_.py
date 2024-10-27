@@ -154,7 +154,7 @@ ti_fk_constrains = [
 def _get_type_id_column(dialect_name: str) -> sa.types.TypeEngine:
     # For PostgreSQL, use the UUID type directly as it is more efficient
     if dialect_name == "postgresql":
-        return postgresql.UUID(as_uuid=True)
+        return postgresql.UUID(as_uuid=False)
     # For other databases, use String(36) to match UUID format
     else:
         return sa.String(36)

@@ -1818,7 +1818,7 @@ class TaskInstance(Base, LoggingMixin):
 
     __tablename__ = "task_instance"
     id = Column(
-        String(36).with_variant(postgresql.UUID(as_uuid=True), "postgresql"),
+        String(36).with_variant(postgresql.UUID(as_uuid=False), "postgresql"),
         primary_key=True,
         default=lambda: str(uuid6.uuid7()),
         nullable=False,
@@ -1950,7 +1950,8 @@ class TaskInstance(Base, LoggingMixin):
         self.run_id = run_id
         self.try_number = 0
         self.max_tries = self.task.retries
-        self.id = self.id or str(uuid6.uuid7())
+        if not self.id:
+            self.id = str(uuid6.uuid7())
         self.unixname = getuser()
         if state:
             self.state = state
