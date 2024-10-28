@@ -194,11 +194,13 @@ def upgrade():
         op.execute(mysql_uuid7_fn_drop)
         for fk in ti_fk_constrains:
             op.drop_constraint(fk["fk"], fk["table"], type_="foreignkey")
-        op.execute("ALTER TABLE task_instance DROP PRIMARY KEY")
+        with op.batch_alter_table("task_instance") as batch_op:
+            batch_op.drop_constraint("task_instance_pkey", type_="primary")
     elif dialect_name == "sqlite":
         from uuid6 import uuid7
 
         stmt = text("SELECT COUNT(*) FROM task_instance WHERE id IS NULL")
+        conn = op.get_bind()
         task_instances = conn.execute(stmt).scalar()
         uuid_values = [str(uuid7()) for _ in range(task_instances)]
 
@@ -211,17 +213,15 @@ def upgrade():
 
         for uuid_value in uuid_values:
             conn.execute(stmt.bindparams(uuid=uuid_value))
-        conn.commit()
 
-        # TODO: Since sqlite does not support dropping constraints, we need to drop the table and recreate it
+        with op.batch_alter_table("task_instance") as batch_op:
+            batch_op.drop_constraint("task_instance_pkey", type_="primary")
 
     # Add primary key and unique constraint to task_instance table
     with op.batch_alter_table("task_instance") as batch_op:
         batch_op.alter_column("id", type_=_get_type_id_column(dialect_name), nullable=False)
         batch_op.create_unique_constraint("task_instance_composite_key", ti_fk_cols)
         batch_op.create_primary_key("task_instance_pkey", ["id"])
-        # TODO: Verify if the index is needed
-        batch_op.create_index("ti_denormalized", ti_fk_cols, unique=False)
 
     # Create foreign key constraints
     for fk in ti_fk_constrains:
@@ -248,18 +248,18 @@ def downgrade():
         for fk in ti_fk_constrains:
             op.drop_constraint(fk["fk"], fk["table"], type_="foreignkey")
 
-        op.execute("ALTER TABLE task_instance DROP INDEX task_instance_composite_key")
+        with op.batch_alter_table("task_instance") as batch_op:
+            batch_op.drop_constraint("task_instance_composite_key", type_="unique")
         op.execute(mysql_uuid7_fn_drop)
 
     elif dialect_name == "sqlite":
-        # TODO: Drop the `id` column
-        pass
+        with op.batch_alter_table("task_instance") as batch_op:
+            batch_op.drop_constraint("task_instance_composite_key", type_="unique")
 
     with op.batch_alter_table("task_instance") as batch_op:
         batch_op.drop_constraint("task_instance_pkey", type_="primary")
         batch_op.drop_column("id")
         batch_op.create_primary_key("task_instance_pkey", ti_fk_cols)
-        batch_op.drop_index("ti_denormalized")
 
     # Re-add foreign key constraints
     for fk in ti_fk_constrains:
