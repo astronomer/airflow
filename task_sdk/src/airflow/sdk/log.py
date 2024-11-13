@@ -97,11 +97,6 @@ def drop_positional_args(logger: Any, method_name: Any, event_dict: EventDict) -
     return event_dict
 
 
-def json_processor(logger: Any, method_name: Any, event_dict: EventDict) -> str:
-    """Encode event into JSON format."""
-    return msgspec.json.encode(event_dict).decode("ascii")
-
-
 class StdBinaryStreamHandler(logging.StreamHandler):
     """A logging.StreamHandler that sends logs as binary JSON over the given stream."""
 
@@ -156,6 +151,8 @@ def logging_processors(
         import typer
 
         rich_exc_formatter = structlog.dev.RichTracebackFormatter(
+            # These values are picked somewhat arbitrarily to produce useful-but-compact tracebacks. If
+            # we ever need to change these then they should be configurable.
             extra_lines=0,
             max_frames=30,
             indent_guides=False,
@@ -203,9 +200,6 @@ def logging_processors(
             return encoder.encode(msg)
 
         def json_processor(logger: Any, method_name: Any, event_dict: EventDict) -> str:
-            # import web_pdb
-
-            # web_pdb.set_trace()
             return encoder.encode(event_dict).decode("ascii")
 
         json = structlog.processors.JSONRenderer(serializer=json_dumps)

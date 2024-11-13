@@ -17,7 +17,7 @@
 
 [project]
 name = "apache-airflow-task-sdk"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "Python Task SDK for Apache Airflow DAG Authors"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.9, <3.13"
@@ -30,10 +30,16 @@ dependencies = [
     "psutil>=6.1.0",
     "structlog>=24.4.0",
 ]
+classifiers = [
+  "Framework :: Apache Airflow",
+]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/airflow/sdk/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/airflow"]
