@@ -56,7 +56,7 @@ namespace-packages = ["src/airflow"]
 # Ignore Doc rules et al for anything outside of tests
 "!src/*" = ["D", "TID253", "S101", "TRY002"]
 
-# Only have pytest rules in tests - https://github.com/astral-sh/ruff/issues/14205
+# Ignore the pytest rules outside the tests folder - https://github.com/astral-sh/ruff/issues/14205
 "!tests/*" = ["PT"]
 
 # Pycharm barfs if this "stub" file has future imports

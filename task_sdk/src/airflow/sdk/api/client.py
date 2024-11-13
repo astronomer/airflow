@@ -98,16 +98,16 @@ class TaskInstanceOperations:
         """Tell the API server that this TI has started running."""
         body = TIEnterRunningPayload(pid=pid, hostname=get_hostname(), unixname=getuser(), start_date=when)
 
-        self.client.patch(f"task_instance/{id}/state", content=self.client.encoder.encode(body))
+        self.client.patch(f"task-instance/{id}/state", content=self.client.encoder.encode(body))
 
     def finish(self, id: uuid.UUID, state: TaskInstanceState, when: datetime):
         """Tell the API server that this TI has reached a terminal state."""
         body = TITerminalStatePayload(end_date=when, state=TerminalState(state))
 
-        self.client.patch(f"task_instance/{id}/state", content=self.client.encoder.encode(body))
+        self.client.patch(f"task-instance/{id}/state", content=self.client.encoder.encode(body))
 
     def heartbeat(self, id: uuid.UUID):
-        self.client.put(f"task_instance/{id}/heartbeat")
+        self.client.put(f"task-instance/{id}/heartbeat")
 
 
 class ConnectionOperations:
@@ -150,7 +150,7 @@ class Client(httpx.Client):
 
         self.encoder = msgspec.json.Encoder()
         if dry_run:
-            # If dry run is requests, install a no op handler so that simple tasks can "heartbeat" using a
+            # If dry run is requested, install a no op handler so that simple tasks can "heartbeat" using a
             # real client, but just don't make any HTTP requests
             kwargs["transport"] = httpx.MockTransport(noop_handler)
             kwargs["base_url"] = "dry-run://server"

@@ -140,23 +140,30 @@ def logging_processors(
         structlog.processors.StackInfoRenderer(),
     ]
 
+    # Imports to suppress showing code from these modules. We need the import to get the filepath for
+    # structlog to ignore.
+    import contextlib
+
+    import click
+    import httpcore
+    import httpx
+
+    suppress = (
+        click,
+        contextlib,
+        httpx,
+        httpcore,
+        httpx,
+    )
+
     if enable_pretty_log:
-        # Imports to suppress showing code from these modules
-        import asyncio
-        import contextlib
-
-        import click
-        import httpcore
-        import httpx
-        import typer
-
         rich_exc_formatter = structlog.dev.RichTracebackFormatter(
             # These values are picked somewhat arbitrarily to produce useful-but-compact tracebacks. If
             # we ever need to change these then they should be configurable.
             extra_lines=0,
             max_frames=30,
             indent_guides=False,
-            suppress=[asyncio, httpcore, httpx, contextlib, click, typer],
+            suppress=suppress,
         )
         my_styles = structlog.dev.ConsoleRenderer.get_default_level_styles()
         my_styles["debug"] = structlog.dev.CYAN
@@ -171,23 +178,17 @@ def logging_processors(
         }
     else:
         # Imports to suppress showing code from these modules
-        import asyncio
         import contextlib
 
         import click
         import httpcore
         import httpx
-        import typer
 
         dict_exc_formatter = structlog.tracebacks.ExceptionDictTransformer(
-            use_rich=False, show_locals=False, suppress=(click, typer)
+            use_rich=False, show_locals=False, suppress=suppress
         )
 
-        dict_tracebacks = structlog.processors.ExceptionRenderer(
-            structlog.tracebacks.ExceptionDictTransformer(
-                use_rich=False, show_locals=False, suppress=(click, typer)
-            )
-        )
+        dict_tracebacks = structlog.processors.ExceptionRenderer(dict_exc_formatter)
         if hasattr(__builtins__, "BaseExceptionGroup"):
             exc_group_processor = exception_group_tracebacks(dict_exc_formatter)
             processors.append(exc_group_processor)

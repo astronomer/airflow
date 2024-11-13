@@ -479,8 +479,8 @@ class WatchedSubprocess:
 # Sockets, even the `.makefile()` function don't correctly do line buffering on reading. If a chunk is read
 # and it doesn't contain a new line character, `.readline()` will just return the chunk as is.
 #
-# This returns a cb suitable for attaching to a `selector` that reads in to a buffer, and yields lines to a
-# (sync) generator
+# This returns a callback suitable for attaching to a `selector` that reads in to a buffer, and yields lines
+# to a (sync) generator
 def make_buffered_socket_reader(
     gen: Generator[None, bytes, None], buffer_size: int = 4096
 ) -> Callable[[socket], bool]:
