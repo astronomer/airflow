@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from msgspec import Struct, field
 
@@ -86,8 +86,8 @@ class TITargetStatePayload(Struct):
 
 class State1(Enum):
     FAILED = "failed"
-    SUCCESS = "success"
     SKIPPED = "skipped"
+    SUCCESS = "success"
 
 
 class TITerminalStatePayload(Struct):
@@ -124,6 +124,24 @@ class ValidationError(Struct):
     loc: list[str | int]
     msg: str
     type: str
+
+
+class VariableResponse(Struct):
+    """
+    Variable schema for responses with fields that are needed for Runtime.
+    """
+
+    key: str
+    value: str | None = None
+
+
+class XComResponse(Struct):
+    """
+    XCom schema for responses with fields that are needed for Runtime.
+    """
+
+    key: str
+    value: Any
 
 
 class HTTPValidationError(Struct):
