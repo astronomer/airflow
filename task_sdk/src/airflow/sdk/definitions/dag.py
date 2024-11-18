@@ -655,7 +655,7 @@ class DAG:
 
     @property
     def allow_future_exec_dates(self) -> bool:
-        return settings.ALLOW_FUTURE_LOGICAL_DATES and not self.timetable.can_be_scheduled
+        return settings.ALLOW_TRIGGER_DAGRUN_IN_FUTURE and not self.timetable.can_be_scheduled
 
     def resolve_template_files(self):
         for t in self.tasks:

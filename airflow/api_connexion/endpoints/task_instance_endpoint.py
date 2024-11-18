@@ -522,31 +522,22 @@ def post_set_task_instances_state(*, dag_id: str, session: Session = NEW_SESSION
         error_message = f"Task ID {task_id} not found"
         raise NotFound(error_message)
 
-    logical_date = data.get("logical_date")
     run_id = data.get("dag_run_id")
-    if (
-        logical_date
-        and (
-            session.scalars(
-                select(TI).where(TI.task_id == task_id, TI.dag_id == dag_id, TI.logical_date == logical_date)
-            ).one_or_none()
-        )
-        is None
-    ):
-        raise NotFound(detail=f"Task instance not found for task {task_id!r} on logical_date {logical_date}")
+    if not run_id:
+        error_message = f"Task instance not found for task {task_id!r} on DAG with DAG ID {dag_id!r}"
+        raise NotFound(detail=error_message)
 
     select_stmt = select(TI).where(
         TI.dag_id == dag_id, TI.task_id == task_id, TI.run_id == run_id, TI.map_index == -1
     )
 
     if run_id and not session.scalars(select_stmt).one_or_none():
-        error_message = f"Task instance not found for task {task_id!r} on DAG run with ID {run_id!r}"
+        error_message = f"Task instance not found for task {task_id!r} on DAG with DAG ID {dag_id!r}"
         raise NotFound(detail=error_message)
 
     tis = dag.set_task_instance_state(
         task_id=task_id,
         run_id=run_id,
-        logical_date=logical_date,
         state=data["new_state"],
         upstream=data["include_upstream"],
         downstream=data["include_downstream"],

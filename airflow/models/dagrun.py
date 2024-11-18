@@ -438,7 +438,7 @@ class DagRun(Base, LoggingMixin):
             .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
 
-        if not settings.ALLOW_FUTURE_LOGICAL_DATES:
+        if not settings.ALLOW_TRIGGER_DAGRUN_IN_FUTURE:
             query = query.where(DagRun.logical_date <= func.now())
 
         return session.scalars(with_row_locks(query, of=cls, session=session, skip_locked=True))
@@ -524,7 +524,7 @@ class DagRun(Base, LoggingMixin):
             .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
 
-        if not settings.ALLOW_FUTURE_LOGICAL_DATES:
+        if not settings.ALLOW_TRIGGER_DAGRUN_IN_FUTURE:
             query = query.where(DagRun.logical_date <= func.now())
 
         return session.scalars(with_row_locks(query, of=cls, session=session, skip_locked=True))
@@ -595,21 +595,19 @@ class DagRun(Base, LoggingMixin):
         cls,
         dag_id: str,
         run_id: str,
-        logical_date: datetime,
         session: Session = NEW_SESSION,
     ) -> DagRun | None:
         """
-        Return an existing run for the DAG with a specific run_id or logical date.
+        Return an existing run for the DAG with a specific run_id.
 
         :param dag_id: the dag_id to find duplicates for
         :param run_id: defines the run id for this dag run
-        :param logical_date: the logical date
         :param session: database session
         """
         return session.scalars(
             select(cls).where(
                 cls.dag_id == dag_id,
-                or_(cls.run_id == run_id, cls.logical_date == logical_date),
+                cls.run_id == run_id,
             )
         ).one_or_none()
 

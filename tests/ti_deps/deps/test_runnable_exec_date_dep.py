@@ -62,7 +62,7 @@ def test_logical_date_dep(
     If the dag's logical date is in the future but (allow_trigger_in_future=False or not schedule)
     this dep should fail
     """
-    with patch.object(settings, "ALLOW_FUTURE_LOGICAL_DATES", allow_trigger_in_future):
+    with patch.object(settings, "ALLOW_TRIGGER_DAGRUN_IN_FUTURE", allow_trigger_in_future):
         create_dummy_dag(
             "test_localtaskjob_heartbeat",
             start_date=datetime(2015, 1, 1),

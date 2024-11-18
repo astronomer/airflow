@@ -1733,8 +1733,8 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
             environ_overrides={"REMOTE_USER": "test"},
             json={
                 "dry_run": True,
+                "dag_run_id": "TEST_DAG_RUN_ID",
                 "task_id": "print_the_context",
-                "logical_date": DEFAULT_DATETIME_1.isoformat(),
                 "include_upstream": True,
                 "include_downstream": True,
                 "include_future": True,
@@ -1748,8 +1748,8 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
                 {
                     "dag_id": "example_python_operator",
                     "dag_run_id": "TEST_DAG_RUN_ID",
-                    "logical_date": "2020-01-01T00:00:00+00:00",
                     "task_id": "print_the_context",
+                    "logical_date": "2020-01-01T00:00:00+00:00",
                 }
             ]
         }
@@ -1757,8 +1757,7 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
         mock_set_task_instance_state.assert_called_once_with(
             commit=False,
             downstream=True,
-            run_id=None,
-            logical_date=DEFAULT_DATETIME_1,
+            run_id="TEST_DAG_RUN_ID",
             future=True,
             past=True,
             state="failed",
@@ -1807,7 +1806,6 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
             commit=False,
             downstream=True,
             run_id=run_id,
-            logical_date=None,
             future=True,
             past=True,
             state="failed",
@@ -1833,8 +1831,8 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
                 },
             ],
             [
-                "Task instance not found for task 'print_the_context' on logical_date "
-                "2021-01-01 00:00:00+00:00",
+                "Task instance not found for task 'print_the_context' on DAG with DAG ID "
+                "'example_python_operator'",
                 404,
                 {
                     "dry_run": True,
@@ -1848,7 +1846,8 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
                 },
             ],
             [
-                "Task instance not found for task 'print_the_context' on DAG run with ID 'TEST_DAG_RUN_'",
+                "Task instance not found for task 'print_the_context' on DAG with DAG ID "
+                "'example_python_operator'",
                 404,
                 {
                     "dry_run": True,
@@ -1958,7 +1957,7 @@ class TestPostSetTaskInstanceState(TestTaskInstanceEndpoint):
         )
         assert response.status_code == 404
         assert response.json["detail"] == (
-            f"Task instance not found for task 'print_the_context' on logical_date {date}"
+            "Task instance not found for task 'print_the_context' on DAG with DAG ID 'example_python_operator'"
         )
         assert mock_set_task_instance_state.call_count == 0
 
