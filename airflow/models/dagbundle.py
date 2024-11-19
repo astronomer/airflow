@@ -16,22 +16,29 @@
 # under the License.
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import uuid6
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String
 from sqlalchemy_utils import UUIDType
 
 from airflow.models.base import Base
-from airflow.utils.sqlalchemy import UtcDateTime
+from airflow.utils.module_loading import import_string
+from airflow.utils.session import NEW_SESSION, provide_session
+from airflow.utils.sqlalchemy import ExtendedJSON, UtcDateTime
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 
-class DagBundle(Base):
-    """A table for DAG Bundles."""
+class DagBundleModel(Base):
+    """A table for DAG Bundle config."""
 
     __tablename__ = "dag_bundle"
     id = Column(UUIDType(binary=False), primary_key=True, default=uuid6.uuid7)
     name = Column(String(200), nullable=False, unique=True)
     classpath = Column(String(1000), nullable=False)
-    kwargs = Column("kwargs", Text, nullable=False)
+    kwargs = Column(ExtendedJSON, nullable=True)
     refresh_interval = Column(Integer, nullable=True)
     latest_version = Column(String(200), nullable=True)
     last_refreshed = Column(UtcDateTime, nullable=True)
@@ -41,3 +48,22 @@ class DagBundle(Base):
         self.classpath = classpath
         self.kwargs = kwargs
         self.refresh_interval = refresh_interval
+
+    @classmethod
+    @provide_session
+    def get_all_dag_bundles(cls, *, session: Session = NEW_SESSION) -> list[DagBundleModel]:
+        """
+        Get all DAG bundles.
+
+        :param session: A database session.
+        :return: list of DAG bundles.
+        """
+        bundle_configs = session.query(cls).all()
+
+        bundles = []
+        for bundle_config in bundle_configs:
+            bundle_class = import_string(bundle_config.classpath)
+            bundle = bundle_class(name=bundle_config.name, **bundle_config.kwargs)
+            bundles.append(bundle)
+
+        return bundles
