@@ -49,6 +49,7 @@ if TYPE_CHECKING:
     from airflow.callbacks.base_callback_sink import BaseCallbackSink
     from airflow.callbacks.callback_requests import CallbackRequest
     from airflow.cli.cli_config import GroupCommand
+    from airflow.executors import workloads
     from airflow.executors.executor_utils import ExecutorName
     from airflow.models.taskinstance import TaskInstance
     from airflow.models.taskinstancekey import TaskInstanceKey
@@ -169,6 +170,9 @@ class BaseExecutor(LoggingMixin):
             self.queued_tasks[task_instance.key] = (command, priority, queue, task_instance)
         else:
             self.log.error("could not queue task %s", task_instance.key)
+
+    def queue_workload(self, workload: workloads.All) -> None:
+        raise ValueError(f"Un-handled workload kind {type(workload).__name__!r} in {type(self).__name__}")
 
     def queue_task_instance(
         self,

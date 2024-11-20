@@ -22,11 +22,11 @@ from __future__ import annotations
 import os
 import sys
 from io import FileIO
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, Annotated, TextIO
 
 import attrs
 import structlog
-from pydantic import ConfigDict, TypeAdapter
+from pydantic import ConfigDict, SkipValidation, TypeAdapter
 
 from airflow.sdk.api.datamodels._generated import TaskInstance
 from airflow.sdk.definitions.baseoperator import BaseOperator
@@ -37,9 +37,9 @@ if TYPE_CHECKING:
 
 
 class RuntimeTaskInstance(TaskInstance):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, defer_build=True)
 
-    task: BaseOperator
+    task: Annotated[BaseOperator, SkipValidation]
 
 
 def parse(what: StartupDetails) -> RuntimeTaskInstance:
@@ -127,6 +127,10 @@ def startup() -> tuple[RuntimeTaskInstance, Logger]:
     msg = SUPERVISOR_COMMS.get_message()
 
     if isinstance(msg, StartupDetails):
+        from setproctitle import setproctitle
+
+        setproctitle(f"airflow worker -- {msg.ti.id}")
+
         log = structlog.get_logger(logger_name="task")
         # TODO: set the "magic loop" context vars for parsing
         ti = parse(msg)
