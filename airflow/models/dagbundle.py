@@ -30,6 +30,8 @@ from airflow.utils.sqlalchemy import ExtendedJSON, UtcDateTime
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from airflow.dag_processing.bundles.base import BaseDagBundle
+
 
 class DagBundleModel(Base):
     """A table for DAG Bundle config."""
@@ -51,7 +53,9 @@ class DagBundleModel(Base):
 
     @classmethod
     @provide_session
-    def get_all_dag_bundles(cls, *, session: Session = NEW_SESSION) -> list[DagBundleModel]:
+    def get_all_dag_bundles(
+        cls, *, session: Session = NEW_SESSION
+    ) -> list[tuple[DagBundleModel, BaseDagBundle]]:
         """
         Get all DAG bundles.
 
@@ -64,6 +68,6 @@ class DagBundleModel(Base):
         for bundle_config in bundle_configs:
             bundle_class = import_string(bundle_config.classpath)
             bundle = bundle_class(name=bundle_config.name, **bundle_config.kwargs)
-            bundles.append(bundle)
+            bundles.append((bundle_config, bundle))
 
         return bundles

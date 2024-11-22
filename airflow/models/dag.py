@@ -66,6 +66,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import backref, relationship
 from sqlalchemy.sql import Select, expression
+from sqlalchemy_utils import UUIDType
 
 from airflow import settings, utils
 from airflow.api_internal.internal_api_call import internal_api_call
@@ -1834,13 +1835,14 @@ class DAG(TaskSDKDag, LoggingMixin):
     def bulk_write_to_db(
         cls,
         dags: Collection[DAG],
-        processor_subdir: str | None = None,
+        bundle_id: str,
         session: Session = NEW_SESSION,
     ):
         """
         Ensure the DagModel rows for the given dags are up-to-date in the dag table in the DB.
 
         :param dags: the DAG objects to save to the DB
+        :param bundle_id: the bundle_id to associate with the DAGs
         :return: None
         """
         if not dags:
@@ -1852,7 +1854,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         dag_op = DagModelOperation({dag.dag_id: dag for dag in dags})
 
         orm_dags = dag_op.add_dags(session=session)
-        dag_op.update_dags(orm_dags, processor_subdir=processor_subdir, session=session)
+        dag_op.update_dags(orm_dags, bundle_id=bundle_id, session=session)
 
         asset_op = AssetModelOperation.collect(dag_op.dags)
 
@@ -2029,8 +2031,7 @@ class DagModel(Base):
     # packaged DAG, it will point to the subpath of the DAG within the
     # associated zip.
     fileloc = Column(String(2000))
-    # The base directory used by Dag Processor that parsed this dag.
-    processor_subdir = Column(String(2000), nullable=True)
+    bundle_id = Column(UUIDType(binary=False), ForeignKey("dag_bundle.id"), nullable=False)
     # String representing the owners
     owners = Column(String(2000))
     # Display name of the dag
@@ -2242,8 +2243,8 @@ class DagModel(Base):
     @provide_session
     def deactivate_deleted_dags(
         cls,
+        bundle_id: str,
         alive_dag_filelocs: Container[str],
-        processor_subdir: str,
         session: Session = NEW_SESSION,
     ) -> None:
         """
@@ -2257,10 +2258,7 @@ class DagModel(Base):
         dag_models = session.scalars(
             select(cls).where(
                 cls.fileloc.is_not(None),
-                or_(
-                    cls.processor_subdir.is_(None),
-                    cls.processor_subdir == processor_subdir,
-                ),
+                cls.bundle_id == bundle_id,
             )
         )
 

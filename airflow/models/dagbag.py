@@ -601,7 +601,7 @@ class DagBag(LoggingMixin):
     def _sync_to_db(
         cls,
         dags: dict[str, DAG],
-        processor_subdir: str | None = None,
+        bundle_id: str,
         session: Session = NEW_SESSION,
     ):
         """Save attributes about list of DAG to the DB."""
@@ -611,7 +611,7 @@ class DagBag(LoggingMixin):
 
         log = cls.logger()
 
-        def _serialize_dag_capturing_errors(dag, session, processor_subdir):
+        def _serialize_dag_capturing_errors(dag, session):
             """
             Try to serialize the dag to the DB, but make a note of any errors.
 
@@ -623,7 +623,6 @@ class DagBag(LoggingMixin):
                     dag,
                     min_update_interval=settings.MIN_SERIALIZED_DAG_UPDATE_INTERVAL,
                     session=session,
-                    processor_subdir=processor_subdir,
                 )
                 if dag_was_updated:
                     DagBag._sync_perm_for_dag(dag, session=session)
@@ -654,12 +653,10 @@ class DagBag(LoggingMixin):
                 )
                 log.debug("Calling the DAG.bulk_sync_to_db method")
                 try:
-                    DAG.bulk_write_to_db(dags.values(), processor_subdir=processor_subdir, session=session)
+                    DAG.bulk_write_to_db(dags.values(), bundle_id=bundle_id, session=session)
                     # Write Serialized DAGs to DB, capturing errors
                     for dag in dags.values():
-                        serialize_errors.extend(
-                            _serialize_dag_capturing_errors(dag, session, processor_subdir)
-                        )
+                        serialize_errors.extend(_serialize_dag_capturing_errors(dag, session))
                 except OperationalError:
                     session.rollback()
                     raise

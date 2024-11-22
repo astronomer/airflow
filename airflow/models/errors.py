@@ -17,7 +17,8 @@
 # under the License.
 from __future__ import annotations
 
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, ForeignKey, Integer, String, Text
+from sqlalchemy_utils import UUIDType
 
 from airflow.models.base import Base
 from airflow.utils.sqlalchemy import UtcDateTime
@@ -29,6 +30,7 @@ class ParseImportError(Base):
     __tablename__ = "import_error"
     id = Column(Integer, primary_key=True)
     timestamp = Column(UtcDateTime)
+    bundle_id = Column(UUIDType(binary=False), ForeignKey("dag_bundle.id"), nullable=False)
     filename = Column(String(1024))
     stacktrace = Column(Text)
     processor_subdir = Column(String(2000), nullable=True)

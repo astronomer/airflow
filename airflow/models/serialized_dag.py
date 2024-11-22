@@ -162,7 +162,6 @@ class SerializedDagModel(Base):
         cls,
         dag: DAG,
         min_update_interval: int | None = None,
-        processor_subdir: str | None = None,
         session: Session = NEW_SESSION,
     ) -> bool:
         """
@@ -173,7 +172,6 @@ class SerializedDagModel(Base):
 
         :param dag: a DAG to be written into database
         :param min_update_interval: minimal interval in seconds to update serialized DAG
-        :param processor_subdir: The dag directory of the processor
         :param session: ORM Session
 
         :returns: Boolean indicating if the DAG was written to the DB
@@ -191,18 +189,14 @@ class SerializedDagModel(Base):
                 return False
 
         log.debug("Checking if DAG (%s) changed", dag.dag_id)
-        new_serialized_dag = cls(dag, processor_subdir)
+        new_serialized_dag = cls(dag)
         serialized_dag_db = session.execute(
-            select(cls.dag_hash, cls.processor_subdir)
+            select(cls.dag_hash)
             .where(cls.dag_id == dag.dag_id)
             .order_by(cls.created_at.desc())
         ).first()
 
-        if (
-            serialized_dag_db is not None
-            and serialized_dag_db.dag_hash == new_serialized_dag.dag_hash
-            and serialized_dag_db.processor_subdir == new_serialized_dag.processor_subdir
-        ):
+        if serialized_dag_db is not None and serialized_dag_db.dag_hash == new_serialized_dag.dag_hash:
             log.debug("Serialized DAG (%s) is unchanged. Skipping writing to DB", dag.dag_id)
             return False
         dagv = DagVersion.write_dag(

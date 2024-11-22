@@ -94,6 +94,7 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
     :param file_path: a Python file containing Airflow DAG definitions
     :param dag_ids: If specified, only look at these DAG ID's
     :param callback_requests: failure callback to execute
+    :param bundle_id: id of the DAG bundle this file is in
     """
 
     # Counter that increments every time an instance of this class is created
@@ -103,14 +104,14 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
         self,
         file_path: str,
         dag_ids: list[str] | None,
-        dag_directory: str,
         callback_requests: list[CallbackRequest],
+        bundle_id: str,
     ):
         super().__init__()
         self._file_path = file_path
         self._dag_ids = dag_ids
-        self._dag_directory = dag_directory
         self._callback_requests = callback_requests
+        self.bundle_id = bundle_id
 
         # The process that was launched to process the given .
         self._process: multiprocessing.process.BaseProcess | None = None
@@ -138,8 +139,8 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
         file_path: str,
         dag_ids: list[str] | None,
         thread_name: str,
-        dag_directory: str,
         callback_requests: list[CallbackRequest],
+        bundle_id: str,
     ) -> None:
         """
         Process the given file.
@@ -151,6 +152,7 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
             in this list
         :param thread_name: the name to use for the process that is launched
         :param callback_requests: failure callback to execute
+        :param bundle_id: id of the DAG bundle this file is in
         :return: the process that was launched
         """
         # This helper runs in the newly created process
@@ -174,10 +176,11 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
             threading.current_thread().name = thread_name
 
             log.info("Started process (PID=%s) to work on %s", os.getpid(), file_path)
-            dag_file_processor = DagFileProcessor(dag_ids=dag_ids, dag_directory=dag_directory, log=log)
+            dag_file_processor = DagFileProcessor(dag_ids=dag_ids, bundle_id=bundle_id, log=log)
             result: tuple[int, int, int] = dag_file_processor.process_file(
                 file_path=file_path,
                 callback_requests=callback_requests,
+                bundle_id=bundle_id,
             )
             result_channel.send(result)
 
@@ -243,8 +246,8 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
                 self.file_path,
                 self._dag_ids,
                 f"DagFileProcessor{self._instance_id}",
-                self._dag_directory,
                 self._callback_requests,
+                self.bundle_id,
             ),
             name=f"DagFileProcessor{self._instance_id}-Process",
         )
@@ -421,11 +424,11 @@ class DagFileProcessor(LoggingMixin):
 
     UNIT_TEST_MODE: bool = conf.getboolean("core", "UNIT_TEST_MODE")
 
-    def __init__(self, dag_ids: list[str] | None, dag_directory: str, log: logging.Logger):
+    def __init__(self, dag_ids: list[str] | None, bundle_id: str, log: logging.Logger):
         super().__init__()
         self.dag_ids = dag_ids
         self._log = log
-        self._dag_directory = dag_directory
+        self.bundle_id = bundle_id
         self.dag_warnings: set[tuple[str, str]] = set()
         self._last_num_of_db_queries = 0
 
@@ -435,7 +438,7 @@ class DagFileProcessor(LoggingMixin):
     def update_import_errors(
         file_last_changed: dict[str, datetime],
         import_errors: dict[str, str],
-        processor_subdir: str | None,
+        bundle_id: str,
         session: Session = NEW_SESSION,
     ) -> None:
         """
@@ -479,7 +482,7 @@ class DagFileProcessor(LoggingMixin):
                         filename=filename,
                         timestamp=timezone.utcnow(),
                         stacktrace=stacktrace,
-                        processor_subdir=processor_subdir,
+                        bundle_id=bundle_id,
                     )
                 )
                 # sending notification when a new dag import error occurs
@@ -565,6 +568,7 @@ class DagFileProcessor(LoggingMixin):
 
         :return: number of queries executed
         """
+        return  # No callbacks
         for request in callback_requests:
             cls.logger().debug("Processing Callback Request: %s", request)
             try:
@@ -703,6 +707,7 @@ class DagFileProcessor(LoggingMixin):
         self,
         file_path: str,
         callback_requests: list[CallbackRequest],
+        bundle_id: str,
         session: Session = NEW_SESSION,
     ) -> tuple[int, int, int]:
         """
@@ -737,7 +742,7 @@ class DagFileProcessor(LoggingMixin):
                 DagFileProcessor.update_import_errors(
                     file_last_changed=dagbag.file_last_changed,
                     import_errors=dagbag.import_errors,
-                    processor_subdir=self._dag_directory,
+                    bundle_id=bundle_id,
                 )
                 if callback_requests:
                     # If there were callback requests for this file but there was a
@@ -750,7 +755,7 @@ class DagFileProcessor(LoggingMixin):
 
             serialize_errors = DagFileProcessor.save_dag_to_db(
                 dags=dagbag.dags,
-                dag_directory=self._dag_directory,
+                bundle_id=self.bundle_id,
             )
 
             dagbag.import_errors.update(dict(serialize_errors))
@@ -760,7 +765,7 @@ class DagFileProcessor(LoggingMixin):
                 DagFileProcessor.update_import_errors(
                     file_last_changed=dagbag.file_last_changed,
                     import_errors=dagbag.import_errors,
-                    processor_subdir=self._dag_directory,
+                    bundle_id=bundle_id,
                 )
             except Exception:
                 self.log.exception("Error logging import errors!")
@@ -783,9 +788,9 @@ class DagFileProcessor(LoggingMixin):
     @provide_session
     def save_dag_to_db(
         dags: dict[str, DAG],
-        dag_directory: str,
+        bundle_id: str,
         session=NEW_SESSION,
     ):
-        import_errors = DagBag._sync_to_db(dags=dags, processor_subdir=dag_directory, session=session)
+        import_errors = DagBag._sync_to_db(dags=dags, bundle_id=bundle_id, session=session)
         session.commit()
         return import_errors
