@@ -343,6 +343,7 @@ class TestLocalTaskJob:
         Test that ensures that mark_success in the UI doesn't cause
         the task to fail, and that the task exits
         """
+        # TODO: Port to SDK
         dag = get_test_dag("test_mark_state")
         data_interval = dag.infer_automated_data_interval(DEFAULT_LOGICAL_DATE)
         triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
@@ -414,6 +415,7 @@ class TestLocalTaskJob:
     @patch.object(StandardTaskRunner, "return_code")
     @mock.patch("airflow.jobs.scheduler_job_runner.Stats.incr", autospec=True)
     def test_local_task_return_code_metric(self, mock_stats_incr, mock_return_code, create_dummy_dag):
+        # TODO: Create issues to port over metrics on SDK
         dag, task = create_dummy_dag("test_localtaskjob_code")
         dag_run = dag.get_last_dagrun()
 
@@ -445,6 +447,7 @@ class TestLocalTaskJob:
 
     @patch.object(StandardTaskRunner, "return_code")
     def test_localtaskjob_maintain_heart_rate(self, mock_return_code, caplog, create_dummy_dag):
+        # TODO: Verify it is covered by test_regular_heartbeat
         dag, task = create_dummy_dag("test_localtaskjob_double_trigger")
         dag_run = dag.get_last_dagrun()
 
@@ -476,6 +479,7 @@ class TestLocalTaskJob:
         assert "Task exited with return code 0" in caplog.text
 
     def test_mark_failure_on_failure_callback(self, caplog, get_test_dag):
+        # TODO: Figure out how we will make it work -- maybe same as setting an external state
         """
         Test that ensures that mark_failure in the UI fails
         the task, and executes on_failure_callback
@@ -510,6 +514,7 @@ class TestLocalTaskJob:
         ) in caplog.text
 
     def test_dagrun_timeout_logged_in_task_logs(self, caplog, get_test_dag):
+        # TODO: Handle the case with DR & TI timeout
         """
         Test that ensures that if a running task is externally skipped (due to a dagrun timeout)
         It is logged in the task logs.
@@ -547,6 +552,7 @@ class TestLocalTaskJob:
         """
         Ensure failure callback of a task is run by the airflow run --raw process
         """
+        # TODO: Callbacks in TaskSDK
         callback_file = tmp_path.joinpath("callback.txt")
         callback_file.touch()
         monkeypatch.setenv("AIRFLOW_CALLBACK_FILE", str(callback_file))
@@ -586,6 +592,7 @@ class TestLocalTaskJob:
         Test that ensures that where a task is marked success in the UI
         on_success_callback gets executed
         """
+        # TODO: Callbacks in TaskSDK
         dag = get_test_dag("test_mark_state")
         data_interval = dag.infer_automated_data_interval(DEFAULT_LOGICAL_DATE)
         triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
@@ -616,6 +623,7 @@ class TestLocalTaskJob:
         Test that ensures that when listeners are executed, the task is not killed before they finish
         or timeout
         """
+        # TODO: Unsure what we do about Listener in TaskSDK
         from tests.listeners import slow_listener
 
         lm = get_listener_manager()
@@ -655,6 +663,7 @@ class TestLocalTaskJob:
         """
         Test that ensures that when there are too slow listeners, the task is killed
         """
+        # TODO: Unsure what we do about Listener in TaskSDK
         from tests.listeners import very_slow_listener
 
         lm = get_listener_manager()
@@ -694,6 +703,7 @@ class TestLocalTaskJob:
         Test that ensures that when there are listeners, but the task is taking a long time anyways,
         it's not killed by the overtime mechanism.
         """
+        # TODO: Unsure what we do about Listener in TaskSDK
         from tests.listeners import slow_listener
 
         lm = get_listener_manager()
@@ -740,6 +750,7 @@ class TestLocalTaskJob:
         Callbacks should not be executed by LocalTaskJob.  If the task killed via sigkill,
         it will be reaped as zombie, then the callback is executed
         """
+        # TODO: No need to port this. Callbacks will be handled differently in TaskSDK
         callback_file = tmp_path.joinpath("callback.txt")
         # callback_file will be created by the task: bash_sleep
         monkeypatch.setenv("AIRFLOW_CALLBACK_FILE", str(callback_file))
@@ -827,6 +838,7 @@ class TestLocalTaskJob:
 
     def test_process_sigsegv_error_message(self, caplog, dag_maker):
         """Test that shows error if process failed with segmentation fault."""
+        # TODO: DO we need to port this? Maybe do it
         caplog.set_level(logging.CRITICAL, logger="local_task_job.py")
 
         def task_function(ti):
@@ -871,6 +883,7 @@ def clean_db_helper():
 @pytest.mark.usefixtures("clean_db_helper")
 @mock.patch("airflow.task.standard_task_runner.StandardTaskRunner")
 def test_number_of_queries_single_loop(mock_task_runner, dag_maker):
+    # TODO: remove!
     codes: list[int | None] = 9 * [None] + [0]
     mock_task_runner.return_value.return_code.side_effects = [[0], codes]
 
@@ -909,6 +922,7 @@ class TestSigtermOnRunner:
     )
     def test_process_sigterm_works_with_retries(self, mp_method, wait_timeout, daemon, clear_db, tmp_path):
         """Test that ensures that task runner sets tasks to retry when task runner receive SIGTERM."""
+        # TODO: Port to supervisor test
         mp_context = mp.get_context(mp_method)
 
         # Use shared memory value, so we can properly track value change
