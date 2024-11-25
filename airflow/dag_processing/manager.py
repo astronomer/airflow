@@ -809,6 +809,7 @@ class DagFileProcessorManager(LoggingMixin):
                 self._files.extend(
                     DagFile(path=path, bundle_id=bundle_model.id) for path in bundle_file_paths
                 )
+                # TODO: detect if version changed and update accordingly
 
     def _refresh_dag_dir(self, bundle_model, bundle) -> list[str]:
         """Refresh file paths from bundle dir."""
