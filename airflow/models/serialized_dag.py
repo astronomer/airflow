@@ -191,9 +191,7 @@ class SerializedDagModel(Base):
         log.debug("Checking if DAG (%s) changed", dag.dag_id)
         new_serialized_dag = cls(dag)
         serialized_dag_db = session.execute(
-            select(cls.dag_hash)
-            .where(cls.dag_id == dag.dag_id)
-            .order_by(cls.created_at.desc())
+            select(cls.dag_hash).where(cls.dag_id == dag.dag_id).order_by(cls.created_at.desc())
         ).first()
 
         if serialized_dag_db is not None and serialized_dag_db.dag_hash == new_serialized_dag.dag_hash:
