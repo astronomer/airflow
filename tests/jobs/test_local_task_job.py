@@ -298,12 +298,11 @@ class TestLocalTaskJob:
         """
         Test that task heartbeat will sleep when it fails fast
         """
+        # TODO: This is covered by task_sdk/tests/execution_time/test_supervisor.py:test_regular_heartbeat
         self.mock_base_job_sleep.side_effect = time.sleep
         dag_id = "test_heartbeat_failed_fast"
         task_id = "test_heartbeat_failed_fast_op"
         with create_session() as session:
-            dag_id = "test_heartbeat_failed_fast"
-            task_id = "test_heartbeat_failed_fast_op"
             dag = self.dagbag.get_dag(dag_id)
             task = dag.get_task(task_id)
             data_interval = dag.infer_automated_data_interval(DEFAULT_LOGICAL_DATE)
