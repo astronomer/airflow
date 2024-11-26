@@ -667,8 +667,8 @@ class DagBag(LoggingMixin):
         return import_errors
 
     @provide_session
-    def sync_to_db(self, processor_subdir: str | None = None, session: Session = NEW_SESSION):
-        import_errors = DagBag._sync_to_db(dags=self.dags, processor_subdir=processor_subdir, session=session)
+    def sync_to_db(self, bundle_id: str, session: Session = NEW_SESSION):
+        import_errors = DagBag._sync_to_db(dags=self.dags, bundle_id=bundle_id, session=session)
         self.import_errors.update(import_errors)
 
     @classmethod

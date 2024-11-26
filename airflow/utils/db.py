@@ -921,14 +921,6 @@ def check_and_run_migrations():
         sys.exit(1)
 
 
-def _reserialize_dags(*, session: Session) -> None:
-    from airflow.models.dagbag import DagBag
-
-    dagbag = DagBag(collect_dags=False)
-    dagbag.collect_dags(only_if_updated=False)
-    dagbag.sync_to_db(session=session)
-
-
 @provide_session
 def synchronize_log_template(*, session: Session = NEW_SESSION) -> None:
     """
@@ -1193,8 +1185,8 @@ def upgradedb(
             settings.reconfigure_orm()
 
         if reserialize_dags and current_revision != previous_revision:
-            log.info("Reserializing the DAGs")
-            _reserialize_dags(session=session)
+            log.warning("Not reserializing the DAGs yet.")
+            # TODO: We may not even need to reserialize the DAGs here. SerDag is now versioned, so the older format is likely perfectly usable.
         add_default_pool_if_not_exists(session=session)
         synchronize_log_template(session=session)
 
