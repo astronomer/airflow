@@ -315,6 +315,7 @@ class LocalTaskJobRunner(BaseJobRunner, LoggingMixin):
             ti.update_heartbeat()
 
         elif self.task_runner.return_code() is None and hasattr(self.task_runner, "process"):
+            # TODO: Port this to SDK
             self._overtime = (timezone.utcnow() - (ti.end_date or timezone.utcnow())).total_seconds()
             if ti.state == TaskInstanceState.SKIPPED:
                 # A DagRun timeout will cause tasks to be externally marked as skipped.
