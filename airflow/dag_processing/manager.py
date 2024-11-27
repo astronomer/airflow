@@ -107,6 +107,7 @@ class DagFile(NamedTuple):
 
     path: str
     bundle_id: str
+    bundle_version: str
 
 
 class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
@@ -615,7 +616,9 @@ class DagFileProcessorManager(LoggingMixin):
                         if processor:
                             self._collect_results_from_processor(processor)
                             self.waitables.pop(sentinel)
-                            self._processors.pop(DagFile(processor.file_path, processor.bundle_id))
+                            self._processors.pop(
+                                DagFile(processor.file_path, processor.bundle_id, processor.bundle_version)
+                            )
 
                 if self.standalone_dag_processor:
                     for callback in DagFileProcessorManager._fetch_callbacks(
@@ -807,11 +810,13 @@ class DagFileProcessorManager(LoggingMixin):
                 # remove all files from the bundle, then add the new ones
                 self._files = [f for f in self._files if f.bundle_id != bundle_model.id]
                 self._files.extend(
-                    DagFile(path=path, bundle_id=bundle_model.id) for path in bundle_file_paths
+                    DagFile(path=path, bundle_id=bundle_model.id, bundle_version=bundle.get_current_version())
+                    for path in bundle_file_paths
                 )
+                self.log.info("Found %s files for bundle %s", len(bundle_file_paths), bundle.name)
                 # TODO: detect if version changed and update accordingly
 
-    def _refresh_dag_dir(self, bundle_model, bundle) -> list[str]:
+    def _refresh_dag_dir(self, bundle_model, bundle):
         """Refresh file paths from bundle dir."""
         # Build up a list of Python files that could contain DAGs
         self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
@@ -821,7 +826,7 @@ class DagFileProcessorManager(LoggingMixin):
         try:
             self.log.debug("Removing old import errors")
             DagFileProcessorManager.clear_nonexistent_import_errors(
-                bundle_id=bundle.id,
+                bundle_id=bundle_model.id,
                 file_paths=file_paths,
             )
         except Exception:
@@ -1198,7 +1203,10 @@ class DagFileProcessorManager(LoggingMixin):
             if sentinel is not self._direct_scheduler_conn:
                 processor = cast(DagFileProcessorProcess, self.waitables[sentinel])
                 self.waitables.pop(processor.waitable_handle)
-                self._processors.pop(DagFile(processor.file_path, processor.bundle_id))
+                # TODO: This may be wrong?
+                self._processors.pop(
+                    DagFile(processor.file_path, processor.bundle_id, processor.bundle_version)
+                )
                 self._collect_results_from_processor(processor)
 
         self.log.debug("%s/%s DAG parsing processes running", len(self._processors), self._parallelism)
@@ -1206,13 +1214,14 @@ class DagFileProcessorManager(LoggingMixin):
         self.log.debug("%s files queued for processing", len(self._file_queue))
 
     @staticmethod
-    def _create_process(file_path, dag_ids, callback_requests, bundle_id):
+    def _create_process(file_path, dag_ids, callback_requests, bundle_id, bundle_version):
         """Create DagFileProcessorProcess instance."""
         return DagFileProcessorProcess(
             file_path=file_path,
             dag_ids=dag_ids,
             callback_requests=callback_requests,
             bundle_id=bundle_id,
+            bundle_version=bundle_version,
         )
 
     @add_span
@@ -1234,6 +1243,7 @@ class DagFileProcessorManager(LoggingMixin):
                 self._dag_ids,
                 None,
                 bundle_id=file.bundle_id,
+                bundle_version=file.bundle_version,
                 # callback_to_execute_for_file,
             )
 

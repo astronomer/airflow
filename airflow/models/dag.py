@@ -1836,6 +1836,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         cls,
         dags: Collection[DAG],
         bundle_id: str,
+        bundle_version: str,
         session: Session = NEW_SESSION,
     ):
         """
@@ -1854,7 +1855,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         dag_op = DagModelOperation({dag.dag_id: dag for dag in dags})
 
         orm_dags = dag_op.add_dags(session=session)
-        dag_op.update_dags(orm_dags, bundle_id=bundle_id, session=session)
+        dag_op.update_dags(orm_dags, bundle_id=bundle_id, bundle_version=bundle_version, session=session)
 
         asset_op = AssetModelOperation.collect(dag_op.dags)
 
@@ -1869,13 +1870,13 @@ class DAG(TaskSDKDag, LoggingMixin):
         session.flush()
 
     @provide_session
-    def sync_to_db(self, processor_subdir: str | None = None, session=NEW_SESSION):
+    def sync_to_db(self, bundle_id: str, bundle_version, session=NEW_SESSION):
         """
         Save attributes about this DAG to the DB.
 
         :return: None
         """
-        self.bulk_write_to_db([self], processor_subdir=processor_subdir, session=session)
+        self.bulk_write_to_db([self], bundle_id=bundle_id, bundle_version=bundle_version, session=session)
 
     def get_default_view(self):
         """Allow backward compatible jinja2 templates."""
@@ -2032,6 +2033,8 @@ class DagModel(Base):
     # associated zip.
     fileloc = Column(String(2000))
     bundle_id = Column(UUIDType(binary=False), ForeignKey("dag_bundle.id"), nullable=False)
+    # The version of the bundle the last time the DAG was parsed
+    latest_bundle_version = Column(String(200), nullable=True)
     # String representing the owners
     owners = Column(String(2000))
     # Display name of the dag

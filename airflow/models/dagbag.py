@@ -602,6 +602,7 @@ class DagBag(LoggingMixin):
         cls,
         dags: dict[str, DAG],
         bundle_id: str,
+        bundle_version: str,
         session: Session = NEW_SESSION,
     ):
         """Save attributes about list of DAG to the DB."""
@@ -653,7 +654,9 @@ class DagBag(LoggingMixin):
                 )
                 log.debug("Calling the DAG.bulk_sync_to_db method")
                 try:
-                    DAG.bulk_write_to_db(dags.values(), bundle_id=bundle_id, session=session)
+                    DAG.bulk_write_to_db(
+                        dags.values(), bundle_id=bundle_id, bundle_version=bundle_version, session=session
+                    )
                     # Write Serialized DAGs to DB, capturing errors
                     for dag in dags.values():
                         serialize_errors.extend(_serialize_dag_capturing_errors(dag, session))
@@ -667,8 +670,10 @@ class DagBag(LoggingMixin):
         return import_errors
 
     @provide_session
-    def sync_to_db(self, bundle_id: str, session: Session = NEW_SESSION):
-        import_errors = DagBag._sync_to_db(dags=self.dags, bundle_id=bundle_id, session=session)
+    def sync_to_db(self, bundle_id: str, bundle_version: str, session: Session = NEW_SESSION):
+        import_errors = DagBag._sync_to_db(
+            dags=self.dags, bundle_id=bundle_id, bundle_version=bundle_version, session=session
+        )
         self.import_errors.update(import_errors)
 
     @classmethod

@@ -106,12 +106,14 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
         dag_ids: list[str] | None,
         callback_requests: list[CallbackRequest],
         bundle_id: str,
+        bundle_version: str,
     ):
         super().__init__()
         self._file_path = file_path
         self._dag_ids = dag_ids
         self._callback_requests = callback_requests
         self.bundle_id = bundle_id
+        self.bundle_version = bundle_version
 
         # The process that was launched to process the given .
         self._process: multiprocessing.process.BaseProcess | None = None
@@ -141,6 +143,7 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
         thread_name: str,
         callback_requests: list[CallbackRequest],
         bundle_id: str,
+        bundle_version: str,
     ) -> None:
         """
         Process the given file.
@@ -176,7 +179,9 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
             threading.current_thread().name = thread_name
 
             log.info("Started process (PID=%s) to work on %s", os.getpid(), file_path)
-            dag_file_processor = DagFileProcessor(dag_ids=dag_ids, bundle_id=bundle_id, log=log)
+            dag_file_processor = DagFileProcessor(
+                dag_ids=dag_ids, bundle_id=bundle_id, bundle_version=bundle_version, log=log
+            )
             result: tuple[int, int, int] = dag_file_processor.process_file(
                 file_path=file_path,
                 callback_requests=callback_requests,
@@ -248,6 +253,7 @@ class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
                 f"DagFileProcessor{self._instance_id}",
                 self._callback_requests,
                 self.bundle_id,
+                self.bundle_version,
             ),
             name=f"DagFileProcessor{self._instance_id}-Process",
         )
@@ -424,11 +430,12 @@ class DagFileProcessor(LoggingMixin):
 
     UNIT_TEST_MODE: bool = conf.getboolean("core", "UNIT_TEST_MODE")
 
-    def __init__(self, dag_ids: list[str] | None, bundle_id: str, log: logging.Logger):
+    def __init__(self, dag_ids: list[str] | None, bundle_id: str, bundle_version: str, log: logging.Logger):
         super().__init__()
         self.dag_ids = dag_ids
         self._log = log
         self.bundle_id = bundle_id
+        self.bundle_version = bundle_version
         self.dag_warnings: set[tuple[str, str]] = set()
         self._last_num_of_db_queries = 0
 
@@ -756,6 +763,7 @@ class DagFileProcessor(LoggingMixin):
             serialize_errors = DagFileProcessor.save_dag_to_db(
                 dags=dagbag.dags,
                 bundle_id=self.bundle_id,
+                bundle_version=self.bundle_version,
             )
 
             dagbag.import_errors.update(dict(serialize_errors))
@@ -789,8 +797,11 @@ class DagFileProcessor(LoggingMixin):
     def save_dag_to_db(
         dags: dict[str, DAG],
         bundle_id: str,
+        bundle_version: str,
         session=NEW_SESSION,
     ):
-        import_errors = DagBag._sync_to_db(dags=dags, bundle_id=bundle_id, session=session)
+        import_errors = DagBag._sync_to_db(
+            dags=dags, bundle_id=bundle_id, bundle_version=bundle_version, session=session
+        )
         session.commit()
         return import_errors

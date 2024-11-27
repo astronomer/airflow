@@ -197,6 +197,7 @@ class DagModelOperation(NamedTuple):
         orm_dags: dict[str, DagModel],
         *,
         bundle_id: str,
+        bundle_version: str,
         session: Session,
     ) -> None:
         # we exclude backfill from active run counts since their concurrency is separate
@@ -229,6 +230,7 @@ class DagModelOperation(NamedTuple):
             dm.timetable_description = dag.timetable.description
             dm.asset_expression = dag.timetable.asset_condition.as_expression()
             dm.bundle_id = bundle_id
+            dm.latest_bundle_version = bundle_version
 
             last_automated_run: DagRun | None = run_info.latest_runs.get(dag.dag_id)
             if last_automated_run is None:
