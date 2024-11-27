@@ -19,9 +19,10 @@
 """
 Add DAG Bundle model.
 
-Revision ID: 9bdb37326d02
+Revision ID: ab4f6e0be65e
 Revises: eed27faa34e3
-Create Date: 2024-11-25 21:12:57.131521
+Create Date: 2024-11-27 04:56:10.658565
+
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ from alembic import op
 from sqlalchemy_utils import UUIDType
 
 # revision identifiers, used by Alembic.
-revision = "9bdb37326d02"
+revision = "ab4f6e0be65e"
 down_revision = "eed27faa34e3"
 branch_labels = None
 depends_on = None
@@ -42,6 +43,7 @@ def upgrade():
     """Apply Add DAG Bundle model."""
     with op.batch_alter_table("dag", schema=None) as batch_op:
         batch_op.add_column(sa.Column("bundle_id", UUIDType(binary=False), nullable=False))
+        batch_op.add_column(sa.Column("latest_bundle_version", sa.String(length=200), nullable=True))
         batch_op.create_foreign_key(batch_op.f("dag_bundle_id_fkey"), "dag_bundle", ["bundle_id"], ["id"])
         batch_op.drop_column("processor_subdir")
 
@@ -63,4 +65,5 @@ def downgrade():
             sa.Column("processor_subdir", sa.VARCHAR(length=2000), autoincrement=False, nullable=True)
         )
         batch_op.drop_constraint(batch_op.f("dag_bundle_id_fkey"), type_="foreignkey")
+        batch_op.drop_column("latest_bundle_version")
         batch_op.drop_column("bundle_id")
