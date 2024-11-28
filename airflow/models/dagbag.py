@@ -25,6 +25,7 @@ import os
 import sys
 import textwrap
 import traceback
+import warnings
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -97,7 +98,137 @@ class FileLoadStat(NamedTuple):
 
 class DagBag(LoggingMixin):
     """
-    A dagbag is a collection of dags, parsed out of a folder tree and has high level configuration settings.
+    Read DAGs from the db.
+
+    :param load_op_links: whether to load the operators links as well
+    """
+
+    def __new__(cls, *args, **kwargs):
+        # DAG parsing has been moved to the DagCollector instead
+        # Let's do our best to detect if folks are still using DagBag instead, emit a deprecation
+        # warning, and then use the DagCollector instead.
+        # This can be removed once all providers min version is Airflow 3.0
+        old_dagbag_kwargs = {
+            "dag_folder",
+            "include_examples",
+            "safe_mode",
+            "collect_dags",
+        }
+        if set(kwargs.keys()).union(old_dagbag_kwargs) or not kwargs.get("read_dags_from_db", False):
+            warnings.warn(
+                "Using DagBag to parse DAGs is deprecated. Use DagCollector instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            if "read_dags_from_db" in kwargs:
+                del kwargs["read_dags_from_db"]
+            return DagCollector(**kwargs)
+
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init__(
+        self,
+        load_op_links: bool = True,
+        **kwargs,
+    ):
+        super().__init__()
+
+        self.dags: dict[str, DAG] = {}
+        self.dags_last_fetched: dict[str, datetime] = {}
+        # Only used by SchedulerJob to compare the dag_hash to identify change in DAGs
+        self.dags_hash: dict[str, str] = {}
+
+        # Should the extra operator link be loaded via plugins?
+        # This flag is set to False in Scheduler so that Extra Operator links are not loaded
+        self.load_op_links = load_op_links
+
+    @provide_session
+    def get_dag(self, dag_id, session: Session = None):
+        """
+        Get the DAG out of the dictionary, and refreshes it if expired.
+
+        :param dag_id: DAG ID
+        """
+        # Import here so that serialized dag is only imported when serialization is enabled
+        from airflow.models.serialized_dag import SerializedDagModel
+
+        if dag_id not in self.dags:
+            # Load from DB if not (yet) in the bag
+            self._add_dag_from_db(dag_id=dag_id, session=session)
+            return self.dags.get(dag_id)
+
+        # If DAG is in the DagBag, check the following
+        # 1. if time has come to check if DAG is updated (controlled by min_serialized_dag_fetch_secs)
+        # 2. check the last_updated and hash columns in SerializedDag table to see if
+        # Serialized DAG is updated
+        # 3. if (2) is yes, fetch the Serialized DAG.
+        # 4. if (2) returns None (i.e. Serialized DAG is deleted), remove dag from dagbag
+        # if it exists and return None.
+        min_serialized_dag_fetch_secs = timedelta(seconds=settings.MIN_SERIALIZED_DAG_FETCH_INTERVAL)
+        if (
+            dag_id in self.dags_last_fetched
+            and timezone.utcnow() > self.dags_last_fetched[dag_id] + min_serialized_dag_fetch_secs
+        ):
+            sd_latest_version_and_updated_datetime = (
+                SerializedDagModel.get_latest_version_hash_and_updated_datetime(
+                    dag_id=dag_id, session=session
+                )
+            )
+            if not sd_latest_version_and_updated_datetime:
+                self.log.warning("Serialized DAG %s no longer exists", dag_id)
+                del self.dags[dag_id]
+                del self.dags_last_fetched[dag_id]
+                del self.dags_hash[dag_id]
+                return None
+
+            sd_latest_version, sd_last_updated_datetime = sd_latest_version_and_updated_datetime
+
+            if (
+                sd_last_updated_datetime > self.dags_last_fetched[dag_id]
+                or sd_latest_version != self.dags_hash[dag_id]
+            ):
+                self._add_dag_from_db(dag_id=dag_id, session=session)
+
+        return self.dags.get(dag_id)
+
+    def _add_dag_from_db(self, dag_id: str, session: Session):
+        """Add DAG to DagBag from DB."""
+        from airflow.models.serialized_dag import SerializedDagModel
+
+        row: SerializedDagModel | None = SerializedDagModel.get(dag_id, session)
+        if not row:
+            return None
+
+        row.load_op_links = self.load_op_links
+        dag = row.dag
+        self.dags[dag.dag_id] = dag
+        self.dags_last_fetched[dag.dag_id] = timezone.utcnow()
+        self.dags_hash[dag.dag_id] = row.dag_hash
+
+    def collect_dags_from_db(self):
+        """Collect DAGs from database."""
+        from airflow.models.serialized_dag import SerializedDagModel
+
+        with Stats.timer("collect_db_dags"):
+            self.log.info("Filling up the DagBag from database")
+
+            # The dagbag contains all rows in serialized_dag table. Deleted DAGs are deleted
+            # from the table by the scheduler job.
+            self.dags = SerializedDagModel.read_all_dags()
+
+    # @classmethod
+    # def _sync_to_db(cls, *args, **kwargs):
+    #    warnings.warn(
+    #        "DagBag._sync_to_db has been moved to DagCollector._sync_to_db.",
+    #        DeprecationWarning,
+    #        stacklevel=2,
+    #    )
+    #    return DagCollector._sync_to_db(*args, **kwargs)
+
+
+class DagCollector(LoggingMixin):
+    """
+    Parsed DAGs from a folder tree while considering high level configuration settings.
 
     Some possible setting are database to use as a backend and what executor
     to use to fire off tasks. This makes it easier to run distinct environments
@@ -111,11 +242,6 @@ class DagBag(LoggingMixin):
     :param safe_mode: when ``False``, scans all python modules for dags.
         When ``True`` uses heuristics (files containing ``DAG`` and ``airflow`` strings)
         to filter python modules to scan for dags.
-    :param read_dags_from_db: Read DAGs from DB if ``True`` is passed.
-        If ``False`` DAGs are read from python files.
-    :param load_op_links: Should the extra operator link be loaded via plugins when
-        de-serializing the DAG? This flag is set to False in Scheduler so that Extra Operator links
-        are not loaded to not run User code in Scheduler.
     :param collect_dags: when True, collects dags during class initialization.
     """
 
@@ -124,8 +250,6 @@ class DagBag(LoggingMixin):
         dag_folder: str | Path | None = None,
         include_examples: bool | ArgNotSet = NOTSET,
         safe_mode: bool | ArgNotSet = NOTSET,
-        read_dags_from_db: bool = False,
-        load_op_links: bool = True,
         collect_dags: bool = True,
     ):
         # Avoid circular import
@@ -149,11 +273,6 @@ class DagBag(LoggingMixin):
         self.import_errors: dict[str, str] = {}
         self.captured_warnings: dict[str, tuple[str, ...]] = {}
         self.has_logged = False
-        self.read_dags_from_db = read_dags_from_db
-        # Only used by read_dags_from_db=True
-        self.dags_last_fetched: dict[str, datetime] = {}
-        # Only used by SchedulerJob to compare the dag_hash to identify change in DAGs
-        self.dags_hash: dict[str, str] = {}
 
         self.dagbag_import_error_tracebacks = conf.getboolean("core", "dagbag_import_error_tracebacks")
         self.dagbag_import_error_traceback_depth = conf.getint("core", "dagbag_import_error_traceback_depth")
@@ -163,9 +282,6 @@ class DagBag(LoggingMixin):
                 include_examples=include_examples,
                 safe_mode=safe_mode,
             )
-        # Should the extra operator link be loaded via plugins?
-        # This flag is set to False in Scheduler so that Extra Operator links are not loaded
-        self.load_op_links = load_op_links
 
     def size(self) -> int:
         """:return: the amount of dags contained in this dagbag"""
@@ -189,49 +305,6 @@ class DagBag(LoggingMixin):
         """
         # Avoid circular import
         from airflow.models.dag import DagModel
-
-        if self.read_dags_from_db:
-            # Import here so that serialized dag is only imported when serialization is enabled
-            from airflow.models.serialized_dag import SerializedDagModel
-
-            if dag_id not in self.dags:
-                # Load from DB if not (yet) in the bag
-                self._add_dag_from_db(dag_id=dag_id, session=session)
-                return self.dags.get(dag_id)
-
-            # If DAG is in the DagBag, check the following
-            # 1. if time has come to check if DAG is updated (controlled by min_serialized_dag_fetch_secs)
-            # 2. check the last_updated and hash columns in SerializedDag table to see if
-            # Serialized DAG is updated
-            # 3. if (2) is yes, fetch the Serialized DAG.
-            # 4. if (2) returns None (i.e. Serialized DAG is deleted), remove dag from dagbag
-            # if it exists and return None.
-            min_serialized_dag_fetch_secs = timedelta(seconds=settings.MIN_SERIALIZED_DAG_FETCH_INTERVAL)
-            if (
-                dag_id in self.dags_last_fetched
-                and timezone.utcnow() > self.dags_last_fetched[dag_id] + min_serialized_dag_fetch_secs
-            ):
-                sd_latest_version_and_updated_datetime = (
-                    SerializedDagModel.get_latest_version_hash_and_updated_datetime(
-                        dag_id=dag_id, session=session
-                    )
-                )
-                if not sd_latest_version_and_updated_datetime:
-                    self.log.warning("Serialized DAG %s no longer exists", dag_id)
-                    del self.dags[dag_id]
-                    del self.dags_last_fetched[dag_id]
-                    del self.dags_hash[dag_id]
-                    return None
-
-                sd_latest_version, sd_last_updated_datetime = sd_latest_version_and_updated_datetime
-
-                if (
-                    sd_last_updated_datetime > self.dags_last_fetched[dag_id]
-                    or sd_latest_version != self.dags_hash[dag_id]
-                ):
-                    self._add_dag_from_db(dag_id=dag_id, session=session)
-
-            return self.dags.get(dag_id)
 
         # If asking for a known subdag, we want to refresh the parent
         dag = None
@@ -264,20 +337,6 @@ class DagBag(LoggingMixin):
             elif dag_id in self.dags:
                 del self.dags[dag_id]
         return self.dags.get(dag_id)
-
-    def _add_dag_from_db(self, dag_id: str, session: Session):
-        """Add DAG to DagBag from DB."""
-        from airflow.models.serialized_dag import SerializedDagModel
-
-        row: SerializedDagModel | None = SerializedDagModel.get(dag_id, session)
-        if not row:
-            return None
-
-        row.load_op_links = self.load_op_links
-        dag = row.dag
-        self.dags[dag.dag_id] = dag
-        self.dags_last_fetched[dag.dag_id] = timezone.utcnow()
-        self.dags_hash[dag.dag_id] = row.dag_hash
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
         """Given a path to a python module or zip file, import the module and look for dag objects within."""
@@ -529,9 +588,6 @@ class DagBag(LoggingMixin):
         un-anchored regexes or gitignore-like glob expressions, depending on
         the ``DAG_IGNORE_FILE_SYNTAX`` configuration parameter.
         """
-        if self.read_dags_from_db:
-            return
-
         self.log.info("Filling up the DagBag from %s", dag_folder)
         dag_folder = dag_folder or self.dag_folder
         # Used to store stats around DagBag processing
@@ -563,17 +619,6 @@ class DagBag(LoggingMixin):
                 self.log.exception(e)
 
         self.dagbag_stats = sorted(stats, key=lambda x: x.duration, reverse=True)
-
-    def collect_dags_from_db(self):
-        """Collect DAGs from database."""
-        from airflow.models.serialized_dag import SerializedDagModel
-
-        with Stats.timer("collect_db_dags"):
-            self.log.info("Filling up the DagBag from database")
-
-            # The dagbag contains all rows in serialized_dag table. Deleted DAGs are deleted
-            # from the table by the scheduler job.
-            self.dags = SerializedDagModel.read_all_dags()
 
     def dagbag_report(self):
         """Print a report around DagBag loading stats."""
@@ -671,7 +716,9 @@ class DagBag(LoggingMixin):
 
     @provide_session
     def sync_to_db(self, processor_subdir: str | None = None, session: Session = NEW_SESSION):
-        import_errors = DagBag._sync_to_db(dags=self.dags, processor_subdir=processor_subdir, session=session)
+        import_errors = DagCollector._sync_to_db(
+            dags=self.dags, processor_subdir=processor_subdir, session=session
+        )
         self.import_errors.update(import_errors)
 
     @classmethod
