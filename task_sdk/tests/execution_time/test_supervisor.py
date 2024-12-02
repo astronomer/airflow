@@ -97,7 +97,7 @@ class TestWatchedSubprocess:
 
         proc = WatchedSubprocess.start(
             path=os.devnull,
-            ti=TaskInstance(
+            what=TaskInstance(
                 id="4d828a62-a417-4936-a7a6-2b3fabacecab",
                 task_id="b",
                 dag_id="c",
@@ -164,7 +164,7 @@ class TestWatchedSubprocess:
 
         proc = WatchedSubprocess.start(
             path=os.devnull,
-            ti=TaskInstance(
+            what=TaskInstance(
                 id="4d828a62-a417-4936-a7a6-2b3fabacecab",
                 task_id="b",
                 dag_id="c",
@@ -187,7 +187,7 @@ class TestWatchedSubprocess:
 
         proc = WatchedSubprocess.start(
             path=os.devnull,
-            ti=TaskInstance(
+            what=TaskInstance(
                 id=uuid7(),
                 task_id="b",
                 dag_id="c",
@@ -223,7 +223,7 @@ class TestWatchedSubprocess:
         spy = spy_agency.spy_on(sdk_client.TaskInstanceOperations.heartbeat)
         proc = WatchedSubprocess.start(
             path=os.devnull,
-            ti=TaskInstance(
+            what=TaskInstance(
                 id=ti_id,
                 task_id="b",
                 dag_id="c",
@@ -334,7 +334,7 @@ class TestWatchedSubprocess:
         client = make_client(transport=httpx.MockTransport(handle_request))
 
         with pytest.raises(ServerResponseError, match="Server returned error") as err:
-            WatchedSubprocess.start(path=os.devnull, ti=ti, client=client)
+            WatchedSubprocess.start(path=os.devnull, what=ti, client=client)
 
         assert err.value.response.status_code == 409
         assert err.value.detail == {

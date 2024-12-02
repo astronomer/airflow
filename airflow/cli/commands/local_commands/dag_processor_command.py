@@ -24,9 +24,13 @@ from typing import Any
 
 from airflow.cli.commands.local_commands.daemon_utils import run_command_with_daemon_option
 from airflow.configuration import conf
-from airflow.dag_processing.manager import DagFileProcessorManager, reload_configuration_for_dag_processing
+from airflow.dag_processing.manager import (
+    DagFileProcessorManager,
+    TaskSDKBasedDagCollector,
+    reload_configuration_for_dag_processing,
+)
 from airflow.jobs.dag_processor_job_runner import DagProcessorJobRunner
-from airflow.jobs.job import Job, run_job
+from airflow.jobs.job import Job
 from airflow.utils import cli as cli_utils
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
 
@@ -55,16 +59,18 @@ def dag_processor(args):
     if not conf.getboolean("scheduler", "standalone_dag_processor"):
         raise SystemExit("The option [scheduler/standalone_dag_processor] must be True.")
 
-    sql_conn: str = conf.get("database", "sql_alchemy_conn").lower()
-    if sql_conn.startswith("sqlite"):
-        raise SystemExit("Standalone DagProcessor is not supported when using sqlite.")
+    # sql_conn: str = conf.get("database", "sql_alchemy_conn").lower()
+    # if sql_conn.startswith("sqlite"):
+    #     raise SystemExit("Standalone DagProcessor is not supported when using sqlite.")
 
-    job_runner = _create_dag_processor_job_runner(args)
+    # job_runner = _create_dag_processor_job_runner(args)
+    collector = TaskSDKBasedDagCollector(dag_directory=args.subdir, max_runs=args.num_runs, parallelism=1)
+    collector.run()
 
     reload_configuration_for_dag_processing()
     run_command_with_daemon_option(
         args=args,
         process_name="dag-processor",
-        callback=lambda: run_job(job=job_runner.job, execute_callable=job_runner._execute),
+        callback=collector.run,
         should_setup_logging=True,
     )

@@ -20,14 +20,17 @@ import importlib
 import logging
 import os
 import signal
+import sys
 import threading
 import time
 import zipfile
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout, suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated, Callable, Literal, Union
 
+import attrs
+import pydantic
 from setproctitle import setproctitle
 from sqlalchemy import delete, event, select
 
@@ -85,6 +88,133 @@ def count_queries(session: Session) -> Generator[_QueryCounter, None, None]:
 
     yield counter
     event.remove(session, "do_orm_execute", _count_db_queries)
+
+
+from airflow.sdk.execution_time.comms import GetConnection, GetVariable
+from airflow.sdk.execution_time.supervisor import WatchedSubprocess
+
+
+def _foo():
+    import os
+
+    import structlog
+
+    from airflow.sdk.execution_time import task_runner
+    from airflow.serialization.serialized_objects import SerializedDAG
+
+    # Parse DAG file, send JSON back up!
+
+    d = task_runner.CommsDecoder[DagFileParseRequest, DagFileParsingResult](
+        input=sys.stdin,
+        decoder=pydantic.TypeAdapter[DagFileParseRequest](DagFileParseRequest),
+    )
+    msg = d.get_message()
+    d.request_socket = os.fdopen(msg.requests_fd, "wb", buffering=0)
+
+    log = structlog.get_logger(logger_name="task")
+
+    from airflow.models.dagbag import DagBag
+
+    bag = DagBag(
+        dag_folder=msg.file,
+        include_examples=False,
+        safe_mode=True,
+        load_op_links=False,
+    )
+
+    dags = [DagFileParsingResult.DagInfo(data=SerializedDAG.to_json(dag)) for dag in bag.dags.values()]
+
+    result = DagFileParsingResult(
+        fileloc=msg.file,
+        serialized_dags=dags,
+        import_errors=bag.import_errors,
+    )
+    d.send_request(log, result)
+
+
+class DagFileParseRequest(pydantic.BaseModel):
+    file: str
+    requests_fd: int
+    type: Literal["DagFileParseRequest"] = "DagFileParseRequest"
+
+
+class DagFileParsingResult(pydantic.BaseModel):
+    class DagInfo(pydantic.BaseModel):
+        data: pydantic.JsonValue
+
+        @pydantic.computed_field  # type: ignore[misc]
+        @property
+        def hash(self) -> str:
+            return SerializedDagModel.hash(self.data)
+
+    fileloc: str
+    serialized_dags: list[DagInfo]
+    warnings: list | None = None
+    import_errors: dict[str, str] | None = None
+    type: Literal["DagFileParsingResult"] = "DagFileParsingResult"
+
+
+ToParent = Annotated[
+    Union[DagFileParsingResult, GetConnection, GetVariable],
+    pydantic.Field(discriminator="type"),
+]
+
+
+@attrs.define()
+class TaskSDKFileProcess(WatchedSubprocess):
+    parsing_result: DagFileParsingResult | None = None
+
+    @classmethod
+    def start(  # type: ignore[override]
+        cls, path: str | os.PathLike[str], ti: TaskInstance, target: Callable[[], None] = _foo, **kwargs
+    ) -> TaskSDKFileProcess:
+        return super().start(path, ti, target=target, **kwargs)
+
+    def _on_started(self):
+        # Override base class.
+        pass
+
+    def _send_startup_message(self, what, path: str | os.PathLike[str], child_comms_fd: int):  # type: ignore[override]
+        # TODO: Ash: make this a Workload type!
+
+        # TODO: We should include things like "dag code checksum" so that the parser doesn't have to send it
+        # if it hasn't changed.
+        msg = DagFileParseRequest(file=os.fspath(path), requests_fd=child_comms_fd)
+        self.stdin.write(msg.model_dump_json().encode() + b"\n")
+        ...
+
+    def handle_requests(self, log) -> Generator[None, bytes, None]:
+        # TODO: Make decoder an instance variable, then this can live in the base class
+        decoder = pydantic.TypeAdapter[ToParent](ToParent)
+
+        while True:
+            line = yield
+
+            try:
+                msg = decoder.validate_json(line)
+            except Exception:
+                log.exception("Unable to decode message", line=line)
+                continue
+
+            self._handle_request(msg, log)  # type: ignore[arg-type]
+
+    def _handle_request(self, msg: ToParent, log):  # type: ignore[override]
+        if isinstance(msg, DagFileParsingResult):
+            self.parsing_result = msg
+            return
+        super()._handle_request(msg, log)
+
+    @property
+    def exit_code(self) -> int | None:
+        self._check_subprocess_exit()
+        return self._exit_code
+
+    @property
+    def start_time(self) -> float:
+        return self._process.create_time()
+
+    def wait(self) -> int:
+        raise NotImplementedError(f"Don't call wait on {type(self).__name__} objects")
 
 
 class DagFileProcessorProcess(LoggingMixin, MultiprocessingStartMethodMixin):
