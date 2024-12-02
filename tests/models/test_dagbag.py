@@ -38,7 +38,7 @@ import airflow.example_dags
 from airflow import settings
 from airflow.exceptions import SerializationError
 from airflow.models.dag import DAG, DagModel
-from airflow.models.dagbag import DagBag
+from airflow.models.dagbag import DagBag, DagCollector
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.serialization.serialized_objects import SerializedDAG
 from airflow.utils import timezone as tz
@@ -69,6 +69,57 @@ class TestDagBag:
 
     def teardown_class(self):
         db_clean_up()
+
+    @pytest.mark.parametrize(
+        ("args", "kwargs", "expected_class"),
+        (
+            pytest.param(
+                [],
+                {},
+                DagCollector,
+                id="bare",
+            ),
+            pytest.param(
+                ["/hello"],
+                {},
+                DagCollector,
+                id="arg_dag_folder_only",
+            ),
+            pytest.param(
+                [],
+                {"read_dags_from_db": False},
+                DagCollector,
+                id="kwarg_read_dags_from_db_false",
+            ),
+            pytest.param(
+                [],
+                {"read_dags_from_db": True},
+                DagBag,
+                id="kwarg_read_dags_from_db_true",
+            ),
+            pytest.param(
+                ["/hello", False, True, False],
+                {},
+                DagCollector,
+                id="arg_read_dags_from_db_false",
+            ),
+            pytest.param(
+                ["/hello", False, True, True],
+                {},
+                DagBag,
+                id="arg_read_dags_from_db_true",
+            ),
+            pytest.param(
+                [],
+                {"dag_folder": "/hello", "include_examples": False},
+                DagCollector,
+                id="kwarg_dag_folder_and_include_examples",
+            ),
+        ),
+    )
+    def test_dagbag_to_dagcollector(self, args, kwargs, expected_class):
+        dagbag = DagBag(*args, **kwargs)
+        assert isinstance(dagbag, expected_class)
 
     def test_get_existing_dag(self, tmp_path):
         """
@@ -576,7 +627,6 @@ class TestDagBag:
     def test_serialized_dags_are_written_to_db_on_sync(self):
         """
         Test that when dagbag.sync_to_db is called the DAGs are Serialized and written to DB
-        even when dagbag.read_dags_from_db is False
         """
         with create_session() as session:
             serialized_dags_count = session.query(func.count(SerializedDagModel.dag_id)).scalar()
@@ -703,7 +753,7 @@ with airflow.DAG(
 
     @pytest.mark.skip_if_database_isolation_mode  # Does not work in db isolation mode
     @patch("airflow.models.dagbag.settings.MIN_SERIALIZED_DAG_UPDATE_INTERVAL", 5)
-    @patch("airflow.models.dagbag.DagBag._sync_perm_for_dag")
+    @patch("airflow.models.dagbag.DagCollector._sync_perm_for_dag")
     def test_sync_to_db_syncs_dag_specific_perms_on_update(self, mock_sync_perm_for_dag):
         """
         Test that dagbag.sync_to_db will sync DAG specific permissions when a DAG is
@@ -757,7 +807,7 @@ with airflow.DAG(
 
             def _sync_perms():
                 mock_sync_perm_for_dag.reset_mock()
-                DagBag._sync_perm_for_dag(dag, session=session)
+                DagCollector._sync_perm_for_dag(dag, session=session)
 
             # perms dont exist
             _sync_perms()
@@ -794,7 +844,7 @@ with airflow.DAG(
 
             def _sync_perms():
                 mock_sync_perm_for_dag.reset_mock()
-                DagBag._sync_perm_for_dag(dag, session=session)
+                DagCollector._sync_perm_for_dag(dag, session=session)
 
             # perms dont exist
             _sync_perms()

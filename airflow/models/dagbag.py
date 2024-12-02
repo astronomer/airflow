@@ -107,27 +107,40 @@ class DagBag(LoggingMixin):
         # DAG parsing has been moved to the DagCollector instead
         # Let's do our best to detect if folks are still using DagBag instead, emit a deprecation
         # warning, and then use the DagCollector instead.
-        # This can be removed once all providers min version is Airflow 3.0
-        old_dagbag_kwargs = {
+        # This can be removed once all providers min version are Airflow 3.0
+
+        # `read_dags_from_db`, if set, will take precedence over other arguments
+        # and will result in the creation of a DagBag object.
+        if kwargs.get("read_dags_from_db", False) or (len(args) >= 4 and args[3]):
+            # load_op_links = kwargs.get("load_op_links", False) or (len(args) >= 5 and args[4])
+            # kwargs = {"load_op_links": load_op_links}
+            return super().__new__(cls)
+
+        # Redirect to DagCollector
+        old_args = [
             "dag_folder",
             "include_examples",
             "safe_mode",
+            "read_dags_from_db",
+            "load_op_links",
             "collect_dags",
-        }
-        if set(kwargs.keys()).union(old_dagbag_kwargs) or not kwargs.get("read_dags_from_db", False):
-            warnings.warn(
-                "Using DagBag to parse DAGs is deprecated. Use DagCollector instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            if "read_dags_from_db" in kwargs:
-                del kwargs["read_dags_from_db"]
-            return DagCollector(**kwargs)
+        ]
+        for arg, value in zip(old_args, args):
+            kwargs[arg] = value
 
-        return super().__new__(cls, *args, **kwargs)
+        warnings.warn(
+            "Using DagBag to parse DAGs is deprecated. Use DagCollector instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if "read_dags_from_db" in kwargs:
+            del kwargs["read_dags_from_db"]
+
+        return DagCollector(**kwargs)
 
     def __init__(
         self,
+        *args,
         load_op_links: bool = True,
         **kwargs,
     ):
@@ -247,6 +260,7 @@ class DagCollector(LoggingMixin):
 
     def __init__(
         self,
+        *,
         dag_folder: str | Path | None = None,
         include_examples: bool | ArgNotSet = NOTSET,
         safe_mode: bool | ArgNotSet = NOTSET,
@@ -286,6 +300,20 @@ class DagCollector(LoggingMixin):
     def size(self) -> int:
         """:return: the amount of dags contained in this dagbag"""
         return len(self.dags)
+
+    @property
+    def read_dags_from_db(self) -> bool:
+        """
+        Backcompat with old DagBag.
+
+        Remove when all providers min version are Airflow 3.0.
+        """
+        warnings.warn(
+            "DagCollector.read_dags_from_db is deprecated. Dags are always parsed from files with DagCollector.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return False
 
     @property
     def dag_ids(self) -> list[str]:
