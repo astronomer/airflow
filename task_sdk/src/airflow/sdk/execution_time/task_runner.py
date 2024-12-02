@@ -23,11 +23,11 @@ import os
 import sys
 from datetime import datetime, timezone
 from io import FileIO
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, Generic, TextIO, TypeVar
 
 import attrs
 import structlog
-from pydantic import ConfigDict, TypeAdapter
+from pydantic import BaseModel, ConfigDict, TypeAdapter
 
 from airflow.sdk.api.datamodels._generated import TaskInstance, TerminalTIState
 from airflow.sdk.definitions.baseoperator import BaseOperator
@@ -70,17 +70,22 @@ def parse(what: StartupDetails) -> RuntimeTaskInstance:
     return RuntimeTaskInstance.model_construct(**what.ti.model_dump(exclude_unset=True), task=task)
 
 
+SendMsgType = TypeVar("SendMsgType", bound=BaseModel)
+ReceiveMsgType = TypeVar("ReceiveMsgType", bound=BaseModel)
+
+
 @attrs.define()
-class CommsDecoder:
+class CommsDecoder(Generic[ReceiveMsgType, SendMsgType]):
     """Handle communication between the task in this process and the supervisor parent process."""
 
     input: TextIO
 
     request_socket: FileIO = attrs.field(init=False, default=None)
 
-    decoder: TypeAdapter[ToTask] = attrs.field(init=False, factory=lambda: TypeAdapter(ToTask))
+    # This isn't right, but we create exactly one CommsDecoder subclass
+    decoder: TypeAdapter[ReceiveMsgType] = attrs.field(factory=lambda: TypeAdapter(ToTask))
 
-    def get_message(self) -> ToTask:
+    def get_message(self) -> ReceiveMsgType:
         """
         Get a message from the parent.
 
@@ -99,7 +104,7 @@ class CommsDecoder:
                 self.request_socket = os.fdopen(msg.requests_fd, "wb", buffering=0)
         return msg
 
-    def send_request(self, log: Logger, msg: ToSupervisor):
+    def send_request(self, log: Logger, msg: SendMsgType):
         encoded_msg = msg.model_dump_json().encode() + b"\n"
 
         log.debug("Sending request", json=encoded_msg)
@@ -203,7 +208,7 @@ def main():
     # TODO: add an exception here, it causes an oof of a stack trace!
 
     global SUPERVISOR_COMMS
-    SUPERVISOR_COMMS = CommsDecoder(input=sys.stdin)
+    SUPERVISOR_COMMS = CommsDecoder[ToTask, ToSupervisor](input=sys.stdin)
     try:
         ti, log = startup()
         run(ti, log)
