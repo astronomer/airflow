@@ -202,6 +202,7 @@ class TaskSDKFileProcess(WatchedSubprocess):
         if isinstance(msg, DagFileParsingResult):
             self.parsing_result = msg
             return
+        # GetVariable etc -- parsing a dag can run top level code that asks for an Airflow Variable
         super()._handle_request(msg, log)
 
     @property

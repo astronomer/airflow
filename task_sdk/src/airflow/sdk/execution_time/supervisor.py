@@ -590,7 +590,7 @@ class WatchedSubprocess:
         if self._exit_code is None:
             try:
                 self._exit_code = self._process.wait(timeout=0)
-                log.debug("Task process exited", exit_code=self._exit_code)
+                log.debug("Workload process exited", exit_code=self._exit_code)
             except psutil.TimeoutExpired:
                 if raise_on_timeout:
                     raise
