@@ -53,6 +53,7 @@ from airflow.models.dagbag import DagPriorityParsingRequest
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
 from airflow.models.errors import ParseImportError
+from airflow.models.serialized_dag import SerializedDagModel
 from airflow.secrets.cache import SecretCache
 from airflow.stats import Stats
 from airflow.traces.tracer import Trace
@@ -856,6 +857,14 @@ class TaskSDKBasedDagCollector:
                 stat.import_errors = 1
             else:
                 res = proc.parsing_result
+
+                # record DAGs and import errors to database
+                for serialized_dag in res.serialized_dags:
+                    SerializedDagModel.write_dag(serialized_dag)
+                ParseImportError.update_import_errors(
+                    filename=res.fileloc, import_errors=res.import_errors
+                )
+
                 stat.num_dags = len(res.serialized_dags)
                 if res.import_errors:
                     stat.import_errors = len(res.import_errors)
