@@ -32,7 +32,7 @@ from typing import TYPE_CHECKING, Annotated, Callable, Literal, Union
 import attrs
 import pydantic
 from setproctitle import setproctitle
-from sqlalchemy import delete, event, select
+from sqlalchemy import event, select
 
 from airflow import settings
 from airflow.callbacks.callback_requests import (
@@ -41,14 +41,14 @@ from airflow.callbacks.callback_requests import (
 )
 from airflow.configuration import conf
 from airflow.exceptions import AirflowException
-from airflow.listeners.listener import get_listener_manager
-from airflow.models.dag import DAG, DagModel
+from airflow.models.dag import DAG
 from airflow.models.dagbag import DagBag
 from airflow.models.dagwarning import DagWarning, DagWarningType
-from airflow.models.errors import ParseImportError
 from airflow.models.pool import Pool
-from airflow.models.serialized_dag import SerializedDagModel
+from airflow.models.serialized_dag import DagInfo, SerializedDagModel
 from airflow.models.taskinstance import TaskInstance, _run_finished_callback
+from airflow.sdk.execution_time.comms import GetConnection, GetVariable
+from airflow.sdk.execution_time.supervisor import WatchedSubprocess
 from airflow.stats import Stats
 from airflow.utils import timezone
 from airflow.utils.file import iter_airflow_imports, might_contain_dag
@@ -90,8 +90,7 @@ def count_queries(session: Session) -> Generator[_QueryCounter, None, None]:
     event.remove(session, "do_orm_execute", _count_db_queries)
 
 
-from airflow.sdk.execution_time.comms import GetConnection, GetVariable
-from airflow.sdk.execution_time.supervisor import WatchedSubprocess
+
 
 
 def _foo():
@@ -122,7 +121,7 @@ def _foo():
         load_op_links=False,
     )
 
-    dags = [DagFileParsingResult.DagInfo(data=SerializedDAG.to_json(dag)) for dag in bag.dags.values()]
+    dags = [DagInfo(data=SerializedDAG.to_json(dag)) for dag in bag.dags.values()]
 
     result = DagFileParsingResult(
         fileloc=msg.file,
@@ -138,15 +137,8 @@ class DagFileParseRequest(pydantic.BaseModel):
     type: Literal["DagFileParseRequest"] = "DagFileParseRequest"
 
 
+
 class DagFileParsingResult(pydantic.BaseModel):
-    class DagInfo(pydantic.BaseModel):
-        data: pydantic.JsonValue
-
-        @pydantic.computed_field  # type: ignore[misc]
-        @property
-        def hash(self) -> str:
-            return SerializedDagModel.hash(self.data)
-
     fileloc: str
     serialized_dags: list[DagInfo]
     warnings: list | None = None
@@ -174,7 +166,8 @@ class TaskSDKFileProcess(WatchedSubprocess):
         # Override base class.
         pass
 
-    def _send_startup_message(self, what, path: str | os.PathLike[str], child_comms_fd: int):  # type: ignore[override]
+    def _send_startup_message(self, what, path: str | os.PathLike[str],
+                              child_comms_fd: int):  # type: ignore[override]
         # TODO: Ash: make this a Workload type!
 
         # TODO: We should include things like "dag code checksum" so that the parser doesn't have to send it
@@ -560,68 +553,6 @@ class DagFileProcessor(LoggingMixin):
         self.dag_warnings: set[tuple[str, str]] = set()
         self._last_num_of_db_queries = 0
 
-    @staticmethod
-    @provide_session
-    def update_import_errors(
-        file_last_changed: dict[str, datetime],
-        import_errors: dict[str, str],
-        processor_subdir: str | None,
-        session: Session = NEW_SESSION,
-    ) -> None:
-        """
-        Update any import errors to be displayed in the UI.
-
-        For the DAGs in the given DagBag, record any associated import errors and clears
-        errors for files that no longer have them. These are usually displayed through the
-        Airflow UI so that users know that there are issues parsing DAGs.
-        :param file_last_changed: Dictionary containing the last changed time of the files
-        :param import_errors: Dictionary containing the import errors
-        :param session: session for ORM operations
-        """
-        files_without_error = file_last_changed - import_errors.keys()
-
-        # Clear the errors of the processed files
-        # that no longer have errors
-        for dagbag_file in files_without_error:
-            session.execute(
-                delete(ParseImportError)
-                .where(ParseImportError.filename.startswith(dagbag_file))
-                .execution_options(synchronize_session="fetch")
-            )
-
-        # files that still have errors
-        existing_import_error_files = [x.filename for x in session.query(ParseImportError.filename).all()]
-
-        # Add the errors of the processed files
-        for filename, stacktrace in import_errors.items():
-            if filename in existing_import_error_files:
-                session.query(ParseImportError).filter(ParseImportError.filename == filename).update(
-                    {"filename": filename, "timestamp": timezone.utcnow(), "stacktrace": stacktrace},
-                    synchronize_session="fetch",
-                )
-                # sending notification when an existing dag import error occurs
-                get_listener_manager().hook.on_existing_dag_import_error(
-                    filename=filename, stacktrace=stacktrace
-                )
-            else:
-                session.add(
-                    ParseImportError(
-                        filename=filename,
-                        timestamp=timezone.utcnow(),
-                        stacktrace=stacktrace,
-                        processor_subdir=processor_subdir,
-                    )
-                )
-                # sending notification when a new dag import error occurs
-                get_listener_manager().hook.on_new_dag_import_error(filename=filename, stacktrace=stacktrace)
-            (
-                session.query(DagModel)
-                .filter(DagModel.fileloc == filename)
-                .update({"has_import_errors": True}, synchronize_session="fetch")
-            )
-
-        session.commit()
-        session.flush()
 
     @classmethod
     @provide_session
@@ -850,11 +781,6 @@ class DagFileProcessor(LoggingMixin):
                 self.log.info("DAG(s) %s retrieved from %s", ", ".join(map(repr, dagbag.dags)), file_path)
             else:
                 self.log.warning("No viable dags retrieved from %s", file_path)
-                DagFileProcessor.update_import_errors(
-                    file_last_changed=dagbag.file_last_changed,
-                    import_errors=dagbag.import_errors,
-                    processor_subdir=self._dag_directory,
-                )
                 if callback_requests:
                     # If there were callback requests for this file but there was a
                     # parse error we still need to progress the state of TIs,
@@ -870,16 +796,6 @@ class DagFileProcessor(LoggingMixin):
             )
 
             dagbag.import_errors.update(dict(serialize_errors))
-
-            # Record import errors into the ORM
-            try:
-                DagFileProcessor.update_import_errors(
-                    file_last_changed=dagbag.file_last_changed,
-                    import_errors=dagbag.import_errors,
-                    processor_subdir=self._dag_directory,
-                )
-            except Exception:
-                self.log.exception("Error logging import errors!")
 
             # Record DAG warnings in the metadatabase.
             try:
