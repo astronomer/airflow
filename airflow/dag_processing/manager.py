@@ -53,7 +53,6 @@ from airflow.models.dagbag import DagPriorityParsingRequest
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
 from airflow.models.errors import ParseImportError
-from airflow.models.serialized_dag import DagInfo
 from airflow.secrets.cache import SecretCache
 from airflow.stats import Stats
 from airflow.traces.tracer import Trace
@@ -78,6 +77,7 @@ if TYPE_CHECKING:
 
     from airflow.callbacks.callback_requests import CallbackRequest
     from airflow.dag_processing.processor import TaskSDKFileProcess
+    from airflow.models.serialized_dag import DagInfo
 
 
 class DagParsingStat(NamedTuple):
@@ -874,7 +874,7 @@ class TaskSDKBasedDagCollector:
         # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
         # lives in this package (it's a bit "circular") to go to models/dag.py to then go back to a class in
         # this namespace.
-        DAG.bulk_write_to_db(collected_dags, processor_subdir=self.dag_directory)
+        DAG.bulk_write_to_db(collected_dags, processor_subdir=os.fspath(self.dag_directory))
 
         for path in finished:
             self._processors.pop(path)

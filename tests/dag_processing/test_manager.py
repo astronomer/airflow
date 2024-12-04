@@ -769,7 +769,7 @@ class TestDagProcessorJobRunner:
         manager = DagFileProcessorManager(dag_directory=path_to_parse.parent, max_runs=1)
 
         self.run_processor_manager_one_loop(manager)
-        last_runtime = manager.get_last_runtime(manager.file_paths[0])
+        last_runtime = manager._file_stats[os.fspath(path_to_parse)].last_duration
 
         statsd_timing_mock.assert_has_calls(
             [
