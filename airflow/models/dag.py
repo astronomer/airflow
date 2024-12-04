@@ -1850,17 +1850,19 @@ class DAG(TaskSDKDag, LoggingMixin):
         orm_dags = dag_op.add_dags(session=session)
         dag_op.update_dags(orm_dags, processor_subdir=processor_subdir, session=session)
 
-        asset_op = AssetModelOperation.collect(dag_op.dags)
+        if any(not isinstance(dag, DAG) for dag in dags):
+            # TODO: This is a hack for moving the dag processing
+            asset_op = AssetModelOperation.collect(dag_op.dags)
 
-        orm_assets = asset_op.add_assets(session=session)
-        orm_asset_aliases = asset_op.add_asset_aliases(session=session)
-        session.flush()  # This populates id so we can create fks in later calls.
+            orm_assets = asset_op.add_assets(session=session)
+            orm_asset_aliases = asset_op.add_asset_aliases(session=session)
+            session.flush()  # This populates id so we can create fks in later calls.
 
-        orm_dags = dag_op.find_orm_dags(session=session)  # Refetch so relationship is up to date.
-        asset_op.add_dag_asset_references(orm_dags, orm_assets, session=session)
-        asset_op.add_dag_asset_alias_references(orm_dags, orm_asset_aliases, session=session)
-        asset_op.add_task_asset_references(orm_dags, orm_assets, session=session)
-        asset_op.add_asset_trigger_references(orm_assets, session=session)
+            orm_dags = dag_op.find_orm_dags(session=session)  # Refetch so relationship is up to date.
+            asset_op.add_dag_asset_references(orm_dags, orm_assets, session=session)
+            asset_op.add_dag_asset_alias_references(orm_dags, orm_asset_aliases, session=session)
+            asset_op.add_task_asset_references(orm_dags, orm_assets, session=session)
+            asset_op.add_asset_trigger_references(orm_assets, session=session)
         session.flush()
 
     @provide_session

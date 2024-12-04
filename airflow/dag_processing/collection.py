@@ -212,15 +212,18 @@ class DagModelOperation(NamedTuple):
             dm.is_active = True
             dm.has_import_errors = False
             dm.last_parsed_time = utcnow()
-            dm.default_view = dag.default_view
             if hasattr(dag, "_dag_display_property_value"):
                 dm._dag_display_property_value = dag._dag_display_property_value
             elif dag.dag_display_name != dag.dag_id:
                 dm._dag_display_property_value = dag.dag_display_name
             dm.description = dag.description
-            dm.max_active_tasks = dag.max_active_tasks
-            dm.max_active_runs = dag.max_active_runs
-            dm.max_consecutive_failed_dag_runs = dag.max_consecutive_failed_dag_runs
+            # TODO: this `if is not None` is maybe not the best. It's
+            if dag.max_active_tasks is not None:
+                dm.max_active_tasks = dag.max_active_tasks
+            if dag.max_active_runs is not None:
+                dm.max_active_runs = dag.max_active_runs
+            if dag.max_consecutive_failed_dag_runs is not None:
+                dm.max_consecutive_failed_dag_runs = dag.max_consecutive_failed_dag_runs
             dm.has_task_concurrency_limits = any(
                 t.max_active_tis_per_dag is not None or t.max_active_tis_per_dagrun is not None
                 for t in dag.tasks

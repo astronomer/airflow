@@ -20,9 +20,10 @@
 from __future__ import annotations
 
 import logging
+import types
 import zlib
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pydantic
 import sqlalchemy_jsonfield
@@ -57,24 +58,46 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class DagInfo(pydantic.BaseModel):
+class DagInfo(pydantic.BaseModel):  # noqa: D101
     data: dict
+
+    NULLABLE_PROPERTIES: ClassVar[set[str]] = {
+        "is_paused_upon_creation",
+        "owner",
+        "dag_display_name",
+        "description",
+        "max_active_tasks",
+        "max_active_runs",
+        "max_consecutive_failed_dag_runs",
+        "owner_links",
+    }
 
     @property
     def hash(self) -> str:
         return SerializedDagModel.hash(self.data)
 
-    @property
-    def dag_id(self) -> str:
-        return self.data["dag"]["dag_id"]
+    def next_dagrun_info(self, last):
+        return None
+
+    def __getattr__(self, name: str, /) -> Any:
+        if name == "_dag_display_property_value":
+            raise AttributeError(name=name)
+        if name in self.NULLABLE_PROPERTIES:
+            return self.data["dag"].get(name)
+        return self.data["dag"][name]
 
     @property
-    def fileloc(self) -> str:
-        return self.data["dag"]["fileloc"]
-
-    @property
-    def is_paused_upon_creation(self) -> bool | None:
-        return self.data["dag"].get("is_paused_upon_creation")
+    def timetable(self):
+        return types.SimpleNamespace(
+            can_be_scheduled=False,
+            summary="You wish",
+            description="I'm a pretty pretty princess",
+            asset_condition=types.SimpleNamespace(
+                as_expression=lambda: None,
+                iter_assets=lambda: [],
+                iter_asset_aliases=lambda: [],
+            ),
+        )
 
 
 class SerializedDagModel(Base):
