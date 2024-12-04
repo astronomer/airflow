@@ -90,9 +90,6 @@ def count_queries(session: Session) -> Generator[_QueryCounter, None, None]:
     event.remove(session, "do_orm_execute", _count_db_queries)
 
 
-
-
-
 def _foo():
     import os
 
@@ -121,7 +118,7 @@ def _foo():
         load_op_links=False,
     )
 
-    dags = [DagInfo(data=SerializedDAG.to_json(dag)) for dag in bag.dags.values()]
+    dags = [DagInfo(data=SerializedDAG.to_dict(dag)) for dag in bag.dags.values()]
 
     result = DagFileParsingResult(
         fileloc=msg.file,
@@ -135,7 +132,6 @@ class DagFileParseRequest(pydantic.BaseModel):
     file: str
     requests_fd: int
     type: Literal["DagFileParseRequest"] = "DagFileParseRequest"
-
 
 
 class DagFileParsingResult(pydantic.BaseModel):
@@ -166,8 +162,7 @@ class TaskSDKFileProcess(WatchedSubprocess):
         # Override base class.
         pass
 
-    def _send_startup_message(self, what, path: str | os.PathLike[str],
-                              child_comms_fd: int):  # type: ignore[override]
+    def _send_startup_message(self, what, path: str | os.PathLike[str], child_comms_fd: int):  # type: ignore[override]
         # TODO: Ash: make this a Workload type!
 
         # TODO: We should include things like "dag code checksum" so that the parser doesn't have to send it
@@ -552,7 +547,6 @@ class DagFileProcessor(LoggingMixin):
         self._dag_directory = dag_directory
         self.dag_warnings: set[tuple[str, str]] = set()
         self._last_num_of_db_queries = 0
-
 
     @classmethod
     @provide_session

@@ -44,10 +44,9 @@ from airflow.config_templates.airflow_local_settings import DEFAULT_LOGGING_CONF
 from airflow.configuration import conf
 from airflow.dag_processing.manager import (
     DagFileProcessorAgent,
-    DagFileProcessorManager,
     DagFileStat,
     DagParsingSignal,
-    DagParsingStat,
+    TaskSDKBasedDagCollector as DagFileProcessorManager,
 )
 from airflow.dag_processing.processor import DagFileProcessorProcess
 from airflow.models import DagBag, DagModel, DbCallbackRequest
@@ -136,22 +135,13 @@ class TestDagProcessorJobRunner:
         clear_db_dags()
         clear_db_callbacks()
 
-    def run_processor_manager_one_loop(self, processor, parent_pipe):
-        if not processor._async_mode:
-            parent_pipe.send(DagParsingSignal.AGENT_RUN_ONCE)
-
+    def run_processor_manager_one_loop(self, processor):
         results = []
 
-        while True:
-            processor._run_parsing_loop()
+        processor._run_parsing_loop()
+        return results
 
-            while parent_pipe.poll(timeout=0.01):
-                obj = parent_pipe.recv()
-                if not isinstance(obj, DagParsingStat):
-                    results.append(obj)
-                elif obj.done:
-                    return results
-            raise RuntimeError("Shouldn't get here - nothing to read, but manager not finished!")
+        # raise RuntimeError("Shouldn't get here - nothing to read, but manager not finished!")
 
     @pytest.fixture
     def clear_parse_import_errors(self):
@@ -165,69 +155,40 @@ class TestDagProcessorJobRunner:
         # Generate original import error
         path_to_parse.write_text("an invalid airflow DAG")
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-
-        async_mode = "sqlite" not in conf.get("database", "sql_alchemy_conn")
         manager = DagFileProcessorManager(
             dag_directory=path_to_parse.parent,
             max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=async_mode,
+            processor_timeout=365 * 86_400,
         )
 
         with create_session() as session:
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
 
             import_errors = session.query(ParseImportError).all()
             assert len(import_errors) == 1
 
             path_to_parse.unlink()
 
-            # Rerun the scheduler once the dag file has been removed
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            # Rerun the parser once the dag file has been removed
+            self.run_processor_manager_one_loop(manager)
             import_errors = session.query(ParseImportError).all()
 
             assert len(import_errors) == 0
             session.rollback()
 
-        child_pipe.close()
-        parent_pipe.close()
-
     @conf_vars({("core", "load_examples"): "False"})
     def test_max_runs_when_no_files(self, tmp_path):
-        child_pipe, parent_pipe = multiprocessing.Pipe()
+        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
 
-        async_mode = "sqlite" not in conf.get("database", "sql_alchemy_conn")
-        manager = DagFileProcessorManager(
-            dag_directory=os.fspath(tmp_path),
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=async_mode,
-        )
+        self.run_processor_manager_one_loop(manager)
 
-        self.run_processor_manager_one_loop(manager, parent_pipe)
-        child_pipe.close()
-        parent_pipe.close()
-
-    @pytest.mark.backend("mysql", "postgres")
     @mock.patch("airflow.dag_processing.processor.iter_airflow_imports")
     def test_start_new_processes_with_same_filepath(self, _):
         """
         Test that when a processor already exist with a filepath, a new processor won't be created
         with that filepath. The filepath will just be removed from the list.
         """
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         file_1 = "file_1.py"
         file_2 = "file_2.py"
@@ -237,7 +198,7 @@ class TestDagProcessorJobRunner:
         # Mock that only one processor exists. This processor runs with 'file_1'
         manager._processors[file_1] = MagicMock()
         # Start New Processes
-        manager.start_new_processes()
+        manager._start_new_processes()
 
         # Because of the config: '[scheduler] parsing_processes = 2'
         # verify that only one extra process is created
@@ -250,14 +211,7 @@ class TestDagProcessorJobRunner:
         assert deque([file_3]) == manager._file_path_queue
 
     def test_set_file_paths_when_processor_file_path_not_in_new_file_paths(self):
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         mock_processor = MagicMock()
         mock_processor.stop.side_effect = AttributeError("DagFileProcessor object has no attribute stop")
@@ -271,14 +225,7 @@ class TestDagProcessorJobRunner:
         assert "missing_file.txt" not in manager._file_stats
 
     def test_set_file_paths_when_processor_file_path_is_in_new_file_paths(self):
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         mock_processor = MagicMock()
         mock_processor.stop.side_effect = AttributeError("DagFileProcessor object has no attribute stop")
@@ -301,14 +248,7 @@ class TestDagProcessorJobRunner:
         dag_files = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
@@ -327,14 +267,7 @@ class TestDagProcessorJobRunner:
         dag_files = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
@@ -388,14 +321,7 @@ class TestDagProcessorJobRunner:
         mock_getmtime.side_effect = list(paths_with_mtime.values())
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
@@ -422,14 +348,7 @@ class TestDagProcessorJobRunner:
         mock_getmtime.side_effect = [1.0, 2.0, FileNotFoundError()]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
@@ -455,14 +374,7 @@ class TestDagProcessorJobRunner:
         mock_getmtime.side_effect = [1.0, 2.0, 3.0]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
@@ -497,19 +409,12 @@ class TestDagProcessorJobRunner:
         mock_getmtime.side_effect = [initial_file_1_mtime]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=3,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=3)
 
         # let's say the DAG was just parsed 10 seconds before the Freezed time
-        last_finish_time = freezed_base_time - timedelta(seconds=10)
+        last_finish_time = 10.0
         manager._file_stats = {
-            "file_1.py": DagFileStat(1, 0, last_finish_time, timedelta(seconds=1.0), 1, 1),
+            "file_1.py": DagFileStat(1, 0, last_finish_time, 1.0, 1, 1),
         }
         with time_machine.travel(freezed_base_time):
             manager.set_file_paths(dag_files)
@@ -554,14 +459,7 @@ class TestDagProcessorJobRunner:
         dag_files = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager._file_path_queue = deque(["file_2.py", "file_3.py", "file_4.py", "file_1.py"])
@@ -579,10 +477,7 @@ class TestDagProcessorJobRunner:
         manager = DagFileProcessorManager(
             dag_directory="directory",
             max_runs=1,
-            processor_timeout=timedelta(minutes=10),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
+            processor_timeout=10 * 60,
         )
 
         test_dag_path = str(TEST_DAG_FOLDER / "test_example_bash_operator.py")
@@ -644,14 +539,7 @@ class TestDagProcessorJobRunner:
         Ensure only dags from current dag_directory are updated
         """
         dag_directory = "directory"
-        manager = DagFileProcessorManager(
-            dag_directory=dag_directory,
-            max_runs=1,
-            processor_timeout=timedelta(minutes=10),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory=dag_directory, max_runs=1)
 
         test_dag_path = str(TEST_DAG_FOLDER / "test_example_bash_operator.py")
         dagbag = DagBag(test_dag_path, read_dags_from_db=False)
@@ -697,14 +585,7 @@ class TestDagProcessorJobRunner:
     def test_kill_timed_out_processors_kill(self, mock_kill, mock_pid, mock_waitable_handle):
         mock_pid.return_value = 1234
         mock_waitable_handle.return_value = 3
-        manager = DagFileProcessorManager(
-            dag_directory="directory",
-            max_runs=1,
-            processor_timeout=timedelta(seconds=5),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1, processor_timeout=5)
 
         processor = DagFileProcessorProcess(
             file_path="abc.txt",
@@ -728,10 +609,7 @@ class TestDagProcessorJobRunner:
         manager = DagFileProcessorManager(
             dag_directory=TEST_DAG_FOLDER,
             max_runs=1,
-            processor_timeout=timedelta(seconds=5),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
+            processor_timeout=5,
         )
 
         processor = DagFileProcessorProcess(
@@ -759,24 +637,9 @@ class TestDagProcessorJobRunner:
         clear_db_dags()
         clear_db_serialized_dags()
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-
-        manager = DagFileProcessorManager(
-            dag_directory=dag_directory,
-            dag_ids=[],
-            max_runs=1,
-            processor_timeout=timedelta(seconds=5),
-            signal_conn=child_pipe,
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory=dag_directory, max_runs=1)
 
         manager._run_parsing_loop()
-
-        result = None
-        while parent_pipe.poll(timeout=None):
-            result = parent_pipe.recv()
-            if isinstance(result, DagParsingStat) and result.done:
-                break
 
         # Three files in folder should be processed
         assert sum(stat.run_count for stat in manager._file_stats.values()) == 3
@@ -801,35 +664,17 @@ class TestDagProcessorJobRunner:
             f.write("an invalid airflow DAG")
 
         with create_session() as session:
-            child_pipe, parent_pipe = multiprocessing.Pipe()
+            manager = DagFileProcessorManager(dag_directory=processor_dir_1, max_runs=1)
 
-            manager = DagFileProcessorManager(
-                dag_directory=processor_dir_1,
-                dag_ids=[],
-                max_runs=1,
-                signal_conn=child_pipe,
-                processor_timeout=timedelta(seconds=5),
-                async_mode=False,
-            )
-
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
 
             import_errors = session.query(ParseImportError).order_by("id").all()
             assert len(import_errors) == 1
             assert import_errors[0].processor_subdir == str(processor_dir_1)
 
-            child_pipe, parent_pipe = multiprocessing.Pipe()
+            manager = DagFileProcessorManager(dag_directory=processor_dir_2, max_runs=1)
 
-            manager = DagFileProcessorManager(
-                dag_directory=processor_dir_2,
-                dag_ids=[],
-                max_runs=1,
-                signal_conn=child_pipe,
-                processor_timeout=timedelta(seconds=5),
-                async_mode=True,
-            )
-
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
 
             import_errors = session.query(ParseImportError).order_by("id").all()
             assert len(import_errors) == 2
@@ -889,12 +734,9 @@ class TestDagProcessorJobRunner:
 
         manager = DagFileProcessorManager(
             dag_directory=dag_filepath,
-            dag_ids=[],
             # A reasonable large number to ensure that we trigger the deadlock
             max_runs=100,
-            processor_timeout=timedelta(seconds=5),
-            signal_conn=child_pipe,
-            async_mode=True,
+            processor_timeout=5,
         )
 
         try:
@@ -918,29 +760,16 @@ class TestDagProcessorJobRunner:
         path_to_parse = tmp_path / "temp_dag.py"
         dag_code = textwrap.dedent(
             """
-        from airflow import DAG
-        dag = DAG(dag_id='temp_dag', schedule='0 0 * * *')
-        """
+            from airflow import DAG
+            dag = DAG(dag_id='temp_dag')
+            """
         )
         path_to_parse.write_text(dag_code)
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
+        manager = DagFileProcessorManager(dag_directory=path_to_parse.parent, max_runs=1)
 
-        async_mode = "sqlite" not in conf.get("database", "sql_alchemy_conn")
-        manager = DagFileProcessorManager(
-            dag_directory=path_to_parse.parent,
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=async_mode,
-        )
-
-        self.run_processor_manager_one_loop(manager, parent_pipe)
+        self.run_processor_manager_one_loop(manager)
         last_runtime = manager.get_last_runtime(manager.file_paths[0])
-
-        child_pipe.close()
-        parent_pipe.close()
 
         statsd_timing_mock.assert_has_calls(
             [
@@ -956,21 +785,14 @@ class TestDagProcessorJobRunner:
 
     def test_refresh_dags_dir_doesnt_delete_zipped_dags(self, tmp_path):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
-        manager = DagFileProcessorManager(
-            dag_directory=TEST_DAG_FOLDER,
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory=TEST_DAG_FOLDER, max_runs=1)
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
         dagbag.process_file(zipped_dag_path)
         dag = dagbag.get_dag("test_zip_dag")
         dag.sync_to_db()
         SerializedDagModel.write_dag(dag)
-        manager.last_dag_dir_refresh_time = timezone.utcnow() - timedelta(minutes=10)
+        manager.last_dag_dir_refresh_time = time.monotonic() - 10 * 60
         manager._refresh_dag_dir()
         # Assert dag not deleted in SDM
         assert SerializedDagModel.has_dag("test_zip_dag")
@@ -981,21 +803,14 @@ class TestDagProcessorJobRunner:
 
     def test_refresh_dags_dir_deactivates_deleted_zipped_dags(self, tmp_path):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
-        manager = DagFileProcessorManager(
-            dag_directory=TEST_DAG_FOLDER,
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
+        manager = DagFileProcessorManager(dag_directory=TEST_DAG_FOLDER, max_runs=1)
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
         dagbag.process_file(zipped_dag_path)
         dag = dagbag.get_dag("test_zip_dag")
         dag.sync_to_db()
         SerializedDagModel.write_dag(dag)
-        manager.last_dag_dir_refresh_time = timezone.utcnow() - timedelta(minutes=10)
+        manager.last_dag_dir_refresh_time = time.monotonic() - 10 * 60
 
         # Mock might_contain_dag to mimic deleting the python file from the zip
         with mock.patch("airflow.dag_processing.manager.might_contain_dag", return_value=False):
@@ -1024,15 +839,8 @@ class TestDagProcessorJobRunner:
         assert dag.get_is_active()
         assert DagCode.has_dag(dag.dag_id)
 
-        manager = DagFileProcessorManager(
-            dag_directory=TEST_DAG_FOLDER / "subdir2" / "subdir3",
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=MagicMock(),
-            dag_ids=[],
-            async_mode=True,
-        )
-        manager.last_dag_dir_refresh_time = timezone.utcnow() - timedelta(minutes=10)
+        manager = DagFileProcessorManager(dag_directory=TEST_DAG_FOLDER / "subdir2" / "subdir3", max_runs=1)
+        manager.last_dag_dir_refresh_time = time.monotonic() - 10 * 60
 
         manager._refresh_dag_dir()
 
@@ -1069,18 +877,10 @@ class TestDagProcessorJobRunner:
             session.add(DbCallbackRequest(callback=callback1, priority_weight=11))
             session.add(DbCallbackRequest(callback=callback2, priority_weight=10))
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-        manager = DagFileProcessorManager(
-            dag_directory=os.fspath(tmp_path),
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=False,
-        )
+        manager = DagFileProcessorManager(dag_directory=os.fspath(tmp_path), max_runs=1)
 
         with create_session() as session:
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
             assert session.query(DbCallbackRequest).count() == 0
 
     @conf_vars(
@@ -1112,18 +912,10 @@ class TestDagProcessorJobRunner:
             session.add(DbCallbackRequest(callback=callback1, priority_weight=11))
             session.add(DbCallbackRequest(callback=callback2, priority_weight=10))
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-        manager = DagFileProcessorManager(
-            dag_directory=tmp_path,
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=False,
-        )
+        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
 
         with create_session() as session:
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
             assert session.query(DbCallbackRequest).count() == 1
 
     @conf_vars(
@@ -1148,22 +940,14 @@ class TestDagProcessorJobRunner:
                 )
                 session.add(DbCallbackRequest(callback=callback, priority_weight=i))
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-        manager = DagFileProcessorManager(
-            dag_directory=str(tmp_path),
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=False,
-        )
+        manager = DagFileProcessorManager(dag_directory=str(tmp_path), max_runs=1)
 
         with create_session() as session:
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
             assert session.query(DbCallbackRequest).count() == 3
 
         with create_session() as session:
-            self.run_processor_manager_one_loop(manager, parent_pipe)
+            self.run_processor_manager_one_loop(manager)
             assert session.query(DbCallbackRequest).count() == 1
 
     @conf_vars(
@@ -1185,18 +969,10 @@ class TestDagProcessorJobRunner:
             )
             session.add(DbCallbackRequest(callback=callback, priority_weight=10))
 
-        child_pipe, parent_pipe = multiprocessing.Pipe()
-        manager = DagFileProcessorManager(
-            dag_directory=tmp_path,
-            max_runs=1,
-            processor_timeout=timedelta(days=365),
-            signal_conn=child_pipe,
-            dag_ids=[],
-            async_mode=False,
-        )
+        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
 
         with create_session() as session:
-            results = self.run_processor_manager_one_loop(manager, parent_pipe)
+            results = self.run_processor_manager_one_loop(manager)
 
         assert (len(results)) == 0
         # Verify no callbacks removed from database.

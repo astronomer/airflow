@@ -72,8 +72,9 @@ class ParseImportError(Base):
                 .execution_options(synchronize_session="fetch")
             )
             return
-        existing_import_errors = session.query(ParseImportError.filename).filter(
-            ParseImportError.filename == filename).all()
+        existing_import_errors = (
+            session.query(ParseImportError.filename).filter(ParseImportError.filename == filename).all()
+        )
 
         # Add the errors of the processed files
         # TODO Should we modify this to assume just one import error per file? What happens if there are multiple for one file?
