@@ -48,12 +48,12 @@ from uuid6 import uuid7
 import airflow.models
 from airflow.configuration import conf
 from airflow.dag_processing.processor import DagFileProcessorProcess
-from airflow.models.dag import DagModel
+from airflow.models.dag import DAG, DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
 from airflow.models.errors import ParseImportError
-from airflow.models.serialized_dag import SerializedDagModel
+from airflow.models.serialized_dag import DagInfo
 from airflow.secrets.cache import SecretCache
 from airflow.stats import Stats
 from airflow.traces.tracer import Trace
@@ -825,7 +825,7 @@ class TaskSDKBasedDagCollector:
             else:
                 self.log.warning("Stopping processor for %s", file_path)
                 Stats.decr("dag_processing.processes", tags={"file_path": file_path, "action": "stop"})
-                processor.terminate()
+                processor.kill(signal.SIGKILL)
                 self._file_stats.pop(file_path)
 
         to_remove = set(self._file_stats).difference(self._file_paths)
@@ -840,7 +840,9 @@ class TaskSDKBasedDagCollector:
         raise NotImplementedError()
 
     def _collect_results(self):
+        # TODO: Use an explicit session in this fn
         finished = []
+        collected_dags: list[DagInfo] = []
         for path, proc in self._processors.items():
             if proc.exit_code is None:
                 # This processor hasn't finixhed yet
@@ -859,18 +861,20 @@ class TaskSDKBasedDagCollector:
                 res = proc.parsing_result
 
                 # record DAGs and import errors to database
-                for serialized_dag in res.serialized_dags:
-                    SerializedDagModel.write_dag(serialized_dag)
-                ParseImportError.update_import_errors(
-                    filename=res.fileloc, import_errors=res.import_errors
-                )
+                if res.serialized_dags:
+                    collected_dags.extend(res.serialized_dags)
+                ParseImportError.update_import_errors(filename=res.fileloc, import_errors=res.import_errors)
 
                 stat.num_dags = len(res.serialized_dags)
                 if res.import_errors:
                     stat.import_errors = len(res.import_errors)
 
-                # TODO: Put `res` into the serialized_dag, import_error and dag_warning tables
             self._file_stats[path] = stat
+
+        # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
+        # lives in this package (it's a bit "circular") to go to models/dag.py to then go back to a class in
+        # this namespace.
+        DAG.bulk_write_to_db(collected_dags, processor_subdir=self.dag_directory)
 
         for path in finished:
             self._processors.pop(path)

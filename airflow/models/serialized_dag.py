@@ -60,20 +60,22 @@ log = logging.getLogger(__name__)
 class DagInfo(pydantic.BaseModel):
     data: dict
 
-    @pydantic.computed_field  # type: ignore[misc]
     @property
     def hash(self) -> str:
         return SerializedDagModel.hash(self.data)
 
-    @pydantic.computed_field  # type: ignore[misc]
     @property
     def dag_id(self) -> str:
-        return self.data['dag']['id']
+        return self.data["dag"]["dag_id"]
 
-    @pydantic.computed_field  # type: ignore[misc]
     @property
     def fileloc(self) -> str:
-        return self.data['dag']['fileloc']
+        return self.data["dag"]["fileloc"]
+
+    @property
+    def is_paused_upon_creation(self) -> bool | None:
+        return self.data["dag"].get("is_paused_upon_creation")
+
 
 class SerializedDagModel(Base):
     """
@@ -127,6 +129,8 @@ class SerializedDagModel(Base):
     load_op_links = True
 
     def __init__(self, dag: DAG | DagInfo, processor_subdir: str | None = None) -> None:
+        from airflow.models.dag import DAG
+
         self.dag_id = dag.dag_id
         self.processor_subdir = processor_subdir
         dag_data = {}

@@ -702,3 +702,15 @@ class TestProcessorAgent:
         self.processor_agent.start()
         self.processor_agent.run_single_parsing_loop()
         self.processor_agent.wait_until_finished()
+
+
+def test_dag_info():
+    from airflow import DAG
+    from airflow.models.baseoperator import BaseOperator
+    from airflow.models.serialized_dag import DagInfo
+    from airflow.serialization.serialized_objects import SerializedDAG
+
+    with DAG(dag_id="a") as dag:
+        BaseOperator(task_id="task1")
+
+    DagInfo(data=SerializedDAG.to_dict(dag))
