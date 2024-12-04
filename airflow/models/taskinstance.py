@@ -77,6 +77,7 @@ from airflow.configuration import conf
 from airflow.exceptions import (
     AirflowException,
     AirflowFailException,
+    AirflowExecuteWithInactiveAssetExecption,
     AirflowRescheduleException,
     AirflowSensorTimeout,
     AirflowSkipException,
@@ -263,6 +264,7 @@ def _run_raw_task(
         context = ti.get_template_context(ignore_param_exceptions=False, session=session)
 
         try:
+            ti._validate_outlet_assets_activeness(session=session)
             if not mark_success:
                 TaskInstance._execute_task_with_callbacks(
                     self=ti,  # type: ignore[arg-type]
@@ -3633,6 +3635,23 @@ class TaskInstance(Base, LoggingMixin):
                 ),
             }
         )
+
+    def _validate_outlet_assets_activeness(self, session: Session) -> None:
+        if not self.task or not self.task.outlets:
+            return
+
+        from airflow.dag_processing.collection import _find_active_assets
+
+        all_assets_name_uri = {
+            (outlet.name, outlet.uri) for outlet in self.task.outlets if isinstance(outlet, Asset)
+        }
+        active_assets_name_uri = _find_active_assets(all_assets_name_uri, session)
+        inactive_assets_name_uri = all_assets_name_uri - active_assets_name_uri
+        if inactive_assets_name_uri:
+            error_msg = "; ".join(
+                f'Asset(name="{name}", uri="{uri}") is inactive' for name, uri in inactive_assets_name_uri
+            )
+            raise AirflowExecuteWithInactiveAssetExecption(error_msg)
 
 
 def _find_common_ancestor_mapped_group(node1: Operator, node2: Operator) -> MappedTaskGroup | None:
