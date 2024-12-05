@@ -20,7 +20,6 @@
 from __future__ import annotations
 
 import logging
-import types
 import zlib
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -80,24 +79,22 @@ class DagInfo(pydantic.BaseModel):  # noqa: D101
         return None
 
     def __getattr__(self, name: str, /) -> Any:
-        if name == "_dag_display_property_value":
-            raise AttributeError(name=name)
         if name in self.NULLABLE_PROPERTIES:
             return self.data["dag"].get(name)
-        return self.data["dag"][name]
+        try:
+            return self.data["dag"][name]
+        except KeyError:
+            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}") from None
 
     @property
     def timetable(self):
-        return types.SimpleNamespace(
-            can_be_scheduled=False,
-            summary="You wish",
-            description="I'm a pretty pretty princess",
-            asset_condition=types.SimpleNamespace(
-                as_expression=lambda: None,
-                iter_assets=lambda: [],
-                iter_asset_aliases=lambda: [],
-            ),
-        )
+        from airflow.serialization.serialized_objects import decode_timetable
+
+        return decode_timetable(self.data["dag"]["timetable"])
+
+    @property
+    def has_task_concurrency_limits(self):
+        return any(task.get("max_active_tis_per_dag") is not None for task in self.data["dag"]["tasks"])
 
 
 class SerializedDagModel(Base):
