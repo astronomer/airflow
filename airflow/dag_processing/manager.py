@@ -89,9 +89,6 @@ class DagParsingStat(NamedTuple):
     all_files_processed: bool
 
 
-
-
-
 class DagParsingSignal(enum.Enum):
     """All signals sent to parser."""
 
@@ -845,15 +842,25 @@ class TaskSDKBasedDagCollector:
                 # This processor hasn't finixhed yet
                 continue
             finished.append(path)
+            parsing_result = proc.parsing_result
+
+            # Collect the DAGS and import errors
             collection_results = collect_dag_results(
                 start_time=proc.start_time,
                 run_count=self._file_stats[path].run_count,
                 path=path,
-                parsing_result=proc.parsing_result,
-                processor_subdir=self.get_dag_directory(),
+                parsing_result=parsing_result,
             )
             stat = collection_results.stat
             collected_dags.extend(collection_results.serialized_dags)
+
+            # If there are import errors, store in DB
+            if parsing_result:
+                ParseImportError.update_import_errors(
+                    filename=parsing_result.fileloc,
+                    import_errors=collection_results.import_errors,
+                    process_subdir=self.get_dag_directory(),
+                )
             self._file_stats[path] = stat
 
         # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
