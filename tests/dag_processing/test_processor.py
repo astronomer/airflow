@@ -25,6 +25,7 @@ from zipfile import ZipFile
 
 import pytest
 
+from airflow.dag_processing.manager import DagFileProcessorAgent
 from airflow.dag_processing.processor import (
     CollectionResult,
     DagFileParseRequest,
@@ -393,70 +394,62 @@ class TestTaskSDKFileProcess:
             )
         assert import_errors[unparseable_filename] == expected_stacktrace.format(unparseable_filename)
 
+    def test_import_error_tracebacks_zip(self, tmp_path):
+        invalid_zip_filename = (tmp_path / "test_zip_invalid.zip").as_posix()
+        invalid_dag_filename = os.path.join(invalid_zip_filename, TEMP_DAG_FILENAME)
+        with ZipFile(invalid_zip_filename, "w") as invalid_zip_file:
+            invalid_zip_file.writestr(TEMP_DAG_FILENAME, INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
+        import_errors = self._process_file(invalid_zip_filename).import_errors
 
-#
-#     def test_import_error_tracebacks_zip(self, tmp_path):
-#         invalid_zip_filename = (tmp_path / "test_zip_invalid.zip").as_posix()
-#         invalid_dag_filename = os.path.join(invalid_zip_filename, TEMP_DAG_FILENAME)
-#         with ZipFile(invalid_zip_filename, "w") as invalid_zip_file:
-#             invalid_zip_file.writestr(TEMP_DAG_FILENAME, INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(invalid_zip_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == invalid_dag_filename
-#             if PY311:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "           ^^^^^^^^^^^\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             else:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             assert import_error.stacktrace == expected_stacktrace.format(
-#                 invalid_dag_filename, invalid_dag_filename
-#             )
-#             session.rollback()
+        assert len(import_errors) == 1
+        if PY311:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 3, in <module>\n'
+                "    something()\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "           ^^^^^^^^^^^\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        else:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 3, in <module>\n'
+                "    something()\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        assert import_errors[invalid_dag_filename] == expected_stacktrace.format(
+            invalid_dag_filename, invalid_dag_filename
+        )
 
-#     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
-#     def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
-#         dag_file = os.path.join(TEST_DAGS_FOLDER, "test_example_bash_operator.py")
-#         temp_dagfile = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
-#         with open(dag_file) as main_dag, open(temp_dagfile, "w") as next_dag:
-#             for line in main_dag:
-#                 next_dag.write(line)
-#         # first we parse the dag
-#         self._process_file(temp_dagfile, dag_directory=tmp_path, session=session)
-#         # assert DagModel.has_import_errors is false
-#         dm = session.query(DagModel).filter(DagModel.fileloc == temp_dagfile).first()
-#         assert not dm.has_import_errors
-#         # corrupt the file
-#         with open(temp_dagfile, "a") as file:
-#             file.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
-#
-#         self._process_file(temp_dagfile, dag_directory=tmp_path, session=session)
-#         import_errors = session.query(ParseImportError).all()
-#
-#         assert len(import_errors) == 1
-#         import_error = import_errors[0]
-#         assert import_error.filename == temp_dagfile
-#         assert import_error.stacktrace
-#         dm = session.query(DagModel).filter(DagModel.fileloc == temp_dagfile).first()
-#         assert dm.has_import_errors
+    # @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
+    # def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
+    #     from airflow.configuration import TEST_DAGS_FOLDER
+    #     dag_file = os.path.join(TEST_DAGS_FOLDER, "test_example_bash_operator.py")
+    #     temp_dagfile = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
+    #     with open(dag_file) as main_dag, open(temp_dagfile, "w") as next_dag:
+    #         for line in main_dag:
+    #             next_dag.write(line)
+    #     # first we parse the dag
+    #     collection_results = self._process_file(temp_dagfile)
+    #     dm = collection_results.collected_dags[0]
+    #     # assert DagModel.has_import_errors is false
+    #     assert not dm.has_import_errors
+    #
+    #     # corrupt the file
+    #     with open(temp_dagfile, "a") as file:
+    #         file.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
+    #
+    #     collection_results = self._process_file(temp_dagfile)
+    #     import_errors = collection_results.import_errors
+    #
+    #     assert len(import_errors) == 1
+    #     assert import_errors[temp_dagfile]
+
+
 #
 
 #
@@ -608,59 +601,59 @@ class TestTaskSDKFileProcess:
 #                 self._process_file(dag_filepath, TEST_DAG_FOLDER, session)
 #
 #
-# class TestProcessorAgent:
-#     @pytest.fixture(autouse=True)
-#     def per_test(self):
-#         self.processor_agent = None
-#         yield
-#         if self.processor_agent:
-#             self.processor_agent.end()
-#
-#     def test_error_when_waiting_in_async_mode(self, tmp_path):
-#         self.processor_agent = DagFileProcessorAgent(
-#             dag_directory=tmp_path,
-#             max_runs=1,
-#             processor_timeout=datetime.timedelta(1),
-#             dag_ids=[],
-#             async_mode=True,
-#         )
-#         self.processor_agent.start()
-#         with pytest.raises(RuntimeError, match="wait_until_finished should only be called in sync_mode"):
-#             self.processor_agent.wait_until_finished()
-#
-#     def test_default_multiprocessing_behaviour(self, tmp_path):
-#         self.processor_agent = DagFileProcessorAgent(
-#             dag_directory=tmp_path,
-#             max_runs=1,
-#             processor_timeout=datetime.timedelta(1),
-#             dag_ids=[],
-#             async_mode=False,
-#         )
-#         self.processor_agent.start()
-#         self.processor_agent.run_single_parsing_loop()
-#         self.processor_agent.wait_until_finished()
-#
-#     @conf_vars({("core", "mp_start_method"): "spawn"})
-#     def test_spawn_multiprocessing_behaviour(self, tmp_path):
-#         self.processor_agent = DagFileProcessorAgent(
-#             dag_directory=tmp_path,
-#             max_runs=1,
-#             processor_timeout=datetime.timedelta(1),
-#             dag_ids=[],
-#             async_mode=False,
-#         )
-#         self.processor_agent.start()
-#         self.processor_agent.run_single_parsing_loop()
-#         self.processor_agent.wait_until_finished()
-#
-#
-# def test_dag_info():
-#     from airflow import DAG
-#     from airflow.models.baseoperator import BaseOperator
-#     from airflow.models.serialized_dag import DagInfo
-#     from airflow.serialization.serialized_objects import SerializedDAG
-#
-#     with DAG(dag_id="a") as dag:
-#         BaseOperator(task_id="task1")
-#
-#     DagInfo(data=SerializedDAG.to_dict(dag))
+class TestProcessorAgent:
+    @pytest.fixture(autouse=True)
+    def per_test(self):
+        self.processor_agent = None
+        yield
+        if self.processor_agent:
+            self.processor_agent.end()
+
+    def test_error_when_waiting_in_async_mode(self, tmp_path):
+        self.processor_agent = DagFileProcessorAgent(
+            dag_directory=tmp_path,
+            max_runs=1,
+            processor_timeout=datetime.timedelta(1),
+            dag_ids=[],
+            async_mode=True,
+        )
+        self.processor_agent.start()
+        with pytest.raises(RuntimeError, match="wait_until_finished should only be called in sync_mode"):
+            self.processor_agent.wait_until_finished()
+
+    def test_default_multiprocessing_behaviour(self, tmp_path):
+        self.processor_agent = DagFileProcessorAgent(
+            dag_directory=tmp_path,
+            max_runs=1,
+            processor_timeout=datetime.timedelta(1),
+            dag_ids=[],
+            async_mode=False,
+        )
+        self.processor_agent.start()
+        self.processor_agent.run_single_parsing_loop()
+        self.processor_agent.wait_until_finished()
+
+    @conf_vars({("core", "mp_start_method"): "spawn"})
+    def test_spawn_multiprocessing_behaviour(self, tmp_path):
+        self.processor_agent = DagFileProcessorAgent(
+            dag_directory=tmp_path,
+            max_runs=1,
+            processor_timeout=datetime.timedelta(1),
+            dag_ids=[],
+            async_mode=False,
+        )
+        self.processor_agent.start()
+        self.processor_agent.run_single_parsing_loop()
+        self.processor_agent.wait_until_finished()
+
+
+def test_dag_info():
+    from airflow import DAG
+    from airflow.models.baseoperator import BaseOperator
+    from airflow.models.serialized_dag import DagInfo
+    from airflow.serialization.serialized_objects import SerializedDAG
+
+    with DAG(dag_id="a") as dag:
+        BaseOperator(task_id="task1")
+
+    DagInfo(data=SerializedDAG.to_dict(dag))
