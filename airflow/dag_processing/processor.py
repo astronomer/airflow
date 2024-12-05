@@ -44,7 +44,6 @@ if TYPE_CHECKING:
     from airflow.models.taskinstance import TaskInstance
 
 
-
 @dataclass
 class _QueryCounter:
     queries_number: int = 0
@@ -208,10 +207,6 @@ class TaskSDKDagFileProcessor(WatchedSubprocess):
         raise NotImplementedError(f"Don't call wait on {type(self).__name__} objects")
 
 
-
-
-
-
 @attrs.define
 class DagFileStat:
     """Information about single processing of one file."""
@@ -223,6 +218,7 @@ class DagFileStat:
     run_count: int = 0
     last_num_of_db_queries: int = 0
 
+
 @attrs.define
 class CollectionResult:
     """Result of collecting a DAG file."""
@@ -230,8 +226,6 @@ class CollectionResult:
     stat: DagFileStat | None = None
     collected_dags: list[DagInfo] = []
     import_errors: dict[str, str] = {}
-
-
 
 
 def collect_dag_results(start_time: float, run_count: int, path: str,
