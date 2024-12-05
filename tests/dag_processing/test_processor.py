@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 import datetime
+import os
 import pathlib
 import sys
+from zipfile import ZipFile
 
 import pytest
 
@@ -254,25 +256,19 @@ class TestTaskSDKFileProcess:
         assert len(import_errors) == 1
         assert import_errors[unparseable_filename] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
 
+    @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
+    def test_add_unparseable_zip_file_creates_import_error(self, tmp_path):
+        zip_filename = (tmp_path / "test_zip.zip").as_posix()
+        invalid_dag_filename = os.path.join(zip_filename, TEMP_DAG_FILENAME)
+        with ZipFile(zip_filename, "w") as zip_file:
+            zip_file.writestr(TEMP_DAG_FILENAME, UNPARSEABLE_DAG_FILE_CONTENTS)
 
-#
-#     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
-#     def test_add_unparseable_zip_file_creates_import_error(self, tmp_path):
-#         zip_filename = (tmp_path / "test_zip.zip").as_posix()
-#         invalid_dag_filename = os.path.join(zip_filename, TEMP_DAG_FILENAME)
-#         with ZipFile(zip_filename, "w") as zip_file:
-#             zip_file.writestr(TEMP_DAG_FILENAME, UNPARSEABLE_DAG_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(zip_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == invalid_dag_filename
-#             assert import_error.stacktrace == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
-#             session.rollback()
-#
+        collected_results = self._process_file(invalid_dag_filename)
+        import_errors = collected_results.import_errors
+        assert len(import_errors) == 1
+        assert import_errors[invalid_dag_filename] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
+
+
 #     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
 #     def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
 #         dag_file = os.path.join(TEST_DAGS_FOLDER, "test_example_bash_operator.py")
