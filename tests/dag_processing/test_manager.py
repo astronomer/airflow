@@ -46,7 +46,7 @@ from airflow.dag_processing.manager import (
     DagFileStat,
     TaskSDKBasedDagCollector as DagFileProcessorManager,
 )
-from airflow.dag_processing.processor import TaskSDKFileProcess as DagFileProcessorProcess
+from airflow.dag_processing.processor import TaskSDKDagFileProcessor as DagFileProcessorProcess
 from airflow.models import DagBag, DagModel, DbCallbackRequest
 from airflow.models.dag_version import DagVersion
 from airflow.models.dagcode import DagCode

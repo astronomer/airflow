@@ -47,7 +47,11 @@ from uuid6 import uuid7
 
 import airflow.models
 from airflow.configuration import conf
-from airflow.dag_processing.processor import TaskSDKFileProcess
+from airflow.dag_processing.processor import (
+    DagFileStat,
+    TaskSDKDagFileProcessor,
+    collect_dag_results,
+)
 from airflow.models.dag import DAG, DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
 from airflow.models.dagwarning import DagWarning
@@ -85,16 +89,7 @@ class DagParsingStat(NamedTuple):
     all_files_processed: bool
 
 
-@attrs.define
-class DagFileStat:
-    """Information about single processing of one file."""
 
-    num_dags: int = 0
-    import_errors: int = 0
-    last_finish_time: datetime | None = None
-    last_duration: float | None = None
-    run_count: int = 0
-    last_num_of_db_queries: int = 0
 
 
 class DagParsingSignal(enum.Enum):
@@ -142,7 +137,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         self._dag_ids = dag_ids
         self._async_mode = async_mode
         # Map from file path to the processor
-        self._processors: dict[str, TaskSDKFileProcess] = {}
+        self._processors: dict[str, TaskSDKDagFileProcessor] = {}
         # Pipe for communicating signals
         self._process: multiprocessing.process.BaseProcess | None = None
         self._done: bool = False
@@ -393,7 +388,7 @@ class TaskSDKBasedDagCollector:
     _file_path_queue: deque[str] = attrs.field(factory=deque, init=False)
     _file_stats: dict[str, DagFileStat] = attrs.field(factory=lambda: defaultdict(DagFileStat), init=False)
 
-    _processors: dict[str, TaskSDKFileProcess] = attrs.field(factory=dict, init=False)
+    _processors: dict[str, TaskSDKDagFileProcessor] = attrs.field(factory=dict, init=False)
 
     _parsing_start_time: float = attrs.field(init=False)
     _num_run: int = attrs.field(default=0, init=False)
@@ -849,37 +844,16 @@ class TaskSDKBasedDagCollector:
             if proc.exit_code is None:
                 # This processor hasn't finixhed yet
                 continue
-
             finished.append(path)
-            now_epoch = time.time()
-            stat = DagFileStat(
-                last_finish_time=timezone.utcnow(),
-                last_duration=now_epoch - proc.start_time,
-                run_count=self._file_stats[path].run_count + 1,
+            collection_results = collect_dag_results(
+                start_time=proc.start_time,
+                run_count=self._file_stats[path].run_count,
+                path=path,
+                parsing_result=proc.parsing_result,
+                processor_subdir=self.get_dag_directory(),
             )
-
-            file_name = Path(path).stem
-            Stats.timing(f"dag_processing.last_duration.{file_name}", stat.last_duration)
-            Stats.timing("dag_processing.last_duration", stat.last_duration, tags={"file_name": file_name})
-
-            if proc.parsing_result is None:
-                stat.import_errors = 1
-            else:
-                res = proc.parsing_result
-
-                # record DAGs and import errors to database
-                if res.serialized_dags:
-                    collected_dags.extend(res.serialized_dags)
-                ParseImportError.update_import_errors(
-                    filename=res.fileloc,
-                    import_errors=res.import_errors,
-                    processor_subdir=self.get_dag_directory(),
-                )
-
-                stat.num_dags = len(res.serialized_dags)
-                if res.import_errors:
-                    stat.import_errors = len(res.import_errors)
-
+            stat = collection_results.stat
+            collected_dags.extend(collection_results.serialized_dags)
             self._file_stats[path] = stat
 
         # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
@@ -897,7 +871,7 @@ class TaskSDKBasedDagCollector:
         ns = SimpleNamespace()
         ns.id = uuid7()
 
-        return TaskSDKFileProcess.start(file_path, ti=ns, client=None, selector=self.selector)
+        return TaskSDKDagFileProcessor.start(file_path, ti=ns, client=None, selector=self.selector)
 
     def _start_new_processes(self):
         """Start more processors if we have enough slots and files to process."""
