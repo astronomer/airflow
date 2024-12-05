@@ -268,6 +268,48 @@ class TestTaskSDKFileProcess:
         assert len(import_errors) == 1
         assert import_errors[invalid_dag_filename] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
 
+    def test_no_import_errors_with_parseable_dag(self, tmp_path):
+        parseable_filename = tmp_path / TEMP_DAG_FILENAME
+        parseable_filename.write_text(PARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(parseable_filename.name)
+        import_errors = collected_results.import_errors
+
+        assert len(import_errors) == 0
+
+    def test_no_import_errors_with_parseable_dag_in_zip(self, tmp_path):
+        zip_filename = (tmp_path / "test_zip.zip").as_posix()
+        with ZipFile(zip_filename, "w") as zip_file:
+            zip_file.writestr(TEMP_DAG_FILENAME, PARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(zip_filename)
+        import_errors = collected_results.import_errors
+
+        assert len(import_errors) == 0
+
+    @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
+    def test_new_import_error_replaces_old(self, tmp_path):
+        unparseable_filename = tmp_path / TEMP_DAG_FILENAME
+        # Generate original import error
+        unparseable_filename.write_text(UNPARSEABLE_DAG_FILE_CONTENTS)
+
+        collected_results = self._process_file(unparseable_filename.as_posix())
+        import_errors = collected_results.import_errors
+
+        assert len(import_errors) == 1
+        assert (
+            import_errors[unparseable_filename.as_posix()] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
+        )
+        # Generate replacement import error (the error will be on the second line now)
+        unparseable_filename.write_text(
+            PARSEABLE_DAG_FILE_CONTENTS + os.linesep + UNPARSEABLE_DAG_FILE_CONTENTS
+        )
+        collected_results = self._process_file(unparseable_filename.as_posix())
+        import_errors = collected_results.import_errors
+
+        assert len(import_errors) == 1
+        assert (
+            import_errors[unparseable_filename.as_posix()] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 2)"
+        )
+
 
 #     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
 #     def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
@@ -295,54 +337,7 @@ class TestTaskSDKFileProcess:
 #         dm = session.query(DagModel).filter(DagModel.fileloc == temp_dagfile).first()
 #         assert dm.has_import_errors
 #
-#     def test_no_import_errors_with_parseable_dag(self, tmp_path):
-#         parseable_filename = tmp_path / TEMP_DAG_FILENAME
-#         parseable_filename.write_text(PARSEABLE_DAG_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(parseable_filename.as_posix(), dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 0
-#
-#             session.rollback()
-#
-#     def test_no_import_errors_with_parseable_dag_in_zip(self, tmp_path):
-#         zip_filename = (tmp_path / "test_zip.zip").as_posix()
-#         with ZipFile(zip_filename, "w") as zip_file:
-#             zip_file.writestr(TEMP_DAG_FILENAME, PARSEABLE_DAG_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(zip_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 0
-#
-#             session.rollback()
-#
-#     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
-#     def test_new_import_error_replaces_old(self, tmp_path):
-#         unparseable_filename = tmp_path / TEMP_DAG_FILENAME
-#         # Generate original import error
-#         unparseable_filename.write_text(UNPARSEABLE_DAG_FILE_CONTENTS)
-#
-#         session = settings.Session()
-#         self._process_file(unparseable_filename.as_posix(), dag_directory=tmp_path, session=session)
-#
-#         # Generate replacement import error (the error will be on the second line now)
-#         unparseable_filename.write_text(
-#             PARSEABLE_DAG_FILE_CONTENTS + os.linesep + UNPARSEABLE_DAG_FILE_CONTENTS
-#         )
-#         self._process_file(unparseable_filename.as_posix(), dag_directory=tmp_path, session=session)
-#
-#         import_errors = session.query(ParseImportError).all()
-#
-#         assert len(import_errors) == 1
-#         import_error = import_errors[0]
-#         assert import_error.filename == unparseable_filename.as_posix()
-#         assert import_error.stacktrace == f"invalid syntax ({TEMP_DAG_FILENAME}, line 2)"
-#
-#         session.rollback()
+
 #
 #     def test_import_error_record_is_updated_not_deleted_and_recreated(self, tmp_path):
 #         """
