@@ -1850,7 +1850,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         orm_dags = dag_op.add_dags(session=session)
         dag_op.update_dags(orm_dags, processor_subdir=processor_subdir, session=session)
 
-        if any(not isinstance(dag, DAG) for dag in dags):
+        if all(isinstance(dag, DAG) for dag in dags):
             # TODO: This is a hack for moving the dag processing
             asset_op = AssetModelOperation.collect(dag_op.dags)
 

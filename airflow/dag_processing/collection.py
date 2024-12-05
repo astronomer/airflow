@@ -224,10 +224,14 @@ class DagModelOperation(NamedTuple):
                 dm.max_active_runs = dag.max_active_runs
             if dag.max_consecutive_failed_dag_runs is not None:
                 dm.max_consecutive_failed_dag_runs = dag.max_consecutive_failed_dag_runs
-            dm.has_task_concurrency_limits = any(
-                t.max_active_tis_per_dag is not None or t.max_active_tis_per_dagrun is not None
-                for t in dag.tasks
-            )
+
+            if hasattr(dag, "has_task_concurrency_limits"):
+                dm.has_task_concurrency_limits = dag.has_task_concurrency_limits
+            else:
+                dm.has_task_concurrency_limits = any(
+                    t.max_active_tis_per_dag is not None or t.max_active_tis_per_dagrun is not None
+                    for t in dag.tasks
+                )
             dm.timetable_summary = dag.timetable.summary
             dm.timetable_description = dag.timetable.description
             dm.asset_expression = dag.timetable.asset_condition.as_expression()
