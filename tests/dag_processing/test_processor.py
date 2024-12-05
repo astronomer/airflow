@@ -338,6 +338,99 @@ class TestTaskSDKFileProcess:
         collected_results = self._process_file(zip_filename)
         assert len(collected_results.import_errors) == 0
 
+    def test_import_error_tracebacks(self, tmp_path):
+        unparseable_filename = (tmp_path / TEMP_DAG_FILENAME).as_posix()
+        with open(unparseable_filename, "w") as unparseable_file:
+            unparseable_file.writelines(INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
+
+        import_errors = self._process_file(unparseable_filename).import_errors
+        assert len(import_errors) == 1
+
+        if PY311:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 3, in <module>\n'
+                "    something()\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "           ^^^^^^^^^^^\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        else:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 3, in <module>\n'
+                "    something()\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        assert import_errors[unparseable_filename] == expected_stacktrace.format(
+            unparseable_filename, unparseable_filename
+        )
+
+    @conf_vars({("core", "dagbag_import_error_traceback_depth"): "1"})
+    def test_import_error_traceback_depth(self, tmp_path):
+        unparseable_filename = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
+        with open(unparseable_filename, "w") as unparseable_file:
+            unparseable_file.writelines(INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
+        import_errors = self._process_file(unparseable_filename).import_errors
+        assert len(import_errors) == 1
+        if PY311:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "           ^^^^^^^^^^^\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        else:
+            expected_stacktrace = (
+                "Traceback (most recent call last):\n"
+                '  File "{}", line 2, in something\n'
+                "    return airflow_DAG\n"
+                "NameError: name 'airflow_DAG' is not defined\n"
+            )
+        assert import_errors[unparseable_filename] == expected_stacktrace.format(unparseable_filename)
+
+
+#
+#     def test_import_error_tracebacks_zip(self, tmp_path):
+#         invalid_zip_filename = (tmp_path / "test_zip_invalid.zip").as_posix()
+#         invalid_dag_filename = os.path.join(invalid_zip_filename, TEMP_DAG_FILENAME)
+#         with ZipFile(invalid_zip_filename, "w") as invalid_zip_file:
+#             invalid_zip_file.writestr(TEMP_DAG_FILENAME, INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
+#
+#         with create_session() as session:
+#             self._process_file(invalid_zip_filename, dag_directory=tmp_path, session=session)
+#             import_errors = session.query(ParseImportError).all()
+#
+#             assert len(import_errors) == 1
+#             import_error = import_errors[0]
+#             assert import_error.filename == invalid_dag_filename
+#             if PY311:
+#                 expected_stacktrace = (
+#                     "Traceback (most recent call last):\n"
+#                     '  File "{}", line 3, in <module>\n'
+#                     "    something()\n"
+#                     '  File "{}", line 2, in something\n'
+#                     "    return airflow_DAG\n"
+#                     "           ^^^^^^^^^^^\n"
+#                     "NameError: name 'airflow_DAG' is not defined\n"
+#                 )
+#             else:
+#                 expected_stacktrace = (
+#                     "Traceback (most recent call last):\n"
+#                     '  File "{}", line 3, in <module>\n'
+#                     "    something()\n"
+#                     '  File "{}", line 2, in something\n'
+#                     "    return airflow_DAG\n"
+#                     "NameError: name 'airflow_DAG' is not defined\n"
+#                 )
+#             assert import_error.stacktrace == expected_stacktrace.format(
+#                 invalid_dag_filename, invalid_dag_filename
+#             )
+#             session.rollback()
 
 #     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
 #     def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
@@ -395,111 +488,7 @@ class TestTaskSDKFileProcess:
 #         assert import_error_1.id == import_error_2.id
 #
 
-#
-#     def test_import_error_tracebacks(self, tmp_path):
-#         unparseable_filename = (tmp_path / TEMP_DAG_FILENAME).as_posix()
-#         with open(unparseable_filename, "w") as unparseable_file:
-#             unparseable_file.writelines(INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(unparseable_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == unparseable_filename
-#             if PY311:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "           ^^^^^^^^^^^\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             else:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             assert import_error.stacktrace == expected_stacktrace.format(
-#                 unparseable_filename, unparseable_filename
-#             )
-#             session.rollback()
-#
-#     @conf_vars({("core", "dagbag_import_error_traceback_depth"): "1"})
-#     def test_import_error_traceback_depth(self, tmp_path):
-#         unparseable_filename = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
-#         with open(unparseable_filename, "w") as unparseable_file:
-#             unparseable_file.writelines(INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(unparseable_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == unparseable_filename
-#             if PY311:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "           ^^^^^^^^^^^\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             else:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             assert import_error.stacktrace == expected_stacktrace.format(unparseable_filename)
-#
-#             session.rollback()
-#
-#     def test_import_error_tracebacks_zip(self, tmp_path):
-#         invalid_zip_filename = (tmp_path / "test_zip_invalid.zip").as_posix()
-#         invalid_dag_filename = os.path.join(invalid_zip_filename, TEMP_DAG_FILENAME)
-#         with ZipFile(invalid_zip_filename, "w") as invalid_zip_file:
-#             invalid_zip_file.writestr(TEMP_DAG_FILENAME, INVALID_DAG_WITH_DEPTH_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(invalid_zip_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == invalid_dag_filename
-#             if PY311:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "           ^^^^^^^^^^^\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             else:
-#                 expected_stacktrace = (
-#                     "Traceback (most recent call last):\n"
-#                     '  File "{}", line 3, in <module>\n'
-#                     "    something()\n"
-#                     '  File "{}", line 2, in something\n'
-#                     "    return airflow_DAG\n"
-#                     "NameError: name 'airflow_DAG' is not defined\n"
-#                 )
-#             assert import_error.stacktrace == expected_stacktrace.format(
-#                 invalid_dag_filename, invalid_dag_filename
-#             )
-#             session.rollback()
+
 #
 #     @conf_vars({("core", "dagbag_import_error_traceback_depth"): "1"})
 #     def test_import_error_tracebacks_zip_depth(self, tmp_path):
