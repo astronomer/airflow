@@ -30,7 +30,6 @@ import pydantic
 from sqlalchemy import event
 
 from airflow.models.dagbag import DagBag
-from airflow.models.errors import ParseImportError
 from airflow.models.serialized_dag import DagInfo
 from airflow.sdk.execution_time.comms import GetConnection, GetVariable
 from airflow.sdk.execution_time.supervisor import WatchedSubprocess
@@ -230,13 +229,14 @@ class CollectionResult:
 
     stat: DagFileStat | None = None
     collected_dags: list[DagInfo] = []
+    import_errors: dict[str, str] = {}
 
 
 
 
 def collect_dag_results(start_time: float, run_count: int, path: str,
-                        parsing_result: DagFileParsingResult | None, processor_subdir: str | None):
-    collected_dags = []
+                        parsing_result: DagFileParsingResult | None):
+    result = CollectionResult()
     now_epoch = time.time()
     stat = DagFileStat(
         last_finish_time=timezone.utcnow(),
@@ -251,22 +251,11 @@ def collect_dag_results(start_time: float, run_count: int, path: str,
     if parsing_result is None:
         stat.import_errors = 1
     else:
-        res = parsing_result
 
         # record DAGs and import errors to database
-        if res.serialized_dags:
-            collected_dags.extend(res.serialized_dags)
-        ParseImportError.update_import_errors(
-            filename=res.fileloc,
-            import_errors=res.import_errors or {},
-            processor_subdir=processor_subdir,
-        )
-
-        stat.num_dags = len(res.serialized_dags)
-        if res.import_errors:
-            stat.import_errors = len(res.import_errors)
-
-    return CollectionResult(
-        stat=stat,
-        collected_dags=collected_dags,
-    )
+        result.collected_dags = parsing_result.serialized_dags or []
+        result.import_errors = parsing_result.import_errors or {}
+        stat.num_dags = len(parsing_result.serialized_dags)
+        if parsing_result.import_errors:
+            stat.import_errors = len(parsing_result.import_errors)
+    return result
