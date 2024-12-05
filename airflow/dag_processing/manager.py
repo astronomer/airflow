@@ -642,10 +642,7 @@ class TaskSDKBasedDagCollector:
 
         try:
             self.log.debug("Removing old import errors")
-            # TODO:
-            # DagFileProcessorManager.clear_nonexistent_import_errors(
-            #     file_paths=self._file_paths, processor_subdir=self.get_dag_directory()
-            # )
+            self.clear_nonexistent_import_errors()
         except Exception:
             self.log.exception("Error removing old import errors")
 
@@ -683,11 +680,8 @@ class TaskSDKBasedDagCollector:
                 self._log_file_processing_stats(self._file_paths)
             self.last_stat_print_time = time.monotonic()
 
-    @staticmethod
     @provide_session
-    def clear_nonexistent_import_errors(
-        file_paths: list[str] | None, processor_subdir: str | None, session=NEW_SESSION
-    ):
+    def clear_nonexistent_import_errors(self, session=NEW_SESSION):
         """
         Clear import errors for files that no longer exist.
 
@@ -696,10 +690,10 @@ class TaskSDKBasedDagCollector:
         """
         query = delete(ParseImportError)
 
-        if file_paths:
+        if self._file_paths:
             query = query.where(
-                ~ParseImportError.filename.in_(file_paths),
-                ParseImportError.processor_subdir == processor_subdir,
+                ~ParseImportError.filename.in_(self._file_paths),
+                ParseImportError.processor_subdir == self.get_dag_directory(),
             )
 
         session.execute(query.execution_options(synchronize_session="fetch"))
@@ -783,7 +777,7 @@ class TaskSDKBasedDagCollector:
                     num_dags,
                     num_errors,
                     f"{last_runtime:.2f}s" if last_runtime else None,
-                    time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(last_run)) if last_run else None,
+                    last_run.strftime("%Y-%m-%dT%H:%M:%S") if last_run else None,
                 )
             )
         log_str = (
@@ -877,7 +871,11 @@ class TaskSDKBasedDagCollector:
                 # record DAGs and import errors to database
                 if res.serialized_dags:
                     collected_dags.extend(res.serialized_dags)
-                ParseImportError.update_import_errors(filename=res.fileloc, import_errors=res.import_errors)
+                ParseImportError.update_import_errors(
+                    filename=res.fileloc,
+                    import_errors=res.import_errors,
+                    processor_subdir=self.get_dag_directory(),
+                )
 
                 stat.num_dags = len(res.serialized_dags)
                 if res.import_errors:
