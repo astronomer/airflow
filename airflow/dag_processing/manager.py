@@ -663,13 +663,12 @@ class TaskSDKBasedDagCollector:
             except zipfile.BadZipFile:
                 self.log.exception("There was an error accessing ZIP file %s %s", fileloc)
 
-        # TODO:
-        # dag_filelocs = {full_loc for path in self._file_paths for full_loc in _iter_dag_filelocs(path)}
-        #
-        # DagModel.deactivate_deleted_dags(
-        #     dag_filelocs,
-        #     processor_subdir=self.get_dag_directory(),
-        # )
+        dag_filelocs = {full_loc for path in self._file_paths for full_loc in _iter_dag_filelocs(path)}
+
+        DagModel.deactivate_deleted_dags(
+            dag_filelocs,
+            processor_subdir=self.get_dag_directory(),
+        )
 
         return True
 
