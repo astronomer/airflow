@@ -310,6 +310,34 @@ class TestTaskSDKFileProcess:
             import_errors[unparseable_filename.as_posix()] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 2)"
         )
 
+    def test_remove_error_clears_import_error(self, tmp_path):
+        filename_to_parse = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
+
+        # Generate original import error
+        with open(filename_to_parse, "w") as file_to_parse:
+            file_to_parse.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(filename_to_parse)
+        assert len(collected_results.import_errors) == 1
+
+        # Remove the import error from the file
+        with open(filename_to_parse, "w") as file_to_parse:
+            file_to_parse.writelines(PARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(filename_to_parse)
+        assert len(collected_results.import_errors) == 0
+
+    def test_remove_error_clears_import_error_zip(self, tmp_path):
+        # Generate original import error
+        zip_filename = (tmp_path / "test_zip.zip").as_posix()
+        with ZipFile(zip_filename, "w") as zip_file:
+            zip_file.writestr(TEMP_DAG_FILENAME, UNPARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(zip_filename)
+        assert len(collected_results.import_errors) == 1
+        # Remove the import error from the file
+        with ZipFile(zip_filename, "w") as zip_file:
+            zip_file.writestr(TEMP_DAG_FILENAME, "import os # airflow DAG")
+        collected_results = self._process_file(zip_filename)
+        assert len(collected_results.import_errors) == 0
+
 
 #     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
 #     def test_dag_model_has_import_error_is_true_when_import_error_exists(self, tmp_path, session):
@@ -366,47 +394,7 @@ class TestTaskSDKFileProcess:
 #         # assert that the ID of the import error did not change
 #         assert import_error_1.id == import_error_2.id
 #
-#     def test_remove_error_clears_import_error(self, tmp_path):
-#         filename_to_parse = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
-#
-#         # Generate original import error
-#         with open(filename_to_parse, "w") as file_to_parse:
-#             file_to_parse.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
-#         session = settings.Session()
-#         self._process_file(filename_to_parse, dag_directory=tmp_path, session=session)
-#
-#         # Remove the import error from the file
-#         with open(filename_to_parse, "w") as file_to_parse:
-#             file_to_parse.writelines(PARSEABLE_DAG_FILE_CONTENTS)
-#         self._process_file(filename_to_parse, dag_directory=tmp_path, session=session)
-#
-#         import_errors = session.query(ParseImportError).all()
-#
-#         assert len(import_errors) == 0
-#
-#         session.rollback()
-#
-#     def test_remove_error_clears_import_error_zip(self, tmp_path):
-#         session = settings.Session()
-#
-#         # Generate original import error
-#         zip_filename = (tmp_path / "test_zip.zip").as_posix()
-#         with ZipFile(zip_filename, "w") as zip_file:
-#             zip_file.writestr(TEMP_DAG_FILENAME, UNPARSEABLE_DAG_FILE_CONTENTS)
-#         self._process_file(zip_filename, dag_directory=tmp_path, session=session)
-#
-#         import_errors = session.query(ParseImportError).all()
-#         assert len(import_errors) == 1
-#
-#         # Remove the import error from the file
-#         with ZipFile(zip_filename, "w") as zip_file:
-#             zip_file.writestr(TEMP_DAG_FILENAME, "import os # airflow DAG")
-#         self._process_file(zip_filename, dag_directory=tmp_path, session=session)
-#
-#         import_errors = session.query(ParseImportError).all()
-#         assert len(import_errors) == 0
-#
-#         session.rollback()
+
 #
 #     def test_import_error_tracebacks(self, tmp_path):
 #         unparseable_filename = (tmp_path / TEMP_DAG_FILENAME).as_posix()
