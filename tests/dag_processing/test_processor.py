@@ -17,11 +17,18 @@
 # under the License.
 from __future__ import annotations
 
+import datetime
 import pathlib
 import sys
 
 import pytest
 
+from airflow.dag_processing.processor import (
+    CollectionResult,
+    DagFileParseRequest,
+    _parse_file,
+    collect_dag_results,
+)
 from airflow.utils import timezone
 
 from tests_common.test_utils.config import conf_vars, env_vars
@@ -87,173 +94,167 @@ class TestTaskSDKFileProcess:
             self.scheduler_job = None
         self.clean_db()
 
-    # def _process_file(self, file_path, dag_directory, session):
-    #     dag_file_processor = DagFileProcessor(
-    #         dag_ids=[], dag_directory=str(dag_directory), log=mock.MagicMock()
-    #     )
+    def _process_file(self, file_path) -> CollectionResult:
+        parsed_file = _parse_file(DagFileParseRequest(file=file_path, requests_fd=1))
+        return collect_dag_results(
+            datetime.datetime.now().timestamp(), 1, file_path, parsing_result=parsed_file
+        )
+
     #
-    #     dag_file_processor.process_file(file_path, [])
+    #     @patch.object(TaskInstance, "handle_failure")
+    #     def test_execute_on_failure_callbacks(self, mock_ti_handle_failure):
+    #         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
+    #         dag_file_processor = DagFileProcessor(
+    #             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
+    #         )
+    #         with create_session() as session:
+    #             session.query(TaskInstance).delete()
+    #             dag = dagbag.get_dag("example_branch_operator")
+    #             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
+    #             dagrun = dag.create_dagrun(
+    #                 state=State.RUNNING,
+    #                 logical_date=DEFAULT_DATE,
+    #                 run_type=DagRunType.SCHEDULED,
+    #                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
+    #                 session=session,
+    #                 **triggered_by_kwargs,
+    #             )
+    #             task = dag.get_task(task_id="run_this_first")
+    #             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.RUNNING)
+    #             session.add(ti)
+    #
+    #         requests = [
+    #             TaskCallbackRequest(
+    #                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
+    #             )
+    #         ]
+    #         dag_file_processor.execute_callbacks(dagbag, requests, dag_file_processor.UNIT_TEST_MODE, session)
+    #         mock_ti_handle_failure.assert_called_once_with(
+    #             error="Message", test_mode=conf.getboolean("core", "unit_test_mode"), session=session
+    #         )
+    #
+    #     @pytest.mark.parametrize(
+    #         ["has_serialized_dag"],
+    #         [pytest.param(True, id="dag_in_db"), pytest.param(False, id="no_dag_found")],
+    #     )
+    #     @patch.object(TaskInstance, "handle_failure")
+    #     def test_execute_on_failure_callbacks_without_dag(self, mock_ti_handle_failure, has_serialized_dag):
+    #         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
+    #         dag_file_processor = DagFileProcessor(
+    #             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
+    #         )
+    #         with create_session() as session:
+    #             session.query(TaskInstance).delete()
+    #             dag = dagbag.get_dag("example_branch_operator")
+    #             dag.sync_to_db()
+    #             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
+    #             dagrun = dag.create_dagrun(
+    #                 state=State.RUNNING,
+    #                 logical_date=DEFAULT_DATE,
+    #                 run_type=DagRunType.SCHEDULED,
+    #                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
+    #                 session=session,
+    #                 **triggered_by_kwargs,
+    #             )
+    #             task = dag.get_task(task_id="run_this_first")
+    #             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.QUEUED)
+    #             session.add(ti)
+    #
+    #             if has_serialized_dag:
+    #                 assert SerializedDagModel.write_dag(dag, session=session) is True
+    #                 session.flush()
+    #
+    #         requests = [
+    #             TaskCallbackRequest(
+    #                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
+    #             )
+    #         ]
+    #         dag_file_processor.execute_callbacks_without_dag(requests, True, session)
+    #         mock_ti_handle_failure.assert_called_once_with(
+    #             error="Message", test_mode=conf.getboolean("core", "unit_test_mode"), session=session
+    #         )
+    #
+    #     def test_failure_callbacks_should_not_drop_hostname(self):
+    #         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
+    #         dag_file_processor = DagFileProcessor(
+    #             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
+    #         )
+    #         dag_file_processor.UNIT_TEST_MODE = False
+    #
+    #         with create_session() as session:
+    #             dag = dagbag.get_dag("example_branch_operator")
+    #             task = dag.get_task(task_id="run_this_first")
+    #             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
+    #             dagrun = dag.create_dagrun(
+    #                 state=State.RUNNING,
+    #                 logical_date=DEFAULT_DATE,
+    #                 run_type=DagRunType.SCHEDULED,
+    #                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
+    #                 session=session,
+    #                 **triggered_by_kwargs,
+    #             )
+    #             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.RUNNING)
+    #             ti.hostname = "test_hostname"
+    #             session.add(ti)
+    #
+    #         requests = [
+    #             TaskCallbackRequest(
+    #                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
+    #             )
+    #         ]
+    #         dag_file_processor.execute_callbacks(dagbag, requests, False)
+    #
+    #         with create_session() as session:
+    #             tis = session.query(TaskInstance)
+    #             assert tis[0].hostname == "test_hostname"
+    #
+    #     def test_process_file_should_failure_callback(self, monkeypatch, tmp_path, get_test_dag):
+    #         callback_file = tmp_path.joinpath("callback.txt")
+    #         callback_file.touch()
+    #         monkeypatch.setenv("AIRFLOW_CALLBACK_FILE", str(callback_file))
+    #         dag_file_processor = DagFileProcessor(
+    #             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
+    #         )
+    #
+    #         dag = get_test_dag("test_on_failure_callback")
+    #         task = dag.get_task(task_id="test_on_failure_callback_task")
+    #         with create_session() as session:
+    #             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
+    #             dagrun = dag.create_dagrun(
+    #                 state=State.RUNNING,
+    #                 logical_date=DEFAULT_DATE,
+    #                 run_type=DagRunType.SCHEDULED,
+    #                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
+    #                 session=session,
+    #                 **triggered_by_kwargs,
+    #             )
+    #             ti = dagrun.get_task_instance(task.task_id)
+    #             ti.refresh_from_task(task)
+    #
+    #             requests = [
+    #                 TaskCallbackRequest(
+    #                     full_filepath=dag.fileloc,
+    #                     simple_task_instance=SimpleTaskInstance.from_ti(ti),
+    #                     msg="Message",
+    #                 )
+    #             ]
+    #             dag_file_processor.process_file(dag.fileloc, requests)
+    #
+    #         ti.refresh_from_db()
+    #         msg = " ".join([str(k) for k in ti.key.primary]) + " fired callback"
+    #         assert msg in callback_file.read_text()
+    #
+    @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
+    def test_add_unparseable_file_before_sched_start_creates_import_error(self, tmp_path):
+        unparseable_filename = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
+        with open(unparseable_filename, "w") as unparseable_file:
+            unparseable_file.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
+        collected_results = self._process_file(unparseable_filename)
+        import_errors = collected_results.import_errors
+        assert len(import_errors) == 1
+        assert import_errors[unparseable_filename] == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
 
 
-#
-#     @patch.object(TaskInstance, "handle_failure")
-#     def test_execute_on_failure_callbacks(self, mock_ti_handle_failure):
-#         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
-#         dag_file_processor = DagFileProcessor(
-#             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
-#         )
-#         with create_session() as session:
-#             session.query(TaskInstance).delete()
-#             dag = dagbag.get_dag("example_branch_operator")
-#             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
-#             dagrun = dag.create_dagrun(
-#                 state=State.RUNNING,
-#                 logical_date=DEFAULT_DATE,
-#                 run_type=DagRunType.SCHEDULED,
-#                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
-#                 session=session,
-#                 **triggered_by_kwargs,
-#             )
-#             task = dag.get_task(task_id="run_this_first")
-#             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.RUNNING)
-#             session.add(ti)
-#
-#         requests = [
-#             TaskCallbackRequest(
-#                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
-#             )
-#         ]
-#         dag_file_processor.execute_callbacks(dagbag, requests, dag_file_processor.UNIT_TEST_MODE, session)
-#         mock_ti_handle_failure.assert_called_once_with(
-#             error="Message", test_mode=conf.getboolean("core", "unit_test_mode"), session=session
-#         )
-#
-#     @pytest.mark.parametrize(
-#         ["has_serialized_dag"],
-#         [pytest.param(True, id="dag_in_db"), pytest.param(False, id="no_dag_found")],
-#     )
-#     @patch.object(TaskInstance, "handle_failure")
-#     def test_execute_on_failure_callbacks_without_dag(self, mock_ti_handle_failure, has_serialized_dag):
-#         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
-#         dag_file_processor = DagFileProcessor(
-#             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
-#         )
-#         with create_session() as session:
-#             session.query(TaskInstance).delete()
-#             dag = dagbag.get_dag("example_branch_operator")
-#             dag.sync_to_db()
-#             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
-#             dagrun = dag.create_dagrun(
-#                 state=State.RUNNING,
-#                 logical_date=DEFAULT_DATE,
-#                 run_type=DagRunType.SCHEDULED,
-#                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
-#                 session=session,
-#                 **triggered_by_kwargs,
-#             )
-#             task = dag.get_task(task_id="run_this_first")
-#             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.QUEUED)
-#             session.add(ti)
-#
-#             if has_serialized_dag:
-#                 assert SerializedDagModel.write_dag(dag, session=session) is True
-#                 session.flush()
-#
-#         requests = [
-#             TaskCallbackRequest(
-#                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
-#             )
-#         ]
-#         dag_file_processor.execute_callbacks_without_dag(requests, True, session)
-#         mock_ti_handle_failure.assert_called_once_with(
-#             error="Message", test_mode=conf.getboolean("core", "unit_test_mode"), session=session
-#         )
-#
-#     def test_failure_callbacks_should_not_drop_hostname(self):
-#         dagbag = DagBag(dag_folder="/dev/null", include_examples=True, read_dags_from_db=False)
-#         dag_file_processor = DagFileProcessor(
-#             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
-#         )
-#         dag_file_processor.UNIT_TEST_MODE = False
-#
-#         with create_session() as session:
-#             dag = dagbag.get_dag("example_branch_operator")
-#             task = dag.get_task(task_id="run_this_first")
-#             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
-#             dagrun = dag.create_dagrun(
-#                 state=State.RUNNING,
-#                 logical_date=DEFAULT_DATE,
-#                 run_type=DagRunType.SCHEDULED,
-#                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
-#                 session=session,
-#                 **triggered_by_kwargs,
-#             )
-#             ti = TaskInstance(task, run_id=dagrun.run_id, state=State.RUNNING)
-#             ti.hostname = "test_hostname"
-#             session.add(ti)
-#
-#         requests = [
-#             TaskCallbackRequest(
-#                 full_filepath="A", simple_task_instance=SimpleTaskInstance.from_ti(ti), msg="Message"
-#             )
-#         ]
-#         dag_file_processor.execute_callbacks(dagbag, requests, False)
-#
-#         with create_session() as session:
-#             tis = session.query(TaskInstance)
-#             assert tis[0].hostname == "test_hostname"
-#
-#     def test_process_file_should_failure_callback(self, monkeypatch, tmp_path, get_test_dag):
-#         callback_file = tmp_path.joinpath("callback.txt")
-#         callback_file.touch()
-#         monkeypatch.setenv("AIRFLOW_CALLBACK_FILE", str(callback_file))
-#         dag_file_processor = DagFileProcessor(
-#             dag_ids=[], dag_directory=TEST_DAGS_FOLDER, log=mock.MagicMock()
-#         )
-#
-#         dag = get_test_dag("test_on_failure_callback")
-#         task = dag.get_task(task_id="test_on_failure_callback_task")
-#         with create_session() as session:
-#             triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
-#             dagrun = dag.create_dagrun(
-#                 state=State.RUNNING,
-#                 logical_date=DEFAULT_DATE,
-#                 run_type=DagRunType.SCHEDULED,
-#                 data_interval=dag.infer_automated_data_interval(DEFAULT_DATE),
-#                 session=session,
-#                 **triggered_by_kwargs,
-#             )
-#             ti = dagrun.get_task_instance(task.task_id)
-#             ti.refresh_from_task(task)
-#
-#             requests = [
-#                 TaskCallbackRequest(
-#                     full_filepath=dag.fileloc,
-#                     simple_task_instance=SimpleTaskInstance.from_ti(ti),
-#                     msg="Message",
-#                 )
-#             ]
-#             dag_file_processor.process_file(dag.fileloc, requests)
-#
-#         ti.refresh_from_db()
-#         msg = " ".join([str(k) for k in ti.key.primary]) + " fired callback"
-#         assert msg in callback_file.read_text()
-#
-#     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
-#     def test_add_unparseable_file_before_sched_start_creates_import_error(self, tmp_path):
-#         unparseable_filename = tmp_path.joinpath(TEMP_DAG_FILENAME).as_posix()
-#         with open(unparseable_filename, "w") as unparseable_file:
-#             unparseable_file.writelines(UNPARSEABLE_DAG_FILE_CONTENTS)
-#
-#         with create_session() as session:
-#             self._process_file(unparseable_filename, dag_directory=tmp_path, session=session)
-#             import_errors = session.query(ParseImportError).all()
-#
-#             assert len(import_errors) == 1
-#             import_error = import_errors[0]
-#             assert import_error.filename == unparseable_filename
-#             assert import_error.stacktrace == f"invalid syntax ({TEMP_DAG_FILENAME}, line 1)"
-#             session.rollback()
 #
 #     @conf_vars({("core", "dagbag_import_error_tracebacks"): "False"})
 #     def test_add_unparseable_zip_file_creates_import_error(self, tmp_path):
