@@ -90,42 +90,44 @@ def count_queries(session: Session) -> Generator[_QueryCounter, None, None]:
     event.remove(session, "do_orm_execute", _count_db_queries)
 
 
-def _foo():
+def _parse_file_as_process():
     import os
 
     import structlog
 
     from airflow.sdk.execution_time import task_runner
-    from airflow.serialization.serialized_objects import SerializedDAG
-
     # Parse DAG file, send JSON back up!
 
-    d = task_runner.CommsDecoder[DagFileParseRequest, DagFileParsingResult](
+    comms_decoder = task_runner.CommsDecoder[DagFileParseRequest, DagFileParsingResult](
         input=sys.stdin,
         decoder=pydantic.TypeAdapter[DagFileParseRequest](DagFileParseRequest),
     )
-    msg = d.get_message()
-    d.request_socket = os.fdopen(msg.requests_fd, "wb", buffering=0)
+    msg = comms_decoder.get_message()
+    comms_decoder.request_socket = os.fdopen(msg.requests_fd, "wb", buffering=0)
 
     log = structlog.get_logger(logger_name="task")
 
-    from airflow.models.dagbag import DagBag
+    result = _parse_file(msg)
+    comms_decoder.send_request(log, result)
 
+
+def _parse_file(msg: DagFileParseRequest):
+    from airflow.serialization.serialized_objects import SerializedDAG
+
+    from airflow.models.dagbag import DagBag
     bag = DagBag(
         dag_folder=msg.file,
         include_examples=False,
         safe_mode=True,
         load_op_links=False,
     )
-
     dags = [DagInfo(data=SerializedDAG.to_dict(dag)) for dag in bag.dags.values()]
-
     result = DagFileParsingResult(
         fileloc=msg.file,
         serialized_dags=dags,
         import_errors=bag.import_errors,
     )
-    d.send_request(log, result)
+    return result
 
 
 class DagFileParseRequest(pydantic.BaseModel):
@@ -154,7 +156,7 @@ class TaskSDKFileProcess(WatchedSubprocess):
 
     @classmethod
     def start(  # type: ignore[override]
-        cls, path: str | os.PathLike[str], ti: TaskInstance, target: Callable[[], None] = _foo, **kwargs
+        cls, path: str | os.PathLike[str], ti: TaskInstance, target: Callable[[], None] = _parse_file_as_process, **kwargs
     ) -> TaskSDKFileProcess:
         return super().start(path, ti, target=target, **kwargs)
 
@@ -162,7 +164,8 @@ class TaskSDKFileProcess(WatchedSubprocess):
         # Override base class.
         pass
 
-    def _send_startup_message(self, what, path: str | os.PathLike[str], child_comms_fd: int):  # type: ignore[override]
+    def _send_startup_message(self, what, path: str | os.PathLike[str],
+                              child_comms_fd: int):  # type: ignore[override]
         # TODO: Ash: make this a Workload type!
 
         # TODO: We should include things like "dag code checksum" so that the parser doesn't have to send it
