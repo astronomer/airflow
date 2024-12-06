@@ -225,7 +225,7 @@ class DagModelOperation(NamedTuple):
                 dm.max_consecutive_failed_dag_runs = dag.max_consecutive_failed_dag_runs
             dm.has_task_concurrency_limits = any(
                 t.max_active_tis_per_dag is not None or t.max_active_tis_per_dagrun is not None
-                for t in dag.tasks
+                for t in [] # dag.tasks
             )
             dm.timetable_summary = dag.timetable.summary
             dm.timetable_description = dag.timetable.description
@@ -301,14 +301,14 @@ class AssetModelOperation(NamedTuple):
             outlet_references={
                 dag_id: [
                     (task_id, outlet)
-                    for task_id, task in dag.task_dict.items()
+                    for task_id, task in [] # dag.task_dict.items()
                     for outlet in task.outlets
                     if isinstance(outlet, Asset)
                 ]
                 for dag_id, dag in dags.items()
             },
-            assets={(asset.name, asset.uri): asset for asset in _find_all_assets(dags.values())},
-            asset_aliases={alias.name: alias for alias in _find_all_asset_aliases(dags.values())},
+            assets={(asset.name, asset.uri): asset for asset in []}, # _find_all_assets(dags.values())},
+            asset_aliases={alias.name: alias for alias in []}, # _find_all_asset_aliases(dags.values())},
         )
         return coll
 
