@@ -100,7 +100,11 @@ class TestTaskSDKFileProcess:
     def _process_file(self, file_path) -> CollectionResult:
         parsed_file = _parse_file(DagFileParseRequest(file=file_path, requests_fd=1))
         return collect_dag_results(
-            datetime.datetime.now().timestamp(), 1, file_path, parsing_result=parsed_file
+            datetime.datetime.now().timestamp(),
+            timezone.utcnow(),
+            1,
+            file_path,
+            parsing_result=parsed_file,
         )
 
     #

@@ -845,8 +845,11 @@ class TaskSDKBasedDagCollector:
             parsing_result = proc.parsing_result
 
             # Collect the DAGS and import errors
+            now_epoch = time.time()
+
             collection_results = collect_dag_results(
-                start_time=proc.start_time,
+                run_duration=now_epoch - proc.start_time,
+                finish_time=timezone.utcnow(),
                 run_count=self._file_stats[path].run_count,
                 path=path,
                 parsing_result=parsing_result,

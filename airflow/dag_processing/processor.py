@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -34,7 +33,6 @@ from airflow.models.serialized_dag import DagInfo
 from airflow.sdk.execution_time.comms import GetConnection, GetVariable
 from airflow.sdk.execution_time.supervisor import WatchedSubprocess
 from airflow.stats import Stats
-from airflow.utils import timezone
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -228,13 +226,12 @@ class CollectionResult:
     import_errors: dict[str, str] = {}
 
 
-def collect_dag_results(start_time: float, run_count: int, path: str,
+def collect_dag_results(run_duration: float, finish_time: datetime, run_count: int, path: str,
                         parsing_result: DagFileParsingResult | None):
     result = CollectionResult()
-    now_epoch = time.time()
     stat = DagFileStat(
-        last_finish_time=timezone.utcnow(),
-        last_duration=now_epoch - start_time,
+        last_finish_time=finish_time,
+        last_duration=run_duration,
         run_count=run_count + 1,
     )
 
