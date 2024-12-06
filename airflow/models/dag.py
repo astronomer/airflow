@@ -1830,7 +1830,6 @@ class DAG(TaskSDKDag, LoggingMixin):
     def bulk_write_to_db(
         cls,
         dags: Collection[DAG],
-        processor_subdir: str | None = None,
         session: Session = NEW_SESSION,
     ):
         """
@@ -1848,7 +1847,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         dag_op = DagModelOperation({dag.dag_id: dag for dag in dags})
 
         orm_dags = dag_op.add_dags(session=session)
-        dag_op.update_dags(orm_dags, processor_subdir=processor_subdir, session=session)
+        dag_op.update_dags(orm_dags, session=session)
 
         if any(not isinstance(dag, DAG) for dag in dags):
             # TODO: This is a hack for moving the dag processing

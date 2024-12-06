@@ -50,6 +50,7 @@ from airflow.configuration import conf
 from airflow.dag_processing.processor import DagFileProcessorProcess
 from airflow.models.dag import DAG, DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
+from airflow.models.dagbundle import DagBundleModel
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
 from airflow.models.errors import ParseImportError
@@ -76,6 +77,7 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     from airflow.callbacks.callback_requests import CallbackRequest
+    from airflow.dag_processing.bundles.base import BaseDagBundle
     from airflow.dag_processing.processor import TaskSDKFileProcess
     from airflow.models.serialized_dag import DagInfo
 
@@ -105,6 +107,14 @@ class DagParsingSignal(enum.Enum):
     AGENT_RUN_ONCE = "agent_run_once"
     TERMINATE_MANAGER = "terminate_manager"
     END_MANAGER = "end_manager"
+
+
+class DagFilePath(NamedTuple):
+    """Information about a DAG file."""
+
+    path: str
+    bundle_id: str
+    bundle_version: str
 
 
 class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
@@ -387,9 +397,11 @@ class TaskSDKBasedDagCollector:
     _print_stats_interval: int = attrs.field(factory=_config_int_factory("scheduler", "print_stats_interval"))
     last_stat_print_time: float = attrs.field(default=0, init=False)
 
-    _file_paths: list[str] = attrs.field(factory=list, init=False)
-    _file_path_queue: deque[str] = attrs.field(factory=deque, init=False)
+    _file_paths: list[DagFilePath] = attrs.field(factory=list, init=False)
+    _file_path_queue: deque[DagFilePath] = attrs.field(factory=deque, init=False)
     _file_stats: dict[str, DagFileStat] = attrs.field(factory=lambda: defaultdict(DagFileStat), init=False)
+
+    _dag_bundles: list[tuple[DagBundleModel, BaseDagBundle]] = attrs.field(factory=list, init=False)
 
     _processors: dict[str, TaskSDKFileProcess] = attrs.field(factory=dict, init=False)
 
@@ -430,6 +442,9 @@ class TaskSDKBasedDagCollector:
             "Checking for new files in %s every %s seconds", self.dag_directory, self.dag_dir_list_interval
         )
 
+        self.log.info("Getting all DAG bundles")
+        self._dag_bundles = DagBundleModel.get_all_dag_bundles()
+
         return self._run_parsing_loop()
 
     def _scan_stale_dags(self):
@@ -457,9 +472,10 @@ class TaskSDKBasedDagCollector:
         """Detect and deactivate DAGs which are no longer present in files."""
         to_deactivate = set()
         query = select(DagModel.dag_id, DagModel.fileloc, DagModel.last_parsed_time).where(DagModel.is_active)
-        standalone_dag_processor = conf.getboolean("scheduler", "standalone_dag_processor")
-        if standalone_dag_processor:
-            query = query.where(DagModel.processor_subdir == dag_directory)
+        # TODO: by bundle!
+        # standalone_dag_processor = conf.getboolean("scheduler", "standalone_dag_processor")
+        # if standalone_dag_processor:
+        #     query = query.where(DagModel.processor_subdir == dag_directory)
         dags_parsed = session.execute(query)
 
         for dag in dags_parsed:
@@ -492,9 +508,9 @@ class TaskSDKBasedDagCollector:
         SecretCache.init()
 
         while True:
-            refreshed_dag_dir = self._refresh_dag_dir()
-
             self._kill_timed_out_processors()
+
+            self._refresh_dag_bundles()
 
             if not self._file_path_queue:
                 # Generate more file paths to process if we processed all the files already. Note for this to
@@ -502,7 +518,7 @@ class TaskSDKBasedDagCollector:
                 # cleared all files added as a result of callbacks
                 self.prepare_file_path_queue()
                 self.emit_metrics()
-            elif refreshed_dag_dir:
+            else:
                 # if new files found in dag dir, add them
                 self.add_new_file_path_to_queue()
 
@@ -618,19 +634,43 @@ class TaskSDKBasedDagCollector:
             session.delete(request)
         return filelocs
 
-    def _refresh_dag_dir(self) -> bool:
-        """Refresh file paths from dag dir if we haven't done it for too long."""
-        now = time.monotonic()
-        elapsed_time_since_refresh = now - self.last_dag_dir_refresh_time
-        if elapsed_time_since_refresh <= self.dag_dir_list_interval:
-            return False
+    def _refresh_dag_bundles(self):
+        """Refresh DAG bundles, if required."""
+        now = timezone.utcnow()
 
+        for bundle_model, bundle in self._dag_bundles:
+            elapsed_time_since_refresh = (
+                now - (bundle_model.last_refreshed or timezone.utc_epoch())
+            ).total_seconds()
+            if elapsed_time_since_refresh > bundle_model.refresh_interval:
+                # TODO: locking
+                self.log.info("Time to refresh %s", bundle.name)
+                old_version = bundle.get_current_version()
+                bundle.refresh()
+                bundle_model.last_refreshed = now
+
+                if old_version != bundle.get_current_version():
+                    self.log.info(
+                        "Version changed for %s, new version: %s", bundle.name, bundle.get_current_version()
+                    )
+                bundle_file_paths = self._refresh_dag_dir(bundle_model, bundle)
+                # remove all files from the bundle, then add the new ones
+                self._file_paths = [f for f in self._file_paths if f.bundle_id != bundle_model.id]
+                self._file_paths.extend(
+                    DagFilePath(
+                        path=path, bundle_id=bundle_model.id, bundle_version=bundle.get_current_version()
+                    )
+                    for path in bundle_file_paths
+                )
+                self.log.info("Found %s files for bundle %s", len(bundle_file_paths), bundle.name)
+                # TODO: detect if version changed and update accordingly
+
+    def _refresh_dag_dir(self, bundle_model: DagBundleModel, bundle: BaseDagBundle) -> bool:
+        """Refresh file paths from bundle dir."""
         # Build up a list of Python files that could contain DAGs
-        self.log.info("Searching for files in %s", self.dag_directory)
-        self._file_paths = list_py_file_paths(self.dag_directory)
-        self.last_dag_dir_refresh_time = now
-        self.log.info("There are %s files in %s", len(self._file_paths), self.dag_directory)
-        self.set_file_paths(self._file_paths)
+        self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
+        file_paths = list_py_file_paths(bundle.path)
+        self.log.info("There are %s files in %s", len(file_paths), bundle.path)
 
         try:
             self.log.debug("Removing old import errors")
@@ -658,15 +698,14 @@ class TaskSDKBasedDagCollector:
             except zipfile.BadZipFile:
                 self.log.exception("There was an error accessing ZIP file %s %s", fileloc)
 
+        dag_filelocs = {full_loc for path in file_paths for full_loc in _iter_dag_filelocs(path)}
         # TODO:
-        # dag_filelocs = {full_loc for path in self._file_paths for full_loc in _iter_dag_filelocs(path)}
-        #
         # DagModel.deactivate_deleted_dags(
         #     dag_filelocs,
         #     processor_subdir=self.get_dag_directory(),
         # )
 
-        return True
+        return dag_filelocs
 
     def _print_stat(self):
         """Occasionally print out stats about how fast the files are getting processed."""
@@ -732,7 +771,7 @@ class TaskSDKBasedDagCollector:
             proc = self._processors.get(file_path)
             num_dags = stat.num_dags
             num_errors = stat.import_errors
-            file_name = Path(file_path).stem
+            file_name = Path(file_path.path).stem
             processor_pid = proc.pid if proc else None
             processor_start_time = proc.start_time if proc else None
             runtime = (now - processor_start_time) if processor_start_time else None
@@ -805,9 +844,9 @@ class TaskSDKBasedDagCollector:
         else:
             return str(self.dag_directory)
 
-    def set_file_paths(self, new_file_paths):
+    def set_file_paths(self, new_file_paths: list[DagFilePath]):
         """
-        Update this with a new set of paths to DAG definition files.
+        Update this with a new set of DagFilePaths to DAG definition files.
 
         :param new_file_paths: list of paths to DAG definition files
         :return: None
@@ -862,6 +901,9 @@ class TaskSDKBasedDagCollector:
 
                 # record DAGs and import errors to database
                 if res.serialized_dags:
+                    for dag in res.serialized_dags:
+                        dag.data["bundle_id"] = path.bundle_id
+                        dag.data["bundle_version"] = path.bundle_version
                     collected_dags.extend(res.serialized_dags)
                 ParseImportError.update_import_errors(filename=res.fileloc, import_errors=res.import_errors)
 
@@ -874,12 +916,12 @@ class TaskSDKBasedDagCollector:
         # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
         # lives in this package (it's a bit "circular") to go to models/dag.py to then go back to a class in
         # this namespace.
-        DAG.bulk_write_to_db(collected_dags, processor_subdir=os.fspath(self.dag_directory))
+        DAG.bulk_write_to_db(collected_dags)
 
         for path in finished:
             self._processors.pop(path)
 
-    def _create_process(self, file_path):
+    def _create_process(self, file_path: DagFilePath) -> TaskSDKFileProcess:
         """Create DagFileProcessorProcess instance."""
         from types import SimpleNamespace
 
@@ -888,7 +930,7 @@ class TaskSDKBasedDagCollector:
         ns = SimpleNamespace()
         ns.id = uuid7()
 
-        return TaskSDKFileProcess.start(file_path, ti=ns, client=None, selector=self.selector)
+        return TaskSDKFileProcess.start(file_path.path, ti=ns, client=None, selector=self.selector)
 
     def _start_new_processes(self):
         """Start more processors if we have enough slots and files to process."""
@@ -933,7 +975,7 @@ class TaskSDKBasedDagCollector:
         for file_path in self._file_paths:
             if is_mtime_mode:
                 try:
-                    files_with_mtime[file_path] = os.path.getmtime(file_path)
+                    files_with_mtime[file_path] = os.path.getmtime(file_path.path)
                 except FileNotFoundError:
                     self.log.warning("Skipping processing of missing file: %s", file_path)
                     self._file_stats.pop(file_path, None)
@@ -992,7 +1034,8 @@ class TaskSDKBasedDagCollector:
                 )
 
             self.log.debug(
-                "Queuing the following files for processing:\n\t%s", "\n\t".join(files_paths_to_queue)
+                "Queuing the following files for processing:\n\t%s",
+                "\n\t".join(f.path for f in files_paths_to_queue),
             )
         self._add_paths_to_queue(files_paths_to_queue, False)
         Stats.incr("dag_processing.file_path_queue_update_count")
@@ -1030,7 +1073,7 @@ class TaskSDKBasedDagCollector:
         for proc in processors_to_remove:
             self._processors.pop(proc)
 
-    def _add_paths_to_queue(self, file_paths_to_enqueue: list[str], add_at_front: bool):
+    def _add_paths_to_queue(self, file_paths_to_enqueue: list[DagFilePath], add_at_front: bool):
         """Add stuff to the back or front of the file queue, unless it's already present."""
         new_file_paths = list(p for p in file_paths_to_enqueue if p not in self._file_path_queue)
         if add_at_front:

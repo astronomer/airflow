@@ -67,7 +67,7 @@ class DagBundleModel(Base):
         bundles = []
         for bundle_config in bundle_configs:
             bundle_class = import_string(bundle_config.classpath)
-            bundle = bundle_class(name=bundle_config.name, **bundle_config.kwargs)
+            bundle = bundle_class(name=bundle_config.name, **bundle_config.kwargs or {})
             bundles.append((bundle_config, bundle))
 
         return bundles
