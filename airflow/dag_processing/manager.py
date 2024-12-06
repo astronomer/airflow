@@ -852,14 +852,14 @@ class TaskSDKBasedDagCollector:
                 parsing_result=parsing_result,
             )
             stat = collection_results.stat
-            collected_dags.extend(collection_results.serialized_dags)
+            collected_dags.extend(collection_results.collected_dags)
 
             # If there are import errors, store in DB
             if parsing_result:
                 ParseImportError.update_import_errors(
                     filename=parsing_result.fileloc,
                     import_errors=collection_results.import_errors,
-                    process_subdir=self.get_dag_directory(),
+                    processor_subdir=self.get_dag_directory(),
                 )
             self._file_stats[path] = stat
 

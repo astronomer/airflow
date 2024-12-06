@@ -252,4 +252,5 @@ def collect_dag_results(start_time: float, run_count: int, path: str,
         stat.num_dags = len(parsing_result.serialized_dags)
         if parsing_result.import_errors:
             stat.import_errors = len(parsing_result.import_errors)
+    result.stat = stat
     return result
