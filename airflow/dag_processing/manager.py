@@ -839,7 +839,7 @@ class TaskSDKBasedDagCollector:
         collected_dags: list[DagInfo] = []
         for path, proc in self._processors.items():
             if proc.exit_code is None:
-                # This processor hasn't finixhed yet
+                # This processor hasn't finished yet
                 continue
             finished.append(path)
             parsing_result = proc.parsing_result
