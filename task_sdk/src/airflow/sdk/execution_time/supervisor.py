@@ -36,6 +36,7 @@ from typing import (
     TYPE_CHECKING,
     BinaryIO,
     Callable,
+    ClassVar,
     Literal,
     NoReturn,
     TextIO,
@@ -71,6 +72,8 @@ from airflow.sdk.execution_time.comms import (
 
 if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger, WrappedLogger
+
+    from airflow.typing_compat import Self
 
 
 __all__ = ["WatchedSubprocess", "supervise"]
@@ -324,7 +327,7 @@ class WatchedSubprocess:
         target: Callable[[], None] = _subprocess_main,
         logger: FilteringBoundLogger | None = None,
         **kwargs,
-    ) -> WatchedSubprocess:
+    ) -> Self:
         """Fork and start a new subprocess to execute the given task."""
         # Create socketpairs/"pipes" to connect to the stdin and out from the subprocess
         child_stdin, feed_stdin = mkpipe(remote_read=True)
@@ -356,7 +359,7 @@ class WatchedSubprocess:
         cls._close_unused_sockets(child_stdin, child_stdout, child_stderr, child_comms, child_logs)
 
         proc = cls(
-            id=ti.id,
+            id=kwargs.pop("id", None) or ti.id,
             pid=pid,
             stdin=feed_stdin,
             process=psutil.Process(pid),
