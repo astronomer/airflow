@@ -46,6 +46,7 @@ from tabulate import tabulate
 from uuid6 import uuid7
 
 import airflow.models
+from airflow.callbacks.callback_requests import CallbackRequest
 from airflow.configuration import conf
 from airflow.dag_processing.processor import (
     DagFileStat,
@@ -66,8 +67,8 @@ from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.mixins import MultiprocessingStartMethodMixin
 from airflow.utils.net import get_hostname
 from airflow.utils.process_utils import (
+    kill_child_processes_by_pids,
     reap_process_group,
-    set_new_process_group,
 )
 from airflow.utils.retries import retry_db_transaction
 from airflow.utils.session import NEW_SESSION, provide_session
@@ -78,7 +79,6 @@ if TYPE_CHECKING:
 
     from sqlalchemy.orm import Session
 
-    from airflow.callbacks.callback_requests import CallbackRequest
     from airflow.models.serialized_dag import DagInfo
 
 
@@ -108,15 +108,13 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
     Mainly it can spin up DagFileProcessorManager in a subprocess,
     collect DAG parsing results from it and communicate signal/DAG parsing stat with it.
 
-    This class runs in the main `airflow scheduler` process.
+    This class runs in the main `airflow scheduler` process when standalone_dag_processor is not enabled.
 
     :param dag_directory: Directory where DAG definitions are kept. All
         files in file_paths should be under this directory
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
-    :param dag_ids: if specified, only schedule tasks with these DAG IDs
-    :param async_mode: Whether to start agent in async mode
     """
 
     def __init__(
@@ -124,23 +122,17 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         dag_directory: os.PathLike,
         max_runs: int,
         processor_timeout: timedelta,
-        dag_ids: list[str] | None,
-        async_mode: bool,
     ):
         super().__init__()
         self._dag_directory: os.PathLike = dag_directory
         self._max_runs = max_runs
         self._processor_timeout = processor_timeout
-        self._dag_ids = dag_ids
-        self._async_mode = async_mode
-        # Map from file path to the processor
-        self._processors: dict[str, TaskSDKDagFileProcessor] = {}
-        # Pipe for communicating signals
-        self._process: multiprocessing.process.BaseProcess | None = None
+        self._process: multiprocessing.Process | None = None
         self._done: bool = False
         # Initialized as true so we do not deactivate w/o any actual DAG parsing.
         self._all_files_processed = True
 
+        # Pipe for communicating signals
         self._parent_signal_conn: MultiprocessingConnection | None = None
 
         self._last_parsing_stat_received_at: float = time.monotonic()
@@ -150,7 +142,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         context = self._get_multiprocessing_context()
         self._last_parsing_stat_received_at = time.monotonic()
 
-        self._parent_signal_conn, child_signal_conn = context.Pipe()
+        parent_signal_conn, child_signal_conn = context.Pipe()
         process = context.Process(
             target=type(self)._run_processor_manager,
             args=(
@@ -158,35 +150,18 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
                 self._max_runs,
                 self._processor_timeout,
                 child_signal_conn,
-                self._dag_ids,
-                self._async_mode,
             ),
         )
+
         self._process = process
 
+        self._parent_signal_conn = parent_signal_conn
+
         process.start()
+        # We don't want this end anymore
+        child_signal_conn.close()
 
         self.log.info("Launched DagFileProcessorManager with pid: %s", process.pid)
-
-    def run_single_parsing_loop(self) -> None:
-        """
-        Send agent heartbeat signal to the manager, requesting that it runs one processing "loop".
-
-        Should only be used when launched DAG file processor manager in sync mode.
-
-        Call wait_until_finished to ensure that any launched processors have finished before continuing.
-        """
-        if not self._parent_signal_conn or not self._process:
-            raise ValueError("Process not started.")
-        if not self._process.is_alive():
-            return
-
-        try:
-            self._parent_signal_conn.send(DagParsingSignal.AGENT_RUN_ONCE)
-        except ConnectionError:
-            # If this died cos of an error then we will noticed and restarted
-            # when harvest_serialized_dags calls _heartbeat_manager.
-            pass
 
     def get_callbacks_pipe(self) -> MultiprocessingConnection:
         """Return the pipe for sending Callbacks to DagProcessorManager."""
@@ -194,49 +169,25 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
             raise ValueError("Process not started.")
         return self._parent_signal_conn
 
-    def wait_until_finished(self) -> None:
-        """Wait until DAG parsing is finished."""
-        if not self._parent_signal_conn:
-            raise ValueError("Process not started.")
-        if self._async_mode:
-            raise RuntimeError("wait_until_finished should only be called in sync_mode")
-        while self._parent_signal_conn.poll(timeout=None):
-            try:
-                result = self._parent_signal_conn.recv()
-            except EOFError:
-                return
-            self._process_message(result)
-            if isinstance(result, DagParsingStat):
-                # In sync mode (which is the only time we call this function) we don't send this message from
-                # the Manager until all the running processors have finished
-                return
-
     @staticmethod
     def _run_processor_manager(
         dag_directory: os.PathLike,
         max_runs: int,
         processor_timeout: timedelta,
         signal_conn: MultiprocessingConnection,
-        dag_ids: list[str] | None,
-        async_mode: bool,
     ) -> None:
         # Make this process start as a new process group - that makes it easy
         # to kill all sub-process of this at the OS-level, rather than having
         # to iterate the child processes
-        set_new_process_group()
-        span = Trace.get_current_span()
-        span.set_attributes(
-            {
-                "dag_directory": str(dag_directory),
-                "dag_ids": str(dag_ids),
-            }
-        )
+
+        # set_new_process_group()
         setproctitle("airflow scheduler -- DagFileProcessorManager")
         reload_configuration_for_dag_processing()
         processor_manager = TaskSDKBasedDagCollector(
             dag_directory=dag_directory,
             max_runs=max_runs,
             processor_timeout=processor_timeout.total_seconds(),
+            signal_conn=signal_conn,
         )
         processor_manager.run()
 
@@ -256,18 +207,14 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         self._heartbeat_manager()
 
     def _process_message(self, message):
-        span = Trace.get_current_span()
         self.log.debug("Received message of type %s", type(message).__name__)
         if isinstance(message, DagParsingStat):
-            span.set_attribute("all_files_processed", str(message.all_files_processed))
             self._sync_metadata(message)
         else:
             raise RuntimeError(f"Unexpected message received of type {type(message).__name__}")
 
     def _heartbeat_manager(self):
         """Heartbeat DAG file processor and restart it if we are not done."""
-        if not self._parent_signal_conn:
-            raise ValueError("Process not started.")
         if self._process and not self._process.is_alive():
             self._process.join(timeout=0)
             if not self.done:
@@ -312,10 +259,8 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         """Send termination signal to DAG parsing processor manager to terminate all DAG file processors."""
         if self._process and self._process.is_alive():
             self.log.info("Sending termination message to manager.")
-            try:
-                self._parent_signal_conn.send(DagParsingSignal.TERMINATE_MANAGER)
-            except ConnectionError:
-                pass
+            self._parent_signal_conn.send(None)
+            self._parent_signal_conn.close()
 
     def end(self):
         """Terminate (and then kill) the manager process launched."""
@@ -354,12 +299,14 @@ class TaskSDKBasedDagCollector:
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
+    :param signal_conn: connection to communicate signal with processor agent.
     """
 
     dag_directory: os.PathLike[str]
     max_runs: int
     processor_timeout: float = attrs.field(factory=_config_int_factory("core", "dag_file_processor_timeout"))
     selector: selectors.BaseSelector = attrs.field(factory=selectors.DefaultSelector)
+    _direct_scheduler_conn: MultiprocessingConnection | None = attrs.field(alias="signal_conn", default=None)
 
     _parallelism: int = attrs.field(factory=_config_int_factory("scheduler", "parsing_processes"))
 
@@ -369,16 +316,18 @@ class TaskSDKBasedDagCollector:
     parsing_cleanup_interval: float = attrs.field(
         factory=_config_int_factory("scheduler", "parsing_cleanup_interval")
     )
-    file_process_interval: int = attrs.field(
+    file_process_interval: float = attrs.field(
         factory=_config_int_factory("scheduler", "min_file_process_interval")
     )
-    stale_dag_threshold: int = attrs.field(factory=_config_int_factory("scheduler", "stale_dag_threshold"))
+    stale_dag_threshold: float = attrs.field(factory=_config_int_factory("scheduler", "stale_dag_threshold"))
     last_dag_dir_refresh_time: float = attrs.field(default=0, init=False)
 
     log: logging.Logger = log
 
     _last_deactivate_stale_dags_time: float = attrs.field(default=0, init=False)
-    _print_stats_interval: int = attrs.field(factory=_config_int_factory("scheduler", "print_stats_interval"))
+    _print_stats_interval: float = attrs.field(
+        factory=_config_int_factory("scheduler", "print_stats_interval")
+    )
     last_stat_print_time: float = attrs.field(default=0, init=False)
 
     _file_paths: list[str] = attrs.field(factory=list, init=False)
@@ -400,6 +349,11 @@ class TaskSDKBasedDagCollector:
     max_callbacks_per_loop: int = attrs.field(
         factory=_config_int_factory("scheduler", "max_callbacks_per_loop")
     )
+
+    def __attrs_post_init__(self):
+        if self._direct_scheduler_conn is not None:
+            os.set_blocking(self._direct_scheduler_conn.fileno(), False)
+            pass
 
     def register_exit_signals(self):
         """Register signals that stop child processes."""
@@ -494,6 +448,14 @@ class TaskSDKBasedDagCollector:
         # needs to be done before this process is forked to create the DAG parsing processes.
         SecretCache.init()
 
+        if self._direct_scheduler_conn is not None:
+            self.log.info("Registering scheduler conn pipe")
+            self.selector.register(
+                self._direct_scheduler_conn, selectors.EVENT_READ, self._read_from_direct_scheduler_conn
+            )
+        else:
+            self.log.info("NOT Registering scheduler conn pipe")
+
         while True:
             refreshed_dag_dir = self._refresh_dag_dir()
 
@@ -528,6 +490,26 @@ class TaskSDKBasedDagCollector:
 
             self._print_stat()
 
+            if self._direct_scheduler_conn:
+                all_files_processed = all(
+                    self._file_stats[x].last_finish_time is not None for x in self._file_paths
+                )
+                try:
+                    self._direct_scheduler_conn.send(
+                        DagParsingStat(
+                            self.max_runs_reached(),
+                            all_files_processed,
+                        )
+                    )
+                except BlockingIOError:
+                    # Try again next time around the loop!
+
+                    # It is better to fail, than it is deadlock. This should
+                    # "almost never happen" since the DagParsingStat object is
+                    # small, and in async mode this stat is not actually _required_
+                    # for normal operation (It only drives "max runs")
+                    self.log.debug("BlockingIOError received trying to send DagParsingStat, ignoring")
+
             if self.max_runs_reached():
                 self.log.info(
                     "Exiting dag parsing loop as all files have been processed %s times", self.max_runs
@@ -551,6 +533,23 @@ class TaskSDKBasedDagCollector:
             if not need_more:
                 self.selector.unregister(key.fileobj)
                 key.fileobj.close()  # type: ignore[union-attr]
+
+    def _read_from_direct_scheduler_conn(self, conn: MultiprocessingConnection) -> bool:
+        try:
+            agent_signal = conn.recv()
+        except (EOFError, ConnectionError):
+            self.terminate()
+            sys.exit(os.EX_OK)
+
+        self.log.debug("Received %s signal from DagFileProcessorAgent", agent_signal)
+        if isinstance(agent_signal, CallbackRequest):
+            self._add_callback_to_queue(agent_signal)
+        elif agent_signal is None:
+            self.terminate()
+            sys.exit(os.EX_OK)
+        else:
+            raise ValueError(f"Invalid message {type(agent_signal)}")
+        return True
 
     def _refresh_requested_filelocs(self) -> None:
         """Refresh filepaths from dag dir as requested by users via APIs."""
@@ -876,12 +875,9 @@ class TaskSDKBasedDagCollector:
 
     def _create_process(self, file_path):
         """Create DagFileProcessorProcess instance."""
-        from types import SimpleNamespace
+        id = uuid7()
 
-        ns = SimpleNamespace()
-        ns.id = uuid7()
-
-        return TaskSDKDagFileProcessor.start(file_path, ti=ns, client=None, selector=self.selector)
+        return TaskSDKDagFileProcessor.start(file_path, id=id, callbacks=[], selector=self.selector)
 
     def _start_new_processes(self):
         """Start more processors if we have enough slots and files to process."""
@@ -1042,11 +1038,16 @@ class TaskSDKBasedDagCollector:
 
     def terminate(self):
         """Stop all running processors."""
-        raise NotImplementedError()
+        for file_path, processor in self._processors.items():
+            Stats.decr("dag_processing.processes", tags={"file_path": file_path, "action": "terminate"})
+            # SIGTERM, wait 5s, SIGKILL if still alive
+            processor.kill(signal.SIGTERM, escalation_delay=5.0)
 
     def end(self):
         """Kill all child processes on exit since we don't want to leave them as orphaned."""
-        raise NotImplementedError()
+        pids_to_kill = [p.pid for p in self._processors.values()]
+        if pids_to_kill:
+            kill_child_processes_by_pids(pids_to_kill)
 
     def emit_metrics(self):
         """

@@ -19,15 +19,17 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Generator
-from contextlib import contextmanager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Callable, Literal, Union
 
 import attrs
 import pydantic
-from sqlalchemy import event
 
+from airflow.callbacks.callback_requests import (
+    CallbackRequest,
+    DagCallbackRequest,
+    TaskCallbackRequest,
+)
 from airflow.models.dagbag import DagBag
 from airflow.models.serialized_dag import DagInfo
 from airflow.sdk.execution_time.comms import GetConnection, GetVariable
@@ -37,31 +39,8 @@ from airflow.stats import Stats
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from sqlalchemy.orm.session import Session
-
-    from airflow.models.taskinstance import TaskInstance
-
-
-@dataclass
-class _QueryCounter:
-    queries_number: int = 0
-
-    def inc(self):
-        self.queries_number += 1
-
-
-@contextmanager
-def count_queries(session: Session) -> Generator[_QueryCounter, None, None]:
-    # using list allows to read the updated counter from what context manager returns
-    counter: _QueryCounter = _QueryCounter()
-
-    @event.listens_for(session, "do_orm_execute")
-    def _count_db_queries(orm_execute_state):
-        nonlocal counter
-        counter.inc()
-
-    yield counter
-    event.remove(session, "do_orm_execute", _count_db_queries)
+    from airflow.typing_compat import Self
+    from airflow.utils.context import Context
 
 
 def _parse_file_as_process():
@@ -81,11 +60,11 @@ def _parse_file_as_process():
 
     log = structlog.get_logger(logger_name="task")
 
-    result = _parse_file(msg)
+    result = _parse_file(msg, log)
     comms_decoder.send_request(log, result)
 
 
-def _parse_file(msg: DagFileParseRequest):
+def _parse_file(msg: DagFileParseRequest, log):
     from airflow.serialization.serialized_objects import SerializedDAG
 
     bag = DagBag(
@@ -100,7 +79,46 @@ def _parse_file(msg: DagFileParseRequest):
         serialized_dags=dags,
         import_errors=bag.import_errors,
     )
+
+    if msg.callback_requests:
+        _execute_callbacks(bag, msg.callback_requests, log)
     return result
+
+
+def _execute_callbacks(dagbag: DagBag, callback_requests: list[CallbackRequest], log):
+    for request in callback_requests:
+        log.debug("Processing Callback Request", request=request)
+        if isinstance(request, TaskCallbackRequest):
+            raise NotImplementedError("Haven't coded Task callback yet!")
+            # _execute_task_callbacks(dagbag, request)
+        elif isinstance(request, DagCallbackRequest):
+            _execute_dag_callbacks(dagbag, request, log)
+
+
+def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log):
+    dag = dagbag.dags[request.dag_id]
+
+    callbacks = dag.on_failure_callback if request.is_failure_callback else dag.on_success_callback
+    if not callbacks:
+        log.warning("Callback requested, but dag didn't have any", dag_id=request.dag_id)
+        return
+
+    callbacks = callbacks if isinstance(callbacks, list) else [callbacks]
+    # TODO:We need a proper context object!
+    context: Context = {}
+
+    for callback in callbacks:
+        log.info(
+            "Executing on_%s dag callback",
+            "failure" if request.is_failure_callback else "success",
+            fn=callback,
+            dag_id=request.dag_id,
+        )
+        try:
+            callback(context)
+        except Exception:
+            log.exception("Callback failed", dag_id=request.dag_id)
+            Stats.incr("dag.callback_exceptions", tags={"dag_id": request.dag_id})
 
 
 class DagFileParseRequest(pydantic.BaseModel):
@@ -113,6 +131,7 @@ class DagFileParseRequest(pydantic.BaseModel):
 
     file: str
     requests_fd: int
+    callback_requests: list[CallbackRequest] = pydantic.Field(default_factory=list)
     type: Literal["DagFileParseRequest"] = "DagFileParseRequest"
 
 
@@ -151,22 +170,26 @@ class TaskSDKDagFileProcessor(WatchedSubprocess):
 
     @classmethod
     def start(  # type: ignore[override]
-        cls, path: str | os.PathLike[str], ti: TaskInstance,
-        target: Callable[[], None] = _parse_file_as_process, **kwargs
-    ) -> TaskSDKDagFileProcessor:
-        return super().start(path, ti, target=target, **kwargs)  # type:ignore[return-value]
+        cls,
+        path: str | os.PathLike[str],
+        callbacks: list[CallbackRequest],
+        target: Callable[[], None] = _parse_file_as_process,
+        **kwargs,
+    ) -> Self:
+        return super().start(path, callbacks, target=target, client=None, **kwargs)  # type:ignore[arg-type]
 
     def _on_started(self):
-        # Override base class.
+        # Override base class -- we don't need to tell anything we've started
         pass
 
-    def _send_startup_message(self, what, path: str | os.PathLike[str],
-                              child_comms_fd: int):  # type: ignore[override]
-        # TODO: Ash: make this a Workload type!
-
-        # TODO: We should include things like "dag code checksum" so that the parser doesn't have to send it
-        # if it hasn't changed.
-        msg = DagFileParseRequest(file=os.fspath(path), requests_fd=child_comms_fd)
+    def _send_startup_message(  # type: ignore[override]
+        self, callbacks: list[CallbackRequest], path: str | os.PathLike[str], child_comms_fd: int
+    ):
+        msg = DagFileParseRequest(
+            file=os.fspath(path),
+            requests_fd=child_comms_fd,
+            callback_requests=callbacks,
+        )
         self.stdin.write(msg.model_dump_json().encode() + b"\n")
         ...
 
@@ -226,8 +249,13 @@ class CollectionResult:
     import_errors: dict[str, str] = {}
 
 
-def collect_dag_results(run_duration: float, finish_time: datetime, run_count: int, path: str,
-                        parsing_result: DagFileParsingResult | None):
+def collect_dag_results(
+    run_duration: float,
+    finish_time: datetime,
+    run_count: int,
+    path: str,
+    parsing_result: DagFileParsingResult | None,
+):
     result = CollectionResult()
     stat = DagFileStat(
         last_finish_time=finish_time,
@@ -242,7 +270,6 @@ def collect_dag_results(run_duration: float, finish_time: datetime, run_count: i
     if parsing_result is None:
         stat.import_errors = 1
     else:
-
         # record DAGs and import errors to database
         result.collected_dags = parsing_result.serialized_dags or []
         result.import_errors = parsing_result.import_errors or {}
