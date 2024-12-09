@@ -396,7 +396,9 @@ class TaskSDKBasedDagCollector:
         now = time.monotonic()
         elapsed_time_since_refresh = now - self._last_deactivate_stale_dags_time
         if elapsed_time_since_refresh > self.parsing_cleanup_interval:
-            last_parsed = {fp: stat.last_finish_time for fp, stat in self._file_stats.items()}
+            last_parsed = {
+                fp: stat.last_finish_time for fp, stat in self._file_stats.items() if stat.last_finish_time
+            }
             self.deactivate_stale_dags(
                 last_parsed=last_parsed,
                 dag_directory=self.get_dag_directory(),
