@@ -16,12 +16,14 @@
 # under the License.
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import uuid6
 from sqlalchemy import Column, Integer, String
 from sqlalchemy_utils import UUIDType
 
+from airflow.configuration import conf
 from airflow.models.base import Base, StringID
 from airflow.utils.module_loading import import_string
 from airflow.utils.session import NEW_SESSION, provide_session
@@ -50,6 +52,22 @@ class DagBundleModel(Base):
         self.classpath = classpath
         self.kwargs = kwargs
         self.refresh_interval = refresh_interval
+
+    @classmethod
+    @provide_session
+    def sync_bundles_to_db(cls, *, session: Session = NEW_SESSION) -> None:
+        known_bundles = {b.name: b for b in session.query(cls).all()}
+
+        for name, config_str in conf.getsection("dag_bundles").items():
+            config = json.loads(config_str)
+
+            if bundle := known_bundles.get(name):
+                bundle.classpath = config["classpath"]
+                bundle.kwargs = config["kwargs"]
+                bundle.refresh_interval = config["refresh_interval"]
+            else:
+                bundle = cls(name=name, **config)
+                session.add(bundle)
 
     @classmethod
     @provide_session

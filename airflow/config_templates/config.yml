@@ -2654,3 +2654,15 @@ usage_data_collection:
       example: ~
       default: "True"
       see_also: ":ref:`Usage data collection FAQ <usage-data-collection>`"
+dag_bundles:
+  description: |
+    ...
+  options:
+    dags_folder:
+      description: |
+        The folder where DAGs are stored. This folder is scanned by the scheduler
+        to find DAGs.
+      version_added: ~
+      type: string
+      example: ~
+      default: '{{"classpath": "airflow.dag_processing.bundles.dagfolder.DagsFolderDagBundle", "kwargs": {{}}, "refresh_interval": "300"}}'
