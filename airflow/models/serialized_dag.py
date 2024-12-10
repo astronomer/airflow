@@ -22,9 +22,8 @@ from __future__ import annotations
 import logging
 import zlib
 from datetime import timedelta
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any
 
-import pydantic
 import sqlalchemy_jsonfield
 import uuid6
 from sqlalchemy import Column, ForeignKey, LargeBinary, String, exc, select
@@ -42,6 +41,7 @@ from airflow.serialization.dag_dependency import DagDependency
 from airflow.serialization.serialized_objects import SerializedDAG
 from airflow.settings import COMPRESS_SERIALIZED_DAGS, MIN_SERIALIZED_DAG_UPDATE_INTERVAL, json
 from airflow.utils import timezone
+from airflow.utils.dag_info import DagInfo
 from airflow.utils.hashlib_wrapper import md5
 from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.sqlalchemy import UtcDateTime
@@ -57,44 +57,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class DagInfo(pydantic.BaseModel):  # noqa: D101
-    data: dict
-
-    NULLABLE_PROPERTIES: ClassVar[set[str]] = {
-        "is_paused_upon_creation",
-        "owner",
-        "dag_display_name",
-        "description",
-        "max_active_tasks",
-        "max_active_runs",
-        "max_consecutive_failed_dag_runs",
-        "owner_links",
-    }
-
-    @property
-    def hash(self) -> str:
-        return SerializedDagModel.hash(self.data)
-
-    def next_dagrun_info(self, last):
-        return None
-
-    def __getattr__(self, name: str, /) -> Any:
-        if name in self.NULLABLE_PROPERTIES:
-            return self.data["dag"].get(name)
-        try:
-            return self.data["dag"][name]
-        except KeyError:
-            raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}") from None
-
-    @property
-    def timetable(self):
-        from airflow.serialization.serialized_objects import decode_timetable
-
-        return decode_timetable(self.data["dag"]["timetable"])
-
-    @property
-    def has_task_concurrency_limits(self):
-        return any(task.get("max_active_tis_per_dag") is not None for task in self.data["dag"]["tasks"])
 
 
 class SerializedDagModel(Base):
@@ -389,7 +351,7 @@ class SerializedDagModel(Base):
     @staticmethod
     @provide_session
     def bulk_sync_to_db(
-        dags: list[DAG],
+        dags: list[DAG] | list[DagInfo],
         processor_subdir: str | None = None,
         session: Session = NEW_SESSION,
     ) -> None:

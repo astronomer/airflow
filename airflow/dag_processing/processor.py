@@ -18,23 +18,31 @@ from __future__ import annotations
 
 import os
 import sys
+import traceback
 from collections.abc import Generator
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Callable, Literal, Union
 
 import attrs
 import pydantic
+from sqlalchemy.exc import OperationalError
 
 from airflow.callbacks.callback_requests import (
     CallbackRequest,
     DagCallbackRequest,
     TaskCallbackRequest,
 )
+from airflow.configuration import conf
+from airflow.models.dag import DAG
 from airflow.models.dagbag import DagBag
-from airflow.models.serialized_dag import DagInfo
+from airflow.models.serialized_dag import DagInfo, SerializedDagModel
 from airflow.sdk.execution_time.comms import GetConnection, GetVariable
 from airflow.sdk.execution_time.supervisor import WatchedSubprocess
+from airflow.serialization.serialized_objects import SerializedDAG
 from airflow.stats import Stats
+from airflow.utils.retries import MAX_DB_RETRIES, run_with_db_retries
+from airflow.utils.session import NEW_SESSION, provide_session
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -65,15 +73,15 @@ def _parse_file_as_process():
 
 
 def _parse_file(msg: DagFileParseRequest, log):
-    from airflow.serialization.serialized_objects import SerializedDAG
-
     bag = DagBag(
         dag_folder=msg.file,
         include_examples=False,
         safe_mode=True,
         load_op_links=False,
     )
-    dags = [DagInfo(data=SerializedDAG.to_dict(dag)) for dag in bag.dags.values()]
+    serialized_dags, serialization_import_errors = serialize_dags(bag, log)
+    bag.import_errors.update(serialization_import_errors)
+    dags = [DagInfo(data=serdag) for serdag in serialized_dags]
     result = DagFileParsingResult(
         fileloc=msg.file,
         serialized_dags=dags,
@@ -83,6 +91,23 @@ def _parse_file(msg: DagFileParseRequest, log):
     if msg.callback_requests:
         _execute_callbacks(bag, msg.callback_requests, log)
     return result
+
+
+def serialize_dags(bag, log):
+    serialization_import_errors = {}
+    serialized_dags = []
+    for dag in bag.dags.values():
+        try:
+            serialized_dag = SerializedDAG.to_dict(dag)
+            serialized_dags.append(serialized_dag)
+        except Exception:
+            log.exception("Failed to write serialized DAG: %s", dag.fileloc)
+            dagbag_import_error_traceback_depth = conf.getint(
+                "core", "dagbag_import_error_traceback_depth"
+            )
+            serialization_import_errors[dag.fileloc] = traceback.format_exc(
+                limit=-dagbag_import_error_traceback_depth)
+    return serialized_dags, serialization_import_errors
 
 
 def _execute_callbacks(dagbag: DagBag, callback_requests: list[CallbackRequest], log):
@@ -278,3 +303,29 @@ def collect_dag_results(
             stat.import_errors = len(parsing_result.import_errors)
     result.stat = stat
     return result
+
+
+@provide_session
+def store_dag_results_in_db(dags: list[DagInfo], processor_subdir=None, session=NEW_SESSION):
+    # Retry 'DAG.bulk_write_to_db' & 'SerializedDagModel.bulk_sync_to_db' in case
+    # of any Operational Errors
+    # In case of failures, provide_session handles rollback
+    import structlog
+
+    log = structlog.get_logger(logger_name="dag_storage")
+
+    for attempt in run_with_db_retries(logger=log):
+        with attempt:
+            log.debug(
+                "Running dagbag.bulk_write_to_db with retries. Try %d of %d",
+                attempt.retry_state.attempt_number,
+                MAX_DB_RETRIES,
+            )
+            log.debug("Calling the DAG.bulk_sync_to_db method")
+            try:
+                DAG.bulk_write_to_db(dags, processor_subdir=processor_subdir, session=session)
+                # Write Serialized DAGs to DB, capturing errors
+                SerializedDagModel.bulk_sync_to_db(dags, processor_subdir=processor_subdir, session=session)
+            except OperationalError:
+                session.rollback()
+                raise

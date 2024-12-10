@@ -120,6 +120,7 @@ if TYPE_CHECKING:
     from airflow.models.dagbag import DagBag
     from airflow.models.operator import Operator
     from airflow.typing_compat import Literal
+    from airflow.utils.dag_info import DagInfo
 
 log = logging.getLogger(__name__)
 
@@ -1829,7 +1830,7 @@ class DAG(TaskSDKDag, LoggingMixin):
     @provide_session
     def bulk_write_to_db(
         cls,
-        dags: Collection[DAG],
+        dags: Collection[DAG] | Collection[DagInfo],
         processor_subdir: str | None = None,
         session: Session = NEW_SESSION,
     ):

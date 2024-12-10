@@ -86,7 +86,7 @@ class TestTaskEndpoint:
             mapped_dag.dag_id: mapped_dag,
             unscheduled_dag.dag_id: unscheduled_dag,
         }
-        DagBag._sync_to_db(dag_bag.dags)
+        DagBag.sync_dags_to_db(list(dag_bag.dags.values()))
         configured_app.dag_bag = dag_bag  # type:ignore
 
     @staticmethod

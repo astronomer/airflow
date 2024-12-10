@@ -52,8 +52,9 @@ from airflow.dag_processing.processor import (
     DagFileStat,
     TaskSDKDagFileProcessor,
     collect_dag_results,
+    store_dag_results_in_db,
 )
-from airflow.models.dag import DAG, DagModel
+from airflow.models.dag import DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
@@ -870,7 +871,7 @@ class TaskSDKBasedDagCollector:
         # TODO: This method should be moved on to DagModel, or into collection itself, since DagModelOperator
         # lives in this package (it's a bit "circular") to go to models/dag.py to then go back to a class in
         # this namespace.
-        DAG.bulk_write_to_db(collected_dags, processor_subdir=os.fspath(self.dag_directory))
+        store_dag_results_in_db(collected_dags, processor_subdir=os.fspath(self.dag_directory))
 
         for path in finished:
             self._processors.pop(path)
