@@ -76,8 +76,8 @@ from airflow.assets.manager import asset_manager
 from airflow.configuration import conf
 from airflow.exceptions import (
     AirflowException,
-    AirflowFailException,
     AirflowExecuteWithInactiveAssetExecption,
+    AirflowFailException,
     AirflowRescheduleException,
     AirflowSensorTimeout,
     AirflowSkipException,
@@ -90,7 +90,7 @@ from airflow.exceptions import (
     XComForMappingNotPushed,
 )
 from airflow.listeners.listener import get_listener_manager
-from airflow.models.asset import AssetEvent, AssetModel
+from airflow.models.asset import AssetActive, AssetEvent, AssetModel
 from airflow.models.base import Base, StringID, TaskInstanceDependencies, _sentinel
 from airflow.models.dagbag import DagBag
 from airflow.models.log import Log
@@ -3640,12 +3640,16 @@ class TaskInstance(Base, LoggingMixin):
         if not self.task or not self.task.outlets:
             return
 
-        from airflow.dag_processing.collection import _find_active_assets
-
         all_assets_name_uri = {
             (outlet.name, outlet.uri) for outlet in self.task.outlets if isinstance(outlet, Asset)
         }
-        active_assets_name_uri = _find_active_assets(all_assets_name_uri, session)
+        active_assets_name_uri = set(
+            session.execute(
+                select(AssetActive.name, AssetActive.uri).where(
+                    tuple_in_condition((AssetActive.name, AssetActive.uri), all_assets_name_uri)
+                )
+            )
+        )
         inactive_assets_name_uri = all_assets_name_uri - active_assets_name_uri
         if inactive_assets_name_uri:
             error_msg = "; ".join(
