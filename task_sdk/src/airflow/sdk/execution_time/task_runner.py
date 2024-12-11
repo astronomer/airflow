@@ -33,6 +33,7 @@ from airflow.sdk.api.datamodels._generated import TaskInstance, TerminalTIState,
 from airflow.sdk.definitions.baseoperator import BaseOperator
 from airflow.sdk.execution_time.comms import (
     DeferTask,
+    GetXCom,
     SetRenderedFields,
     StartupDetails,
     TaskState,
@@ -106,6 +107,33 @@ class RuntimeTaskInstance(TaskInstance):
             }
             context.update(context_from_server)
         return context
+
+    def xcom_pull(
+        self,
+        task_id: str | None = None,
+        dag_id: str | None = None,
+        key: str = "return_value",
+        include_prior_dates: bool = False,
+        *,
+        map_index: int | None = None,
+        default: Any = None,
+        run_id: str | None = None,
+    ) -> Any:
+        """Pull XComs from the execution context."""
+        log = structlog.get_logger(logger_name="task")
+        SUPERVISOR_COMMS.send_request(
+            log=log,
+            msg=GetXCom(
+                key=key,
+                dag_id=dag_id,
+                task_id=task_id,
+                run_id=run_id,
+                map_index=map_index,
+            ),
+        )
+
+        msg = SUPERVISOR_COMMS.get_message()
+        return XComResponse.model_validate_json(msg).value or default
 
 
 def parse(what: StartupDetails) -> RuntimeTaskInstance:
