@@ -44,19 +44,32 @@ class GitDagBundle(BaseDagBundle):
 
     supports_versioning = True
 
-    def __init__(self, *, repo_url: str, tracking_ref: str, subdir: str | None = None, **kwargs) -> None:
+    def __init__(
+        self,
+        *,
+        repo_url: str,
+        tracking_ref: str,
+        subdir: str | None = None,
+        key_file: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(**kwargs)
         self.repo_url = repo_url
         self.tracking_ref = tracking_ref
         self.subdir = subdir
-
+        self.key_file = key_file
         self.bare_repo_path = self._dag_bundle_root_storage_path / "git" / self.name
         self.repo_path = (
             self._dag_bundle_root_storage_path / "git" / (self.name + f"+{self.version or self.tracking_ref}")
         )
-        self._clone_bare_repo_if_required()
+
+    def init(self) -> None:
+        env = {}
+        if self.key_file:
+            env["GIT_SSH_COMMAND"] = f"ssh -i {self.key_file}"
+        self._clone_bare_repo_if_required(env=env)
         self._ensure_version_in_bare_repo()
-        self._clone_repo_if_required()
+        self._clone_repo_if_required(env=env)
         self.repo.git.checkout(self.tracking_ref)
 
         if self.version:
@@ -68,21 +81,18 @@ class GitDagBundle(BaseDagBundle):
         else:
             self.refresh()
 
-    def _clone_repo_if_required(self) -> None:
+    def _clone_repo_if_required(self, env: dict[str, str]) -> None:
         if not os.path.exists(self.repo_path):
             Repo.clone_from(
                 url=self.bare_repo_path,
                 to_path=self.repo_path,
+                env=env,
             )
         self.repo = Repo(self.repo_path)
 
-    def _clone_bare_repo_if_required(self) -> None:
+    def _clone_bare_repo_if_required(self, env: dict[str, str]) -> None:
         if not os.path.exists(self.bare_repo_path):
-            Repo.clone_from(
-                url=self.repo_url,
-                to_path=self.bare_repo_path,
-                bare=True,
-            )
+            Repo.clone_from(url=self.repo_url, to_path=self.bare_repo_path, bare=True, env=env)
         self.bare_repo = Repo(self.bare_repo_path)
 
     def _ensure_version_in_bare_repo(self) -> None:
