@@ -22,8 +22,8 @@
 
 - [Selecting what to put into the release](#selecting-what-to-put-into-the-release)
   - [Selecting what to cherry-pick](#selecting-what-to-cherry-pick)
-  - [Backporting the PRs](#backporting-the-prs)
-  - [Reviewing Backported PRs and assigning labels](#reviewing-backported-prs-and-assigning-labels)
+  - [Making the cherry picking](#making-the-cherry-picking)
+  - [Reviewing cherry-picked PRs and assigning labels](#reviewing-cherry-picked-prs-and-assigning-labels)
 - [Prepare the Apache Airflow Package RC](#prepare-the-apache-airflow-package-rc)
   - [Update the milestone](#update-the-milestone)
   - [Build RC artifacts](#build-rc-artifacts)
@@ -73,6 +73,9 @@ The first step of a release is to work out what is being included. This differs 
 
 ## Selecting what to cherry-pick
 
+For obvious reasons, you can't cherry-pick every change from `main` into the release branch -
+some are incompatible without a large set of other changes, some are brand-new features, and some just don't need to be in a release.
+
 In general only security fixes, data-loss bugs and regression fixes are essential to bring into a patch release;
 also changes in dependencies (pyproject.toml) resulting from releasing newer versions of packages that Airflow depends on.
 Other bugfixes can be added on a best-effort basis, but if something is going to be very difficult to backport
@@ -90,7 +93,7 @@ and mark those as well. You can accomplish this by running the following command
 ./dev/airflow-github needs-categorization 2.3.2 HEAD
 ```
 
-Often you also want to backport changes related to CI and development tools, to include the latest
+Often you also want to cherry-pick changes related to CI and development tools, to include the latest
 stability fixes in CI and improvements in development tools. Usually you can see the list of such
 changes via (this will exclude already merged changes):
 
@@ -102,9 +105,9 @@ git log --oneline --decorate apache/v2-2-stable..apache/main -- Dockerfile* scri
 
 Most of those PRs should be marked with `changelog:skip` label, so that they are excluded from the
 user-facing changelog as they only matter for developers of Airflow. We have a tool
-that allows to easily review the backported PRs and mark them with the right label - see below.
+that allows to easily review the cherry-picked PRs and mark them with the right label - see below.
 
-You also likely want to backport some of the latest doc changes in order to bring clarification and
+You also likely want to cherry-pick some of the latest doc changes in order to bring clarification and
 explanations added to the documentation. Usually you can see the list of such changes via:
 
 ```shell
@@ -116,24 +119,29 @@ git log --oneline --decorate apache/v2-2-stable..apache/main -- docs/apache-airf
 Those changes that are "doc-only" changes should be marked with `type:doc-only` label so that they
 land in documentation part of the changelog. The tool to review and assign the labels is described below.
 
-## Backporting the PRs
+## Making the cherry picking
 
-If a PR needs to be backported, checkout v2-10-test and make a new branch for the backport:
+It is recommended to clone Airflow upstream (not your fork) and run the commands on
+the relevant test branch in this clone. That way origin points to the upstream repo.
+
+To see cherry picking candidates (unmerged PR with the appropriate milestone), from the test
+branch you can run:
 
 ```shell
-git checkout v2-10-test
-git pull && git checkout -b <branchname>
+./dev/airflow-github compare 2.1.2 --unmerged
 ```
 
-Then cherry-pick the commit from main:
+You can start cherry picking from the bottom of the list. (older commits first)
+
+When you cherry-pick, pick in chronological order onto the `vX-Y-test` release branch.
+You'll move them over to be on `vX-Y-stable` once the release is cut. Use the `-x` option
+to keep a reference to the original commit we cherry picked from. ("cherry picked from commit ...")
 
 ```shell
 git cherry-pick <hash-commit> -x
 ```
 
-Make your PR and wait for reviews and approval
-
-## Reviewing Backported PRs and assigning labels
+## Reviewing cherry-picked PRs and assigning labels
 
 We have the tool that allows to review cherry-picked PRs and assign the labels
 [./assign_cherry_picked_prs_with_milestone.py](./assign_cherry_picked_prs_with_milestone.py)
@@ -144,7 +152,7 @@ It allows to manually review and assign milestones and labels to cherry-picked P
 ./dev/assign_cherry_picked_prs_with_milestone.py assign-prs --previous-release v2-2-stable --current-release apache/v2-2-test --milestone-number 48
 ```
 
-It summarises the state of each Backported PR including information whether it is going to be
+It summarises the state of each cherry-picked PR including information whether it is going to be
 excluded or included in changelog or included in doc-only part of it. It also allows to re-assign
 the PRs to the target milestone and apply the `changelog:skip` or `type:doc-only` label.
 
@@ -152,7 +160,7 @@ You can also add `--skip-assigned` flag if you want to automatically skip the qu
 for the PRs that are already correctly assigned to the milestone. You can also avoid the "Are you OK?"
 question with `--assume-yes` flag.
 
-You can review the list of PRs backported and produce a nice summary with `--print-summary` (this flag
+You can review the list of PRs cherry-picked and produce a nice summary with `--print-summary` (this flag
 assumes the `--skip-assigned` flag, so that the summary can be produced without questions:
 
 ```shell
@@ -161,7 +169,7 @@ assumes the `--skip-assigned` flag, so that the summary can be produced without 
   --output-folder /tmp
 ```
 
-This will produce summary output with nice links that you can use to review the backported changes,
+This will produce summary output with nice links that you can use to review the cherry-picked changes,
 but it also produces files with list of commits separated by type in the folder specified. In the case
 above, it will produce three files that you can use in the next step:
 
@@ -217,7 +225,6 @@ The Release Candidate artifacts we vote upon should be the exact ones we vote ag
     export VERSION_SUFFIX=rc3
     export VERSION_BRANCH=2-1
     export VERSION_WITHOUT_RC=${VERSION/rc?/}
-    export SYNC_BRANCH=sync_v2_10_test
 
     # Set AIRFLOW_REPO_ROOT to the path of your git repo
     export AIRFLOW_REPO_ROOT=$(pwd)
@@ -246,8 +253,8 @@ The Release Candidate artifacts we vote upon should be the exact ones we vote ag
 - Check out the 'test' branch
 
     ```shell script
-    git checkout ${SYNC_BRANCH}
-    git reset --hard origin/${SYNC_BRANCH}
+    git checkout v${VERSION_BRANCH}-test
+    git reset --hard origin/v${VERSION_BRANCH}-test
     ```
 
 - Set your version in `airflow/__init__.py`, `airflow/api_connexion/openapi/v1.yaml` (without the RC tag).
@@ -277,7 +284,7 @@ The Release Candidate artifacts we vote upon should be the exact ones we vote ag
   create a fragment to document its change, to generate the body of the release note based on the cherry picked commits:
 
   ```
-  ./dev/airflow-github changelog v2-3-stable ${SYNC_BRANCH}
+  ./dev/airflow-github changelog v2-3-stable v2-3-test
   ```
 
 - Commit the release note change.
@@ -303,7 +310,7 @@ The Release Candidate artifacts we vote upon should be the exact ones we vote ag
     ```shell script
     git checkout main
     git pull # Ensure that the script is up-to-date
-    breeze release-management start-rc-process --version ${VERSION} --previous-version <PREVIOUS_VERSION> --sync-branch ${SYNC_BRANCH}
+    breeze release-management start-rc-process --version ${VERSION} --previous-version <PREVIOUS_VERSION>
    ```
 
 - Create issue in github for testing the release using this subject:
