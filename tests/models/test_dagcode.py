@@ -143,7 +143,7 @@ class TestDagCode:
         assert result.source_code is not None
 
         example_dag = make_example_dags(example_dags_module).get("example_bash_operator")
-        SDM.write_dag(example_dag, processor_subdir="/tmp")
+        SDM.write_dag(example_dag)
         with patch("airflow.models.dagcode.DagCode.get_code_from_file") as mock_code:
             mock_code.return_value = "# dummy code"
             SDM.write_dag(example_dag)
