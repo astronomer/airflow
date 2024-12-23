@@ -533,7 +533,7 @@ class DagBag(LoggingMixin):
                     existing=self.dags[dag.dag_id].fileloc,
                 )
             self.dags[dag.dag_id] = dag
-            self.log.debug("Loaded DAG %s", dag)
+            # self.log.debug("Loaded DAG %s", dag)
         except (AirflowDagCycleException, AirflowDagDuplicatedIdException):
             # There was an error in bagging the dag. Remove it from the list of dags
             self.log.exception("Exception bagging dag: %s", dag.dag_id)

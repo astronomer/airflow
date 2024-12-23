@@ -234,7 +234,7 @@ class CommsDecoder(Generic[ReceiveMsgType, SendMsgType]):
     def send_request(self, log: Logger, msg: SendMsgType):
         encoded_msg = msg.model_dump_json().encode() + b"\n"
 
-        log.debug("Sending request", json=encoded_msg)
+        # log.debug("Sending request", json=encoded_msg)
         self.request_socket.write(encoded_msg)
 
 

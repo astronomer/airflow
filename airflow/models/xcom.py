@@ -191,6 +191,8 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
             map_index=map_index,
         )
 
+        print(f"-- Storing XCOM {key} with value {value}", "type:", type(value))
+
         # Remove duplicate XComs and insert a new one.
         session.execute(
             delete(cls).where(
@@ -452,6 +454,7 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
     ) -> str:
         """Serialize XCom value to JSON str."""
         try:
+            # TODO: Should we return if value is string to avoid double serialization?
             return json.dumps(value, cls=XComEncoder)
         except (ValueError, TypeError):
             raise ValueError("XCom value must be JSON serializable")

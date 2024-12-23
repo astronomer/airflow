@@ -324,18 +324,33 @@ class TestXComGet:
 
 
 class TestXComSet:
-    def test_xcom_set(self, session, task_instance):
-        XCom.set(
-            key="xcom_1",
-            value={"key": "value"},
+    @pytest.mark.parametrize(
+        ("key", "value", "expected_value"),
+        [
+            ("xcom_dict", {"key": "value"}, {"key": "value"}),  # Test dictionary
+            ("xcom_dict1", '{"key": "value"}', '{"key": "value"}'),  # Test dictionary
+            ("xcom_int", 123, 123),  # Test integer
+            ("xcom_float", 45.67, 45.67),  # Test float
+            ("xcom_str", "hello", "hello"),  # Test string
+            ("xcom_bool", True, True),  # Test boolean
+            ("xcom_list", [1, 2, 3], [1, 2, 3]),  # Test list
+        ],
+    )
+    def test_xcom_set(self, session, task_instance, key, value, expected_value):
+        from airflow.models.xcom import BaseXCom
+
+        BaseXCom.set(
+            key=key,
+            value=value,
             dag_id=task_instance.dag_id,
             task_id=task_instance.task_id,
             run_id=task_instance.run_id,
             session=session,
         )
         stored_xcoms = session.query(XCom).all()
-        assert stored_xcoms[0].key == "xcom_1"
-        assert stored_xcoms[0].value == {"key": "value"}
+        assert stored_xcoms[0].key == key
+        assert type(stored_xcoms[0].value) == type(expected_value)
+        assert stored_xcoms[0].value == expected_value
         assert stored_xcoms[0].dag_id == "dag"
         assert stored_xcoms[0].task_id == "task_1"
         assert stored_xcoms[0].logical_date == task_instance.logical_date

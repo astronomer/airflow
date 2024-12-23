@@ -22,7 +22,6 @@ import logging
 from typing import Annotated
 
 from fastapi import Body, HTTPException, Query, status
-from pydantic import Json
 
 from airflow.api_fastapi.common.db.common import SessionDep
 from airflow.api_fastapi.common.router import AirflowRouter
@@ -92,7 +91,13 @@ def get_xcom(
         )
 
     try:
-        xcom_value = BaseXCom.deserialize_value(result)
+        print(
+            " -- API Server response Result before Ser, XCom value: ",
+            result.value,
+            "type: ",
+            type(result.value),
+        )
+        xcom_value = BaseXCom.orm_deserialize_value(result)
     except json.JSONDecodeError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -102,6 +107,7 @@ def get_xcom(
             },
         )
 
+    print(" -- API Server response, XCom value: ", xcom_value, "type: ", type(xcom_value))
     return XComResponse(key=key, value=xcom_value)
 
 
@@ -118,7 +124,7 @@ def set_xcom(
     task_id: str,
     key: str,
     value: Annotated[
-        Json,
+        str,
         Body(
             description="A JSON-formatted string representing the value to set for the XCom.",
             openapi_examples={

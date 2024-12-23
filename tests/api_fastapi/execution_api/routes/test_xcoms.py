@@ -21,6 +21,7 @@ from unittest import mock
 
 import pytest
 
+from airflow.api_fastapi.execution_api.datamodels.xcom import XComResponse
 from airflow.models.dagrun import DagRun
 from airflow.models.xcom import XCom
 from airflow.utils.session import create_session
@@ -40,23 +41,31 @@ class TestXComsGetEndpoint:
     @pytest.mark.parametrize(
         ("value", "expected_value"),
         [
-            ("value1", "value1"),
-            ({"key2": "value2"}, {"key2": "value2"}),
-            ({"key2": "value2", "key3": ["value3"]}, {"key2": "value2", "key3": ["value3"]}),
-            (["value1"], ["value1"]),
+            ('"value1"', '"value1"'),
+            ('{"key2": "value2"}', '{"key2": "value2"}'),
+            ('{"key2": "value2", "key3": ["value3"]}', '{"key2": "value2", "key3": ["value3"]}'),
+            ('["value1"]', '["value1"]'),
         ],
     )
     def test_xcom_get_from_db(self, client, create_task_instance, session, value, expected_value):
         """Test that XCom value is returned from the database in JSON-compatible format."""
         ti = create_task_instance()
-        ti.xcom_push(key="xcom_1", value=value, session=session)
+        # ti.xcom_push(key="xcom_1", value=value, session=session)
 
         session.commit()
+        client.post(
+            f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/xcom_1",
+            json=value,
+        )
+        session.commit()
+
+        xcom = session.query(XCom).filter_by(task_id=ti.task_id, dag_id=ti.dag_id, key="xcom_1").first()
+        assert xcom.value == expected_value
 
         response = client.get(f"/execution/xcoms/{ti.dag_id}/{ti.run_id}/{ti.task_id}/xcom_1")
 
         assert response.status_code == 200
-        assert response.json() == {"key": "xcom_1", "value": expected_value}
+        assert XComResponse.model_validate_json(response.read()).value == expected_value
 
     def test_xcom_not_found(self, client, create_task_instance):
         response = client.get("/execution/xcoms/dag/runid/task/xcom_non_existent")
