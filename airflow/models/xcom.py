@@ -453,11 +453,27 @@ class BaseXCom(TaskInstanceDependencies, LoggingMixin):
         map_index: int | None = None,
     ) -> str:
         """Serialize XCom value to JSON str."""
+        if BaseXCom._is_json_serialized(value):
+            # If value is already serialized, return value
+            return value
         try:
             # TODO: Should we return if value is string to avoid double serialization?
             return json.dumps(value, cls=XComEncoder)
         except (ValueError, TypeError):
             raise ValueError("XCom value must be JSON serializable")
+
+    @staticmethod
+    def _is_json_serialized(value) -> bool:
+        """Check if the value is a JSON serialized string to prevent double serialization."""
+        if not isinstance(value, str):
+            return False
+
+        try:
+            # Ensure the string is valid JSON
+            json.loads(value)
+            return True
+        except json.JSONDecodeError:
+            return False
 
     @staticmethod
     def _deserialize_value(result: XCom, orm: bool) -> Any:
