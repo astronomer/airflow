@@ -23,6 +23,7 @@ import contextlib
 import copy
 import inspect
 import sys
+import typing
 import warnings
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -65,6 +66,8 @@ from airflow.utils.weight_rule import db_safe_priority
 T = TypeVar("T", bound=FunctionType)
 
 if TYPE_CHECKING:
+    import jinja2
+
     from airflow.models.xcom_arg import XComArg
     from airflow.sdk.definitions.dag import DAG
     from airflow.sdk.definitions.taskgroup import TaskGroup
@@ -1239,3 +1242,138 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         # needs to cope when `self` is a Serialized instance of a EmptyOperator or one
         # of its subclasses (which don't inherit from anything but BaseOperator).
         return getattr(self, "_is_empty", False)
+
+    def render_template_fields(
+        self,
+        context: dict,  # TODO: Change to `Context` once we have it
+        jinja_env: jinja2.Environment | None = None,
+    ) -> None:
+        """
+        Template all attributes listed in *self.template_fields*.
+
+        This mutates the attributes in-place and is irreversible.
+
+        :param context: Context dict with values to apply on content.
+        :param jinja_env: Jinja's environment to use for rendering.
+        """
+        if not jinja_env:
+            jinja_env = self.get_template_env()
+        self._do_render_template_fields(self, self.template_fields, context, jinja_env, set())
+
+    def get_template_env(self) -> jinja2.Environment:
+        """Get the template environment for the operator."""
+        return self.dag.get_template_env(force_sandboxed=False)
+
+    def resolve_template_files(self) -> None:
+        """Get the content of files for template_field / template_ext."""
+        if self.template_ext:
+            for field in self.template_fields:
+                content = getattr(self, field, None)
+                if isinstance(content, str) and content.endswith(tuple(self.template_ext)):
+                    env = self.get_template_env()
+                    try:
+                        setattr(self, field, env.loader.get_source(env, content)[0])  # type: ignore
+                    except Exception:
+                        ...
+                        # self.log.exception("Failed to resolve template field %r", field)
+                elif isinstance(content, list):
+                    env = self.get_template_env()
+                    for i, item in enumerate(content):
+                        if isinstance(item, str) and item.endswith(tuple(self.template_ext)):
+                            try:
+                                content[i] = env.loader.get_source(env, item)[0]  # type: ignore
+                            except Exception:
+                                ...
+                                # self.log.exception("Failed to get source %s", item)
+        # self.prepare_template()
+
+    def render_template(
+        self,
+        content: Any,
+        context: typing.Mapping[str, Any],
+        jinja_env: jinja2.Environment | None = None,
+        seen_oids: set[int] | None = None,
+    ) -> Any:
+        """
+        Render a templated string.
+
+        If *content* is a collection holding multiple templated strings, strings
+        in the collection will be templated recursively.
+
+        :param content: Content to template. Only strings can be templated (may
+            be inside a collection).
+        :param context: Dict with values to apply on templated content
+        :param jinja_env: Jinja environment. Can be provided to avoid
+            re-creating Jinja environments during recursion.
+        :param seen_oids: template fields already rendered (to avoid
+            *RecursionError* on circular dependencies)
+        :return: Templated content
+        """
+        from airflow.utils.mixins import ResolveMixin
+
+        # "content" is a bad name, but we're stuck to it being public API.
+        value = content
+        del content
+
+        if seen_oids is not None:
+            oids = seen_oids
+        else:
+            oids = set()
+
+        if id(value) in oids:
+            return value
+
+        if not jinja_env:
+            jinja_env = self.get_template_env()
+
+        if isinstance(value, str):
+            if value.endswith(tuple(self.template_ext)):  # A filepath.
+                template = jinja_env.get_template(value)
+            else:
+                template = jinja_env.from_string(value)
+            return self._render(template, context)
+        # if isinstance(value, ObjectStoragePath):
+        #     return self._render_object_storage_path(value, context, jinja_env)
+        if isinstance(value, ResolveMixin):
+            # TODO: Task-SDK: Tidy up the typing on template context
+            return value.resolve(context, include_xcom=True)  # type: ignore[arg-type]
+
+        # Fast path for common built-in collections.
+        if value.__class__ is tuple:
+            return tuple(self.render_template(element, context, jinja_env, oids) for element in value)
+        elif isinstance(value, tuple):  # Special case for named tuples.
+            return value.__class__(*(self.render_template(el, context, jinja_env, oids) for el in value))
+        elif isinstance(value, list):
+            return [self.render_template(element, context, jinja_env, oids) for element in value]
+        elif isinstance(value, dict):
+            return {k: self.render_template(v, context, jinja_env, oids) for k, v in value.items()}
+        elif isinstance(value, set):
+            return {self.render_template(element, context, jinja_env, oids) for element in value}
+
+        # More complex collections.
+        self._render_nested_template_fields(value, context, jinja_env, oids)
+        return value
+
+    def _render(self, template, context, dag=None) -> Any:
+        from airflow.utils.helpers import render_template_as_native, render_template_to_string
+
+        if dag and dag.render_template_as_native_obj:
+            return render_template_as_native(template, context)
+        return render_template_to_string(template, context)
+
+    def _render_nested_template_fields(
+        self,
+        value: Any,
+        context: typing.Mapping[str, Any],
+        jinja_env: jinja2.Environment,
+        seen_oids: set[int],
+    ) -> None:
+        if id(value) in seen_oids:
+            return
+        seen_oids.add(id(value))
+        try:
+            nested_template_fields = value.template_fields
+        except AttributeError:
+            # content has no inner template fields
+            return
+        self._do_render_template_fields(value, nested_template_fields, context, jinja_env, seen_oids)

@@ -232,7 +232,6 @@ def _run_raw_task(
     """
     if TYPE_CHECKING:
         assert ti.task
-
     ti.test_mode = test_mode
     ti.refresh_from_task(ti.task, pool_override=pool)
     ti.refresh_from_db(session=session)
@@ -245,18 +244,18 @@ def _run_raw_task(
     # Same metric with tagging
     Stats.incr("ti.start", tags=ti.stats_tags)
     # Initialize final state counters at zero
-    for state in State.task_states:
-        Stats.incr(
-            f"ti.finish.{ti.task.dag_id}.{ti.task.task_id}.{state}",
-            count=0,
-            tags=ti.stats_tags,
-        )
-        # Same metric with tagging
-        Stats.incr(
-            "ti.finish",
-            count=0,
-            tags={**ti.stats_tags, "state": str(state)},
-        )
+    # for state in State.task_states:
+    #     Stats.incr(
+    #         f"ti.finish.{ti.task.dag_id}.{ti.task.task_id}.{state}",
+    #         count=0,
+    #         tags=ti.stats_tags,
+    #     )
+    #     # Same metric with tagging
+    #     Stats.incr(
+    #         "ti.finish",
+    #         count=0,
+    #         tags={**ti.stats_tags, "state": str(state)},
+    #     )
     with set_current_task_instance_session(session=session):
         ti.task = ti.task.prepare_for_execution()
         context = ti.get_template_context(ignore_param_exceptions=False, session=session)

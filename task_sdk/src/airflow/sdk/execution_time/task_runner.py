@@ -47,6 +47,7 @@ from airflow.sdk.execution_time.comms import (
 from airflow.sdk.execution_time.context import ConnectionAccessor
 
 if TYPE_CHECKING:
+    import jinja2
     from structlog.typing import FilteringBoundLogger as Logger
 
 
@@ -76,6 +77,7 @@ class RuntimeTaskInstance(TaskInstance):
             "ti": self,
             # "outlet_events": OutletEventAccessors(),
             # "expanded_ti_count": expanded_ti_count,
+            "expanded_ti_count": None,  # TODO: Implement this
             # "inlet_events": InletEventsAccessors(task.inlets, session=session),
             # "macros": macros,
             # "params": validated_params,
@@ -118,6 +120,38 @@ class RuntimeTaskInstance(TaskInstance):
         # TODO: We should use/move TypeDict from airflow.utils.context.Context
         return context
 
+    def render_templates(
+        self, context: dict | None = None, jinja_env: jinja2.Environment | None = None
+    ) -> BaseOperator:
+        """
+        Render templates in the operator fields.
+
+        If the task was originally mapped, this may replace ``self.task`` with
+        the unmapped, fully rendered BaseOperator. The original ``self.task``
+        before replacement is returned.
+        """
+        if not context:
+            context = self.get_template_context()
+        original_task = self.task
+
+        ti = context["ti"]
+
+        if TYPE_CHECKING:
+            assert original_task
+            assert self.task
+            assert ti.task
+
+        # If self.task is mapped, this call replaces self.task to point to the
+        # unmapped BaseOperator created by this function! This is because the
+        # MappedOperator is useless for template rendering, and we need to be
+        # able to access the unmapped task instead.
+        original_task.render_template_fields(context, jinja_env)
+        # TODO: Add support for rendering templates in the MappedOperator
+        # if isinstance(self.task, MappedOperator):
+        #     self.task = context["ti"].task
+
+        return original_task
+
     def xcom_pull(
         self,
         task_ids: str | Iterable[str] | None = None,  # TODO: Simplify to a single task_id? (breaking change)
@@ -128,6 +162,7 @@ class RuntimeTaskInstance(TaskInstance):
         map_indexes: int | Iterable[int] | None = None,
         default: Any = None,
         run_id: str | None = None,
+        **kwargs,  # TODO: Temporarily accept additional kwargs (because some things pass session object)
     ) -> Any:
         """
         Pull XComs that optionally meet certain criteria.
@@ -227,6 +262,12 @@ class RuntimeTaskInstance(TaskInstance):
                 run_id=self.run_id,
             ),
         )
+
+    def get_relevant_upstream_map_indexes(
+        self, upstream: BaseOperator, ti_count: int | None, session: Any
+    ) -> list[int]:
+        # TODO: Implement this method
+        return None
 
 
 def parse(what: StartupDetails) -> RuntimeTaskInstance:
@@ -383,6 +424,9 @@ def run(ti: RuntimeTaskInstance, log: Logger):
         # TODO: Get a real context object
         ti.task = ti.task.prepare_for_execution()
         context = ti.get_template_context()
+        jinja_env = ti.task.dag.get_template_env()
+        ti.task = ti.render_templates(context=context, jinja_env=jinja_env)
+
         # TODO: Get things from _execute_task_with_callbacks
         #   - Clearing XCom
         #   - Setting Current Context (set_current_context)

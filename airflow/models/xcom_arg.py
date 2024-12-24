@@ -420,7 +420,7 @@ class PlainXComArg(XComArg):
             )
         return session.scalar(query)
 
-    @provide_session
+    # @provide_session
     def resolve(self, context: Context, session: Session = NEW_SESSION, *, include_xcom: bool = True) -> Any:
         ti = context["ti"]
         if TYPE_CHECKING:
@@ -431,6 +431,7 @@ class PlainXComArg(XComArg):
             context["expanded_ti_count"],
             session=session,
         )
+
         result = ti.xcom_pull(
             task_ids=task_id,
             map_indexes=map_indexes,
