@@ -631,7 +631,7 @@ class TestDag:
         ]
 
         with assert_queries_count(6):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0", "dag-bulk-sync-1", "dag-bulk-sync-2", "dag-bulk-sync-3"} == {
                 row[0] for row in session.query(DagModel.dag_id).all()
@@ -648,14 +648,14 @@ class TestDag:
 
         # Re-sync should do fewer queries
         with assert_queries_count(9):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with assert_queries_count(9):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         # Adding tags
         for dag in dags:
             dag.tags.add("test-dag2")
         with assert_queries_count(10):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0", "dag-bulk-sync-1", "dag-bulk-sync-2", "dag-bulk-sync-3"} == {
                 row[0] for row in session.query(DagModel.dag_id).all()
@@ -674,7 +674,7 @@ class TestDag:
         for dag in dags:
             dag.tags.remove("test-dag")
         with assert_queries_count(10):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0", "dag-bulk-sync-1", "dag-bulk-sync-2", "dag-bulk-sync-3"} == {
                 row[0] for row in session.query(DagModel.dag_id).all()
@@ -693,7 +693,7 @@ class TestDag:
         for dag in dags:
             dag.tags = set()
         with assert_queries_count(10):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0", "dag-bulk-sync-1", "dag-bulk-sync-2", "dag-bulk-sync-3"} == {
                 row[0] for row in session.query(DagModel.dag_id).all()
@@ -714,7 +714,7 @@ class TestDag:
         ]
 
         with assert_queries_count(6):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0"} == {row[0] for row in session.query(DagModel.dag_id).all()}
             assert {
@@ -726,9 +726,9 @@ class TestDag:
 
         # Re-sync should do fewer queries
         with assert_queries_count(8):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with assert_queries_count(8):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
 
     def test_bulk_write_to_db_multiple_dags(self):
         """
@@ -741,7 +741,7 @@ class TestDag:
         ]
 
         with assert_queries_count(6):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with create_session() as session:
             assert {"dag-bulk-sync-0", "dag-bulk-sync-1", "dag-bulk-sync-2", "dag-bulk-sync-3"} == {
                 row[0] for row in session.query(DagModel.dag_id).all()
@@ -758,9 +758,9 @@ class TestDag:
 
         # Re-sync should do fewer queries
         with assert_queries_count(9):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
         with assert_queries_count(9):
-            DAG.bulk_write_to_db(dags)
+            DAG.bulk_write_to_db("dags_folder", None, dags)
 
     @pytest.mark.parametrize("interval", [None, "@daily"])
     def test_bulk_write_to_db_interval_save_runtime(self, interval):
@@ -770,7 +770,7 @@ class TestDag:
                 DAG("dag-interval-None", schedule=None, start_date=TEST_DATE),
                 DAG("dag-interval-test", schedule=interval, start_date=TEST_DATE),
             ]
-            DAG.bulk_write_to_db(dags_null_timetable, session=settings.Session())
+            DAG.bulk_write_to_db("dags_folder", None, dags_null_timetable, session=settings.Session())
             if interval:
                 mock_active_runs_of_dags.assert_called_once()
             else:
@@ -793,7 +793,7 @@ class TestDag:
 
         session = settings.Session()
         dag.clear()
-        DAG.bulk_write_to_db([dag], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag], session=session)
 
         model = session.get(DagModel, dag.dag_id)
 
@@ -810,13 +810,13 @@ class TestDag:
             **triggered_by_kwargs,
         )
         assert dr is not None
-        DAG.bulk_write_to_db([dag])
+        DAG.bulk_write_to_db("dags_folder", None, [dag])
 
         model = session.get(DagModel, dag.dag_id)
         # We signal "at max active runs" by saying this run is never eligible to be created
         assert model.next_dagrun_create_after is None
         # test that bulk_write_to_db again doesn't update next_dagrun_create_after
-        DAG.bulk_write_to_db([dag])
+        DAG.bulk_write_to_db("dags_folder", None, [dag])
         model = session.get(DagModel, dag.dag_id)
         assert model.next_dagrun_create_after is None
 
@@ -830,7 +830,7 @@ class TestDag:
 
         session = settings.Session()
         dag.clear()
-        DAG.bulk_write_to_db([dag], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag], session=session)
 
         model = session.get(DagModel, dag.dag_id)
 
@@ -844,7 +844,7 @@ class TestDag:
         # assert
         assert model.has_import_errors
         # parse
-        DAG.bulk_write_to_db([dag])
+        DAG.bulk_write_to_db("dags_folder", None, [dag])
 
         model = session.get(DagModel, dag.dag_id)
         # assert that has_import_error is now false
@@ -877,7 +877,7 @@ class TestDag:
 
         session = settings.Session()
         dag1.clear()
-        DAG.bulk_write_to_db([dag1, dag2], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag1, dag2], session=session)
         session.commit()
         stored_assets = {x.uri: x for x in session.query(AssetModel).all()}
         asset1_orm = stored_assets[a1.uri]
@@ -908,7 +908,7 @@ class TestDag:
         EmptyOperator(task_id=task_id, dag=dag1, outlets=[a2])
         dag2 = DAG(dag_id=dag_id2, start_date=DEFAULT_DATE, schedule=None)
         EmptyOperator(task_id=task_id, dag=dag2)
-        DAG.bulk_write_to_db([dag1, dag2], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag1, dag2], session=session)
         session.commit()
         session.expunge_all()
         stored_assets = {x.uri: x for x in session.query(AssetModel).all()}
@@ -950,14 +950,14 @@ class TestDag:
 
         dag1 = DAG(dag_id="assets-1", start_date=DEFAULT_DATE, schedule=[asset1])
         BashOperator(dag=dag1, task_id="task", bash_command="echo 1", outlets=[asset3])
-        DAG.bulk_write_to_db([dag1], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag1], session=session)
 
         assert session.scalars(select(AssetModel).order_by(AssetModel.uri)).all() == [asset1, asset3]
         assert session.scalars(select(AssetActive)).all() == []
 
         dag1 = DAG(dag_id="assets-1", start_date=DEFAULT_DATE, schedule=[asset1, asset2])
         BashOperator(dag=dag1, task_id="task", bash_command="echo 1", outlets=[asset3, asset4])
-        DAG.bulk_write_to_db([dag1], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag1], session=session)
 
         assert session.scalars(select(AssetModel).order_by(AssetModel.uri)).all() == [
             asset1,
@@ -983,7 +983,7 @@ class TestDag:
         dag2 = DAG(dag_id=dag_id2, start_date=DEFAULT_DATE, schedule=None)
         EmptyOperator(task_id=task_id, dag=dag2, outlets=[asset_alias_2_2, asset_alias_3])
         session = settings.Session()
-        DAG.bulk_write_to_db([dag1, dag2], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag1, dag2], session=session)
         session.commit()
 
         stored_asset_alias_models = {x.name: x for x in session.query(AssetAliasModel).all()}
@@ -2449,7 +2449,7 @@ class TestDagModel:
             ),
             start_date=datetime.datetime.min,
         )
-        DAG.bulk_write_to_db([dag], session=session)
+        DAG.bulk_write_to_db("dags_folder", None, [dag], session=session)
 
         expression = session.scalars(select(DagModel.asset_expression).filter_by(dag_id=dag.dag_id)).one()
         assert expression == {
