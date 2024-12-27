@@ -109,6 +109,7 @@ from airflow.plugins_manager import integrate_macros_plugins
 from airflow.sdk.definitions._internal.contextmanager import _CURRENT_CONTEXT
 from airflow.sdk.definitions._internal.templater import SandboxedEnvironment
 from airflow.sdk.definitions.asset import Asset, AssetAlias, AssetNameRef, AssetUniqueKey, AssetUriRef
+from airflow.sdk.definitions.taskgroup import MappedTaskGroup
 from airflow.sentry import Sentry
 from airflow.settings import task_instance_mutation_hook
 from airflow.stats import Stats
@@ -135,10 +136,8 @@ from airflow.utils.retries import run_with_db_retries
 from airflow.utils.session import NEW_SESSION, create_session, provide_session
 from airflow.utils.sqlalchemy import ExecutorConfigType, ExtendedJSON, UtcDateTime
 from airflow.utils.state import DagRunState, State, TaskInstanceState
-from airflow.utils.task_group import MappedTaskGroup
 from airflow.utils.task_instance_session import set_current_task_instance_session
 from airflow.utils.timeout import timeout
-from airflow.utils.types import AttributeRemoved
 from airflow.utils.xcom import XCOM_RETURN_KEY
 
 TR = TaskReschedule
@@ -161,7 +160,7 @@ if TYPE_CHECKING:
     from airflow.models.baseoperator import BaseOperator
     from airflow.models.dag import DAG as SchedulerDAG, DagModel
     from airflow.models.dagrun import DagRun
-    from airflow.models.operator import Operator
+    from airflow.sdk.definitions._internal.abstractoperator import Operator
     from airflow.sdk.definitions.dag import DAG
     from airflow.sdk.definitions.protocols import RuntimeTaskInstanceProtocol
     from airflow.timetables.base import DataInterval
@@ -677,7 +676,7 @@ def _execute_task(task_instance: TaskInstance, context: Context, task_orig: Oper
 
     :meta private:
     """
-    from airflow.models.mappedoperator import MappedOperator
+    from airflow.sdk.definitions.mappedoperator import MappedOperator
 
     task_to_execute = task_instance.task
 
@@ -925,6 +924,7 @@ def _get_template_context(
 
     from airflow import macros
     from airflow.models.abstractoperator import NotMapped
+    from airflow.models.baseoperator import BaseOperator
 
     integrate_macros_plugins()
 
@@ -933,10 +933,6 @@ def _get_template_context(
         assert task_instance.task
         assert task
         assert task.dag
-
-    if task.dag.__class__ is AttributeRemoved:
-        # TODO: Task-SDK: Remove this after AIP-44 code is removed
-        task.dag = dag  # type: ignore[assignment]  # required after deserialization
 
     dag_run = task_instance.get_dagrun(session)
     data_interval = dag.get_run_data_interval(dag_run)
@@ -1002,11 +998,6 @@ def _get_template_context(
 
         return triggering_events
 
-    try:
-        expanded_ti_count: int | None = task.get_mapped_ti_count(task_instance.run_id, session=session)
-    except NotMapped:
-        expanded_ti_count = None
-
     # NOTE: If you add to this dict, make sure to also update the following:
     # * Context in task_sdk/src/airflow/sdk/definitions/context.py
     # * KNOWN_CONTEXT_KEYS in airflow/utils/context.py
@@ -1019,7 +1010,6 @@ def _get_template_context(
         "outlet_events": OutletEventAccessors(),
         "ds": ds,
         "ds_nodash": ds_nodash,
-        "expanded_ti_count": expanded_ti_count,
         "inlets": task.inlets,
         "inlet_events": InletEventsAccessors(task.inlets, session=session),
         "logical_date": logical_date,
@@ -1047,6 +1037,24 @@ def _get_template_context(
         },
         "conn": ConnectionAccessor(),
     }
+
+    try:
+        expanded_ti_count: int | None = BaseOperator.get_mapped_ti_count(
+            task, task_instance.run_id, session=session
+        )
+        context["expanded_ti_count"] = expanded_ti_count
+        if expanded_ti_count:
+            context["_upstream_map_indexes"] = {
+                upstream.task_id: task_instance.get_relevant_upstream_map_indexes(
+                    upstream,
+                    expanded_ti_count,
+                    session=session,
+                )
+                for upstream in task.upstream_list
+            }
+    except NotMapped:
+        pass
+
     # Mypy doesn't like turning existing dicts in to a TypeDict -- and we "lie" in the type stub to say it
     # is one, but in practice it isn't. See https://github.com/python/mypy/issues/8890
     return context
@@ -1205,12 +1213,7 @@ def _record_task_map_for_downstreams(
 
     :meta private:
     """
-    from airflow.models.mappedoperator import MappedOperator
-
-    # TODO: Task-SDK: Remove this after AIP-44 code is removed
-    if task.dag.__class__ is AttributeRemoved:
-        # required after deserialization
-        task.dag = dag  # type: ignore[assignment]
+    from airflow.sdk.definitions.mappedoperator import MappedOperator
 
     if next(task.iter_mapped_dependants(), None) is None:  # No mapped dependants, no need to validate.
         return
@@ -2461,7 +2464,7 @@ class TaskInstance(Base, LoggingMixin):
         """Ensure that task has a dag object associated, might have been removed by serialization."""
         if TYPE_CHECKING:
             assert task_instance.task
-        if task_instance.task.dag is None or task_instance.task.dag.__class__ is AttributeRemoved:
+        if task_instance.task.dag is None:
             task_instance.task.dag = DagBag(read_dags_from_db=True).get_dag(
                 dag_id=task_instance.dag_id, session=session
             )
@@ -3279,7 +3282,7 @@ class TaskInstance(Base, LoggingMixin):
         the unmapped, fully rendered BaseOperator. The original ``self.task``
         before replacement is returned.
         """
-        from airflow.models.mappedoperator import MappedOperator
+        from airflow.sdk.definitions.mappedoperator import MappedOperator
 
         if not context:
             context = self.get_template_context()
@@ -3291,9 +3294,6 @@ class TaskInstance(Base, LoggingMixin):
             assert original_task
             assert self.task
             assert ti.task
-
-        if ti.task.dag.__class__ is AttributeRemoved:
-            ti.task.dag = self.task.dag  # type: ignore[assignment]
 
         # If self.task is mapped, this call replaces self.task to point to the
         # unmapped BaseOperator created by this function! This is because the
@@ -3590,6 +3590,8 @@ class TaskInstance(Base, LoggingMixin):
         :return: Specific map index or map indexes to pull, or ``None`` if we
             want to "whole" return value (i.e. no mapped task groups involved).
         """
+        from airflow.models.baseoperator import BaseOperator
+
         if TYPE_CHECKING:
             assert self.task
 
@@ -3612,7 +3614,8 @@ class TaskInstance(Base, LoggingMixin):
         # At this point we know the two tasks share a mapped task group, and we
         # should use a "partial" value. Let's break down the mapped ti count
         # between the ancestor and further expansion happened inside it.
-        ancestor_ti_count = common_ancestor.get_mapped_ti_count(self.run_id, session=session)
+
+        ancestor_ti_count = BaseOperator.get_mapped_ti_count(common_ancestor, self.run_id, session=session)
         ancestor_map_index = self.map_index * ancestor_ti_count // ti_count
 
         # If the task is NOT further expanded inside the common ancestor, we
@@ -3732,7 +3735,7 @@ def _find_common_ancestor_mapped_group(node1: Operator, node2: Operator) -> Mapp
 
 def _is_further_mapped_inside(operator: Operator, container: TaskGroup) -> bool:
     """Whether given operator is *further* mapped inside a task group."""
-    from airflow.models.mappedoperator import MappedOperator
+    from airflow.sdk.definitions.mappedoperator import MappedOperator
 
     if isinstance(operator, MappedOperator):
         return True

@@ -33,8 +33,8 @@ from airflow.utils.state import DagRunState, State, TaskInstanceState
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session as SASession
 
-    from airflow.models.dag import DAG
     from airflow.models.operator import Operator
+    from airflow.sdk.defiintion.dag import DAG
 
 
 @provide_session

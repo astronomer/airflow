@@ -59,11 +59,6 @@ class MappedArgument(ResolveMixin):
     _input: ExpandInput
     _key: str
 
-    def get_task_map_length(self, run_id: str, *, session: Session) -> int | None:
-        # TODO (AIP-42): Implement run-time task map length inspection. This is
-        # needed when we implement task mapping inside a mapped task group.
-        raise NotImplementedError()
-
     def iter_references(self) -> Iterable[tuple[Operator, str]]:
         yield from self._input.iter_references()
 
@@ -145,8 +140,13 @@ class DictOfListsExpandInput(NamedTuple):
         # TODO: This initiates one database call for each XComArg. Would it be
         # more efficient to do one single db call and unpack the value here?
         def _get_length(v: OperatorExpandArgument) -> int | None:
-            if _needs_run_time_resolution(v):
-                return v.get_task_map_length(run_id, session=session)
+            from airflow.models.xcom_arg import get_task_map_length
+
+            try:
+                return get_task_map_length(v, run_id, session=session)
+            except NotImplementedError:
+                pass
+
             # Unfortunately a user-defined TypeGuard cannot apply negative type
             # narrowing. https://github.com/python/typing/discussions/1013
             if TYPE_CHECKING:
@@ -243,9 +243,11 @@ class ListOfDictsExpandInput(NamedTuple):
         raise NotFullyPopulated({"expand_kwargs() argument"})
 
     def get_total_map_length(self, run_id: str, *, session: Session) -> int:
+        from airflow.models.xcom_arg import get_task_map_length
+
         if isinstance(self.value, collections.abc.Sized):
             return len(self.value)
-        length = self.value.get_task_map_length(run_id, session=session)
+        length = get_task_map_length(self.value, run_id, session=session)
         if length is None:
             raise NotFullyPopulated({"expand_kwargs() argument"})
         return length

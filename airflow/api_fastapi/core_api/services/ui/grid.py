@@ -139,7 +139,7 @@ def _get_total_task_count(
         node
         if isinstance(node, int)
         else (
-            node.get_mapped_ti_count(run_id=run_id, session=session)
+            BaseOperator.get_mapped_ti_count(node, run_id=run_id, session=session) or 0
             if isinstance(node, (MappedTaskGroup, MappedOperator))
             else node
         )

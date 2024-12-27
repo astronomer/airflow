@@ -2967,7 +2967,7 @@ def test_taskflow_expand_kwargs_serde(strict):
 def test_mapped_task_group_serde():
     from airflow.decorators.task_group import task_group
     from airflow.models.expandinput import DictOfListsExpandInput
-    from airflow.utils.task_group import MappedTaskGroup
+    from airflow.sdk.definitions.taskgroup import MappedTaskGroup
 
     with DAG("test-dag", schedule=None, start_date=datetime(2020, 1, 1)) as dag:
 
