@@ -81,6 +81,17 @@ def clear_all_logger_handlers():
     remove_all_non_pytest_log_handlers()
 
 
+@pytest.fixture
+def testing_dag_bundle():
+    from airflow.models.dagbundle import DagBundleModel
+    from airflow.utils.session import create_session
+
+    with create_session() as session:
+        if session.query(DagBundleModel).filter(DagBundleModel.name == "testing").count() == 0:
+            testing = DagBundleModel(name="testing")
+            session.add(testing)
+
+
 if TYPE_CHECKING:
     # Static checkers do not know about pytest fixtures' types and return,
     # In case if them distributed through third party packages.
