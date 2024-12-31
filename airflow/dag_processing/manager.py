@@ -682,7 +682,7 @@ class DagFileProcessorManager:
             else:
                 self.log.info("Not time to refresh %s", bundle.name)
 
-    def _refresh_dag_dir(self, bundle: BaseDagBundle) -> set[str]:
+    def _refresh_dag_dir(self, bundle: BaseDagBundle) -> list[str]:
         """Refresh file paths from bundle dir."""
         # Build up a list of Python files that could contain DAGs
         self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
@@ -720,7 +720,7 @@ class DagFileProcessorManager:
         # TODO: AIP-66 by bundle!
         DagModel.deactivate_deleted_dags(dag_filelocs)
 
-        return dag_filelocs
+        return file_paths
 
     def _print_stat(self):
         """Occasionally print out stats about how fast the files are getting processed."""

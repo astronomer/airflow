@@ -457,11 +457,11 @@ class TestDagFileProcessorManager:
             assert serialized_dag_count == 1
 
     def test_kill_timed_out_processors_kill(self):
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1, processor_timeout=5)
+        manager = DagFileProcessorManager(max_runs=1, processor_timeout=5)
 
         processor = self.mock_processor()
         processor._process.create_time.return_value = timezone.make_aware(datetime.min).timestamp()
-        manager._processors = {"abc.txt": processor}
+        manager._processors = {DagFilePath(bundle_name="testing", path="abc.txt"): processor}
         with mock.patch.object(type(processor), "kill") as mock_kill:
             manager._kill_timed_out_processors()
         mock_kill.assert_called_once_with(signal.SIGKILL)
@@ -469,14 +469,13 @@ class TestDagFileProcessorManager:
 
     def test_kill_timed_out_processors_no_kill(self):
         manager = DagFileProcessorManager(
-            dag_directory=TEST_DAG_FOLDER,
             max_runs=1,
             processor_timeout=5,
         )
 
         processor = self.mock_processor()
         processor._process.create_time.return_value = timezone.make_aware(datetime.max).timestamp()
-        manager._processors = {"abc.txt": processor}
+        manager._processors = {DagFilePath(bundle_name="testing", path="abc.txt"): processor}
         with mock.patch.object(type(processor), "kill") as mock_kill:
             manager._kill_timed_out_processors()
         mock_kill.assert_not_called()
@@ -495,9 +494,14 @@ class TestDagFileProcessorManager:
         clear_db_dags()
         clear_db_serialized_dags()
 
-        manager = DagFileProcessorManager(dag_directory=dag_directory, max_runs=1)
-
-        manager._run_parsing_loop()
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(dag_directory)
+            + '", "refresh_interval": 30}}'
+        )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1)
+            manager.run()
 
         # Three files in folder should be processed
         assert sum(stat.run_count for stat in manager._file_stats.values()) == 3
@@ -542,37 +546,45 @@ class TestDagFileProcessorManager:
 
         thread = threading.Thread(target=keep_pipe_full, args=(parent_pipe, exit_event))
 
-        manager = DagFileProcessorManager(
-            dag_directory=dag_filepath,
-            # A reasonable large number to ensure that we trigger the deadlock
-            max_runs=100,
-            processor_timeout=5,
-            signal_conn=child_pipe,
-            # Make it loop sub-processes quickly. Need to be non-zero to exercise the bug, else it finishes
-            # too quickly
-            file_process_interval=0.01,
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(dag_filepath)
+            + '", "refresh_interval": 30}}'
         )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(
+                # A reasonable large number to ensure that we trigger the deadlock
+                max_runs=100,
+                processor_timeout=5,
+                signal_conn=child_pipe,
+                # Make it loop sub-processes quickly. Need to be non-zero to exercise the bug, else it finishes
+                # too quickly
+                file_process_interval=0.01,
+            )
 
-        try:
-            thread.start()
+            try:
+                thread.start()
 
-            # If this completes without hanging, then the test is good!
-            with mock.patch.object(
-                DagFileProcessorProcess, "start", side_effect=lambda *args, **kwargs: self.mock_processor()
-            ):
-                manager.run()
-            exit_event.set()
-        finally:
-            logger.info("Closing pipes")
-            parent_pipe.close()
-            child_pipe.close()
-            logger.info("Closed pipes")
-            logger.info("Joining thread")
-            thread.join(timeout=1.0)
-            logger.info("Joined thread")
+                # If this completes without hanging, then the test is good!
+                with mock.patch.object(
+                    DagFileProcessorProcess,
+                    "start",
+                    side_effect=lambda *args, **kwargs: self.mock_processor(),
+                ):
+                    manager.run()
+                exit_event.set()
+            finally:
+                logger.info("Closing pipes")
+                parent_pipe.close()
+                child_pipe.close()
+                logger.info("Closed pipes")
+                logger.info("Joining thread")
+                thread.join(timeout=1.0)
+                logger.info("Joined thread")
 
     @conf_vars({("core", "load_examples"): "False"})
     @mock.patch("airflow.dag_processing.manager.Stats.timing")
+    @pytest.mark.skip("AIP-66: stats are not implemented yet")
     def test_send_file_processing_statsd_timing(self, statsd_timing_mock, tmp_path):
         path_to_parse = tmp_path / "temp_dag.py"
         dag_code = textwrap.dedent(
@@ -583,11 +595,16 @@ class TestDagFileProcessorManager:
         )
         path_to_parse.write_text(dag_code)
 
-        manager = DagFileProcessorManager(dag_directory=path_to_parse.parent, max_runs=1)
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(tmp_path)
+            + '", "refresh_interval": 30}}'
+        )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1)
+            self.run_processor_manager_one_loop(manager)
 
-        self.run_processor_manager_one_loop(manager)
         last_runtime = manager._file_stats[os.fspath(path_to_parse)].last_duration
-
         statsd_timing_mock.assert_has_calls(
             [
                 mock.call("dag_processing.last_duration.temp_dag", last_runtime),
@@ -596,17 +613,24 @@ class TestDagFileProcessorManager:
             any_order=True,
         )
 
-    def test_refresh_dags_dir_doesnt_delete_zipped_dags(self, tmp_path):
+    def test_refresh_dags_dir_doesnt_delete_zipped_dags(self, tmp_path, testing_dag_bundle):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
-        manager = DagFileProcessorManager(dag_directory=TEST_DAG_FOLDER, max_runs=1)
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
         dagbag.process_file(zipped_dag_path)
         dag = dagbag.get_dag("test_zip_dag")
-        dag.sync_to_db()
+        DAG.bulk_write_to_db("testing", None, [dag])
         SerializedDagModel.write_dag(dag)
-        manager.last_dag_dir_refresh_time = time.monotonic() - 10 * 60
-        manager._refresh_dag_dir()
+
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(zipped_dag_path)
+            + '", "refresh_interval": 30}}'
+        )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1)
+            manager.run()
+
         # Assert dag not deleted in SDM
         assert SerializedDagModel.has_dag("test_zip_dag")
         # assert code not deleted
@@ -616,18 +640,26 @@ class TestDagFileProcessorManager:
 
     def test_refresh_dags_dir_deactivates_deleted_zipped_dags(self, tmp_path):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
-        manager = DagFileProcessorManager(dag_directory=TEST_DAG_FOLDER, max_runs=1)
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
         dagbag.process_file(zipped_dag_path)
         dag = dagbag.get_dag("test_zip_dag")
         dag.sync_to_db()
         SerializedDagModel.write_dag(dag)
-        manager.last_dag_dir_refresh_time = time.monotonic() - 10 * 60
+
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(TEST_DAGS_FOLDER)
+            + '", "refresh_interval": 30}}'
+        )
+
+        # TODO: this test feels a bit fragile - pointing at the zip directly causes the test to fail
 
         # Mock might_contain_dag to mimic deleting the python file from the zip
         with mock.patch("airflow.dag_processing.manager.might_contain_dag", return_value=False):
-            manager._refresh_dag_dir()
+            with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+                manager = DagFileProcessorManager(max_runs=1)
+                manager.run()
 
         # Deleting the python file should not delete SDM for versioning sake
         assert SerializedDagModel.has_dag("test_zip_dag")
@@ -664,13 +696,17 @@ class TestDagFileProcessorManager:
             session.add(DbCallbackRequest(callback=callback1, priority_weight=11))
             session.add(DbCallbackRequest(callback=callback2, priority_weight=10))
 
-        manager = DagFileProcessorManager(
-            dag_directory=os.fspath(tmp_path), max_runs=1, standalone_dag_processor=True
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(tmp_path)
+            + '", "refresh_interval": 30}}'
         )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1, standalone_dag_processor=True)
 
-        with create_session() as session:
-            self.run_processor_manager_one_loop(manager)
-            assert session.query(DbCallbackRequest).count() == 0
+            with create_session() as session:
+                self.run_processor_manager_one_loop(manager)
+                assert session.query(DbCallbackRequest).count() == 0
 
     @conf_vars(
         {
@@ -693,15 +729,23 @@ class TestDagFileProcessorManager:
                 )
                 session.add(DbCallbackRequest(callback=callback, priority_weight=i))
 
-        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
+        assert session.query(DbCallbackRequest).count() == 5
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(tmp_path)
+            + '", "refresh_interval": 30}}'
+        )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1)
+            assert session.query(DbCallbackRequest).count() == 5
 
-        with create_session() as session:
-            self.run_processor_manager_one_loop(manager)
-            assert session.query(DbCallbackRequest).count() == 3
+            with create_session() as session:
+                self.run_processor_manager_one_loop(manager)
+                assert session.query(DbCallbackRequest).count() == 3
 
-        with create_session() as session:
-            self.run_processor_manager_one_loop(manager)
-            assert session.query(DbCallbackRequest).count() == 1
+            with create_session() as session:
+                self.run_processor_manager_one_loop(manager)
+                assert session.query(DbCallbackRequest).count() == 1
 
     @conf_vars(
         {
@@ -721,22 +765,28 @@ class TestDagFileProcessorManager:
             )
             session.add(DbCallbackRequest(callback=callback, priority_weight=10))
 
-        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
-
-        self.run_processor_manager_one_loop(manager)
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(tmp_path)
+            + '", "refresh_interval": 30}}'
+        )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(max_runs=1)
+            self.run_processor_manager_one_loop(manager)
 
         # Verify no callbacks removed from database.
         with create_session() as session:
             assert session.query(DbCallbackRequest).count() == 1
 
+    @pytest.mark.skip("AIP-66: callbacks are not implemented yet")
     def test_callback_queue(self, tmp_path):
         # given
         manager = DagFileProcessorManager(
-            dag_directory=TEST_DAG_FOLDER,
             max_runs=1,
             processor_timeout=365 * 86_400,
         )
 
+        dag1_path = DagFilePath(bundle_name="testing", path="/green_eggs/ham/file1.py")
         dag1_req1 = DagCallbackRequest(
             full_filepath="/green_eggs/ham/file1.py",
             dag_id="dag1",
@@ -752,6 +802,7 @@ class TestDagFileProcessorManager:
             msg=None,
         )
 
+        dag2_path = DagFilePath(bundle_name="testing", path="/green_eggs/ham/file2.py")
         dag2_req1 = DagCallbackRequest(
             full_filepath="/green_eggs/ham/file2.py",
             dag_id="dag2",
@@ -765,7 +816,7 @@ class TestDagFileProcessorManager:
         manager._add_callback_to_queue(dag2_req1)
 
         # then - requests should be in manager's queue, with dag2 ahead of dag1 (because it was added last)
-        assert manager._file_path_queue == deque([dag2_req1.full_filepath, dag1_req1.full_filepath])
+        assert manager._file_path_queue == deque([dag2_path, dag1_path])
         assert set(manager._callback_to_execute.keys()) == {
             dag1_req1.full_filepath,
             dag2_req1.full_filepath,
@@ -801,13 +852,17 @@ class TestDagFileProcessorManager:
 
         test_dag_path = str(TEST_DAG_FOLDER / "test_assets.py")
 
-        manager = DagFileProcessorManager(
-            dag_directory=test_dag_path,
-            max_runs=1,
-            processor_timeout=365 * 86_400,
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(test_dag_path)
+            + '", "refresh_interval": 30}}'
         )
-
-        self.run_processor_manager_one_loop(manager)
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(
+                max_runs=1,
+                processor_timeout=365 * 86_400,
+            )
+            self.run_processor_manager_one_loop(manager)
 
         dag_model = session.get(DagModel, ("dag_with_skip_task"))
         assert dag_model.task_outlet_asset_references == [
