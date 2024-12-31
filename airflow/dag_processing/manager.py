@@ -107,7 +107,6 @@ class DagFilePath(NamedTuple):
 
     path: str
     bundle_name: str
-    bundle_version: str
 
 
 class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
@@ -350,6 +349,7 @@ class DagFileProcessorManager:
     )
 
     _dag_bundles: list[BaseDagBundle] = attrs.field(factory=list, init=False)
+    _bundle_versions: dict[str, str] = attrs.field(factory=dict, init=False)
 
     _processors: dict[DagFilePath, DagFileProcessorProcess] = attrs.field(factory=dict, init=False)
 
@@ -670,11 +670,9 @@ class DagFileProcessorManager:
                 # remove all files from the bundle, then add the new ones
                 self._file_paths = [f for f in self._file_paths if f.bundle_name != bundle_model.name]
                 self._file_paths.extend(
-                    DagFilePath(
-                        path=path, bundle_name=bundle_model.name, bundle_version=bundle.get_current_version()
-                    )
-                    for path in bundle_file_paths
+                    DagFilePath(path=path, bundle_name=bundle_model.name) for path in bundle_file_paths
                 )
+                self._bundle_versions[bundle_model.name] = bundle.get_current_version()
                 self.log.info("Found %s files for bundle %s", len(bundle_file_paths), bundle.name)
                 # TODO: AIP-66 detect if version changed and update accordingly
             else:
@@ -890,13 +888,11 @@ class DagFileProcessorManager:
                 run_duration=time.time() - proc.start_time,
                 finish_time=timezone.utcnow(),
                 run_count=self._file_stats[dag_file].run_count,
+                bundle_name=dag_file.bundle_name,
+                bundle_version=self._bundle_versions[dag_file.bundle_name],
                 parsing_result=proc.parsing_result,
-                dag_file=dag_file,
                 session=session,
             )
-            # for dag in res.serialized_dags:
-            #     dag.data["bundle_id"] = path.bundle_id
-            #     dag.data["bundle_version"] = path.bundle_version
 
         for dag_file in finished:
             self._processors.pop(dag_file)
@@ -1137,7 +1133,8 @@ def process_parse_results(
     run_duration: float,
     finish_time: datetime,
     run_count: int,
-    dag_file: DagFilePath,
+    bundle_name: str,
+    bundle_version: str | None,
     parsing_result: DagFileParsingResult | None,
     session: Session,
 ) -> DagFileStat:
@@ -1148,17 +1145,18 @@ def process_parse_results(
         run_count=run_count + 1,
     )
 
-    file_name = Path(dag_file.path).stem
-    Stats.timing(f"dag_processing.last_duration.{file_name}", stat.last_duration)
-    Stats.timing("dag_processing.last_duration", stat.last_duration, tags={"file_name": file_name})
+    # TODO: AIP-66 emit metrics
+    # file_name = Path(dag_file.path).stem
+    # Stats.timing(f"dag_processing.last_duration.{file_name}", stat.last_duration)
+    # Stats.timing("dag_processing.last_duration", stat.last_duration, tags={"file_name": file_name})
 
     if parsing_result is None:
         stat.import_errors = 1
     else:
         # record DAGs and import errors to database
         update_dag_parsing_results_in_db(
-            bundle_name=dag_file.bundle_name,
-            bundle_version=dag_file.bundle_version,
+            bundle_name=bundle_name,
+            bundle_version=bundle_version,
             dags=parsing_result.serialized_dags,
             import_errors=parsing_result.import_errors or {},
             warnings=set(parsing_result.warnings or []),

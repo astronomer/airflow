@@ -79,6 +79,10 @@ TEST_DAG_FOLDER = pathlib.Path(__file__).parents[1].resolve() / "dags"
 DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 
 
+def _get_dag_file_paths(files: list[str]) -> list[DagFilePath]:
+    return [DagFilePath(bundle_name="testing", path=f) for f in files]
+
+
 class TestDagFileProcessorManager:
     @pytest.fixture(autouse=True)
     def _disable_examples(self):
@@ -173,9 +177,9 @@ class TestDagFileProcessorManager:
         """
         manager = DagFileProcessorManager(max_runs=1)
 
-        file_1 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_1.py")
-        file_2 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_2.py")
-        file_3 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_3.py")
+        file_1 = DagFilePath(bundle_name="testing", path="file_1.py")
+        file_2 = DagFilePath(bundle_name="testing", path="file_2.py")
+        file_3 = DagFilePath(bundle_name="testing", path="file_3.py")
         manager._file_path_queue = deque([file_1, file_2, file_3])
 
         # Mock that only one processor exists. This processor runs with 'file_1'
@@ -196,7 +200,7 @@ class TestDagFileProcessorManager:
     def test_set_file_paths_when_processor_file_path_not_in_new_file_paths(self):
         """Ensure processors and file stats are removed when the file path is not in the new file paths"""
         manager = DagFileProcessorManager(max_runs=1)
-        file = DagFilePath(bundle_name="testing", bundle_version=None, path="missing_file.txt")
+        file = DagFilePath(bundle_name="testing", path="missing_file.txt")
 
         manager._processors[file] = MagicMock()
         manager._file_stats[file] = DagFileStat()
@@ -207,7 +211,7 @@ class TestDagFileProcessorManager:
 
     def test_set_file_paths_when_processor_file_path_is_in_new_file_paths(self):
         manager = DagFileProcessorManager(max_runs=1)
-        file = DagFilePath(bundle_name="testing", bundle_version=None, path="abc.txt")
+        file = DagFilePath(bundle_name="testing", path="abc.txt")
         mock_processor = MagicMock()
 
         manager._processors[file] = mock_processor
@@ -219,10 +223,8 @@ class TestDagFileProcessorManager:
     def test_file_paths_in_queue_sorted_alphabetically(self):
         """Test dag files are sorted alphabetically"""
         file_names = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
-        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
-        ordered_dag_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in sorted(file_names)
-        ]
+        dag_files = _get_dag_file_paths(file_names)
+        ordered_dag_files = _get_dag_file_paths(sorted(file_names))
 
         manager = DagFileProcessorManager(max_runs=1)
 
@@ -234,8 +236,7 @@ class TestDagFileProcessorManager:
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "random_seeded_by_host"})
     def test_file_paths_in_queue_sorted_random_seeded_by_host(self):
         """Test files are randomly sorted and seeded by host name"""
-        file_names = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
-        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
+        dag_files = _get_dag_file_paths(["file_3.py", "file_2.py", "file_4.py", "file_1.py"])
 
         manager = DagFileProcessorManager(max_runs=1)
 
@@ -275,9 +276,7 @@ class TestDagFileProcessorManager:
     def test_file_paths_in_queue_sorted_by_modified_time(self, mock_getmtime):
         """Test files are sorted by modified time"""
         paths_with_mtime = {"file_3.py": 3.0, "file_2.py": 2.0, "file_4.py": 5.0, "file_1.py": 4.0}
-        dag_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in paths_with_mtime.keys()
-        ]
+        dag_files = _get_dag_file_paths(paths_with_mtime.keys())
         mock_getmtime.side_effect = list(paths_with_mtime.values())
 
         manager = DagFileProcessorManager(max_runs=1)
@@ -285,18 +284,14 @@ class TestDagFileProcessorManager:
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
         manager.prepare_file_path_queue()
-        ordered_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
-            for f in ["file_4.py", "file_1.py", "file_3.py", "file_2.py"]
-        ]
+        ordered_files = _get_dag_file_paths(["file_4.py", "file_1.py", "file_3.py", "file_2.py"])
         assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
     @mock.patch("airflow.utils.file.os.path.getmtime")
     def test_file_paths_in_queue_excludes_missing_file(self, mock_getmtime):
         """Check that a file is not enqueued for processing if it has been deleted"""
-        file_names = ["file_3.py", "file_2.py", "file_4.py"]
-        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
+        dag_files = _get_dag_file_paths(["file_3.py", "file_2.py", "file_4.py"])
         mock_getmtime.side_effect = [1.0, 2.0, FileNotFoundError()]
 
         manager = DagFileProcessorManager(max_runs=1)
@@ -304,10 +299,7 @@ class TestDagFileProcessorManager:
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
 
-        ordered_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
-            for f in ["file_2.py", "file_3.py"]
-        ]
+        ordered_files = _get_dag_file_paths(["file_2.py", "file_3.py"])
         assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
@@ -317,28 +309,19 @@ class TestDagFileProcessorManager:
         mock_getmtime,
     ):
         """Check that new file is added to parsing queue"""
-        file_names = ["file_1.py", "file_2.py", "file_3.py"]
-        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
+        dag_files = _get_dag_file_paths(["file_1.py", "file_2.py", "file_3.py"])
         mock_getmtime.side_effect = [1.0, 2.0, 3.0]
 
         manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
-        ordered_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
-            for f in ["file_3.py", "file_2.py", "file_1.py"]
-        ]
+        ordered_files = _get_dag_file_paths(["file_3.py", "file_2.py", "file_1.py"])
         assert manager._file_path_queue == deque(ordered_files)
 
-        manager.set_file_paths(
-            [*dag_files, DagFilePath(bundle_name="testing", bundle_version=None, path="file_4.py")]
-        )
+        manager.set_file_paths([*dag_files, DagFilePath(bundle_name="testing", path="file_4.py")])
         manager.add_new_file_path_to_queue()
-        ordered_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
-            for f in ["file_4.py", "file_3.py", "file_2.py", "file_1.py"]
-        ]
+        ordered_files = _get_dag_file_paths(["file_4.py", "file_3.py", "file_2.py", "file_1.py"])
         assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
@@ -349,7 +332,7 @@ class TestDagFileProcessorManager:
         """
         freezed_base_time = timezone.datetime(2020, 1, 5, 0, 0, 0)
         initial_file_1_mtime = (freezed_base_time - timedelta(minutes=5)).timestamp()
-        dag_file = DagFilePath(bundle_name="testing", bundle_version=None, path="file_1.py")
+        dag_file = DagFilePath(bundle_name="testing", path="file_1.py")
         dag_files = [dag_file]
         mock_getmtime.side_effect = [initial_file_1_mtime]
 
