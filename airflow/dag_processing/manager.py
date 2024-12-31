@@ -428,13 +428,15 @@ class DagFileProcessorManager:
     @provide_session
     def deactivate_stale_dags(
         self,
-        last_parsed: dict[str, datetime | None],
+        last_parsed: dict[DagFilePath, datetime | None],
         stale_dag_threshold: int,
         session: Session = NEW_SESSION,
     ):
         """Detect and deactivate DAGs which are no longer present in files."""
         to_deactivate = set()
-        query = select(DagModel.dag_id, DagModel.fileloc, DagModel.last_parsed_time).where(DagModel.is_active)
+        query = select(
+            DagModel.dag_id, DagModel.bundle_name, DagModel.fileloc, DagModel.last_parsed_time
+        ).where(DagModel.is_active)
         # TODO: AIP-66 by bundle!
         dags_parsed = session.execute(query)
 
@@ -443,9 +445,11 @@ class DagFileProcessorManager:
             # last_parsed_time is the processor_timeout. Longer than that indicates that the DAG is
             # no longer present in the file. We have a stale_dag_threshold configured to prevent a
             # significant delay in deactivation of stale dags when a large timeout is configured
+            dag_file_path = DagFilePath(path=dag.fileloc, bundle_name=dag.bundle_name)
             if (
-                dag.fileloc in last_parsed
-                and (dag.last_parsed_time + timedelta(seconds=stale_dag_threshold)) < last_parsed[dag.fileloc]
+                dag_file_path in last_parsed
+                and (dag.last_parsed_time + timedelta(seconds=stale_dag_threshold))
+                < last_parsed[dag_file_path]
             ):
                 self.log.info("DAG %s is missing and will be deactivated.", dag.dag_id)
                 to_deactivate.add(dag.dag_id)

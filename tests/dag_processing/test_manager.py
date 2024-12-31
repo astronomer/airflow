@@ -50,7 +50,7 @@ from airflow.dag_processing.manager import (
     DagFileStat,
 )
 from airflow.dag_processing.processor import DagFileProcessorProcess
-from airflow.models import DagBag, DagModel, DbCallbackRequest
+from airflow.models import DAG, DagBag, DagModel, DbCallbackRequest
 from airflow.models.asset import TaskOutletAssetReference
 from airflow.models.dag_version import DagVersion
 from airflow.models.dagcode import DagCode
@@ -396,7 +396,7 @@ class TestDagFileProcessorManager:
             parsing_request_after = session2.query(DagPriorityParsingRequest).get(parsing_request.id)
         assert parsing_request_after is None
 
-    def test_scan_stale_dags(self):
+    def test_scan_stale_dags(self, testing_dag_bundle):
         """
         Ensure that DAGs are marked inactive when the file is parsed but the
         DagModel.last_parsed_time is not updated.
@@ -408,7 +408,6 @@ class TestDagFileProcessorManager:
 
         test_dag_path = DagFilePath(
             bundle_name="testing",
-            bundle_version=None,
             path=str(TEST_DAG_FOLDER / "test_example_bash_operator.py"),
         )
         dagbag = DagBag(test_dag_path.path, read_dags_from_db=False, include_examples=False)
@@ -417,7 +416,7 @@ class TestDagFileProcessorManager:
             # Add stale DAG to the DB
             dag = dagbag.get_dag("test_example_bash_operator")
             dag.last_parsed_time = timezone.utcnow()
-            dag.sync_to_db()
+            DAG.bulk_write_to_db("testing", None, [dag])
             SerializedDagModel.write_dag(dag)
 
             # Add DAG to the file_parsing_stats
