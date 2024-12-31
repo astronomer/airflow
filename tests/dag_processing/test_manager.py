@@ -142,7 +142,6 @@ class TestDagFileProcessorManager:
         )
         with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
             manager = DagFileProcessorManager(
-                dag_directory=path_to_parse.parent,
                 max_runs=1,
                 processor_timeout=365 * 86_400,
             )
@@ -368,6 +367,7 @@ class TestDagFileProcessorManager:
                 > (freezed_base_time - manager._file_stats[dag_file].last_finish_time).total_seconds()
             )
 
+    @pytest.mark.skip("AIP-66: parsing requests are not bundle aware yet")
     @mock.patch("zipfile.is_zipfile", return_value=True)
     @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
     @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)

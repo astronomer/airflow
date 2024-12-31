@@ -676,6 +676,13 @@ class DagFileProcessorManager:
                 self._file_paths.extend(
                     DagFilePath(path=path, bundle_name=bundle_model.name) for path in bundle_file_paths
                 )
+
+                try:
+                    self.log.debug("Removing old import errors")
+                    self.clear_nonexistent_import_errors()
+                except Exception:
+                    self.log.exception("Error removing old import errors")
+
                 self._bundle_versions[bundle_model.name] = bundle.get_current_version()
                 self.log.info("Found %s files for bundle %s", len(bundle_file_paths), bundle.name)
                 # TODO: AIP-66 detect if version changed and update accordingly
@@ -691,12 +698,6 @@ class DagFileProcessorManager:
         self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
         file_paths = list_py_file_paths(bundle.path)
         self.log.info("There are %s files in %s", len(file_paths), bundle.path)
-
-        try:
-            self.log.debug("Removing old import errors")
-            self.clear_nonexistent_import_errors()
-        except Exception:
-            self.log.exception("Error removing old import errors")
 
         def _iter_dag_filelocs(fileloc: str) -> Iterator[str]:
             """
@@ -742,7 +743,7 @@ class DagFileProcessorManager:
 
         if self._file_paths:
             query = query.where(
-                ParseImportError.filename.notin_(self._file_paths),
+                ParseImportError.filename.notin_([f.path for f in self._file_paths]),
             )
 
         session.execute(query.execution_options(synchronize_session="fetch"))
