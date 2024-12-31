@@ -160,9 +160,11 @@ class TestDagFileProcessorManager:
 
     @conf_vars({("core", "load_examples"): "False"})
     def test_max_runs_when_no_files(self, tmp_path):
-        manager = DagFileProcessorManager(dag_directory=tmp_path, max_runs=1)
+        with conf_vars({("core", "dags_folder"): str(tmp_path)}):
+            manager = DagFileProcessorManager(max_runs=1)
+            self.run_processor_manager_one_loop(manager)
 
-        self.run_processor_manager_one_loop(manager)
+        # TODO: AIP-66 no asserts?
 
     def test_start_new_processes_with_same_filepath(self):
         """
@@ -214,44 +216,28 @@ class TestDagFileProcessorManager:
         assert manager._processors == {file: mock_processor}
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "alphabetical"})
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
-    def test_file_paths_in_queue_sorted_alphabetically(
-        self, mock_isfile, mock_find_path, mock_might_contain_dag, mock_zipfile
-    ):
+    def test_file_paths_in_queue_sorted_alphabetically(self):
         """Test dag files are sorted alphabetically"""
         file_names = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
-        dag_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=file) for file in file_names
+        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
+        ordered_dag_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in sorted(file_names)
         ]
-        mock_find_path.return_value = dag_files
 
         manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
         manager.prepare_file_path_queue()
-        ordered_files = [
-            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
-            for f in ["file_1.py", "file_2.py", "file_3.py", "file_4.py"]
-        ]
-        assert manager._file_path_queue == deque(ordered_files)
+        assert manager._file_path_queue == deque(ordered_dag_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "random_seeded_by_host"})
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
-    def test_file_paths_in_queue_sorted_random_seeded_by_host(
-        self, mock_isfile, mock_find_path, mock_might_contain_dag, mock_zipfile
-    ):
+    def test_file_paths_in_queue_sorted_random_seeded_by_host(self):
         """Test files are randomly sorted and seeded by host name"""
-        dag_files = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
-        mock_find_path.return_value = dag_files
+        file_names = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
+        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
@@ -285,32 +271,25 @@ class TestDagFileProcessorManager:
             tzset()
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
     @mock.patch("airflow.utils.file.os.path.getmtime")
-    def test_file_paths_in_queue_sorted_by_modified_time(
-        self,
-        mock_getmtime,
-        mock_isfile,
-        mock_find_path,
-        mock_might_contain_dag,
-        mock_zipfile,
-        change_platform_timezone,
-    ):
+    def test_file_paths_in_queue_sorted_by_modified_time(self, mock_getmtime):
         """Test files are sorted by modified time"""
         paths_with_mtime = {"file_3.py": 3.0, "file_2.py": 2.0, "file_4.py": 5.0, "file_1.py": 4.0}
-        dag_files = list(paths_with_mtime.keys())
+        dag_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in paths_with_mtime.keys()
+        ]
         mock_getmtime.side_effect = list(paths_with_mtime.values())
-        mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
         manager.prepare_file_path_queue()
-        assert manager._file_path_queue == deque(["file_4.py", "file_1.py", "file_3.py", "file_2.py"])
+        ordered_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
+            for f in ["file_4.py", "file_1.py", "file_3.py", "file_2.py"]
+        ]
+        assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
     @mock.patch("zipfile.is_zipfile", return_value=True)
