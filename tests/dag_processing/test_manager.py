@@ -44,6 +44,7 @@ from uuid6 import uuid7
 from airflow.callbacks.callback_requests import CallbackRequest, DagCallbackRequest
 from airflow.config_templates.airflow_local_settings import DEFAULT_LOGGING_CONFIG
 from airflow.dag_processing.manager import (
+    DagFilePath,
     DagFileProcessorAgent,
     DagFileProcessorManager,
     DagFileStat,
@@ -102,7 +103,7 @@ class TestDagFileProcessorManager:
         clear_db_import_errors()
 
     def run_processor_manager_one_loop(self, manager: DagFileProcessorManager) -> None:
-        manager._run_parsing_loop()
+        manager.run()
 
     def mock_processor(self) -> DagFileProcessorProcess:
         proc = MagicMock()
@@ -130,26 +131,32 @@ class TestDagFileProcessorManager:
         # Generate original import error
         path_to_parse.write_text("an invalid airflow DAG")
 
-        manager = DagFileProcessorManager(
-            dag_directory=path_to_parse.parent,
-            max_runs=1,
-            processor_timeout=365 * 86_400,
+        bundle_config = (
+            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
+            + str(path_to_parse)
+            + '", "refresh_interval": 30}}'
         )
+        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            manager = DagFileProcessorManager(
+                dag_directory=path_to_parse.parent,
+                max_runs=1,
+                processor_timeout=365 * 86_400,
+            )
 
-        with create_session() as session:
-            self.run_processor_manager_one_loop(manager)
+            with create_session() as session:
+                self.run_processor_manager_one_loop(manager)
 
-            import_errors = session.query(ParseImportError).all()
-            assert len(import_errors) == 1
+                import_errors = session.query(ParseImportError).all()
+                assert len(import_errors) == 1
 
-            path_to_parse.unlink()
+                path_to_parse.unlink()
 
-            # Rerun the parser once the dag file has been removed
-            self.run_processor_manager_one_loop(manager)
-            import_errors = session.query(ParseImportError).all()
+                # Rerun the parser once the dag file has been removed
+                self.run_processor_manager_one_loop(manager)
+                import_errors = session.query(ParseImportError).all()
 
-            assert len(import_errors) == 0
-            session.rollback()
+                assert len(import_errors) == 0
+                session.rollback()
 
     @conf_vars({("core", "load_examples"): "False"})
     def test_max_runs_when_no_files(self, tmp_path):
@@ -162,11 +169,11 @@ class TestDagFileProcessorManager:
         Test that when a processor already exist with a filepath, a new processor won't be created
         with that filepath. The filepath will just be removed from the list.
         """
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
-        file_1 = "file_1.py"
-        file_2 = "file_2.py"
-        file_3 = "file_3.py"
+        file_1 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_1.py")
+        file_2 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_2.py")
+        file_3 = DagFilePath(bundle_name="testing", bundle_version=None, path="file_3.py")
         manager._file_path_queue = deque([file_1, file_2, file_3])
 
         # Mock that only one processor exists. This processor runs with 'file_1'
@@ -185,30 +192,26 @@ class TestDagFileProcessorManager:
         assert deque([file_3]) == manager._file_path_queue
 
     def test_set_file_paths_when_processor_file_path_not_in_new_file_paths(self):
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        """Ensure processors and file stats are removed when the file path is not in the new file paths"""
+        manager = DagFileProcessorManager(max_runs=1)
+        file = DagFilePath(bundle_name="testing", bundle_version=None, path="missing_file.txt")
 
-        mock_processor = MagicMock()
-        mock_processor.stop.side_effect = AttributeError("DagFileProcessor object has no attribute stop")
-        mock_processor.terminate.side_effect = None
-
-        manager._processors["missing_file.txt"] = mock_processor
-        manager._file_stats["missing_file.txt"] = DagFileStat()
+        manager._processors[file] = MagicMock()
+        manager._file_stats[file] = DagFileStat()
 
         manager.set_file_paths(["abc.txt"])
         assert manager._processors == {}
-        assert "missing_file.txt" not in manager._file_stats
+        assert file not in manager._file_stats
 
     def test_set_file_paths_when_processor_file_path_is_in_new_file_paths(self):
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
-
+        manager = DagFileProcessorManager(max_runs=1)
+        file = DagFilePath(bundle_name="testing", bundle_version=None, path="abc.txt")
         mock_processor = MagicMock()
-        mock_processor.stop.side_effect = AttributeError("DagFileProcessor object has no attribute stop")
-        mock_processor.terminate.side_effect = None
 
-        manager._processors["abc.txt"] = mock_processor
+        manager._processors[file] = mock_processor
 
-        manager.set_file_paths(["abc.txt"])
-        assert manager._processors == {"abc.txt": mock_processor}
+        manager.set_file_paths([file])
+        assert manager._processors == {file: mock_processor}
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "alphabetical"})
     @mock.patch("zipfile.is_zipfile", return_value=True)
@@ -219,15 +222,22 @@ class TestDagFileProcessorManager:
         self, mock_isfile, mock_find_path, mock_might_contain_dag, mock_zipfile
     ):
         """Test dag files are sorted alphabetically"""
-        dag_files = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
+        file_names = ["file_3.py", "file_2.py", "file_4.py", "file_1.py"]
+        dag_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=file) for file in file_names
+        ]
         mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         assert manager._file_path_queue == deque()
         manager.prepare_file_path_queue()
-        assert manager._file_path_queue == deque(["file_1.py", "file_2.py", "file_3.py", "file_4.py"])
+        ordered_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
+            for f in ["file_1.py", "file_2.py", "file_3.py", "file_4.py"]
+        ]
+        assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "random_seeded_by_host"})
     @mock.patch("zipfile.is_zipfile", return_value=True)

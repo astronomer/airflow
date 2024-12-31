@@ -120,8 +120,6 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     This class runs in the main `airflow scheduler` process when standalone_dag_processor is not enabled.
 
-    :param dag_directory: Directory where DAG definitions are kept. All
-        files in file_paths should be under this directory
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
@@ -129,12 +127,10 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     def __init__(
         self,
-        dag_directory: os.PathLike,
         max_runs: int,
         processor_timeout: timedelta,
     ):
         super().__init__()
-        self._dag_directory: os.PathLike = dag_directory
         self._max_runs = max_runs
         self._processor_timeout = processor_timeout
         self._process: multiprocessing.Process | None = None
@@ -157,7 +153,6 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         process = context.Process(
             target=type(self)._run_processor_manager,
             args=(
-                self._dag_directory,
                 self._max_runs,
                 self._processor_timeout,
                 child_signal_conn,
@@ -182,7 +177,6 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     @staticmethod
     def _run_processor_manager(
-        dag_directory: os.PathLike,
         max_runs: int,
         processor_timeout: timedelta,
         signal_conn: MultiprocessingConnection,
@@ -195,7 +189,6 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         setproctitle("airflow scheduler -- DagFileProcessorManager")
         reload_configuration_for_dag_processing()
         processor_manager = DagFileProcessorManager(
-            dag_directory=dag_directory,
             max_runs=max_runs,
             processor_timeout=processor_timeout.total_seconds(),
             signal_conn=signal_conn,
@@ -314,15 +307,12 @@ class DagFileProcessorManager:
     processors finish, more are launched. The files are processed over and
     over again, but no more often than the specified interval.
 
-    :param dag_directory: Directory where DAG definitions are kept. All
-        files in file_paths should be under this directory
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
     :param signal_conn: connection to communicate signal with processor agent.
     """
 
-    _dag_directory: os.PathLike[str] = attrs.field(validator=_resolve_path)
     max_runs: int
     processor_timeout: float = attrs.field(factory=_config_int_factory("core", "dag_file_processor_timeout"))
     selector: selectors.BaseSelector = attrs.field(factory=selectors.DefaultSelector)
@@ -408,9 +398,9 @@ class DagFileProcessorManager:
 
         self.log.info("Processing files using up to %s processes at a time ", self._parallelism)
         self.log.info("Process each file at most once every %s seconds", self._file_process_interval)
-        self.log.info(
-            "Checking for new files in %s every %s seconds", self._dag_directory, self.dag_dir_list_interval
-        )
+        # TODO: AIP-66 move to report by bundle self.log.info(
+        #     "Checking for new files in %s every %s seconds", self._dag_directory, self.dag_dir_list_interval
+        # )
 
         from airflow.dag_processing.bundles.manager import DagBundlesManager
 
@@ -431,7 +421,6 @@ class DagFileProcessorManager:
             }
             self.deactivate_stale_dags(
                 last_parsed=last_parsed,
-                dag_directory=self.get_dag_directory(),
                 stale_dag_threshold=self.stale_dag_threshold,
             )
             self._last_deactivate_stale_dags_time = time.monotonic()
@@ -440,7 +429,6 @@ class DagFileProcessorManager:
     def deactivate_stale_dags(
         self,
         last_parsed: dict[str, datetime | None],
-        dag_directory: str,
         stale_dag_threshold: int,
         session: Session = NEW_SESSION,
     ):
@@ -850,12 +838,6 @@ class DagFileProcessorManager:
         )
 
         self.log.info(log_str)
-
-    def get_dag_directory(self) -> str | None:
-        """Return the dag_directory as a string."""
-        if self._dag_directory is not None:
-            return os.fspath(self._dag_directory)
-        return None
 
     def set_file_paths(self, new_file_paths: list[DagFilePath]):
         """
