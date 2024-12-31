@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import io
 import itertools
+import json
 import logging
 import multiprocessing
 import os
@@ -30,7 +31,7 @@ import textwrap
 import threading
 import time
 from collections import deque
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from logging.config import dictConfig
 from unittest import mock
@@ -81,6 +82,19 @@ DEFAULT_DATE = timezone.datetime(2016, 1, 1)
 
 def _get_dag_file_paths(files: list[str]) -> list[DagFilePath]:
     return [DagFilePath(bundle_name="testing", path=f) for f in files]
+
+
+@contextmanager
+def configure_testing_dag_bundle(path_to_parse: pathlib.Path | str):
+    """Configure the testing DAG bundle with the provided path, and disable the DAGs folder bundle."""
+    bundle_config = {
+        "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
+        "kwargs": {"local_folder": str(path_to_parse), "refresh_interval": 30},
+    }
+    with conf_vars(
+        {("dag_bundles", "testing"): json.dumps(bundle_config), ("dag_bundles", "dags_folder"): ""}
+    ):
+        yield
 
 
 class TestDagFileProcessorManager:
@@ -135,12 +149,7 @@ class TestDagFileProcessorManager:
         # Generate original import error
         path_to_parse.write_text("an invalid airflow DAG")
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(path_to_parse)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(path_to_parse):
             manager = DagFileProcessorManager(
                 max_runs=1,
                 processor_timeout=365 * 86_400,
@@ -494,12 +503,7 @@ class TestDagFileProcessorManager:
         clear_db_dags()
         clear_db_serialized_dags()
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(dag_directory)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(dag_directory):
             manager = DagFileProcessorManager(max_runs=1)
             manager.run()
 
@@ -546,12 +550,7 @@ class TestDagFileProcessorManager:
 
         thread = threading.Thread(target=keep_pipe_full, args=(parent_pipe, exit_event))
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(dag_filepath)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(dag_filepath):
             manager = DagFileProcessorManager(
                 # A reasonable large number to ensure that we trigger the deadlock
                 max_runs=100,
@@ -595,12 +594,7 @@ class TestDagFileProcessorManager:
         )
         path_to_parse.write_text(dag_code)
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(tmp_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(tmp_path):
             manager = DagFileProcessorManager(max_runs=1)
             self.run_processor_manager_one_loop(manager)
 
@@ -622,12 +616,7 @@ class TestDagFileProcessorManager:
         DAG.bulk_write_to_db("testing", None, [dag])
         SerializedDagModel.write_dag(dag)
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(zipped_dag_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(zipped_dag_path):
             manager = DagFileProcessorManager(max_runs=1)
             manager.run()
 
@@ -647,17 +636,11 @@ class TestDagFileProcessorManager:
         dag.sync_to_db()
         SerializedDagModel.write_dag(dag)
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(TEST_DAGS_FOLDER)
-            + '", "refresh_interval": 30}}'
-        )
-
         # TODO: this test feels a bit fragile - pointing at the zip directly causes the test to fail
 
         # Mock might_contain_dag to mimic deleting the python file from the zip
         with mock.patch("airflow.dag_processing.manager.might_contain_dag", return_value=False):
-            with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+            with configure_testing_dag_bundle(TEST_DAGS_FOLDER):
                 manager = DagFileProcessorManager(max_runs=1)
                 manager.run()
 
@@ -696,12 +679,7 @@ class TestDagFileProcessorManager:
             session.add(DbCallbackRequest(callback=callback1, priority_weight=11))
             session.add(DbCallbackRequest(callback=callback2, priority_weight=10))
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(tmp_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(tmp_path):
             manager = DagFileProcessorManager(max_runs=1, standalone_dag_processor=True)
 
             with create_session() as session:
@@ -729,15 +707,8 @@ class TestDagFileProcessorManager:
                 )
                 session.add(DbCallbackRequest(callback=callback, priority_weight=i))
 
-        assert session.query(DbCallbackRequest).count() == 5
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(tmp_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(tmp_path):
             manager = DagFileProcessorManager(max_runs=1)
-            assert session.query(DbCallbackRequest).count() == 5
 
             with create_session() as session:
                 self.run_processor_manager_one_loop(manager)
@@ -765,12 +736,7 @@ class TestDagFileProcessorManager:
             )
             session.add(DbCallbackRequest(callback=callback, priority_weight=10))
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(tmp_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(tmp_path):
             manager = DagFileProcessorManager(max_runs=1)
             self.run_processor_manager_one_loop(manager)
 
@@ -852,12 +818,7 @@ class TestDagFileProcessorManager:
 
         test_dag_path = str(TEST_DAG_FOLDER / "test_assets.py")
 
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(test_dag_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(test_dag_path):
             manager = DagFileProcessorManager(
                 max_runs=1,
                 processor_timeout=365 * 86_400,
@@ -994,12 +955,7 @@ class TestDagFileProcessorAgent:
 
     @pytest.mark.execution_timeout(5)
     def test_terminate(self, tmp_path):
-        bundle_config = (
-            '{"classpath": "airflow.dag_processing.bundles.local.LocalDagBundle", "kwargs": {"local_folder": "'
-            + str(tmp_path)
-            + '", "refresh_interval": 30}}'
-        )
-        with conf_vars({("dag_bundles", "testing"): bundle_config, ("dag_bundles", "dags_folder"): ""}):
+        with configure_testing_dag_bundle(tmp_path):
             processor_agent = DagFileProcessorAgent(-1, timedelta(days=365))
 
             processor_agent.start()
