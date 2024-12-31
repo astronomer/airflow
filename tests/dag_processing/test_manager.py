@@ -292,92 +292,73 @@ class TestDagFileProcessorManager:
         assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
     @mock.patch("airflow.utils.file.os.path.getmtime")
-    def test_file_paths_in_queue_excludes_missing_file(
-        self,
-        mock_getmtime,
-        mock_isfile,
-        mock_find_path,
-        mock_might_contain_dag,
-        mock_zipfile,
-        change_platform_timezone,
-    ):
+    def test_file_paths_in_queue_excludes_missing_file(self, mock_getmtime):
         """Check that a file is not enqueued for processing if it has been deleted"""
-        dag_files = ["file_3.py", "file_2.py", "file_4.py"]
+        file_names = ["file_3.py", "file_2.py", "file_4.py"]
+        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
         mock_getmtime.side_effect = [1.0, 2.0, FileNotFoundError()]
-        mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
-        assert manager._file_path_queue == deque(["file_2.py", "file_3.py"])
+
+        ordered_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
+            for f in ["file_2.py", "file_3.py"]
+        ]
+        assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
     @mock.patch("airflow.utils.file.os.path.getmtime")
     def test_add_new_file_to_parsing_queue(
         self,
         mock_getmtime,
-        mock_isfile,
-        mock_find_path,
-        mock_might_contain_dag,
-        mock_zipfile,
-        change_platform_timezone,
     ):
         """Check that new file is added to parsing queue"""
-        dag_files = ["file_1.py", "file_2.py", "file_3.py"]
+        file_names = ["file_1.py", "file_2.py", "file_3.py"]
+        dag_files = [DagFilePath(bundle_name="testing", bundle_version=None, path=f) for f in file_names]
         mock_getmtime.side_effect = [1.0, 2.0, 3.0]
-        mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=1)
+        manager = DagFileProcessorManager(max_runs=1)
 
         manager.set_file_paths(dag_files)
         manager.prepare_file_path_queue()
-        assert manager._file_path_queue == deque(["file_3.py", "file_2.py", "file_1.py"])
+        ordered_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
+            for f in ["file_3.py", "file_2.py", "file_1.py"]
+        ]
+        assert manager._file_path_queue == deque(ordered_files)
 
-        manager.set_file_paths([*dag_files, "file_4.py"])
+        manager.set_file_paths(
+            [*dag_files, DagFilePath(bundle_name="testing", bundle_version=None, path="file_4.py")]
+        )
         manager.add_new_file_path_to_queue()
-        assert manager._file_path_queue == deque(["file_4.py", "file_3.py", "file_2.py", "file_1.py"])
+        ordered_files = [
+            DagFilePath(bundle_name="testing", bundle_version=None, path=f)
+            for f in ["file_4.py", "file_3.py", "file_2.py", "file_1.py"]
+        ]
+        assert manager._file_path_queue == deque(ordered_files)
 
     @conf_vars({("scheduler", "file_parsing_sort_mode"): "modified_time"})
-    @mock.patch("airflow.settings.TIMEZONE", timezone.utc)
-    @mock.patch("zipfile.is_zipfile", return_value=True)
-    @mock.patch("airflow.utils.file.might_contain_dag", return_value=True)
-    @mock.patch("airflow.utils.file.find_path_from_directory", return_value=True)
-    @mock.patch("airflow.utils.file.os.path.isfile", return_value=True)
     @mock.patch("airflow.utils.file.os.path.getmtime")
-    def test_recently_modified_file_is_parsed_with_mtime_mode(
-        self,
-        mock_getmtime,
-        mock_isfile,
-        mock_find_path,
-        mock_might_contain_dag,
-        mock_zipfile,
-        change_platform_timezone,
-    ):
+    def test_recently_modified_file_is_parsed_with_mtime_mode(self, mock_getmtime):
         """
         Test recently updated files are processed even if min_file_process_interval is not reached
         """
         freezed_base_time = timezone.datetime(2020, 1, 5, 0, 0, 0)
         initial_file_1_mtime = (freezed_base_time - timedelta(minutes=5)).timestamp()
-        dag_files = ["file_1.py"]
+        dag_file = DagFilePath(bundle_name="testing", bundle_version=None, path="file_1.py")
+        dag_files = [dag_file]
         mock_getmtime.side_effect = [initial_file_1_mtime]
-        mock_find_path.return_value = dag_files
 
-        manager = DagFileProcessorManager(dag_directory="directory", max_runs=3)
+        manager = DagFileProcessorManager(max_runs=3)
 
         # let's say the DAG was just parsed 10 seconds before the Freezed time
         last_finish_time = freezed_base_time - timedelta(seconds=10)
         manager._file_stats = {
-            "file_1.py": DagFileStat(1, 0, last_finish_time, 1.0, 1, 1),
+            dag_file: DagFileStat(1, 0, last_finish_time, 1.0, 1, 1),
         }
         with time_machine.travel(freezed_base_time):
             manager.set_file_paths(dag_files)
@@ -397,11 +378,11 @@ class TestDagFileProcessorManager:
             mock_getmtime.side_effect = [file_1_new_mtime_ts]
             manager.prepare_file_path_queue()
             # Check that file is added to the queue even though file was just recently passed
-            assert manager._file_path_queue == deque(["file_1.py"])
+            assert manager._file_path_queue == deque(dag_files)
             assert last_finish_time < file_1_new_mtime
             assert (
                 manager._file_process_interval
-                > (freezed_base_time - manager._file_stats["file_1.py"].last_finish_time).total_seconds()
+                > (freezed_base_time - manager._file_stats[dag_file].last_finish_time).total_seconds()
             )
 
     @mock.patch("zipfile.is_zipfile", return_value=True)
@@ -438,13 +419,16 @@ class TestDagFileProcessorManager:
         DagModel.last_parsed_time is not updated.
         """
         manager = DagFileProcessorManager(
-            dag_directory="directory",
             max_runs=1,
             processor_timeout=10 * 60,
         )
 
-        test_dag_path = str(TEST_DAG_FOLDER / "test_example_bash_operator.py")
-        dagbag = DagBag(test_dag_path, read_dags_from_db=False, include_examples=False)
+        test_dag_path = DagFilePath(
+            bundle_name="testing",
+            bundle_version=None,
+            path=str(TEST_DAG_FOLDER / "test_example_bash_operator.py"),
+        )
+        dagbag = DagBag(test_dag_path.path, read_dags_from_db=False, include_examples=False)
 
         with create_session() as session:
             # Add stale DAG to the DB
@@ -467,7 +451,7 @@ class TestDagFileProcessorManager:
 
             active_dag_count = (
                 session.query(func.count(DagModel.dag_id))
-                .filter(DagModel.is_active, DagModel.fileloc == test_dag_path)
+                .filter(DagModel.is_active, DagModel.fileloc == test_dag_path.path)
                 .scalar()
             )
             assert active_dag_count == 1
@@ -476,7 +460,7 @@ class TestDagFileProcessorManager:
 
             active_dag_count = (
                 session.query(func.count(DagModel.dag_id))
-                .filter(DagModel.is_active, DagModel.fileloc == test_dag_path)
+                .filter(DagModel.is_active, DagModel.fileloc == test_dag_path.path)
                 .scalar()
             )
             assert active_dag_count == 0
