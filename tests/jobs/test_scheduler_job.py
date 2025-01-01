@@ -579,26 +579,32 @@ class TestSchedulerJob:
         session.rollback()
 
     @conf_vars({("scheduler", "standalone_dag_processor"): "False"})
-    def test_setup_callback_sink_not_standalone_dag_processor(self, mock_executors):
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
-        self.job_runner._execute()
+    def test_setup_callback_sink_not_standalone_dag_processor(
+        self, mock_executors, configure_testing_dag_bundle
+    ):
+        with configure_testing_dag_bundle(os.devnull):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
+            self.job_runner._execute()
 
-        assert isinstance(scheduler_job.executor.callback_sink, PipeCallbackSink)
+            assert isinstance(scheduler_job.executor.callback_sink, PipeCallbackSink)
 
     @conf_vars({("scheduler", "standalone_dag_processor"): "False"})
-    def test_setup_callback_sink_not_standalone_dag_processor_multiple_executors(self, mock_executors):
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
-        self.job_runner._execute()
+    def test_setup_callback_sink_not_standalone_dag_processor_multiple_executors(
+        self, mock_executors, configure_testing_dag_bundle
+    ):
+        with configure_testing_dag_bundle(os.devnull):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
+            self.job_runner._execute()
 
-        for executor in scheduler_job.executors:
-            assert isinstance(executor.callback_sink, PipeCallbackSink)
+            for executor in scheduler_job.executors:
+                assert isinstance(executor.callback_sink, PipeCallbackSink)
 
     @conf_vars({("scheduler", "standalone_dag_processor"): "True"})
     def test_setup_callback_sink_standalone_dag_processor(self, mock_executors):
         scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
         self.job_runner._execute()
 
         assert isinstance(scheduler_job.executor.callback_sink, DatabaseCallbackSink)
@@ -606,7 +612,7 @@ class TestSchedulerJob:
     @conf_vars({("scheduler", "standalone_dag_processor"): "True"})
     def test_setup_callback_sink_standalone_dag_processor_multiple_executors(self, mock_executors):
         scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
         self.job_runner._execute()
 
         for executor in scheduler_job.executors:
@@ -615,37 +621,40 @@ class TestSchedulerJob:
     @conf_vars({("scheduler", "standalone_dag_processor"): "True"})
     def test_executor_start_called(self, mock_executors):
         scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
         self.job_runner._execute()
 
         scheduler_job.executor.start.assert_called_once()
         for executor in scheduler_job.executors:
             executor.start.assert_called_once()
 
-    def test_executor_job_id_assigned(self, mock_executors):
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
-        self.job_runner._execute()
+    def test_executor_job_id_assigned(self, mock_executors, configure_testing_dag_bundle):
+        with configure_testing_dag_bundle(os.devnull):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
+            self.job_runner._execute()
 
-        assert scheduler_job.executor.job_id == scheduler_job.id
-        for executor in scheduler_job.executors:
-            assert executor.job_id == scheduler_job.id
+            assert scheduler_job.executor.job_id == scheduler_job.id
+            for executor in scheduler_job.executors:
+                assert executor.job_id == scheduler_job.id
 
-    def test_executor_heartbeat(self, mock_executors):
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
-        self.job_runner._execute()
+    def test_executor_heartbeat(self, mock_executors, configure_testing_dag_bundle):
+        with configure_testing_dag_bundle(os.devnull):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
+            self.job_runner._execute()
 
-        for executor in scheduler_job.executors:
-            executor.heartbeat.assert_called_once()
+            for executor in scheduler_job.executors:
+                executor.heartbeat.assert_called_once()
 
-    def test_executor_events_processed(self, mock_executors):
-        scheduler_job = Job()
-        self.job_runner = SchedulerJobRunner(job=scheduler_job, subdir=os.devnull, num_runs=1)
-        self.job_runner._execute()
+    def test_executor_events_processed(self, mock_executors, configure_testing_dag_bundle):
+        with configure_testing_dag_bundle(os.devnull):
+            scheduler_job = Job()
+            self.job_runner = SchedulerJobRunner(job=scheduler_job, num_runs=1)
+            self.job_runner._execute()
 
-        for executor in scheduler_job.executors:
-            executor.get_event_buffer.assert_called_once()
+            for executor in scheduler_job.executors:
+                executor.get_event_buffer.assert_called_once()
 
     def test_executor_debug_dump(self, mock_executors):
         scheduler_job = Job()

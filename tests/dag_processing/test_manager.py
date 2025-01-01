@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import io
 import itertools
-import json
 import logging
 import multiprocessing
 import os
@@ -31,7 +30,7 @@ import textwrap
 import threading
 import time
 from collections import deque
-from contextlib import contextmanager, suppress
+from contextlib import suppress
 from datetime import datetime, timedelta
 from logging.config import dictConfig
 from unittest import mock
@@ -84,19 +83,6 @@ def _get_dag_file_paths(files: list[str]) -> list[DagFilePath]:
     return [DagFilePath(bundle_name="testing", path=f) for f in files]
 
 
-@contextmanager
-def configure_testing_dag_bundle(path_to_parse: pathlib.Path | str):
-    """Configure the testing DAG bundle with the provided path, and disable the DAGs folder bundle."""
-    bundle_config = {
-        "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
-        "kwargs": {"local_folder": str(path_to_parse), "refresh_interval": 30},
-    }
-    with conf_vars(
-        {("dag_bundles", "testing"): json.dumps(bundle_config), ("dag_bundles", "dags_folder"): ""}
-    ):
-        yield
-
-
 class TestDagFileProcessorManager:
     @pytest.fixture(autouse=True)
     def _disable_examples(self):
@@ -143,7 +129,7 @@ class TestDagFileProcessorManager:
 
     @pytest.mark.usefixtures("clear_parse_import_errors")
     @conf_vars({("core", "load_examples"): "False"})
-    def test_remove_file_clears_import_error(self, tmp_path):
+    def test_remove_file_clears_import_error(self, tmp_path, configure_testing_dag_bundle):
         path_to_parse = tmp_path / "temp_dag.py"
 
         # Generate original import error
@@ -491,7 +477,7 @@ class TestDagFileProcessorManager:
 
     @conf_vars({("core", "load_examples"): "False"})
     @pytest.mark.execution_timeout(10)
-    def test_dag_with_system_exit(self):
+    def test_dag_with_system_exit(self, configure_testing_dag_bundle):
         """
         Test to check that a DAG with a system.exit() doesn't break the scheduler.
         """
@@ -515,7 +501,7 @@ class TestDagFileProcessorManager:
 
     @conf_vars({("core", "load_examples"): "False"})
     @pytest.mark.execution_timeout(30)
-    def test_pipe_full_deadlock(self):
+    def test_pipe_full_deadlock(self, configure_testing_dag_bundle):
         dag_filepath = TEST_DAG_FOLDER / "test_scheduler_dags.py"
 
         child_pipe, parent_pipe = multiprocessing.Pipe()
@@ -584,7 +570,9 @@ class TestDagFileProcessorManager:
     @conf_vars({("core", "load_examples"): "False"})
     @mock.patch("airflow.dag_processing.manager.Stats.timing")
     @pytest.mark.skip("AIP-66: stats are not implemented yet")
-    def test_send_file_processing_statsd_timing(self, statsd_timing_mock, tmp_path):
+    def test_send_file_processing_statsd_timing(
+        self, statsd_timing_mock, tmp_path, configure_testing_dag_bundle
+    ):
         path_to_parse = tmp_path / "temp_dag.py"
         dag_code = textwrap.dedent(
             """
@@ -607,7 +595,7 @@ class TestDagFileProcessorManager:
             any_order=True,
         )
 
-    def test_refresh_dags_dir_doesnt_delete_zipped_dags(self, tmp_path, testing_dag_bundle):
+    def test_refresh_dags_dir_doesnt_delete_zipped_dags(self, tmp_path, configure_testing_dag_bundle):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
@@ -627,7 +615,7 @@ class TestDagFileProcessorManager:
         # assert dag still active
         assert dag.get_is_active()
 
-    def test_refresh_dags_dir_deactivates_deleted_zipped_dags(self, tmp_path):
+    def test_refresh_dags_dir_deactivates_deleted_zipped_dags(self, tmp_path, configure_testing_dag_bundle):
         """Test DagFileProcessorManager._refresh_dag_dir method"""
         dagbag = DagBag(dag_folder=tmp_path, include_examples=False)
         zipped_dag_path = os.path.join(TEST_DAGS_FOLDER, "test_zip.zip")
@@ -637,6 +625,7 @@ class TestDagFileProcessorManager:
         SerializedDagModel.write_dag(dag)
 
         # TODO: this test feels a bit fragile - pointing at the zip directly causes the test to fail
+        # TODO: jed look at this more closely - bagbad then process_file?!
 
         # Mock might_contain_dag to mimic deleting the python file from the zip
         with mock.patch("airflow.dag_processing.manager.might_contain_dag", return_value=False):
@@ -659,7 +648,7 @@ class TestDagFileProcessorManager:
             ("scheduler", "standalone_dag_processor"): "True",
         }
     )
-    def test_fetch_callbacks_from_database(self, tmp_path):
+    def test_fetch_callbacks_from_database(self, tmp_path, configure_testing_dag_bundle):
         dag_filepath = TEST_DAG_FOLDER / "test_on_failure_callback_dag.py"
 
         callback1 = DagCallbackRequest(
@@ -693,7 +682,7 @@ class TestDagFileProcessorManager:
             ("core", "load_examples"): "False",
         }
     )
-    def test_fetch_callbacks_from_database_max_per_loop(self, tmp_path):
+    def test_fetch_callbacks_from_database_max_per_loop(self, tmp_path, configure_testing_dag_bundle):
         """Test DagFileProcessorManager._fetch_callbacks method"""
         dag_filepath = TEST_DAG_FOLDER / "test_on_failure_callback_dag.py"
 
@@ -724,7 +713,7 @@ class TestDagFileProcessorManager:
             ("core", "load_examples"): "False",
         }
     )
-    def test_fetch_callbacks_from_database_not_standalone(self, tmp_path):
+    def test_fetch_callbacks_from_database_not_standalone(self, tmp_path, configure_testing_dag_bundle):
         dag_filepath = TEST_DAG_FOLDER / "test_on_failure_callback_dag.py"
 
         with create_session() as session:
@@ -813,7 +802,7 @@ class TestDagFileProcessorManager:
         # And removed from the queue
         assert dag1_req1.full_filepath not in manager._callback_to_execute
 
-    def test_dag_with_assets(self, session):
+    def test_dag_with_assets(self, session, configure_testing_dag_bundle):
         """'Integration' test to ensure that the assets get parsed and stored correctly for parsed dags."""
 
         test_dag_path = str(TEST_DAG_FOLDER / "test_assets.py")
@@ -954,7 +943,7 @@ class TestDagFileProcessorAgent:
         processor_agent._process.join.assert_not_called()
 
     @pytest.mark.execution_timeout(5)
-    def test_terminate(self, tmp_path):
+    def test_terminate(self, tmp_path, configure_testing_dag_bundle):
         with configure_testing_dag_bundle(tmp_path):
             processor_agent = DagFileProcessorAgent(-1, timedelta(days=365))
 
