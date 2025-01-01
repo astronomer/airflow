@@ -17,6 +17,8 @@
 # under the License.
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from airflow.jobs.job import Job
 from airflow.models import (
     Connection,
@@ -50,6 +52,9 @@ from tests_common.test_utils.compat import (
     TaskOutletAssetReference,
 )
 from tests_common.test_utils.version_compat import AIRFLOW_V_2_10_PLUS, AIRFLOW_V_3_0_PLUS
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _bootstrap_dagbag():
@@ -94,6 +99,19 @@ def initial_db_init():
         from airflow.www.extensions.init_auth_manager import get_auth_manager
 
     get_auth_manager().init()
+
+
+def parse_and_sync_to_db(folder: Path | str, include_examples: bool = False):
+    from airflow.dag_processing.bundles.manager import DagBundlesManager
+    from airflow.models.dagbag import DagBag
+
+    with create_session() as session:
+        DagBundlesManager().sync_bundles_to_db(session=session)
+        session.commit()
+
+        dagbag = DagBag(dag_folder=folder, include_examples=include_examples)
+        dagbag.sync_to_db("dags_folder", None, session)
+        session.commit()
 
 
 def clear_db_runs():
