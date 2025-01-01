@@ -411,7 +411,8 @@ class TestDeleteDAG(TestDagEndpoint):
             ti = dr.get_task_instances()[0]
             ti.set_state(TaskInstanceState.RUNNING)
 
-        dag_maker.dagbag.sync_to_db()
+        DagBundlesManager().sync_bundles_to_db()
+        dag_maker.dagbag.sync_to_db("dags_folder", None)
 
     @pytest.mark.parametrize(
         "dag_id, dag_display_name, status_code_delete, status_code_details, has_running_dagruns, is_create_dag",

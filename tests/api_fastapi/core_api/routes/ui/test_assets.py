@@ -20,6 +20,7 @@ from unittest import mock
 
 import pytest
 
+from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.operators.empty import EmptyOperator
 from airflow.sdk.definitions.asset import Asset
 
@@ -46,7 +47,8 @@ def test_next_run_assets(test_client, dag_maker):
         EmptyOperator(task_id="task1")
 
     dag_maker.create_dagrun()
-    dag_maker.dagbag.sync_to_db()
+    DagBundlesManager().sync_bundles_to_db()
+    dag_maker.dagbag.sync_to_db("dags_folder", None)
 
     response = test_client.get("/ui/next_run_assets/upstream")
 
