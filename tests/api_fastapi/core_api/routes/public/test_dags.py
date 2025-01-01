@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import pendulum
 import pytest
 
+from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models.dag import DagModel, DagTag
 from airflow.models.dagrun import DagRun
 from airflow.operators.empty import EmptyOperator
@@ -127,7 +128,8 @@ class TestDagEndpoint:
         self._create_deactivated_paused_dag(session)
         self._create_dag_tags(session)
 
-        dag_maker.dagbag.sync_to_db()
+        DagBundlesManager().sync_bundles_to_db()
+        dag_maker.dagbag.sync_to_db("dags_folder", None)
         dag_maker.dag_model.has_task_concurrency_limits = True
         session.merge(dag_maker.dag_model)
         session.commit()
