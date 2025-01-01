@@ -100,6 +100,7 @@ class TestDagEndpoint:
     @provide_session
     def setup(self, dag_maker, session=None) -> None:
         self._clear_db()
+        DagBundlesManager().sync_bundles_to_db()
 
         with dag_maker(
             DAG1_ID,
@@ -128,7 +129,6 @@ class TestDagEndpoint:
         self._create_deactivated_paused_dag(session)
         self._create_dag_tags(session)
 
-        DagBundlesManager().sync_bundles_to_db()
         dag_maker.dagbag.sync_to_db("dags_folder", None)
         dag_maker.dag_model.has_task_concurrency_limits = True
         session.merge(dag_maker.dag_model)
