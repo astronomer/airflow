@@ -21,6 +21,7 @@ import { FiRefreshCw } from "react-icons/fi";
 
 import type {
   DAGRunClearBody,
+  DAGRunResponse,
   TaskInstanceCollectionResponse,
 } from "openapi/requests/types.gen";
 import { Button, Dialog } from "src/components/ui";
@@ -30,8 +31,7 @@ import ClearRunTasksAccordion from "./ClearRunTaskAccordion";
 
 type Props = {
   readonly affectedTasks: TaskInstanceCollectionResponse;
-  readonly dagId: string;
-  readonly dagRunId: string;
+  readonly dagRun: DAGRunResponse;
   readonly isPending: boolean;
   readonly mutate: ({
     dagId,
@@ -50,8 +50,7 @@ type Props = {
 
 const ClearRunDialog = ({
   affectedTasks,
-  dagId,
-  dagRunId,
+  dagRun,
   isPending,
   mutate,
   onClose,
@@ -59,6 +58,9 @@ const ClearRunDialog = ({
   open,
   setOnlyFailed,
 }: Props) => {
+  const dagId = dagRun.dag_id;
+  const dagRunId = dagRun.dag_run_id;
+
   const onChange = (value: string) => {
     switch (value) {
       case "existing_tasks":
@@ -111,7 +113,10 @@ const ClearRunDialog = ({
               value={onlyFailed ? "only_failed" : "existing_tasks"}
             />
           </Flex>
-          <ClearRunTasksAccordion affectedTasks={affectedTasks} />
+          <ClearRunTasksAccordion
+            affectedTasks={affectedTasks}
+            note={dagRun.note}
+          />
           <Flex justifyContent="end" mt={3}>
             <Button
               colorPalette="blue"

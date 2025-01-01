@@ -16,12 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Text } from "@chakra-ui/react";
+import { Box, Editable, Text, VStack } from "@chakra-ui/react";
 import { Link } from "@chakra-ui/react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { type ChangeEvent, type FormEvent, useState } from "react";
+import Markdown from "react-markdown";
 import { Link as RouterLink } from "react-router-dom";
 
 import type {
+  DAGRunResponse,
   TaskInstanceCollectionResponse,
   TaskInstanceResponse,
 } from "openapi/requests/types.gen";
@@ -70,38 +73,70 @@ const columns: Array<ColumnDef<TaskInstanceResponse>> = [
 
 type Props = {
   readonly affectedTasks?: TaskInstanceCollectionResponse;
+  readonly note: DAGRunResponse["note"];
 };
 
 // Table is in memory, pagination and sorting are disabled.
 // TODO: Make a front-end only unconnected table component with client side ordering and pagination
-const ClearRunTasksAccordion = ({ affectedTasks }: Props) => (
-  <Accordion.Root collapsible variant="enclosed">
-    <Accordion.Item key="tasks" value="tasks">
-      <Accordion.ItemTrigger>
-        <Text fontWeight="bold">
-          Affected Tasks: {affectedTasks?.total_entries ?? 0}
-        </Text>
-      </Accordion.ItemTrigger>
-      <Accordion.ItemContent>
-        <Box maxH="400px" overflowY="scroll">
-          <DataTable
-            columns={columns}
-            data={affectedTasks?.task_instances ?? []}
-            displayMode="table"
-            initialState={{
-              pagination: {
-                pageIndex: 0,
-                pageSize: affectedTasks?.total_entries ?? 0,
-              },
-              sorting: [],
-            }}
-            modelName="Task Instance"
-            total={affectedTasks?.total_entries}
-          />
-        </Box>
-      </Accordion.ItemContent>
-    </Accordion.Item>
-  </Accordion.Root>
-);
+const ClearRunTasksAccordion = ({ affectedTasks, note }: Props) => {
+  const [noteState, setNoteState] = useState<string | null>(note);
+
+  return (
+    <Accordion.Root collapsible multiple variant="enclosed">
+      <Accordion.Item key="tasks" value="tasks">
+        <Accordion.ItemTrigger>
+          <Text fontWeight="bold">
+            Affected Tasks: {affectedTasks?.total_entries ?? 0}
+          </Text>
+        </Accordion.ItemTrigger>
+        <Accordion.ItemContent>
+          <Box maxH="400px" overflowY="scroll">
+            <DataTable
+              columns={columns}
+              data={affectedTasks?.task_instances ?? []}
+              displayMode="table"
+              initialState={{
+                pagination: {
+                  pageIndex: 0,
+                  pageSize: affectedTasks?.total_entries ?? 0,
+                },
+                sorting: [],
+              }}
+              modelName="Task Instance"
+              total={affectedTasks?.total_entries}
+            />
+          </Box>
+        </Accordion.ItemContent>
+      </Accordion.Item>
+      <Accordion.Item key="note" value="note">
+        <Accordion.ItemTrigger>
+          <Text fontWeight="bold">Note</Text>
+        </Accordion.ItemTrigger>
+        <Accordion.ItemContent>
+          <Editable.Root
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setNoteState(event.target.value)
+            }
+            value={noteState ?? ""}
+          >
+            <Editable.Preview
+              alignItems="flex-start"
+              as={VStack}
+              gap="0"
+              width="100%"
+            >
+              <Markdown>{noteState}</Markdown>
+            </Editable.Preview>
+            <Editable.Textarea
+              data-testid="notes-input"
+              overflow="hidden"
+              resize="none"
+            />
+          </Editable.Root>
+        </Accordion.ItemContent>
+      </Accordion.Item>
+    </Accordion.Root>
+  );
+};
 
 export default ClearRunTasksAccordion;
