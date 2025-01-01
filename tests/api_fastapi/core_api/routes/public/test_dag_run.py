@@ -24,7 +24,6 @@ import pytest
 import time_machine
 from sqlalchemy import select
 
-from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models import DagModel, DagRun
 from airflow.models.asset import AssetEvent, AssetModel
 from airflow.models.param import Param
@@ -142,8 +141,7 @@ def setup(request, dag_maker, session=None):
         logical_date=LOGICAL_DATE4,
     )
 
-    DagBundlesManager().sync_bundles_to_db()
-    dag_maker.dagbag.sync_to_db("dags_folder", None)
+    dag_maker.sync_dagbag_to_db()
     dag_maker.dag_model
     dag_maker.dag_model.has_task_concurrency_limits = True
     session.merge(ti1)

@@ -21,7 +21,6 @@ from datetime import datetime, timezone
 import pendulum
 import pytest
 
-from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models.dag import DagModel, DagTag
 from airflow.models.dagrun import DagRun
 from airflow.operators.empty import EmptyOperator
@@ -128,8 +127,7 @@ class TestDagEndpoint:
         self._create_deactivated_paused_dag(session)
         self._create_dag_tags(session)
 
-        DagBundlesManager().sync_bundles_to_db()
-        dag_maker.dagbag.sync_to_db("dags_folder", None)
+        dag_maker.sync_dagbag_to_db()
         dag_maker.dag_model.has_task_concurrency_limits = True
         session.merge(dag_maker.dag_model)
         session.commit()
@@ -411,8 +409,7 @@ class TestDeleteDAG(TestDagEndpoint):
             ti = dr.get_task_instances()[0]
             ti.set_state(TaskInstanceState.RUNNING)
 
-        DagBundlesManager().sync_bundles_to_db()
-        dag_maker.dagbag.sync_to_db("dags_folder", None)
+        dag_maker.sync_dagbag_to_db()
 
     @pytest.mark.parametrize(
         "dag_id, dag_display_name, status_code_delete, status_code_details, has_running_dagruns, is_create_dag",

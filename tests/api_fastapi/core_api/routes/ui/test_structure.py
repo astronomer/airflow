@@ -21,7 +21,6 @@ import pendulum
 import pytest
 from deepdiff import DeepDiff
 
-from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models import DagBag
 from airflow.operators.empty import EmptyOperator
 from airflow.providers.standard.operators.trigger_dagrun import TriggerDagRunOperator
@@ -52,7 +51,6 @@ def clean():
 
 @pytest.fixture
 def make_dag(dag_maker, session, time_machine):
-    DagBundlesManager().sync_bundles_to_db()
     with dag_maker(
         dag_id=DAG_ID_EXTERNAL_TRIGGER,
         serialized=True,
@@ -61,7 +59,7 @@ def make_dag(dag_maker, session, time_machine):
     ):
         TriggerDagRunOperator(task_id="trigger_dag_run_operator", trigger_dag_id=DAG_ID)
 
-    dag_maker.dagbag.sync_to_db("dags_folder", None)
+    dag_maker.sync_dagbag_to_db()
 
     with dag_maker(
         dag_id=DAG_ID,
@@ -80,7 +78,7 @@ def make_dag(dag_maker, session, time_machine):
             >> EmptyOperator(task_id="task_2")
         )
 
-    dag_maker.dagbag.sync_to_db("dags_folder", None)
+    dag_maker.sync_dagbag_to_db()
 
 
 class TestStructureDataEndpoint:

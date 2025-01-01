@@ -21,7 +21,6 @@ from datetime import datetime, timezone
 import pendulum
 import pytest
 
-from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models.dag import DagModel, DagTag
 from airflow.models.dagrun import DagRun
 from airflow.operators.empty import EmptyOperator
@@ -100,7 +99,6 @@ class TestDagEndpoint:
     @provide_session
     def setup(self, dag_maker, session=None) -> None:
         self._clear_db()
-        DagBundlesManager().sync_bundles_to_db()
 
         with dag_maker(
             DAG1_ID,
@@ -113,6 +111,7 @@ class TestDagEndpoint:
         ):
             EmptyOperator(task_id=TASK_ID)
 
+        dag_maker.sync_dagbag_to_db()
         dag_maker.create_dagrun(state=DagRunState.FAILED)
 
         with dag_maker(
@@ -129,7 +128,7 @@ class TestDagEndpoint:
         self._create_deactivated_paused_dag(session)
         self._create_dag_tags(session)
 
-        dag_maker.dagbag.sync_to_db("dags_folder", None)
+        dag_maker.sync_dagbag_to_db()
         dag_maker.dag_model.has_task_concurrency_limits = True
         session.merge(dag_maker.dag_model)
         session.commit()
