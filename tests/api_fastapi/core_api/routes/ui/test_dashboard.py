@@ -22,6 +22,7 @@ from datetime import timedelta
 import pendulum
 import pytest
 
+from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.models import DagBag
 from airflow.operators.empty import EmptyOperator
 from airflow.utils.state import DagRunState, TaskInstanceState
@@ -95,7 +96,8 @@ def make_dag_runs(dag_maker, session, time_machine):
     for ti in run2.task_instances:
         ti.state = TaskInstanceState.FAILED
 
-    dag_maker.dagbag.sync_to_db()
+    DagBundlesManager().sync_bundles_to_db()
+    dag_maker.dagbag.sync_to_db("dags_folder", None)
     time_machine.move_to("2023-07-02T00:00:00+00:00", tick=False)
 
 
