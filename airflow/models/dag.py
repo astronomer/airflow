@@ -770,15 +770,13 @@ class DAG(TaskSDKDag, LoggingMixin):
         """Return a boolean indicating whether this DAG is paused."""
         return session.scalar(select(DagModel.is_paused).where(DagModel.dag_id == self.dag_id))
 
-    @property
     @provide_session
-    def bundle_name(self, session=NEW_SESSION) -> None:
+    def get_bundle_name(self, session=NEW_SESSION) -> None:
         """Return the bundle name this DAG is in."""
         return session.scalar(select(DagModel.bundle_name).where(DagModel.dag_id == self.dag_id))
 
-    @property
     @provide_session
-    def latest_bundle_version(self, session=NEW_SESSION) -> None:
+    def get_latest_bundle_version(self, session=NEW_SESSION) -> None:
         """Return the bundle name this DAG is in."""
         return session.scalar(select(DagModel.latest_bundle_version).where(DagModel.dag_id == self.dag_id))
 
@@ -1890,7 +1888,9 @@ class DAG(TaskSDKDag, LoggingMixin):
         :return: None
         """
         # TODO: AIP-66 should this be in the model?
-        self.bulk_write_to_db(self.bundle_name, self.latest_bundle_version, [self], session=session)
+        bundle_name = self.get_bundle_name(session=session)
+        bundle_version = self.get_latest_bundle_version(session=session)
+        self.bulk_write_to_db(bundle_name, bundle_version, [self], session=session)
 
     def get_default_view(self):
         """Allow backward compatible jinja2 templates."""
