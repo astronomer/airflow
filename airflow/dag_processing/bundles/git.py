@@ -218,15 +218,11 @@ class GitDagBundle(BaseDagBundle, LoggingMixin):
             return False
 
     def _refresh(self):
+        if self.version:
+            raise AirflowException("Refreshing a specific version is not supported")
         self.bare_repo.remotes.origin.fetch("+refs/heads/*:refs/heads/*")
         self.repo.remotes.origin.pull()
 
     def refresh(self) -> None:
-        if self.version:
-            raise AirflowException("Refreshing a specific version is not supported")
-
-        if self.hook:
-            with self.hook.get_conn():
-                self._refresh()
-        else:
+        with self.hook.get_conn():
             self._refresh()
