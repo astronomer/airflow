@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import TYPE_CHECKING, Any
 
@@ -57,6 +58,15 @@ class GitHook(SSHHook):
             "hidden_fields": ["schema"],
             "relabeling": {
                 "login": "Username",
+            },
+            "placeholders": {
+                "extra": json.dumps(
+                    {
+                        "git_repo_url": "git@github.com:orgname/projectname.git",
+                        "git_access_token": "optional_access_token_can_be_deleted",
+                        "key_file": "optional/path/to/keyfile",
+                    }
+                )
             },
         }
 
