@@ -16,6 +16,47 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box } from "@chakra-ui/react";
+import { Table, Box } from "@chakra-ui/react";
+import { useParams } from "react-router-dom";
 
-export const Grid = () => <Box>grid</Box>;
+import { useGridServiceGridData, useStructureServiceStructureData } from "openapi/queries";
+
+import { DagRunHeader } from "./DagRunHeader/DagRunHeader";
+import { TaskRows } from "./TaskRows";
+
+export const Grid = () => {
+  const { dagId = "" } = useParams();
+  const { data: structure } = useStructureServiceStructureData({
+    dagId,
+  });
+
+  const nodes = structure?.nodes ?? [];
+
+  const { data: gridData } = useGridServiceGridData({
+    dagId,
+    limit: 25,
+    offset: 0,
+    orderBy: "-start_date",
+  });
+
+  return (
+    <Box
+      height="100%"
+      mt={8}
+      overflow="auto"
+      overscrollBehavior="auto"
+      pb={4}
+      position="relative"
+      width="100%"
+    >
+      <Table.Root borderColor="transparent" borderRightWidth="16px">
+        <Table.Header>
+          <DagRunHeader dagRuns={gridData?.dag_runs ?? []} />
+        </Table.Header>
+        <Table.Body>
+          <TaskRows dagRuns={gridData?.dag_runs ?? []} nodes={nodes} />
+        </Table.Body>
+      </Table.Root>
+    </Box>
+  );
+};

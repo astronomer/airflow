@@ -37,7 +37,7 @@ export const DagRunSelect = forwardRef<HTMLDivElement>((_, ref) => {
   const { data, isLoading } = useGridServiceGridData(
     {
       dagId,
-      limit: 14,
+      limit: 25,
       offset: 0,
       orderBy: "-start_date",
     },

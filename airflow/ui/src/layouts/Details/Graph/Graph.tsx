@@ -91,7 +91,7 @@ export const Graph = () => {
   const { data: gridData } = useGridServiceGridData(
     {
       dagId,
-      limit: 14,
+      limit: 25,
       offset: 0,
       orderBy: "-start_date",
     },

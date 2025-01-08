@@ -58,7 +58,7 @@ export const TaskNode = ({
     <NodeWrapper>
       <Flex alignItems="center" cursor="default" flexDirection="column">
         <TaskInstanceTooltip
-          openDelay={500}
+          // openDelay={500}
           positioning={{
             placement: "top-start",
           }}
