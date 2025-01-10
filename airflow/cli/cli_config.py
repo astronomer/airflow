@@ -166,6 +166,11 @@ ARG_SUBDIR = Arg(
     ),
     default="[AIRFLOW_HOME]/dags" if BUILD_DOCS else settings.DAGS_FOLDER,
 )
+ARG_BUNDLE_NAME = Arg(
+    ("-B", "--bundle-name"),
+    help=("The name of the bundle to process. "),
+    default=None,
+)
 ARG_START_DATE = Arg(("-s", "--start-date"), help="Override start_date YYYY-MM-DD", type=parsedate)
 ARG_END_DATE = Arg(("-e", "--end-date"), help="Override end_date YYYY-MM-DD", type=parsedate)
 ARG_OUTPUT_PATH = Arg(
@@ -1934,7 +1939,7 @@ core_commands: list[CLICommand] = [
         args=(
             ARG_PID,
             ARG_DAEMON,
-            ARG_SUBDIR,
+            ARG_BUNDLE_NAME,
             ARG_NUM_RUNS,
             ARG_STDOUT,
             ARG_STDERR,

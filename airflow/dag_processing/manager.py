@@ -51,6 +51,7 @@ from airflow.dag_processing.collection import update_dag_parsing_results_in_db
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
 from airflow.models.dag import DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
+from airflow.models.dagbundle import DagBundleModel
 from airflow.models.dagwarning import DagWarning
 from airflow.models.db_callback_request import DbCallbackRequest
 from airflow.models.errors import ParseImportError
@@ -68,13 +69,15 @@ from airflow.utils.process_utils import (
     set_new_process_group,
 )
 from airflow.utils.retries import retry_db_transaction
-from airflow.utils.session import NEW_SESSION, provide_session
+from airflow.utils.session import NEW_SESSION, create_session, provide_session
 from airflow.utils.sqlalchemy import prohibit_commit, with_row_locks
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection as MultiprocessingConnection
 
     from sqlalchemy.orm import Session
+
+    from airflow.dag_processing.bundles.base import BaseDagBundle
 
 
 class DagParsingStat(NamedTuple):
@@ -109,8 +112,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     This class runs in the main `airflow scheduler` process when standalone_dag_processor is not enabled.
 
-    :param dag_directory: Directory where DAG definitions are kept. All
-        files in file_paths should be under this directory
+    :param bundle_name: The name of the DagBundle to process.
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
@@ -118,12 +120,12 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     def __init__(
         self,
-        dag_directory: os.PathLike,
         max_runs: int,
         processor_timeout: timedelta,
+        bundle_name: str | None = None,
     ):
         super().__init__()
-        self._dag_directory: os.PathLike = dag_directory
+        self._bundle_name = bundle_name
         self._max_runs = max_runs
         self._processor_timeout = processor_timeout
         self._process: multiprocessing.Process | None = None
@@ -146,7 +148,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         process = context.Process(
             target=type(self)._run_processor_manager,
             args=(
-                self._dag_directory,
+                self._bundle_name,
                 self._max_runs,
                 self._processor_timeout,
                 child_signal_conn,
@@ -171,7 +173,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
 
     @staticmethod
     def _run_processor_manager(
-        dag_directory: os.PathLike,
+        bundle_name: str | None,
         max_runs: int,
         processor_timeout: timedelta,
         signal_conn: MultiprocessingConnection,
@@ -184,7 +186,7 @@ class DagFileProcessorAgent(LoggingMixin, MultiprocessingStartMethodMixin):
         setproctitle("airflow scheduler -- DagFileProcessorManager")
         reload_configuration_for_dag_processing()
         processor_manager = DagFileProcessorManager(
-            dag_directory=dag_directory,
+            bundle_name=bundle_name,
             max_runs=max_runs,
             processor_timeout=processor_timeout.total_seconds(),
             signal_conn=signal_conn,
@@ -303,18 +305,17 @@ class DagFileProcessorManager:
     processors finish, more are launched. The files are processed over and
     over again, but no more often than the specified interval.
 
-    :param dag_directory: Directory where DAG definitions are kept. All
-        files in file_paths should be under this directory
+    :param bundle_name: The name of the DagBundle to process.
     :param max_runs: The number of times to parse and schedule each file. -1
         for unlimited.
     :param processor_timeout: How long to wait before timing out a DAG file processor
     :param signal_conn: connection to communicate signal with processor agent.
     """
 
-    _dag_directory: os.PathLike[str] = attrs.field(validator=_resolve_path)
     max_runs: int
     processor_timeout: float = attrs.field(factory=_config_int_factory("core", "dag_file_processor_timeout"))
     selector: selectors.BaseSelector = attrs.field(factory=selectors.DefaultSelector)
+    bundle_name: str | None = attrs.field(default=None)
     _direct_scheduler_conn: MultiprocessingConnection | None = attrs.field(alias="signal_conn", default=None)
 
     _parallelism: int = attrs.field(factory=_config_int_factory("scheduler", "parsing_processes"))
@@ -341,7 +342,7 @@ class DagFileProcessorManager:
 
     heartbeat: Callable[[], None] = attrs.field(default=lambda: None)
     """An overridable heartbeat called once every time around the loop"""
-
+    _bundles: list[BaseDagBundle] = attrs.field(factory=list, init=False)
     _file_paths: list[str] = attrs.field(factory=list, init=False)
     _file_path_queue: deque[str] = attrs.field(factory=deque, init=False)
     _file_stats: dict[str, DagFileStat] = attrs.field(factory=lambda: defaultdict(DagFileStat), init=False)
@@ -350,6 +351,7 @@ class DagFileProcessorManager:
 
     _parsing_start_time: float = attrs.field(init=False)
     _num_run: int = attrs.field(default=0, init=False)
+    _bundle_versions: dict[str, str] = attrs.field(factory=dict, init=False)
 
     _callback_to_execute: dict[str, list[CallbackRequest]] = attrs.field(
         factory=lambda: defaultdict(list), init=False
@@ -390,16 +392,21 @@ class DagFileProcessorManager:
         from potentially harmful user code.
         """
         self.register_exit_signals()
+        from airflow.dag_processing.bundles.manager import DagBundlesManager
+
+        DagBundlesManager().sync_bundles_to_db()
+        if self.bundle_name:
+            self._bundles = [DagBundlesManager().get_bundle(self.bundle_name)]
+        else:
+            self._bundles = list(DagBundlesManager().get_all_dag_bundles())
+
+        bundle_names = [bundle.name for bundle in self._bundles]
 
         self.log.info("Processing files using up to %s processes at a time ", self._parallelism)
         self.log.info("Process each file at most once every %s seconds", self._file_process_interval)
         self.log.info(
-            "Checking for new files in %s every %s seconds", self._dag_directory, self.dag_dir_list_interval
+            "Checking for new files in %s every %s seconds", bundle_names, self.dag_dir_list_interval
         )
-
-        from airflow.dag_processing.bundles.manager import DagBundlesManager
-
-        DagBundlesManager().sync_bundles_to_db()
 
         return self._run_parsing_loop()
 
@@ -413,7 +420,6 @@ class DagFileProcessorManager:
             }
             self.deactivate_stale_dags(
                 last_parsed=last_parsed,
-                dag_directory=self.get_dag_directory(),
                 stale_dag_threshold=self.stale_dag_threshold,
             )
             self._last_deactivate_stale_dags_time = time.monotonic()
@@ -422,7 +428,6 @@ class DagFileProcessorManager:
     def deactivate_stale_dags(
         self,
         last_parsed: dict[str, datetime | None],
-        dag_directory: str,
         stale_dag_threshold: int,
         session: Session = NEW_SESSION,
     ):
@@ -496,7 +501,7 @@ class DagFileProcessorManager:
             if self.standalone_dag_processor:
                 for callback in self._fetch_callbacks():
                     self._add_callback_to_queue(callback)
-            self._scan_stale_dags()
+            # self._scan_stale_dags()
             DagWarning.purge_inactive_dag_warnings()
 
             # Update number of loop iteration.
@@ -631,6 +636,47 @@ class DagFileProcessorManager:
             session.delete(request)
         return filelocs
 
+    def _refresh_dag_bundles(self):
+        """Refresh DAG bundles, if required."""
+        now = timezone.utcnow()
+
+        self.log.info("Refreshing DAG bundles")
+
+        for bundle in self._bundles:
+            # TODO: AIP-66 test to make sure we get a fresh record from the db and it's not cached
+            with create_session() as session:
+                bundle_model = session.get(DagBundleModel, bundle.name)
+                elapsed_time_since_refresh = (
+                    now - (bundle_model.last_refreshed or timezone.utc_epoch())
+                ).total_seconds()
+                current_version = bundle.get_current_version()
+                if (
+                    not elapsed_time_since_refresh > bundle.refresh_interval
+                ) and bundle_model.latest_version == current_version:
+                    self.log.info("Not time to refresh %s", bundle.name)
+                    continue
+
+                try:
+                    bundle.refresh()
+                except Exception:
+                    self.log.exception("Error refreshing bundle %s", bundle.name)
+                    continue
+
+                bundle_model.last_refreshed = now
+
+                new_version = bundle.get_current_version()
+                if bundle.supports_versioning:
+                    # We can short-circuit the rest of the refresh if the version hasn't changed
+                    # and we've already fully "refreshed" this bundle before in this dag processor.
+                    if current_version == new_version and bundle.name in self._bundle_versions:
+                        self.log.debug("Bundle %s version not changed after refresh", bundle.name)
+                        continue
+
+                    bundle_model.latest_version = new_version
+
+                    self.log.info("Version changed for %s, new version: %s", bundle.name, new_version)
+            self._bundle_versions[bundle.name] = bundle.get_current_version()
+
     def _refresh_dag_dir(self) -> bool:
         """Refresh file paths from dag dir if we haven't done it for too long."""
         now = time.monotonic()
@@ -639,10 +685,12 @@ class DagFileProcessorManager:
             return False
 
         # Build up a list of Python files that could contain DAGs
-        self.log.info("Searching for files in %s", self._dag_directory)
-        self._file_paths = list_py_file_paths(self._dag_directory)
+        bundle_paths = [bundle.path for bundle in self._bundles]
+        self.log.info("Searching for files in %s", bundle_paths)
+        for path in bundle_paths:
+            self._file_paths.extend(list_py_file_paths(path))
         self.last_dag_dir_refresh_time = now
-        self.log.info("There are %s files in %s", len(self._file_paths), self._dag_directory)
+        self.log.info("There are %s files in %s", len(self._file_paths), bundle_paths)
         self.set_file_paths(self._file_paths)
 
         try:
@@ -793,11 +841,14 @@ class DagFileProcessorManager:
 
         self.log.info(log_str)
 
-    def get_dag_directory(self) -> str | None:
+    def get_dag_directory(self) -> list | None:
         """Return the dag_directory as a string."""
-        if self._dag_directory is not None:
-            return os.fspath(self._dag_directory)
-        return None
+        # if self._dag_directory is not None:
+        #     return os.fspath(self._dag_directory)
+        paths=[]
+        for bundle in self._bundles:
+            paths.append(os.fspath(bundle.path))
+        return paths or None
 
     def set_file_paths(self, new_file_paths):
         """

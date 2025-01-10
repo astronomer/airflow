@@ -30,7 +30,6 @@ from contextlib import ExitStack, suppress
 from datetime import timedelta
 from functools import lru_cache, partial
 from itertools import groupby
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 from deprecated import deprecated
@@ -151,8 +150,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     If so, it creates appropriate TaskInstances and sends run commands to the
     executor. It does this for each task in each DAG and repeats.
 
-    :param subdir: directory containing Python files with Airflow DAG
-        definitions, or a specific path to a file
+
     :param num_runs: The number of times to run the scheduling loop. If you
         have a large number of DAG files this could complete before each file
         has been parsed. -1 for unlimited times.
@@ -168,14 +166,12 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     def __init__(
         self,
         job: Job,
-        subdir: str = settings.DAGS_FOLDER,
         num_runs: int = conf.getint("scheduler", "num_runs"),
         num_times_parse_dags: int = -1,
         scheduler_idle_sleep_time: float = conf.getfloat("scheduler", "scheduler_idle_sleep_time"),
         log: logging.Logger | None = None,
     ):
         super().__init__(job)
-        self.subdir = subdir
         self.num_runs = num_runs
         # In specific tests, we want to stop the parse loop after the _files_ have been parsed a certain
         # number of times. This is only to support testing, and isn't something a user is likely to want to
@@ -207,7 +203,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         # Dag Processor agent - not used in Dag Processor standalone mode.
         self.processor_agent: DagFileProcessorAgent | None = None
 
-        self.dagbag = DagBag(dag_folder=self.subdir, read_dags_from_db=True, load_op_links=False)
+        self.dagbag = DagBag(read_dags_from_db=True, load_op_links=False)
 
     @provide_session
     def heartbeat_callback(self, session: Session = NEW_SESSION) -> None:
@@ -922,7 +918,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         processor_timeout = timedelta(seconds=processor_timeout_seconds)
         if not self._standalone_dag_processor and not self.processor_agent:
             self.processor_agent = DagFileProcessorAgent(
-                dag_directory=Path(self.subdir),
                 max_runs=self.num_times_parse_dags,
                 processor_timeout=processor_timeout,
             )
