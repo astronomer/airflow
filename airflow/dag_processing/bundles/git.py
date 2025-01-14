@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from git import Repo
@@ -33,10 +34,54 @@ try:
 except ImportError as e:
     raise AirflowOptionalProviderFeatureException(e)
 
+from airflow.hooks.base import BaseHook
+
 if TYPE_CHECKING:
     from pathlib import Path
 
     import paramiko
+
+
+class GitHookBare(BaseHook):
+    """
+    Hook for git repositories.
+
+    :param git_conn_id: Connection ID for SSH connection to the repository
+    """
+
+    def __init__(self, git_conn_id="git_default", *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.git_conn_id = git_conn_id
+
+    def _process_git_auth_url(self, *, repo_url: str, auth_token: str) -> str:
+        if auth_token and repo_url.startswith("https://"):
+            return repo_url.replace("https://", f"https://{auth_token}@")
+        if not repo_url.startswith("git@") or not repo_url.startswith("https://"):
+            return os.path.expanduser(repo_url)
+        return repo_url  # maybe?
+
+    @property
+    def repo_url(self):
+        connection = self.get_connection(self.git_conn_id)
+        repo_url = connection.extra_dejson.get("git_repo_url")
+        auth_token = connection.extra_dejson.get("git_access_token", None) or connection.password
+        repo_url = self._process_git_auth_url(repo_url=repo_url, auth_token=auth_token)
+        return repo_url
+
+    @contextmanager
+    def set_environment(self):
+        connection = self.get_connection(self.git_conn_id)
+        key_file = connection.extra_dejson.get("key_file")
+        # for now, just assume a key file
+        old_git_ssh_command = os.environ.get("GIT_SSH_COMMAND")
+        try:
+            os.environ["GIT_SSH_COMMAND"] = f"ssh -i {key_file}"
+            yield
+        finally:
+            if old_git_ssh_command:
+                os.environ["GIT_SSH_COMMAND"]
+            else:
+                del os.environ["GIT_SSH_COMMAND"]
 
 
 class GitHook(SSHHook):
@@ -129,12 +174,13 @@ class GitDagBundle(BaseDagBundle, LoggingMixin):
             self._dag_bundle_root_storage_path / "git" / (self.name + f"+{self.version or self.tracking_ref}")
         )
         self.git_conn_id = git_conn_id
-        self.hook = GitHook(git_conn_id=self.git_conn_id)
+        self.hook = GitHookBare(git_conn_id=self.git_conn_id)
         self.repo_url = self.hook.repo_url
 
     def _clone_from(self, to_path: Path, bare: bool = False) -> Repo:
         self.log.info("Cloning %s to %s", self.repo_url, to_path)
-        return Repo.clone_from(self.repo_url, to_path, bare=bare)
+        with self.hook.set_environment():
+            return Repo.clone_from(self.repo_url, to_path, bare=bare)
 
     def _initialize(self):
         self._clone_bare_repo_if_required()
@@ -154,19 +200,16 @@ class GitDagBundle(BaseDagBundle, LoggingMixin):
     def initialize(self) -> None:
         if not self.repo_url:
             raise AirflowException(f"Connection {self.git_conn_id} doesn't have a git_repo_url")
-        if self.repo_url.startswith("git@") or not self.repo_url.endswith(".git"):
-            raise AirflowException(
-                f"Invalid git URL: {self.repo_url}. URL must start with git@ and end with .git"
-            )
+        # if self.repo_url.startswith("git@") or not self.repo_url.endswith(".git"):
+        #    raise AirflowException(
+        #        f"Invalid git URL: {self.repo_url}. URL must start with git@ and end with .git"
+        #    )
 
-        if self.repo_url.startswith("git@"):
-            with self.hook.get_conn():
-                self._initialize()
-        else:
-            self._initialize()
+        self._initialize()
 
     def _clone_repo_if_required(self) -> None:
         if not os.path.exists(self.repo_path):
+            # note: this should clone from the bare repo, not the source
             self._clone_from(
                 to_path=self.repo_path,
             )
@@ -218,8 +261,9 @@ class GitDagBundle(BaseDagBundle, LoggingMixin):
     def _refresh(self):
         if self.version:
             raise AirflowException("Refreshing a specific version is not supported")
-        self.bare_repo.remotes.origin.fetch("+refs/heads/*:refs/heads/*")
-        self.repo.remotes.origin.pull()
+        with self.hook.set_environment():
+            self.bare_repo.remotes.origin.fetch("+refs/heads/*:refs/heads/*")
+            self.repo.remotes.origin.pull()
 
     def refresh(self) -> None:
         with self.hook.get_conn():
