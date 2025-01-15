@@ -18,23 +18,8 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
-from typing import NamedTuple
 
-
-class AirflowParsingContext(NamedTuple):
-    """
-    Context of parsing for the DAG.
-
-    If these values are not None, they will contain the specific DAG and Task ID that Airflow is requesting to
-    execute. You can use these for optimizing dynamically generated DAG files.
-    """
-
-    dag_id: str | None
-    task_id: str | None
-
-
-_AIRFLOW_PARSING_CONTEXT_DAG_ID = "_AIRFLOW_PARSING_CONTEXT_DAG_ID"
-_AIRFLOW_PARSING_CONTEXT_TASK_ID = "_AIRFLOW_PARSING_CONTEXT_TASK_ID"
+from airflow.sdk.definitions.context import _AIRFLOW_PARSING_CONTEXT_DAG_ID, _AIRFLOW_PARSING_CONTEXT_TASK_ID
 
 
 @contextmanager
@@ -50,11 +35,3 @@ def _airflow_parsing_context_manager(dag_id: str | None = None, task_id: str | N
         os.environ[_AIRFLOW_PARSING_CONTEXT_TASK_ID] = old_task_id
     if old_dag_id is not None:
         os.environ[_AIRFLOW_PARSING_CONTEXT_DAG_ID] = old_dag_id
-
-
-def get_parsing_context() -> AirflowParsingContext:
-    """Return the current (DAG) parsing context info."""
-    return AirflowParsingContext(
-        dag_id=os.environ.get(_AIRFLOW_PARSING_CONTEXT_DAG_ID),
-        task_id=os.environ.get(_AIRFLOW_PARSING_CONTEXT_TASK_ID),
-    )

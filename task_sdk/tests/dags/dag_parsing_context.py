@@ -18,21 +18,19 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from airflow.models.dag import DAG
-from airflow.operators.empty import EmptyOperator
-from airflow.sdk.definitions.context import get_parsing_context
+from airflow.sdk import DAG, BaseOperator, get_parsing_context
 
-DAG_ID = "test_dag_parsing_context"
+DAG_ID = "dag_parsing_context_test"
 
 current_dag_id = get_parsing_context().dag_id
 
 with DAG(
     DAG_ID,
     start_date=datetime(2024, 2, 21),
-    schedule="0 0 * * *",
+    schedule=None,
 ) as the_dag:
-    EmptyOperator(task_id="visible_task")
+    BaseOperator(task_id="visible_task")
 
     if current_dag_id == DAG_ID:
         # this task will be invisible if the DAG ID is not properly set in the parsing context.
-        EmptyOperator(task_id="conditional_task")
+        BaseOperator(task_id="conditional_task")

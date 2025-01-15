@@ -36,7 +36,7 @@ from airflow.exceptions import (
     AirflowSkipException,
     AirflowTaskTerminated,
 )
-from airflow.sdk import DAG, BaseOperator, Connection, get_current_context
+from airflow.sdk import DAG, BaseOperator, Connection, get_current_context, get_parsing_context
 from airflow.sdk.api.datamodels._generated import TaskInstance, TerminalTIState
 from airflow.sdk.definitions.variable import Variable
 from airflow.sdk.execution_time.comms import (
@@ -540,6 +540,52 @@ def test_run_basic_failed(
     mock_supervisor_comms.send_request.assert_called_once_with(
         msg=TaskState(state=TerminalTIState.FAIL_WITHOUT_RETRY, end_date=instant), log=mock.ANY
     )
+
+
+def test_dag_parsing_context(make_ti_context, mock_supervisor_comms, monkeypatch, test_dags_dir):
+    """
+    Test that the DAG parsing context is correctly set during the startup process.
+
+    This test verifies that the DAG and task IDs are correctly set in the parsing context
+    when a DAG is started up.
+    """
+    dag_id = "dag_parsing_context_test"
+    task_id = "conditional_task"
+
+    what = StartupDetails(
+        ti=TaskInstance(id=uuid7(), task_id=task_id, dag_id=dag_id, run_id="c", try_number=1),
+        dag_rel_path="dag_parsing_context.py",
+        bundle_info=BundleInfo(name="my-bundle", version=None),
+        requests_fd=0,
+        ti_context=make_ti_context(dag_id=dag_id, run_id="c"),
+    )
+
+    mock_supervisor_comms.get_message.return_value = what
+
+    # Ensure the parsing context is initially empty
+    assert get_parsing_context().dag_id is None
+    assert get_parsing_context().task_id is None
+
+    # Set the environment variable for DAG bundles
+    # We use the DAG defined in `task_sdk/tests/dags/dag_parsing_context.py` for this test!
+    dag_bundle_val = json.dumps(
+        [
+            {
+                "name": "my-bundle",
+                "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
+                "kwargs": {"local_folder": str(test_dags_dir), "refresh_interval": 1},
+            }
+        ]
+    )
+
+    monkeypatch.setenv("AIRFLOW__DAG_BUNDLES__BACKENDS", dag_bundle_val)
+    ti, _ = startup()
+
+    # Presence of `conditional_task` below means DAG ID is properly set in the parsing context!
+    # Check the dag file for the actual logic!
+    assert ti.task.dag.task_dict.keys() == {"visible_task", "conditional_task"}
+    assert get_parsing_context().dag_id == dag_id
+    assert get_parsing_context().task_id == task_id
 
 
 class TestRuntimeTaskInstance:
