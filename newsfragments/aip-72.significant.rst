@@ -35,3 +35,21 @@ As part of this change the following breaking changes have occurred:
   .. code-block:: bash
 
       airflow db drop-archived -t "_xcom_archive"
+
+
+* Types of change
+
+  * [x] DAG changes
+  * [x] Config changes
+  * [ ] API changes
+  * [ ] CLI changes
+  * [x] Behaviour changes
+  * [ ] Plugin changes
+  * [ ] Dependency change
+
+* Migrations rules needed
+
+  * ``airflow config lint``
+
+    * [x] ``core.task_runner``
+    * [x] ``core.enable_xcom_pickling``

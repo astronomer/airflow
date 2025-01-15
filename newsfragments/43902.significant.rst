@@ -4,3 +4,33 @@ The shift towards ``logical_date`` helps move away from the limitations of ``exe
 
 - Renamed columns and function references to ``logical_date``.
 - Removed ``execution_date``, ``next_ds``, ``next_ds_nodash``, ``next_execution_date``, ``prev_ds``, ``prev_ds_nodash``, ``prev_execution_date``, ``prev_execution_date_success``, ``tomorrow_ds``, ``yesterday_ds`` and ``yesterday_ds_nodash`` from Airflow ``context``.
+
+* Types of change
+
+  * [x] DAG changes
+  * [ ] Config changes
+  * [ ] API changes
+  * [ ] CLI changes
+  * [ ] Behaviour changes
+  * [ ] Plugin changes
+  * [ ] Dependency change
+
+* Migrations rules needed
+
+  * ruff
+
+    * AIR302
+
+      * context key
+
+        * [ ] ``execution_date``
+        * [ ] ``next_ds``
+        * [ ] ``next_ds_nodash``
+        * [ ] ``next_execution_date``
+        * [ ] ``prev_ds``
+        * [ ] ``prev_ds_nodash``
+        * [ ] ``prev_execution_date``
+        * [ ] ``prev_execution_date_success``
+        * [ ] ``tomorrow_ds``
+        * [ ] ``yesterday_ds``
+        * [ ] ``yesterday_ds_nodash``
