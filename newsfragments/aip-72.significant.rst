@@ -46,6 +46,7 @@ As part of this change the following breaking changes have occurred:
   * [x] Behaviour changes
   * [ ] Plugin changes
   * [ ] Dependency change
+  * [ ] Code interface change
 
 * Migrations rules needed
 
