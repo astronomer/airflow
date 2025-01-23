@@ -10486,6 +10486,16 @@
                         "/clean-logs"
                     ]
                 },
+                "env": {
+                    "description": "Add additional env vars to log groomer sidecar container.",
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.EnvVar"
+                    },
+                    "type": "array",
+                    "default": [],
+                    "x-kubernetes-patch-merge-key": "name",
+                    "x-kubernetes-patch-strategy": "merge"
+                },
                 "retentionDays": {
                     "description": "Number of days to retain the logs when running the Airflow log groomer sidecar.",
                     "type": "integer",
