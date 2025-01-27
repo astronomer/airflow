@@ -752,6 +752,7 @@ workers:
     # Detailed default security context for logGroomerSidecar for container level
     securityContexts:
       container: {}
+    env: []
 
   waitForMigrations:
     # Whether to create init container to wait for db migrations
@@ -951,6 +952,7 @@ scheduler:
       container: {}
     # container level lifecycle hooks
     containerLifecycleHooks: {}
+    env: []
 
   waitForMigrations:
     # Whether to create init container to wait for db migrations
@@ -1521,6 +1523,8 @@ triggerer:
     # container level lifecycle hooks
     containerLifecycleHooks: {}
 
+    env: []
+
   waitForMigrations:
     # Whether to create init container to wait for db migrations
     enabled: true
@@ -1696,6 +1700,8 @@ dagProcessor:
     #   memory: 128Mi
     securityContexts:
       container: {}
+
+    env: []
 
   waitForMigrations:
     # Whether to create init container to wait for db migrations
