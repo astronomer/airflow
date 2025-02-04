@@ -341,7 +341,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 .where(~DM.is_paused)
                 .where(TI.state == TaskInstanceState.SCHEDULED)
                 .options(selectinload(TI.dag_model))
-                .order_by(-TI.priority_weight, DR.logical_date, TI.map_index)
+                .order_by(-TI.priority_weight, DR.run_after, TI.map_index)
             )
 
             if starved_pools:
@@ -1245,7 +1245,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             session.execute(
                 select(DagRun.dag_id, DagRun.logical_date).where(
                     tuple_(DagRun.dag_id, DagRun.logical_date).in_(
-                        (dm.dag_id, dm.next_dagrun) for dm in dag_models
+                        (dm.dag_id, dm.next_dagrun) for dm in dag_models if dm.next_dagrun is not None
                     ),
                 )
             )
@@ -1332,6 +1332,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         logical_dates = {
             dag_id: timezone.coerce_datetime(last_time)
             for dag_id, (_, last_time) in asset_triggered_dag_info.items()
+            if last_time is not None
         }
         existing_dagruns: set[tuple[str, timezone.DateTime]] = set(
             session.execute(
