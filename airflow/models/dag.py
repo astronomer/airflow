@@ -1663,7 +1663,10 @@ class DAG(TaskSDKDag, LoggingMixin):
             )
             self.log.debug("Getting dagrun for dag %s", self.dag_id)
             logical_date = timezone.coerce_datetime(logical_date)
-            data_interval = self.timetable.infer_manual_data_interval(run_after=logical_date)
+            if logical_date is None:
+                data_interval = None
+            else:
+                data_interval = self.timetable.infer_manual_data_interval(run_after=logical_date)
             scheduler_dag = SerializedDAG.deserialize_dag(SerializedDAG.serialize_dag(self))
 
             dr: DagRun = _get_or_create_dagrun(
@@ -1757,7 +1760,7 @@ class DAG(TaskSDKDag, LoggingMixin):
         *,
         run_id: str,
         logical_date: datetime | None,
-        data_interval: tuple[datetime, datetime],
+        data_interval: tuple[datetime, datetime] | None,
         run_after: datetime,
         conf: dict | None = None,
         run_type: DagRunType,
@@ -1782,6 +1785,9 @@ class DAG(TaskSDKDag, LoggingMixin):
         :meta private:
         """
         logical_date = timezone.coerce_datetime(logical_date)
+
+        if logical_date is None:
+            data_interval = None
 
         if data_interval and not isinstance(data_interval, DataInterval):
             data_interval = DataInterval(*map(timezone.coerce_datetime, data_interval))

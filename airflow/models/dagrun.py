@@ -70,6 +70,7 @@ from airflow.models.taskmap import TaskMap
 from airflow.stats import Stats
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.dependencies_states import SCHEDULEABLE_STATES
+from airflow.timetables.base import DataInterval
 from airflow.traces.tracer import Trace
 from airflow.utils import timezone
 from airflow.utils.dates import datetime_to_nano
@@ -254,6 +255,10 @@ class DagRun(Base, LoggingMixin):
         dag_version: DagVersion | None = None,
         bundle_version: str | None = None,
     ):
+        # For manual runs where logical_date is None, ensure no data_interval is set.
+        if logical_date is None:
+            data_interval = None
+
         if data_interval is None:
             # Legacy: Only happen for runs created prior to Airflow 2.2.
             self.data_interval_start = self.data_interval_end = None
@@ -304,6 +309,19 @@ class DagRun(Base, LoggingMixin):
     @property
     def stats_tags(self) -> dict[str, str]:
         return prune_dict({"dag_id": self.dag_id, "run_type": self.run_type})
+
+    @property
+    def data_interval(self) -> DataInterval:
+        """
+        Retrieve the data interval for this DAG run.
+
+        For schedule-driven DAG runs where the logical_date is not None, this property
+        returns a DataInterval object constructed from the 'data_interval_start' and 'data_interval_end'
+        fields. For manual runs (where logical_date is None), no data interval is defined and a KeyError is raised.
+        """
+        if self.logical_date is None:
+            raise KeyError("data_interval is not available because logical_date is None")
+        return DataInterval(self.data_interval_start, self.data_interval_end)
 
     def get_state(self):
         return self._state

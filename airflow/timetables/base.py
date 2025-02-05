@@ -81,7 +81,11 @@ class DataInterval(NamedTuple):
 
     @classmethod
     def exact(cls, at: DateTime) -> DataInterval:
-        """Represent an "interval" containing only an exact time."""
+        """
+        Represent an "interval" containing only an exact time.
+
+        :param at: The DateTime representing the exact moment.
+        """
         return cls(start=at, end=at)
 
 
@@ -251,6 +255,8 @@ class Timetable(Protocol):
         This is used for e.g. manually-triggered runs, where ``run_after`` would
         be when the user triggers the run. The default implementation raises
         ``NotImplementedError``.
+
+        :param run_after: The DateTime after which the DAG run is allowed to start.
         """
         raise NotImplementedError()
 
