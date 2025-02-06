@@ -272,7 +272,6 @@ def _create_orm_dagrun(
         conf=conf,
         state=state,
         run_type=run_type,
-        dag_version=dag_version,
         creating_job_id=creating_job_id,
         data_interval=data_interval,
         triggered_by=triggered_by,
@@ -282,6 +281,7 @@ def _create_orm_dagrun(
     # Load defaults into the following two fields to ensure result can be serialized detached
     run.log_template_id = int(session.scalar(select(func.max(LogTemplate.__table__.c.id))))
     run.consumed_asset_events = []
+    run.dag_versions = [dag_version] if dag_version else []
     session.add(run)
     session.flush()
     run.dag = dag

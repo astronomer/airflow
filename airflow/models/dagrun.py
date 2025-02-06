@@ -62,7 +62,7 @@ from airflow.models import Log
 from airflow.models.abstractoperator import NotMapped
 from airflow.models.backfill import Backfill
 from airflow.models.base import Base, StringID
-from airflow.models.dag_version import DagVersion
+from airflow.models.dag_version import DagVersion, dag_version_dag_run_assoc
 from airflow.models.expandinput import NotFullyPopulated
 from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.tasklog import LogTemplate
@@ -173,8 +173,7 @@ class DagRun(Base, LoggingMixin):
 
     It's possible this could change if e.g. the dag run is cleared to be rerun, or perhaps re-backfilled.
     """
-    dag_version_id = Column(UUIDType(binary=False), ForeignKey("dag_version.id", ondelete="CASCADE"))
-    dag_version = relationship("DagVersion", back_populates="dag_runs")
+    dag_versions = relationship(DagVersion, secondary=dag_version_dag_run_assoc, back_populates="dag_runs")
     bundle_version = Column(StringID())
 
     # Remove this `if` after upgrading Sphinx-AutoAPI
@@ -251,7 +250,6 @@ class DagRun(Base, LoggingMixin):
         data_interval: tuple[datetime, datetime] | None = None,
         triggered_by: DagRunTriggeredByType | None = None,
         backfill_id: int | None = None,
-        dag_version: DagVersion | None = None,
         bundle_version: str | None = None,
     ):
         if data_interval is None:
@@ -279,7 +277,6 @@ class DagRun(Base, LoggingMixin):
         self.backfill_id = backfill_id
         self.clear_number = 0
         self.triggered_by = triggered_by
-        self.dag_version = dag_version
         super().__init__()
 
     def __repr__(self):
@@ -926,7 +923,7 @@ class DagRun(Base, LoggingMixin):
                     filepath=self.dag_model.relative_fileloc,
                     dag_id=self.dag_id,
                     run_id=self.run_id,
-                    bundle_name=self.dag_version.bundle_name,
+                    bundle_name=self.dag_versions[-1].bundle_name,
                     bundle_version=self.bundle_version,
                     is_failure_callback=True,
                     msg="task_failure",
@@ -955,7 +952,7 @@ class DagRun(Base, LoggingMixin):
                     filepath=self.dag_model.relative_fileloc,
                     dag_id=self.dag_id,
                     run_id=self.run_id,
-                    bundle_name=self.dag_version.bundle_name,
+                    bundle_name=self.dag_versions[-1].bundle_name,
                     bundle_version=self.bundle_version,
                     is_failure_callback=False,
                     msg="success",
@@ -974,7 +971,7 @@ class DagRun(Base, LoggingMixin):
                     filepath=self.dag_model.relative_fileloc,
                     dag_id=self.dag_id,
                     run_id=self.run_id,
-                    bundle_name=self.dag_version.bundle_name,
+                    bundle_name=self.dag_versions[-1].bundle_name,
                     bundle_version=self.bundle_version,
                     is_failure_callback=True,
                     msg="all_tasks_deadlocked",
@@ -991,7 +988,7 @@ class DagRun(Base, LoggingMixin):
                 "state=%s, external_trigger=%s, run_type=%s, "
                 "data_interval_start=%s, data_interval_end=%s, dag_version_name=%s"
             )
-            dagv = session.scalar(select(DagVersion).where(DagVersion.id == self.dag_version_id))
+            this_dr = session.scalar(select(DagRun).where(DagRun.id == self.id).options(joinedload(DagRun.dag_versions)))
             self.log.info(
                 msg,
                 self.dag_id,
@@ -1009,10 +1006,10 @@ class DagRun(Base, LoggingMixin):
                 self.run_type,
                 self.data_interval_start,
                 self.data_interval_end,
-                dagv.version if dagv else None,
+                this_dr.dag_versions[0].id if this_dr.dag_versions else None,
             )
 
-            self._trace_dagrun(dagv)
+            self._trace_dagrun(this_dr.dag_versions[0] if this_dr.dag_versions else None)
 
             session.flush()
 
@@ -1331,7 +1328,7 @@ class DagRun(Base, LoggingMixin):
             )
 
         created_counts: dict[str, int] = defaultdict(int)
-        task_creator = self._get_task_creator(created_counts, task_instance_mutation_hook, hook_is_noop)
+        task_creator = self._get_task_creator(created_counts, task_instance_mutation_hook, hook_is_noop, self.dag_versions[-1])
 
         # Create the missing tasks, including mapped tasks
         tasks_to_create = (task for task in dag.task_dict.values() if task_filter(task))
@@ -1426,6 +1423,7 @@ class DagRun(Base, LoggingMixin):
         created_counts: dict[str, int],
         ti_mutation_hook: Callable,
         hook_is_noop: Literal[True],
+        dag_version: DagVersion,
     ) -> Callable[[Operator, Iterable[int]], Iterator[dict[str, Any]]]: ...
 
     @overload
@@ -1434,6 +1432,7 @@ class DagRun(Base, LoggingMixin):
         created_counts: dict[str, int],
         ti_mutation_hook: Callable,
         hook_is_noop: Literal[False],
+        dag_version: DagVersion,
     ) -> Callable[[Operator, Iterable[int]], Iterator[TI]]: ...
 
     def _get_task_creator(
@@ -1441,6 +1440,7 @@ class DagRun(Base, LoggingMixin):
         created_counts: dict[str, int],
         ti_mutation_hook: Callable,
         hook_is_noop: Literal[True, False],
+        dag_version: DagVersion
     ) -> Callable[[Operator, Iterable[int]], Iterator[dict[str, Any]] | Iterator[TI]]:
         """
         Get the task creator function.
@@ -1458,7 +1458,7 @@ class DagRun(Base, LoggingMixin):
                 created_counts[task.task_type] += 1
                 for map_index in indexes:
                     yield TI.insert_mapping(
-                        self.run_id, task, map_index=map_index, dag_version_id=self.dag_version_id
+                        self.run_id, task, map_index=map_index, dag_version_id=dag_version.id
                     )
 
             creator = create_ti_mapping
@@ -1467,7 +1467,7 @@ class DagRun(Base, LoggingMixin):
 
             def create_ti(task: Operator, indexes: Iterable[int]) -> Iterator[TI]:
                 for map_index in indexes:
-                    ti = TI(task, run_id=self.run_id, map_index=map_index, dag_version_id=self.dag_version_id)
+                    ti = TI(task, run_id=self.run_id, map_index=map_index, dag_version_id=dag_version.id)
                     ti_mutation_hook(ti)
                     created_counts[ti.operator] += 1
                     yield ti

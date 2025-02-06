@@ -21,7 +21,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import uuid6
-from sqlalchemy import Column, ForeignKey, Integer, UniqueConstraint, select
+from sqlalchemy import Column, ForeignKey, Integer, UniqueConstraint, select, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy_utils import UUIDType
 
@@ -61,7 +61,7 @@ class DagVersion(Base):
         cascade="all, delete, delete-orphan",
         cascade_backrefs=False,
     )
-    dag_runs = relationship("DagRun", back_populates="dag_version", cascade="all, delete, delete-orphan")
+    dag_runs = relationship("DagRun", secondary="dag_run_dag_version_table", back_populates="dag_versions")
     task_instances = relationship("TaskInstance", back_populates="dag_version")
     created_at = Column(UtcDateTime, nullable=False, default=timezone.utcnow)
 
@@ -160,3 +160,11 @@ class DagVersion(Base):
     def version(self) -> str:
         """A human-friendly representation of the version."""
         return f"{self.dag_id}-{self.version_number}"
+
+
+dag_version_dag_run_assoc = Table(
+    "dag_run_dag_version_table",
+    Base.metadata,
+    Column("dag_run_id", ForeignKey("dag_run.id")),
+    Column("dag_version_id", ForeignKey("dag_version.id")),
+)
