@@ -469,7 +469,7 @@ class ExternalTaskMarker(EmptyOperator):
         it slower to clear tasks in the web UI.
     """
 
-    template_fields = ["external_dag_id", "external_task_id", "logical_date"]
+    template_fields = ["external_dag_id", "external_task_id", "run_id"]
     ui_color = "#4db7db"
     operator_extra_links = [ExternalDagLink()]
 
@@ -481,22 +481,14 @@ class ExternalTaskMarker(EmptyOperator):
         *,
         external_dag_id: str,
         external_task_id: str,
-        logical_date: str | datetime.datetime | None = "{{ logical_date.isoformat() }}",
+        run_id: str = "{{ run_id }}",
         recursion_depth: int = 10,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.external_dag_id = external_dag_id
         self.external_task_id = external_task_id
-        if isinstance(logical_date, datetime.datetime):
-            self.logical_date = logical_date.isoformat()
-        elif isinstance(logical_date, str):
-            self.logical_date = logical_date
-        else:
-            raise TypeError(
-                f"Expected str or datetime.datetime type for logical_date. Got {type(logical_date)}"
-            )
-
+        self.run_id = run_id
         if recursion_depth <= 0:
             raise ValueError("recursion_depth should be a positive integer")
         self.recursion_depth = recursion_depth

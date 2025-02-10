@@ -31,11 +31,7 @@ from airflow.utils.state import DagRunState
 
 from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
 
-_DATES = (
-    {"logical_dates": [timezone.datetime(2022, 1, 1)]}
-    if AIRFLOW_V_3_0_PLUS
-    else {"execution_dates": [timezone.datetime(2022, 1, 1)]}
-)
+RUN_ID = "manual__external_task_tests"
 
 
 class TestWorkflowTrigger:
@@ -53,7 +49,7 @@ class TestWorkflowTrigger:
 
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             allowed_states=self.STATES,
             poke_interval=0.2,
@@ -86,7 +82,7 @@ class TestWorkflowTrigger:
 
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             failed_states=self.STATES,
             poke_interval=0.2,
@@ -119,7 +115,7 @@ class TestWorkflowTrigger:
 
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             failed_states=self.STATES,
             poke_interval=0.2,
@@ -151,7 +147,7 @@ class TestWorkflowTrigger:
 
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             skipped_states=self.STATES,
             poke_interval=0.2,
@@ -182,7 +178,7 @@ class TestWorkflowTrigger:
 
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             poke_interval=0.2,
         )
@@ -210,7 +206,7 @@ class TestWorkflowTrigger:
         """
         trigger = WorkflowTrigger(
             external_dag_id=self.DAG_ID,
-            **_DATES,
+            run_ids=[RUN_ID],
             external_task_ids=[self.TASK_ID],
             allowed_states=self.STATES,
             poke_interval=5,
@@ -219,7 +215,7 @@ class TestWorkflowTrigger:
         assert classpath == "airflow.providers.standard.triggers.external_task.WorkflowTrigger"
         assert kwargs == {
             "external_dag_id": self.DAG_ID,
-            **_DATES,
+            "run_ids": [RUN_ID],
             "external_task_ids": [self.TASK_ID],
             "external_task_group_id": None,
             "failed_states": None,
@@ -260,7 +256,7 @@ class TestDagStateTrigger:
         trigger = DagStateTrigger(
             dag_id=dag.dag_id,
             states=self.STATES,
-            **_DATES,
+            run_ids=[RUN_ID],
             poll_interval=0.2,
         )
 
@@ -284,7 +280,7 @@ class TestDagStateTrigger:
         trigger = DagStateTrigger(
             dag_id=self.DAG_ID,
             states=self.STATES,
-            **_DATES,
+            run_ids=[RUN_ID],
             poll_interval=5,
         )
         classpath, kwargs = trigger.serialize()
@@ -292,7 +288,7 @@ class TestDagStateTrigger:
         assert kwargs == {
             "dag_id": self.DAG_ID,
             "states": self.STATES,
-            **_DATES,
+            "run_ids": [RUN_ID],
             "poll_interval": 5,
         }
 

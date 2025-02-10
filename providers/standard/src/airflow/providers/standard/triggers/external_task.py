@@ -25,13 +25,10 @@ from sqlalchemy import func
 
 from airflow.models import DagRun
 from airflow.providers.standard.utils.sensor_helper import _get_count
-from airflow.providers.standard.version_compat import AIRFLOW_V_3_0_PLUS
 from airflow.triggers.base import BaseTrigger, TriggerEvent
 from airflow.utils.session import NEW_SESSION, provide_session
 
 if typing.TYPE_CHECKING:
-    from datetime import datetime
-
     from sqlalchemy.orm import Session
 
     from airflow.utils.state import DagRunState
@@ -55,10 +52,10 @@ class WorkflowTrigger(BaseTrigger):
     def __init__(
         self,
         external_dag_id: str,
-        logical_dates: list[datetime] | None = None,
-        execution_dates: list[datetime] | None = None,
+        *,
         external_task_ids: typing.Collection[str] | None = None,
         external_task_group_id: str | None = None,
+        run_ids: typing.Collection[str] = (),
         failed_states: typing.Iterable[str] | None = None,
         skipped_states: typing.Iterable[str] | None = None,
         allowed_states: typing.Iterable[str] | None = None,
@@ -69,32 +66,26 @@ class WorkflowTrigger(BaseTrigger):
         self.external_dag_id = external_dag_id
         self.external_task_ids = external_task_ids
         self.external_task_group_id = external_task_group_id
+        self.run_ids = run_ids
         self.failed_states = failed_states
         self.skipped_states = skipped_states
         self.allowed_states = allowed_states
-        self.logical_dates = logical_dates
         self.poke_interval = poke_interval
         self.soft_fail = soft_fail
-        self.execution_dates = execution_dates
         super().__init__(**kwargs)
 
     def serialize(self) -> tuple[str, dict[str, Any]]:
         """Serialize the trigger param and module path."""
-        _dates = (
-            {"logical_dates": self.logical_dates}
-            if AIRFLOW_V_3_0_PLUS
-            else {"execution_dates": self.execution_dates}
-        )
         return (
             "airflow.providers.standard.triggers.external_task.WorkflowTrigger",
             {
                 "external_dag_id": self.external_dag_id,
                 "external_task_ids": self.external_task_ids,
                 "external_task_group_id": self.external_task_group_id,
+                "run_ids": self.run_ids,
                 "failed_states": self.failed_states,
                 "skipped_states": self.skipped_states,
                 "allowed_states": self.allowed_states,
-                **_dates,
                 "poke_interval": self.poke_interval,
                 "soft_fail": self.soft_fail,
             },
@@ -117,8 +108,7 @@ class WorkflowTrigger(BaseTrigger):
                     yield TriggerEvent({"status": "skipped"})
                     return
             allowed_count = await self._get_count(self.allowed_states)
-            _dates = self.logical_dates if AIRFLOW_V_3_0_PLUS else self.execution_dates
-            if allowed_count == len(_dates):  # type: ignore[arg-type]
+            if allowed_count == len(self.run_ids):
                 yield TriggerEvent({"status": "success"})
                 return
             self.log.info("Sleeping for %s seconds", self.poke_interval)
@@ -133,7 +123,7 @@ class WorkflowTrigger(BaseTrigger):
         :return The count of records.
         """
         return _get_count(
-            dttm_filter=self.logical_dates if AIRFLOW_V_3_0_PLUS else self.execution_dates,
+            run_ids=self.run_ids,
             external_task_ids=self.external_task_ids,
             external_task_group_id=self.external_task_group_id,
             external_dag_id=self.external_dag_id,
@@ -156,30 +146,24 @@ class DagStateTrigger(BaseTrigger):
         self,
         dag_id: str,
         states: list[DagRunState],
-        logical_dates: list[datetime] | None = None,
-        execution_dates: list[datetime] | None = None,
+        *,
+        run_ids: typing.Collection[str] = (),
         poll_interval: float = 5.0,
     ):
         super().__init__()
         self.dag_id = dag_id
         self.states = states
-        self.logical_dates = logical_dates
-        self.execution_dates = execution_dates
+        self.run_ids = run_ids
         self.poll_interval = poll_interval
 
     def serialize(self) -> tuple[str, dict[str, typing.Any]]:
         """Serialize DagStateTrigger arguments and classpath."""
-        _dates = (
-            {"logical_dates": self.logical_dates}
-            if AIRFLOW_V_3_0_PLUS
-            else {"execution_dates": self.execution_dates}
-        )
         return (
             "airflow.providers.standard.triggers.external_task.DagStateTrigger",
             {
                 "dag_id": self.dag_id,
                 "states": self.states,
-                **_dates,
+                "run_ids": self.run_ids,
                 "poll_interval": self.poll_interval,
             },
         )
@@ -189,8 +173,7 @@ class DagStateTrigger(BaseTrigger):
         while True:
             # mypy confuses typing here
             num_dags = await self.count_dags()  # type: ignore[call-arg]
-            _dates = self.logical_dates if AIRFLOW_V_3_0_PLUS else self.execution_dates
-            if num_dags == len(_dates):  # type: ignore[arg-type]
+            if num_dags == len(self.run_ids or ()):  # type: ignore[arg-type]
                 yield TriggerEvent(self.serialize())
                 return
             await asyncio.sleep(self.poll_interval)
@@ -199,17 +182,12 @@ class DagStateTrigger(BaseTrigger):
     @provide_session
     def count_dags(self, *, session: Session = NEW_SESSION) -> int | None:
         """Count how many dag runs in the database match our criteria."""
-        _dag_run_date_condition = (
-            DagRun.logical_date.in_(self.logical_dates)
-            if AIRFLOW_V_3_0_PLUS
-            else DagRun.execution_date.in_(self.execution_dates)
-        )
         count = (
             session.query(func.count("*"))  # .count() is inefficient
             .filter(
                 DagRun.dag_id == self.dag_id,
                 DagRun.state.in_(self.states),
-                _dag_run_date_condition,
+                DagRun.run_id.in_(self.run_ids),
             )
             .scalar()
         )
