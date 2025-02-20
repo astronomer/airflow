@@ -27,8 +27,8 @@ DEFAULT_DATE = timezone.parse("2021-01-01T00:00:00")
 pytestmark = pytest.mark.db_test
 
 
-class TestGetAssetByName:
-    def test_get_asset_event_by_name_uri(self, client, session):
+class TestGetAssetEventByAsset:
+    def test_get_by_name_uri(self, client, session):
         asset = AssetModel(
             id=1,
             name="test_get_asset_by_name",
@@ -57,7 +57,7 @@ class TestGetAssetByName:
         session.commit()
         assert session.query(AssetEvent).count() == 2
         response = client.get(
-            "/execution/asset-events/by-asset-name-uri",
+            "/execution/asset-events/by-asset",
             params={"name": "test_get_asset_by_name", "uri": "s3://bucket/key"},
         )
         assert response.status_code == 200
