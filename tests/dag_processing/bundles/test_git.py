@@ -335,11 +335,22 @@ class TestGitDagBundle:
         files_in_repo = {f.name for f in bundle.path.iterdir() if f.is_file()}
         assert {"test_dag.py", "new_test.py"} == files_in_repo
 
+    @pytest.mark.parametrize(
+        "amend",
+        [
+            True,
+            False,
+        ],
+    )
     @mock.patch("airflow.dag_processing.bundles.git.GitHook")
-    def test_refresh(self, mock_githook, git_repo):
+    def test_refresh(self, mock_githook, git_repo, amend):
         repo_path, repo = git_repo
         mock_githook.return_value.repo_url = repo_path
         starting_commit = repo.head.commit
+
+        with repo.config_writer() as writer:
+            writer.set_value("user", "name", "Test User")
+            writer.set_value("user", "email", "test@example.com")
 
         bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
         bundle.initialize()
@@ -353,11 +364,11 @@ class TestGitDagBundle:
         with open(file_path, "w") as f:
             f.write("hello world")
         repo.index.add([file_path])
-        commit = repo.index.commit("Another commit")
+        commit = repo.git.commit(amend=amend, message="Another commit")
 
         bundle.refresh()
 
-        assert bundle.get_current_version() == commit.hexsha
+        assert bundle.get_current_version()[:6] in commit
 
         files_in_repo = {f.name for f in bundle.path.iterdir() if f.is_file()}
         assert {"test_dag.py", "new_test.py"} == files_in_repo
@@ -440,8 +451,9 @@ class TestGitDagBundle:
             tracking_ref=GIT_DEFAULT_BRANCH,
         )
         bundle.initialize()
+        assert mock_gitRepo.return_value.remotes.origin.fetch.call_count == 2  # 1 in bare, 1 in main repo
+        mock_gitRepo.return_value.remotes.origin.fetch.reset_mock()
         bundle.refresh()
-        # check remotes called twice. one at initialize and one at refresh above
         assert mock_gitRepo.return_value.remotes.origin.fetch.call_count == 2
 
     @pytest.mark.parametrize(

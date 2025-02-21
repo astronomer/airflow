@@ -256,7 +256,8 @@ class GitDagBundle(BaseDagBundle, LoggingMixin):
         with self.lock():
             with self.hook.configure_hook_env():
                 self._fetch_bare_repo()
-                self.repo.remotes.origin.pull()
+                self.repo.remotes.origin.fetch()
+                self.repo.head.reset(f"origin/{self.tracking_ref}", index=True, working_tree=True)
 
     @staticmethod
     def _convert_git_ssh_url_to_https(url: str) -> str:
