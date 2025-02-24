@@ -28,7 +28,6 @@ from multiprocessing import Process
 import psutil
 import sqlalchemy.exc
 from lockfile.pidlockfile import read_pid_from_pidfile, remove_existing_pidfile
-from structlog import wrap_logger
 
 from airflow import settings
 from airflow.configuration import conf
@@ -43,8 +42,7 @@ from celery.signals import after_setup_logger
 
 WORKER_PROCESS_NAME = "worker"
 
-_log = logging.getLogger(__name__)
-log = wrap_logger(_log)
+log = logging.getLogger(__name__)
 
 
 def _run_command_with_daemon_option(*args, **kwargs):
