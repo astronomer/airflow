@@ -713,14 +713,11 @@ class AssetEvent:
     """Representation of asset event to be triggered by an asset alias."""
 
     id: int
-    asset_id: int
+    asset: Asset
 
     created_dagruns: list[DagRunAssetReference]
     timestamp: datetime.datetime
 
-    uri: str | None = None
-    name: str | None = None
-    group: str | None = None
     extra: dict[str, Any] | None = None
     source_task_id: str | None = None
     source_dag_id: str | None = None

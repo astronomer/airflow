@@ -24,8 +24,10 @@ from sqlalchemy import and_, select
 
 from airflow.api_fastapi.common.db.common import SessionDep
 from airflow.api_fastapi.common.router import AirflowRouter
+from airflow.api_fastapi.execution_api.datamodels.asset import AssetResponse
 from airflow.api_fastapi.execution_api.datamodels.asset_event import (
-    AssetEventCollectionResponse,
+    AssetEventResponse,
+    AssetEventsResponse,
 )
 from airflow.models.asset import AssetAliasModel, AssetEvent, AssetModel
 
@@ -40,11 +42,27 @@ router = AirflowRouter(
 
 def _get_asset_events_through_sql_clauses(
     *, join_clause, where_clause, session: SessionDep
-) -> AssetEventCollectionResponse:
+) -> AssetEventsResponse:
     asset_events = session.scalars(
         select(AssetEvent).join(join_clause).where(where_clause).order_by(AssetEvent.timestamp)
     )
-    return AssetEventCollectionResponse.model_validate({"asset_events": asset_events or []})
+    asset_event_resps = []
+    for event in asset_events:
+        asset_response = AssetResponse(**event.asset)
+        asset_event_resps.append(
+            AssetEventResponse(
+                id=event.id,
+                timestamp=event.timestamp,
+                extra=event.extra,
+                asset=asset_response,
+                created_dagruns=event.created_dagruns,
+                source_task_id=event.source_task_id,
+                source_dag_id=event.source_dag_id,
+                source_run_id=event.source_run_id,
+                source_map_index=event.source_map_index,
+            )
+        )
+    return AssetEventsResponse.model_validate({"asset_events": asset_event_resps})
 
 
 @router.get("/by-asset")
@@ -52,7 +70,7 @@ def get_asset_event_by_asset_name_uri(
     name: Annotated[str, Query(description="The name of the Asset")],
     uri: Annotated[str, Query(description="The URI of the Asset")],
     session: SessionDep,
-) -> AssetEventCollectionResponse:
+) -> AssetEventsResponse:
     if name and uri:
         where_clause = and_(AssetModel.name == name, AssetModel.uri == uri)
     elif uri:
@@ -73,7 +91,7 @@ def get_asset_event_by_asset_name_uri(
 def get_asset_event_by_asset_alias(
     name: Annotated[str, Query(description="The name of the Asset Alias")],
     session: SessionDep,
-) -> AssetEventCollectionResponse:
+) -> AssetEventsResponse:
     return _get_asset_events_through_sql_clauses(
         join_clause=AssetEvent.source_aliases,
         where_clause=(AssetAliasModel.name == name),
