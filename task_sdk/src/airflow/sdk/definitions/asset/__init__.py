@@ -451,11 +451,16 @@ class Asset(os.PathLike, BaseAsset):
 
         :meta private:
         """
+        from airflow.models.asset import retrieve_asset_ids
+        from airflow.utils.session import create_session
+
+        with create_session() as session:
+            asset_id = str(retrieve_asset_ids(assets=[self], session=session)[0])
         yield DagDependency(
             source=source or "asset",
             target=target or "asset",
             dependency_type="asset",
-            dependency_id=self.name,
+            dependency_id=asset_id,
         )
 
     def asprofile(self) -> AssetProfile:
@@ -489,27 +494,28 @@ class AssetRef(BaseAsset, AttrsInstance):
     def iter_asset_refs(self) -> Iterator[AssetRef]:
         yield self
 
-    def _resolve_asset(self, *, session: Session | None = None) -> Asset | None:
+    def _resolve_asset_model(self, *, session: Session | None = None) -> AssetModel | None:
         from airflow.models.asset import resolve_ref_to_asset
         from airflow.utils.session import create_session
 
         with contextlib.nullcontext(session) if session else create_session() as session:
-            asset = resolve_ref_to_asset(**attrs.asdict(self), session=session)
-        return asset.to_public() if asset else None
+            asset_model = resolve_ref_to_asset(**attrs.asdict(self), session=session)
+        return asset_model if asset_model else None
 
     def evaluate(self, statuses: dict[AssetUniqueKey, bool], *, session: Session | None = None) -> bool:
-        if asset := self._resolve_asset(session=session):
+        if asset_model := self._resolve_asset_model(session=session):
+            asset = asset_model.to_public()
             return asset.evaluate(statuses=statuses, session=session)
         return False
 
     def iter_dag_dependencies(self, *, source: str = "", target: str = "") -> Iterator[DagDependency]:
         (dependency_id,) = attrs.astuple(self)
-        if asset := self._resolve_asset():
+        if asset_model := self._resolve_asset_model():
             yield DagDependency(
                 source=f"asset-ref:{dependency_id}" if source else "asset",
                 target="asset" if source else f"asset-ref:{dependency_id}",
                 dependency_type="asset",
-                dependency_id=asset.name,
+                dependency_id=str(asset_model.id),
             )
         else:
             yield DagDependency(
@@ -596,18 +602,17 @@ class AssetAlias(BaseAsset):
             )
             return
         for asset in resolved_assets:
-            asset_name = asset.name
             # asset
             yield DagDependency(
                 source=f"asset-alias:{self.name}" if source else "asset",
                 target="asset" if source else f"asset-alias:{self.name}",
                 dependency_type="asset",
-                dependency_id=asset_name,
+                dependency_id=str(asset.id),
             )
             # asset alias
             yield DagDependency(
-                source=source or f"asset:{asset_name}",
-                target=target or f"asset:{asset_name}",
+                source=source or f"asset:{asset.id}",
+                target=target or f"asset:{asset.id}",
                 dependency_type="asset-alias",
                 dependency_id=self.name,
             )
