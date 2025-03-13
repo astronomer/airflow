@@ -232,13 +232,27 @@ class TestGitDagBundle:
         assert GitDagBundle.supports_versioning is True
 
     def test_uses_dag_bundle_root_storage_path(self):
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
         base = get_bundle_storage_root_path()
         assert bundle.path.is_relative_to(base)
 
+    def test_repo_url_from_connection_host(self):
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
+        assert bundle.repo_url == bundle.hook.repo_url
+
     def test_repo_url_overrides_connection_host_when_provided(self):
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH, repo_url="/some/other/repo")
+        bundle = GitDagBundle(
+            name="test",
+            git_conn_id=CONN_DEFAULT,
+            tracking_ref=GIT_DEFAULT_BRANCH,
+            repo_url="/some/other/repo",
+        )
         assert bundle.repo_url == "/some/other/repo"
+
+    def test_repo_url_no_connection(self):
+        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH, repo_url="/some/repo")
+        assert bundle.repo_url == "/some/repo"
+        assert bundle.hook is None
 
     def test_https_access_token_repo_url_overrides_connection_host_when_provided(self):
         bundle = GitDagBundle(
@@ -249,15 +263,11 @@ class TestGitDagBundle:
         )
         assert bundle.repo_url == f"https://{ACCESS_TOKEN}@github.com/apache/zzzairflow"
 
-    def test_falls_back_to_connection_host_when_no_repo_url_provided(self):
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
-        assert bundle.repo_url == bundle.hook.repo_url
-
     @mock.patch("airflow.dag_processing.bundles.git.GitHook")
     def test_get_current_version(self, mock_githook, git_repo):
         repo_path, repo = git_repo
         mock_githook.return_value.repo_url = repo_path
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
 
         bundle.initialize()
 
@@ -279,6 +289,7 @@ class TestGitDagBundle:
         bundle = GitDagBundle(
             name="test",
             version=starting_commit.hexsha,
+            git_conn_id=CONN_DEFAULT,
             tracking_ref=GIT_DEFAULT_BRANCH,
         )
         bundle.initialize()
@@ -307,6 +318,7 @@ class TestGitDagBundle:
         bundle = GitDagBundle(
             name="test",
             version="test",
+            git_conn_id=CONN_DEFAULT,
             tracking_ref=GIT_DEFAULT_BRANCH,
         )
         bundle.initialize()
@@ -327,7 +339,7 @@ class TestGitDagBundle:
         repo.index.add([file_path])
         repo.index.commit("Another commit")
 
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
         bundle.initialize()
 
         assert bundle.get_current_version() != starting_commit.hexsha
@@ -353,7 +365,7 @@ class TestGitDagBundle:
             writer.set_value("user", "name", "Test User")
             writer.set_value("user", "email", "test@example.com")
 
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
         bundle.initialize()
 
         assert bundle.get_current_version() == starting_commit.hexsha
@@ -384,7 +396,7 @@ class TestGitDagBundle:
         # add tag
         repo.create_tag("test123")
 
-        bundle = GitDagBundle(name="test", tracking_ref="test123")
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref="test123")
         bundle.initialize()
         assert bundle.get_current_version() == starting_commit.hexsha
 
@@ -411,7 +423,7 @@ class TestGitDagBundle:
         mock_githook.return_value.repo_url = repo_path
 
         repo.create_head("test")
-        bundle = GitDagBundle(name="test", tracking_ref="test")
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref="test")
         bundle.initialize()
         assert bundle.repo.head.ref.name == "test"
 
@@ -422,6 +434,7 @@ class TestGitDagBundle:
         bundle = GitDagBundle(
             name="test",
             version="not_found",
+            git_conn_id=CONN_DEFAULT,
             tracking_ref=GIT_DEFAULT_BRANCH,
         )
 
@@ -445,6 +458,7 @@ class TestGitDagBundle:
 
         bundle = GitDagBundle(
             name="test",
+            git_conn_id=CONN_DEFAULT,
             tracking_ref=GIT_DEFAULT_BRANCH,
             subdir=subdir,
         )
@@ -521,6 +535,7 @@ class TestGitDagBundle:
         session.commit()
         bundle = GitDagBundle(
             name="test",
+            git_conn_id="git_default",
             tracking_ref="main",
         )
         bundle.initialize = mock.MagicMock()
@@ -532,6 +547,7 @@ class TestGitDagBundle:
     def test_view_url_returns_none_when_no_version_in_view_url(self, mock_gitrepo):
         bundle = GitDagBundle(
             name="test",
+            git_conn_id=CONN_DEFAULT,
             tracking_ref="main",
         )
         view_url = bundle.view_url(None)
@@ -544,7 +560,7 @@ class TestGitDagBundle:
 
         with mock.patch("airflow.dag_processing.bundles.git.Repo.clone_from") as mock_clone:
             mock_clone.side_effect = GitCommandError("clone", "Simulated error")
-            bundle = GitDagBundle(name="test", tracking_ref="main")
+            bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref="main")
             with pytest.raises(
                 AirflowException,
                 match=re.escape("Error cloning repository"),
@@ -558,7 +574,7 @@ class TestGitDagBundle:
         with mock.patch("airflow.dag_processing.bundles.git.os.path.exists", return_value=False):
             with mock.patch("airflow.dag_processing.bundles.git.Repo.clone_from") as mock_clone:
                 mock_clone.side_effect = NoSuchPathError("Path not found")
-                bundle = GitDagBundle(name="test", tracking_ref="main")
+                bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref="main")
                 with pytest.raises(AirflowException) as exc_info:
                     bundle._clone_repo_if_required()
 
@@ -579,7 +595,7 @@ class TestGitDagBundle:
     def test_lock_used(self, mock_githook, git_repo):
         repo_path, repo = git_repo
         mock_githook.return_value.repo_url = repo_path
-        bundle = GitDagBundle(name="test", tracking_ref=GIT_DEFAULT_BRANCH)
+        bundle = GitDagBundle(name="test", git_conn_id=CONN_DEFAULT, tracking_ref=GIT_DEFAULT_BRANCH)
         with mock.patch("airflow.dag_processing.bundles.git.GitDagBundle.lock") as mock_lock:
             bundle.initialize()
             assert mock_lock.call_count == 2  # both initialize and refresh
