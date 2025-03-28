@@ -195,7 +195,7 @@ class DatabricksSQLStatementExecutionTrigger(BaseTrigger):
                 yield TriggerEvent(
                     {
                         "statement_id": self.statement_id,
-                        "state": statement_state.state,
+                        "state": statement_state.to_json(),
                         "error": error,
                     }
                 )
