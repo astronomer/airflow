@@ -3447,17 +3447,17 @@ export class DagVersionService {
    * Get one Dag Version.
    * @param data The data for the request.
    * @param data.dagId
-   * @param data.versionNumber
+   * @param data.id
    * @returns DagVersionResponse Successful Response
    * @throws ApiError
    */
   public static getDagVersion(data: GetDagVersionData): CancelablePromise<GetDagVersionResponse> {
     return __request(OpenAPI, {
       method: "GET",
-      url: "/api/v2/dags/{dag_id}/dagVersions/{version_number}",
+      url: "/api/v2/dags/{dag_id}/dagVersions/{id}",
       path: {
         dag_id: data.dagId,
-        version_number: data.versionNumber,
+        id: data.id,
       },
       errors: {
         401: "Unauthorized",

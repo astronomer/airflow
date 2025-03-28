@@ -2375,7 +2375,7 @@ export const ensureUseVariableServiceGetVariablesData = (
  * Get one Dag Version.
  * @param data The data for the request.
  * @param data.dagId
- * @param data.versionNumber
+ * @param data.id
  * @returns DagVersionResponse Successful Response
  * @throws ApiError
  */
@@ -2383,15 +2383,15 @@ export const ensureUseDagVersionServiceGetDagVersionData = (
   queryClient: QueryClient,
   {
     dagId,
-    versionNumber,
+    id,
   }: {
     dagId: string;
-    versionNumber: number;
+    id: string;
   },
 ) =>
   queryClient.ensureQueryData({
-    queryKey: Common.UseDagVersionServiceGetDagVersionKeyFn({ dagId, versionNumber }),
-    queryFn: () => DagVersionService.getDagVersion({ dagId, versionNumber }),
+    queryKey: Common.UseDagVersionServiceGetDagVersionKeyFn({ dagId, id }),
+    queryFn: () => DagVersionService.getDagVersion({ dagId, id }),
   });
 /**
  * Get Dag Versions

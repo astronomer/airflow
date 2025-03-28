@@ -2570,7 +2570,7 @@ export type ReparseDagFileResponse = null;
 
 export type GetDagVersionData = {
   dagId: string;
-  versionNumber: number;
+  id: string;
 };
 
 export type GetDagVersionResponse = DagVersionResponse;
@@ -5317,7 +5317,7 @@ export type $OpenApiTs = {
       };
     };
   };
-  "/api/v2/dags/{dag_id}/dagVersions/{version_number}": {
+  "/api/v2/dags/{dag_id}/dagVersions/{id}": {
     get: {
       req: GetDagVersionData;
       res: {

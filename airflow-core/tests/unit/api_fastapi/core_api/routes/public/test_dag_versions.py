@@ -19,7 +19,9 @@ from __future__ import annotations
 from unittest import mock
 
 import pytest
+from sqlalchemy import select
 
+from airflow.models.dag_version import DagVersion
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.providers.standard.operators.empty import EmptyOperator
 
@@ -105,27 +107,37 @@ class TestGetDagVersion(TestDagVersionEndpoint):
         ],
     )
     @pytest.mark.usefixtures("make_dag_with_multiple_versions")
-    def test_get_dag_version(self, test_client, dag_id, dag_version, expected_response):
-        response = test_client.get(f"/api/v2/dags/{dag_id}/dagVersions/{dag_version}")
+    def test_get_dag_version(self, test_client, session, dag_id, dag_version, expected_response):
+        dagversion_id = session.scalar(
+            select(DagVersion.id).filter_by(dag_id=dag_id, version_number=dag_version)
+        )
+
+        response = test_client.get(f"/api/v2/dags/{dag_id}/dagVersions/{dagversion_id}")
         assert response.status_code == 200
         assert response.json() == expected_response
 
     def test_get_dag_version_404(self, test_client):
-        response = test_client.get("/api/v2/dags/dag_with_multiple_versions/dagVersions/99")
+        fake_uuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        response = test_client.get(f"/api/v2/dags/dag_with_multiple_versions/dagVersions/{fake_uuid}")
         assert response.status_code == 404
         assert response.json() == {
-            "detail": "The DagVersion with dag_id: `dag_with_multiple_versions` and version_number: `99` was not found",
+            "detail": f"The DagVersion with dag_id: `dag_with_multiple_versions` and id: `{fake_uuid}` was not found",
         }
+
+    def test_get_dag_version_422(self, test_client):
+        response = test_client.get("/api/v2/dags/dag_with_multiple_versions/dagVersions/abc123")
+        assert response.status_code == 422
+        assert "Input should be a valid UUID, invalid length" in response.json()["detail"][0]["msg"]
 
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.get(
-            "/api/v2/dags/dag_with_multiple_versions/dagVersions/99", params={}
+            "/api/v2/dags/dag_with_multiple_versions/dagVersions/abc123", params={}
         )
         assert response.status_code == 401
 
     def test_should_respond_403(self, unauthorized_test_client):
         response = unauthorized_test_client.get(
-            "/api/v2/dags/dag_with_multiple_versions/dagVersions/99", params={}
+            "/api/v2/dags/dag_with_multiple_versions/dagVersions/abc123", params={}
         )
         assert response.status_code == 403
 

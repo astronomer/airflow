@@ -1708,13 +1708,13 @@ export const useDagVersionServiceGetDagVersionKey = "DagVersionServiceGetDagVers
 export const UseDagVersionServiceGetDagVersionKeyFn = (
   {
     dagId,
-    versionNumber,
+    id,
   }: {
     dagId: string;
-    versionNumber: number;
+    id: string;
   },
   queryKey?: Array<unknown>,
-) => [useDagVersionServiceGetDagVersionKey, ...(queryKey ?? [{ dagId, versionNumber }])];
+) => [useDagVersionServiceGetDagVersionKey, ...(queryKey ?? [{ dagId, id }])];
 export type DagVersionServiceGetDagVersionsDefaultResponse = Awaited<
   ReturnType<typeof DagVersionService.getDagVersions>
 >;

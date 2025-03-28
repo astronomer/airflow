@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -44,7 +45,7 @@ dag_versions_router = AirflowRouter(tags=["DagVersion"], prefix="/dags/{dag_id}/
 
 
 @dag_versions_router.get(
-    "/{version_number}",
+    "/{id}",
     responses=create_openapi_http_exception_doc(
         [
             status.HTTP_404_NOT_FOUND,
@@ -54,16 +55,16 @@ dag_versions_router = AirflowRouter(tags=["DagVersion"], prefix="/dags/{dag_id}/
 )
 def get_dag_version(
     dag_id: str,
-    version_number: int,
+    id: UUID,
     session: SessionDep,
 ) -> DagVersionResponse:
     """Get one Dag Version."""
-    dag_version = session.scalar(select(DagVersion).filter_by(dag_id=dag_id, version_number=version_number))
+    dag_version = session.scalar(select(DagVersion).filter_by(dag_id=dag_id, id=id))
 
     if dag_version is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            f"The DagVersion with dag_id: `{dag_id}` and version_number: `{version_number}` was not found",
+            f"The DagVersion with dag_id: `{dag_id}` and id: `{id}` was not found",
         )
 
     return dag_version

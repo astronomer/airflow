@@ -2819,7 +2819,7 @@ export const useVariableServiceGetVariables = <
  * Get one Dag Version.
  * @param data The data for the request.
  * @param data.dagId
- * @param data.versionNumber
+ * @param data.id
  * @returns DagVersionResponse Successful Response
  * @throws ApiError
  */
@@ -2830,17 +2830,17 @@ export const useDagVersionServiceGetDagVersion = <
 >(
   {
     dagId,
-    versionNumber,
+    id,
   }: {
     dagId: string;
-    versionNumber: number;
+    id: string;
   },
   queryKey?: TQueryKey,
   options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
 ) =>
   useQuery<TData, TError>({
-    queryKey: Common.UseDagVersionServiceGetDagVersionKeyFn({ dagId, versionNumber }, queryKey),
-    queryFn: () => DagVersionService.getDagVersion({ dagId, versionNumber }) as TData,
+    queryKey: Common.UseDagVersionServiceGetDagVersionKeyFn({ dagId, id }, queryKey),
+    queryFn: () => DagVersionService.getDagVersion({ dagId, id }) as TData,
     ...options,
   });
 /**
