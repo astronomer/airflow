@@ -25,6 +25,7 @@ from typing import cast
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import StreamingResponse
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 from starlette.staticfiles import StaticFiles
@@ -174,5 +175,25 @@ def init_error_handlers(app: FastAPI) -> None:
         app.add_exception_handler(handler.exception_cls, handler.exception_handler)
 
 
+async def inject_script(original_stream):
+    async for chunk in original_stream:
+        # A buffer should be used to be able to detect the tag even if the body tag is cut
+        # into two chunks.
+        if b"</body>" in chunk:
+            chunk = chunk.replace(
+                b"</body>", b"<script>alert('Hello Airflow From Injected Script!');</script></body>"
+            )
+        yield chunk
+
+
 def init_middlewares(app: FastAPI) -> None:
     app.add_middleware(FlaskExceptionsMiddleware)
+
+    @app.middleware("http")
+    async def custom_middleware(request: Request, call_next):
+        response = await call_next(request)
+
+        url = request.url
+        if url == conf.get("api", "base_url"):
+            response = StreamingResponse(inject_script(response.body_iterator), media_type="text/html")
+        return response
