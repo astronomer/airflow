@@ -58,9 +58,7 @@ export const CreateAssetEventModal = ({ asset, onClose, open }: Props) => {
   const [extra, setExtra] = useState("{}");
   const queryClient = useQueryClient();
 
-  const { data } = useDependenciesServiceGetDependencies({ nodeId: `asset:${asset.name}` }, undefined, {
-    enabled: Boolean(asset) && Boolean(asset.name),
-  });
+  const { data } = useDependenciesServiceGetDependencies({ nodeId: `asset:${asset.id}` }, undefined);
 
   const upstreamDags: Array<EdgeResponse> = (data?.edges ?? []).filter(
     (edge) => edge.target_id === `asset:${asset.name}` && edge.source_id.startsWith("dag:"),
