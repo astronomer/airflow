@@ -30,10 +30,9 @@ import logging
 import multiprocessing
 import multiprocessing.sharedctypes
 import os
+import sys
 from multiprocessing import Queue, SimpleQueue
 from typing import TYPE_CHECKING, Optional
-
-from setproctitle import setproctitle
 
 from airflow.executors import workloads
 from airflow.executors.base_executor import PARALLELISM, BaseExecutor
@@ -44,6 +43,21 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
     TaskInstanceStateType = tuple[workloads.TaskInstance, TaskInstanceState, Optional[Exception]]
+
+
+def setproctitle(title: str) -> None:
+    """
+    Set the process title.
+
+    This is a no-op on MacOS, because the setproctitle library doesn't work on Mac OS.
+    """
+    os_type = sys.platform
+    if os_type == "darwin":
+        return
+
+    from setproctitle import setproctitle
+
+    setproctitle(title)
 
 
 def _run_worker(
