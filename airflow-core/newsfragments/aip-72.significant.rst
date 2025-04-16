@@ -123,13 +123,13 @@ As part of this change the following breaking changes have occurred:
 
   * ruff
 
-    * AIR302
+    * AIR311
 
       * [x] ``airflow.models.baseoperatorlink.BaseOperatorLink`` → ``airflow.sdk.BaseOperatorLink``
-      * [ ] ``airflow.models.dag.DAG`` → ``airflow.sdk.DAG``
-      * [ ] ``airflow.models.DAG`` → ``airflow.sdk.DAG``
-      * [ ] ``airflow.decorators.dag`` → ``airflow.sdk.dag``
-      * [ ] ``airflow.decorators.task`` → ``airflow.sdk.task``
-      * [ ] ``airflow.decorators.task_group`` → ``airflow.sdk.task_group``
-      * [ ] ``airflow.decorators.setup`` → ``airflow.sdk.setup``
-      * [ ] ``airflow.decorators.teardown`` → ``airflow.sdk.teardown``
+      * [x] ``airflow.models.dag.DAG`` → ``airflow.sdk.DAG``
+      * [x] ``airflow.models.DAG`` → ``airflow.sdk.DAG``
+      * [x] ``airflow.decorators.dag`` → ``airflow.sdk.dag``
+      * [x] ``airflow.decorators.task`` → ``airflow.sdk.task``
+      * [x] ``airflow.decorators.task_group`` → ``airflow.sdk.task_group``
+      * [x] ``airflow.decorators.setup`` → ``airflow.sdk.setup``
+      * [x] ``airflow.decorators.teardown`` → ``airflow.sdk.teardown``

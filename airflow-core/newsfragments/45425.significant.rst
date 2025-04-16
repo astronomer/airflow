@@ -15,7 +15,7 @@ The ``airflow.io`` class ``ObjectStoragePath`` and function ``attach`` are moved
 
   * ruff
 
-    * AIR302
+    * AIR311
 
-      * [ ] ``airflow.io.path.ObjectStoragePath`` → ``airflow.sdk.ObjectStoragePath``
-      * [ ] ``airflow.io.attach`` → ``airflow.sdk.io.attach``
+      * [x] ``airflow.io.path.ObjectStoragePath`` → ``airflow.sdk.ObjectStoragePath``
+      * [x] ``airflow.io.storage.attach`` → ``airflow.sdk.io.attach``
