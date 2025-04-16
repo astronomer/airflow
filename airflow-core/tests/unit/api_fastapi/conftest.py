@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import os
 from typing import TYPE_CHECKING
 
@@ -119,7 +120,7 @@ def client(request):
 def configure_git_connection_for_dag_bundle(session):
     # Git connection is required for the bundles to have a url.
     connection = Connection(
-        conn_id="git_default",
+        conn_id="git_test_9e8gu98eg",
         conn_type="git",
         description="default git connection",
         host="fakeprotocol://test_host.github.com",
@@ -132,7 +133,30 @@ def configure_git_connection_for_dag_bundle(session):
             (
                 "dag_processor",
                 "dag_bundle_config_list",
-            ): '[{ "name": "dag_maker", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}, { "name": "another_bundle_name", "classpath": "airflow.providers.git.bundles.git.GitDagBundle", "kwargs": {"subdir": "dags", "tracking_ref": "main", "refresh_interval": 0}}]'
+            ): json.dumps(
+                [
+                    {
+                        "name": "dag_maker",
+                        "classpath": "airflow.providers.git.bundles.git.GitDagBundle",
+                        "kwargs": {
+                            "subdir": "dags",
+                            "tracking_ref": "main",
+                            "refresh_interval": 0,
+                            "git_conn_id": "git_test_9e8gu98eg",
+                        },
+                    },
+                    {
+                        "name": "another_bundle_name",
+                        "classpath": "airflow.providers.git.bundles.git.GitDagBundle",
+                        "kwargs": {
+                            "subdir": "dags",
+                            "tracking_ref": "main",
+                            "refresh_interval": 0,
+                            "git_conn_id": "git_test_9e8gu98eg",
+                        },
+                    },
+                ]
+            )
         }
     ):
         yield
