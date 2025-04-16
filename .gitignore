@@ -271,3 +271,6 @@ airflow-build-dockerfile*
 *.zip
 
 _api/
+apache-airflow/
+apache-airflow-core/
+apache-airflow-task-sdk/
