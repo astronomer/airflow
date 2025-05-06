@@ -15,7 +15,7 @@ with DAG(dag_id="tutorial_java_dag"):
 
     # Load
     #
-    task(executor="EdgeExecutorJava", queue="java", task_id="load") 
+    task.remote(executor="EdgeExecutorJava", queue="java", task_id="load") 
 
 
 
