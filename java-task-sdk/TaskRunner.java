@@ -15,6 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// 
+// TaskRunner
+// Incarnation for actually running a task as and when needed
+// Each execution is done in a new thread to handle parallelism as well as failures
+// Uses the TaskRegistry to access the task code to be run.
+//
+
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;

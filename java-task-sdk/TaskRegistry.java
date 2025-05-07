@@ -15,6 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// 
+// TaskRegistry
+//
+// Handless the collection of Java Tasks which can be run
+// Includes operations for registering a new Task 
+// and executing a new Task once it has been registered
+//
+// Key thing to note is that the uniqueness is based on DagID + Task Name
+//
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;

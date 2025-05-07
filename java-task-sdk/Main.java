@@ -15,6 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// 
+// Main.java
+// Purely a test-harness and example on how to set up and run the Java TaskSDK
+// 
+
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;

@@ -15,6 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//
+// XcomData
+// Handles the XcomData needed by the Task for reading and also writing for
+// later tasks. Though those will be two separate copies. 
+//
+// Supports reading/writing from a local file for ease of testing and debugging
+//
+// TODO: Add support to get/put from API server. 
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;

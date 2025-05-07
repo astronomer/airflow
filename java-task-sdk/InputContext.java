@@ -15,6 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//
+// InputContext 
+// Meant to the single point of passing data into the Task code
+// Therefore is meant to read-only interface to the Task.
+//
+
 public class InputContext {
     private final XcomData xcomData;
     private final Variables variables;

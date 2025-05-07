@@ -15,6 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//
+// Variables
+// Handles the Airflow Variables needed by the Task for execution
+// Supports reading from a local file for ease of testing and debugging
+//
+// TODO: Add support to get from API server. 
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
