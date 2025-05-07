@@ -24,7 +24,6 @@ from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import or_, select
-from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.selectable import Select
 
@@ -736,9 +735,9 @@ def _patch_ti_validate_request(
     request: Request,
     body: PatchTaskInstanceBody,
     session: SessionDep,
-    map_index: int = -1,
+    map_index: int | None = -1,
     update_mask: list[str] | None = Query(None),
-) -> tuple[DAG, TI, dict]:
+) -> tuple[DAG, list[TI], dict]:
     dag = request.app.state.dag_bag.get_dag(dag_id)
     if not dag:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"DAG {dag_id} not found")
@@ -752,20 +751,15 @@ def _patch_ti_validate_request(
         .join(TI.dag_run)
         .options(joinedload(TI.rendered_task_instance_fields))
     )
-    query = query.where(TI.map_index == map_index)
+    if map_index is not None:
+        query = query.where(TI.map_index == map_index)
 
-    try:
-        ti = session.scalar(query)
-    except MultipleResultsFound:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Multiple task instances found. As the TI is mapped, add the map_index value to the URL",
-        )
+    tis = session.scalars(query).all()
 
     err_msg_404 = (
         f"The Task Instance with dag_id: `{dag_id}`, run_id: `{dag_run_id}`, task_id: `{task_id}` and map_index: `{map_index}` was not found",
     )
-    if ti is None:
+    if len(tis) == 0:
         raise HTTPException(status.HTTP_404_NOT_FOUND, err_msg_404)
 
     fields_to_update = body.model_fields_set
@@ -777,7 +771,7 @@ def _patch_ti_validate_request(
         except ValidationError as e:
             raise RequestValidationError(errors=e.errors())
 
-    return dag, ti, body.model_dump(include=fields_to_update, by_alias=True)
+    return dag, list(tis), body.model_dump(include=fields_to_update, by_alias=True)
 
 
 @task_instances_router.patch(
@@ -803,22 +797,20 @@ def patch_task_instance_dry_run(
     request: Request,
     body: PatchTaskInstanceBody,
     session: SessionDep,
-    map_index: int = -1,
+    map_index: int | None = None,
     update_mask: list[str] | None = Query(None),
 ) -> TaskInstanceCollectionResponse:
     """Update a task instance dry_run mode."""
-    dag, ti, data = _patch_ti_validate_request(
+    dag, tis, data = _patch_ti_validate_request(
         dag_id, dag_run_id, task_id, request, body, session, map_index, update_mask
     )
-
-    tis: list[TI] = []
 
     if data.get("new_state"):
         tis = (
             dag.set_task_instance_state(
                 task_id=task_id,
                 run_id=dag_run_id,
-                map_indexes=[map_index],
+                map_indexes=[map_index] if map_index is not None else None,
                 state=data["new_state"],
                 upstream=body.include_upstream,
                 downstream=body.include_downstream,
@@ -830,8 +822,88 @@ def patch_task_instance_dry_run(
             or []
         )
 
-    elif "note" in data:
-        tis = [ti]
+    return TaskInstanceCollectionResponse(
+        task_instances=[
+            TaskInstanceResponse.model_validate(
+                ti,
+            )
+            for ti in tis
+        ],
+        total_entries=len(tis),
+    )
+
+
+@task_instances_router.patch(
+    task_instances_prefix + "/{task_id}/summary",
+    responses=create_openapi_http_exception_doc(
+        [status.HTTP_404_NOT_FOUND, status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
+    ),
+    dependencies=[
+        Depends(action_logging()),
+        Depends(requires_access_dag(method="PUT", access_entity=DagAccessEntity.TASK_INSTANCE)),
+    ],
+)
+def patch_task_instance_summary(
+    dag_id: str,
+    dag_run_id: str,
+    task_id: str,
+    request: Request,
+    body: PatchTaskInstanceBody,
+    user: GetUserDep,
+    session: SessionDep,
+    update_mask: list[str] | None = Query(None),
+) -> TaskInstanceCollectionResponse:
+    """
+    Update a task instance summary.
+
+    If the task is unmapped this is similar to the patch task instance endpoint. For mapped task
+    updates all the mapped task instances at once.
+    """
+    dag, tis, data = _patch_ti_validate_request(
+        dag_id, dag_run_id, task_id, request, body, session, None, update_mask
+    )
+
+    for key, _ in data.items():
+        if key == "new_state":
+            tis = dag.set_task_instance_state(
+                task_id=task_id,
+                run_id=dag_run_id,
+                map_indexes=None,
+                state=data["new_state"],
+                upstream=body.include_upstream,
+                downstream=body.include_downstream,
+                future=body.include_future,
+                past=body.include_past,
+                commit=True,
+                session=session,
+            )
+            if not tis:
+                raise HTTPException(
+                    status.HTTP_409_CONFLICT, f"Task id {task_id} is already in {data['new_state']} state"
+                )
+            for ti in tis:
+                try:
+                    if data["new_state"] == TaskInstanceState.SUCCESS:
+                        get_listener_manager().hook.on_task_instance_success(
+                            previous_state=None, task_instance=ti
+                        )
+                    elif data["new_state"] == TaskInstanceState.FAILED:
+                        get_listener_manager().hook.on_task_instance_failed(
+                            previous_state=None,
+                            task_instance=ti,
+                            error=f"TaskInstance's state was manually set to `{TaskInstanceState.FAILED}`.",
+                        )
+                except Exception:
+                    log.exception("error calling listener")
+
+        elif key == "note":
+            for ti in tis:
+                if update_mask or body.note is not None:
+                    if ti.task_instance_note is None:
+                        ti.note = (body.note, user.get_id())
+                    else:
+                        ti.task_instance_note.content = body.note
+                        ti.task_instance_note.user_id = user.get_id()
 
     return TaskInstanceCollectionResponse(
         task_instances=[
@@ -878,13 +950,15 @@ def patch_task_instance(
     update_mask: list[str] | None = Query(None),
 ) -> TaskInstanceResponse:
     """Update a task instance."""
-    dag, ti, data = _patch_ti_validate_request(
+    dag, tis, data = _patch_ti_validate_request(
         dag_id, dag_run_id, task_id, request, body, session, map_index, update_mask
     )
 
+    ti = tis[0]
+
     for key, _ in data.items():
         if key == "new_state":
-            tis: list[TI] = dag.set_task_instance_state(
+            tis = dag.set_task_instance_state(
                 task_id=task_id,
                 run_id=dag_run_id,
                 map_indexes=[map_index],
@@ -922,7 +996,6 @@ def patch_task_instance(
                 else:
                     ti.task_instance_note.content = body.note
                     ti.task_instance_note.user_id = user.get_id()
-                session.commit()
 
     return TaskInstanceResponse.model_validate(ti)
 

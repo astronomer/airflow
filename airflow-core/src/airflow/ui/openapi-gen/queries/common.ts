@@ -1918,6 +1918,9 @@ export type TaskInstanceServicePatchTaskInstanceDryRunByMapIndexMutationResult =
 export type TaskInstanceServicePatchTaskInstanceDryRunMutationResult = Awaited<
   ReturnType<typeof TaskInstanceService.patchTaskInstanceDryRun>
 >;
+export type TaskInstanceServicePatchTaskInstanceSummaryMutationResult = Awaited<
+  ReturnType<typeof TaskInstanceService.patchTaskInstanceSummary>
+>;
 export type PoolServicePatchPoolMutationResult = Awaited<ReturnType<typeof PoolService.patchPool>>;
 export type PoolServiceBulkPoolsMutationResult = Awaited<ReturnType<typeof PoolService.bulkPools>>;
 export type XcomServiceUpdateXcomEntryMutationResult = Awaited<

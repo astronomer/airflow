@@ -146,6 +146,8 @@ import type {
   PatchTaskInstanceDryRunByMapIndexResponse,
   PatchTaskInstanceDryRunData,
   PatchTaskInstanceDryRunResponse,
+  PatchTaskInstanceSummaryData,
+  PatchTaskInstanceSummaryResponse,
   GetLogData,
   GetLogResponse,
   GetExternalLogUrlData,
@@ -2541,6 +2543,48 @@ export class TaskInstanceService {
         401: "Unauthorized",
         403: "Forbidden",
         404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Patch Task Instance Summary
+   * Update a task instance summary.
+   *
+   * If the task is unmapped this is similar to the patch task instance endpoint. For mapped task
+   * updates all the mapped task instances at once.
+   * @param data The data for the request.
+   * @param data.dagId
+   * @param data.dagRunId
+   * @param data.taskId
+   * @param data.requestBody
+   * @param data.updateMask
+   * @returns TaskInstanceCollectionResponse Successful Response
+   * @throws ApiError
+   */
+  public static patchTaskInstanceSummary(
+    data: PatchTaskInstanceSummaryData,
+  ): CancelablePromise<PatchTaskInstanceSummaryResponse> {
+    return __request(OpenAPI, {
+      method: "PATCH",
+      url: "/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}/summary",
+      path: {
+        dag_id: data.dagId,
+        dag_run_id: data.dagRunId,
+        task_id: data.taskId,
+      },
+      query: {
+        update_mask: data.updateMask,
+      },
+      body: data.requestBody,
+      mediaType: "application/json",
+      errors: {
+        400: "Bad Request",
+        401: "Unauthorized",
+        403: "Forbidden",
+        404: "Not Found",
+        409: "Conflict",
         422: "Validation Error",
       },
     });

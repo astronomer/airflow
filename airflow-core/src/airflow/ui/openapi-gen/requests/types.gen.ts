@@ -2412,7 +2412,7 @@ export type PostClearTaskInstancesResponse = TaskInstanceCollectionResponse;
 export type PatchTaskInstanceDryRunByMapIndexData = {
   dagId: string;
   dagRunId: string;
-  mapIndex: number;
+  mapIndex: number | null;
   requestBody: PatchTaskInstanceBody;
   taskId: string;
   updateMask?: Array<string> | null;
@@ -2423,13 +2423,23 @@ export type PatchTaskInstanceDryRunByMapIndexResponse = TaskInstanceCollectionRe
 export type PatchTaskInstanceDryRunData = {
   dagId: string;
   dagRunId: string;
-  mapIndex?: number;
+  mapIndex?: number | null;
   requestBody: PatchTaskInstanceBody;
   taskId: string;
   updateMask?: Array<string> | null;
 };
 
 export type PatchTaskInstanceDryRunResponse = TaskInstanceCollectionResponse;
+
+export type PatchTaskInstanceSummaryData = {
+  dagId: string;
+  dagRunId: string;
+  requestBody: PatchTaskInstanceBody;
+  taskId: string;
+  updateMask?: Array<string> | null;
+};
+
+export type PatchTaskInstanceSummaryResponse = TaskInstanceCollectionResponse;
 
 export type GetLogData = {
   accept?: "application/json" | "text/plain" | "*/*";
@@ -4704,6 +4714,41 @@ export type $OpenApiTs = {
          * Not Found
          */
         404: HTTPExceptionResponse;
+        /**
+         * Validation Error
+         */
+        422: HTTPValidationError;
+      };
+    };
+  };
+  "/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskInstances/{task_id}/summary": {
+    patch: {
+      req: PatchTaskInstanceSummaryData;
+      res: {
+        /**
+         * Successful Response
+         */
+        200: TaskInstanceCollectionResponse;
+        /**
+         * Bad Request
+         */
+        400: HTTPExceptionResponse;
+        /**
+         * Unauthorized
+         */
+        401: HTTPExceptionResponse;
+        /**
+         * Forbidden
+         */
+        403: HTTPExceptionResponse;
+        /**
+         * Not Found
+         */
+        404: HTTPExceptionResponse;
+        /**
+         * Conflict
+         */
+        409: HTTPExceptionResponse;
         /**
          * Validation Error
          */

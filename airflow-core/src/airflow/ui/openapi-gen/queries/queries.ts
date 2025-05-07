@@ -4293,6 +4293,64 @@ export const useTaskInstanceServicePatchTaskInstanceDryRun = <
     ...options,
   });
 /**
+ * Patch Task Instance Summary
+ * Update a task instance summary.
+ *
+ * If the task is unmapped this is similar to the patch task instance endpoint. For mapped task
+ * updates all the mapped task instances at once.
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.dagRunId
+ * @param data.taskId
+ * @param data.requestBody
+ * @param data.updateMask
+ * @returns TaskInstanceCollectionResponse Successful Response
+ * @throws ApiError
+ */
+export const useTaskInstanceServicePatchTaskInstanceSummary = <
+  TData = Common.TaskInstanceServicePatchTaskInstanceSummaryMutationResult,
+  TError = unknown,
+  TContext = unknown,
+>(
+  options?: Omit<
+    UseMutationOptions<
+      TData,
+      TError,
+      {
+        dagId: string;
+        dagRunId: string;
+        requestBody: PatchTaskInstanceBody;
+        taskId: string;
+        updateMask?: string[];
+      },
+      TContext
+    >,
+    "mutationFn"
+  >,
+) =>
+  useMutation<
+    TData,
+    TError,
+    {
+      dagId: string;
+      dagRunId: string;
+      requestBody: PatchTaskInstanceBody;
+      taskId: string;
+      updateMask?: string[];
+    },
+    TContext
+  >({
+    mutationFn: ({ dagId, dagRunId, requestBody, taskId, updateMask }) =>
+      TaskInstanceService.patchTaskInstanceSummary({
+        dagId,
+        dagRunId,
+        requestBody,
+        taskId,
+        updateMask,
+      }) as unknown as Promise<TData>,
+    ...options,
+  });
+/**
  * Patch Pool
  * Update a Pool.
  * @param data The data for the request.
