@@ -1104,7 +1104,7 @@ def get_current_context() -> Mapping[str, Any]:
 
     .. code:: python
 
-        from airflow.providers.standard.operators.python import get_current_context
+        from airflow.sdk import get_current_context
 
 
         def my_task():

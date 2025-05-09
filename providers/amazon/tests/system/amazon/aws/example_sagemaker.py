@@ -52,7 +52,11 @@ from airflow.providers.amazon.aws.sensors.sagemaker import (
     SageMakerTransformSensor,
     SageMakerTuningSensor,
 )
-from airflow.providers.standard.operators.python import get_current_context
+
+try:
+    from airflow.sdk import get_current_context
+except (ImportError, ModuleNotFoundError):
+    from airflow.providers.standard.operators.python import get_current_context
 from airflow.utils.trigger_rule import TriggerRule
 
 from system.amazon.aws.utils import ENV_ID_KEY, SystemTestContextBuilder, prune_logs
