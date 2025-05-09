@@ -625,7 +625,7 @@ class TestGetMappedTaskInstances:
             for index, state in enumerate(
                 itertools.chain(
                     itertools.repeat(TaskInstanceState.SUCCESS, dag["success"]),
-                    itertools.repeat(TaskInstanceState.FAILED, dag["failed"]),
+                    itertools.repeat(TaskInstanceState.FALED, dag["failed"]),
                     itertools.repeat(TaskInstanceState.RUNNING, dag["running"]),
                 )
             ):

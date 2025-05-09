@@ -334,7 +334,12 @@ def _create_mapped_with_name_template_classic(*, task_id, map_names, template):
 
 
 def _create_mapped_with_name_template_taskflow(*, task_id, map_names, template):
-    from airflow.providers.standard.operators.python import get_current_context
+    from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
+
+    if AIRFLOW_V_3_0_PLUS:
+        from airflow.sdk import get_current_context
+    else:
+        from airflow.providers.standard.utils import get_current_context
 
     @task(task_id=task_id, map_index_template=template)
     def task1(map_name):
@@ -360,7 +365,12 @@ def _create_named_map_index_renders_on_failure_classic(*, task_id, map_names, te
 
 
 def _create_named_map_index_renders_on_failure_taskflow(*, task_id, map_names, template):
-    from airflow.providers.standard.operators.python import get_current_context
+    from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
+
+    if AIRFLOW_V_3_0_PLUS:
+        from airflow.sdk import get_current_context
+    else:
+        from airflow.providers.standard.utils import get_current_context
 
     @task(task_id=task_id, map_index_template=template)
     def task1(map_name):
