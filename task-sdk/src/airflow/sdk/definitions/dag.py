@@ -1245,6 +1245,7 @@ def _run_task(*, ti):
 
             msg = taskrun_result.msg
             ti.set_state(taskrun_result.ti.state)
+            ti.task = taskrun_result.ti.task
 
             if ti.state == State.DEFERRED and isinstance(msg, DeferTask):
                 # API Server expects the task instance to be in QUEUED state before
@@ -1255,11 +1256,12 @@ def _run_task(*, ti):
                 trigger = import_string(msg.classpath)(**msg.trigger_kwargs)
                 event = _run_inline_trigger(trigger)
                 ti.next_method = msg.next_method
-                ti.next_kwargs = {"event": event.payload} if event else msg.kwargs
+                ti.next_kwargs = {"event": event.payload} if event else msg.next_kwargs
                 log.info("[DAG TEST] Trigger completed")
 
                 ti.set_state(State.SUCCESS)
-            break
+
+            return taskrun_result
         except Exception:
             log.exception("[DAG TEST] Error running task %s", ti)
             if ti.state not in State.finished:

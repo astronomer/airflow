@@ -1688,32 +1688,15 @@ class TaskInstance(Base, LoggingMixin):
         :param pool: specifies the pool to use to run the task instance
         :param session: SQLAlchemy ORM Session
         """
-        from airflow.sdk.api.datamodels._generated import TaskInstance as TaskInstanceSDK
-        from airflow.sdk.execution_time.supervisor import run_task_in_process
-
-        self.set_state(TaskInstanceState.QUEUED)
+        from airflow.sdk.definitions.dag import _run_task
 
         if mark_success:
             self.set_state(TaskInstanceState.SUCCESS)
             log.info("[DAG TEST] Marking success for %s ", self.task_id)
             return
 
-        taskrun_result = run_task_in_process(
-            ti=TaskInstanceSDK(
-                id=self.id,
-                task_id=self.task_id,
-                dag_id=self.task.dag_id,
-                run_id=self.run_id,
-                try_number=self.try_number,
-                map_index=self.map_index,
-            ),
-            task=self.task,
-        )
-
-        if taskrun_result.state != TaskInstanceState.QUEUED:
-            self.set_state(taskrun_result.state)
-
-        if taskrun_result.error:
+        taskrun_result = _run_task(ti=self)
+        if taskrun_result is not None and taskrun_result.error:
             raise taskrun_result.error
 
     @staticmethod
