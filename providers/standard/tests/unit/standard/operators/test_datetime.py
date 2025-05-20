@@ -124,22 +124,15 @@ class TestBranchDateTimeOperator:
         """Check BranchDateTimeOperator branch operation"""
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = target_upper
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.NONE,
-                    "branch_2": State.SKIPPED,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.SKIPPED,
+            }
+        )
 
     @pytest.mark.parametrize(
         "target_lower,target_upper",
@@ -157,24 +150,16 @@ class TestBranchDateTimeOperator:
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = target_upper
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        with time_machine.travel(date):
+            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info, time_machine.travel(date):
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_1", -1)]
-        else:
-            with time_machine.travel(date):
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-                self._assert_task_ids_match_states(
-                    {
-                        "datetime_branch": State.SUCCESS,
-                        "branch_1": State.SKIPPED,
-                        "branch_2": State.NONE,
-                    }
-                )
+            self._assert_task_ids_match_states(
+                {
+                    "datetime_branch": State.SUCCESS,
+                    "branch_1": State.SKIPPED,
+                    "branch_2": State.NONE,
+                }
+            )
 
     @pytest.mark.parametrize("target_upper", [target_upper for (_, target_upper) in targets])
     @time_machine.travel("2020-07-07 10:54:05")
@@ -183,23 +168,15 @@ class TestBranchDateTimeOperator:
         self.branch_op.target_upper = target_upper
         self.branch_op.target_lower = None
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.NONE,
-                    "branch_2": State.SKIPPED,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.SKIPPED,
+            }
+        )
 
     @pytest.mark.parametrize("target_lower", [target_lower for (target_lower, _) in targets])
     @time_machine.travel("2020-07-07 10:54:05")
@@ -208,23 +185,15 @@ class TestBranchDateTimeOperator:
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = None
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.NONE,
-                    "branch_2": State.SKIPPED,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.SKIPPED,
+            }
+        )
 
     @pytest.mark.parametrize("target_upper", [target_upper for (_, target_upper) in targets])
     @time_machine.travel("2020-07-07 12:00:00")
@@ -233,48 +202,32 @@ class TestBranchDateTimeOperator:
         self.branch_op.target_upper = target_upper
         self.branch_op.target_lower = None
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_1", -1)]
-        else:
-            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.SKIPPED,
-                    "branch_2": State.NONE,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.SKIPPED,
+                "branch_2": State.NONE,
+            }
+        )
 
     @pytest.mark.parametrize("target_lower", [target_lower for (target_lower, _) in targets])
     @time_machine.travel("2020-07-07 09:00:00")
-    def test_branch_datetime_operator_lower_comparison_outside_range(self, target_lower):
+    def test_branch_datetime_operator_lower_comparison_outside_range(self, target_lower, run_task):
         """Check BranchDateTimeOperator branch operation"""
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = None
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
+        self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_1", -1)]
-        else:
-            self.branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.SKIPPED,
-                    "branch_2": State.NONE,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.SKIPPED,
+                "branch_2": State.NONE,
+            }
+        )
 
     @pytest.mark.parametrize(
         "target_lower,target_upper",
@@ -295,23 +248,16 @@ class TestBranchDateTimeOperator:
 
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = target_upper
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                self.branch_op.run(start_date=in_between_date, end_date=in_between_date)
+        self.branch_op.run(start_date=in_between_date, end_date=in_between_date)
 
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            self.branch_op.run(start_date=in_between_date, end_date=in_between_date)
-
-            self._assert_task_ids_match_states(
-                {
-                    "datetime_branch": State.SUCCESS,
-                    "branch_1": State.NONE,
-                    "branch_2": State.SKIPPED,
-                }
-            )
+        self._assert_task_ids_match_states(
+            {
+                "datetime_branch": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.SKIPPED,
+            }
+        )
 
     @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Skip on Airflow < 3.0")
     @time_machine.travel("2020-12-01 09:00:00")

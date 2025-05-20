@@ -1224,25 +1224,17 @@ class TestSqlBranch:
 
         mock_get_records.return_value = 1
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.state == State.SUCCESS
-                elif ti.task_id == "branch_1":
-                    assert ti.state == State.NONE
-                elif ti.task_id == "branch_2":
-                    assert ti.state == State.SKIPPED
-                else:
-                    raise ValueError(f"Invalid task id {ti.task_id} found!")
+        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        tis = dr.get_task_instances()
+        for ti in tis:
+            if ti.task_id == "make_choice":
+                assert ti.state == State.SUCCESS
+            elif ti.task_id == "branch_1":
+                assert ti.state == State.NONE
+            elif ti.task_id == "branch_2":
+                assert ti.state == State.SKIPPED
+            else:
+                raise ValueError(f"Invalid task id {ti.task_id} found!")
 
     @pytest.mark.parametrize("true_value", SUPPORTED_TRUE_VALUES)
     @mock.patch("airflow.providers.common.sql.operators.sql.BaseSQLOperator.get_db_hook")
@@ -1272,25 +1264,17 @@ class TestSqlBranch:
         mock_get_records = mock_get_db_hook.return_value.get_first
         mock_get_records.return_value = true_value
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-
-            assert exc_info.value.tasks == [("branch_2", -1)]
-        else:
-            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.state == State.SUCCESS
-                elif ti.task_id == "branch_1":
-                    assert ti.state == State.NONE
-                elif ti.task_id == "branch_2":
-                    assert ti.state == State.SKIPPED
-                else:
-                    raise ValueError(f"Invalid task id {ti.task_id} found!")
+        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        tis = dr.get_task_instances()
+        for ti in tis:
+            if ti.task_id == "make_choice":
+                assert ti.state == State.SUCCESS
+            elif ti.task_id == "branch_1":
+                assert ti.state == State.NONE
+            elif ti.task_id == "branch_2":
+                assert ti.state == State.SKIPPED
+            else:
+                raise ValueError(f"Invalid task id {ti.task_id} found!")
 
     @pytest.mark.parametrize("false_value", SUPPORTED_FALSE_VALUES)
     @mock.patch("airflow.providers.common.sql.operators.sql.BaseSQLOperator.get_db_hook")
@@ -1320,24 +1304,18 @@ class TestSqlBranch:
         mock_get_records = mock_get_db_hook.return_value.get_first
 
         mock_get_records.return_value = false_value
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
 
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            assert exc_info.value.tasks == [("branch_1", -1)]
-        else:
-            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.state == State.SUCCESS
-                elif ti.task_id == "branch_1":
-                    assert ti.state == State.SKIPPED
-                elif ti.task_id == "branch_2":
-                    assert ti.state == State.NONE
-                else:
-                    raise ValueError(f"Invalid task id {ti.task_id} found!")
+        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        tis = dr.get_task_instances()
+        for ti in tis:
+            if ti.task_id == "make_choice":
+                assert ti.state == State.SUCCESS
+            elif ti.task_id == "branch_1":
+                assert ti.state == State.SKIPPED
+            elif ti.task_id == "branch_2":
+                assert ti.state == State.NONE
+            else:
+                raise ValueError(f"Invalid task id {ti.task_id} found!")
 
     @mock.patch("airflow.providers.common.sql.operators.sql.BaseSQLOperator.get_db_hook")
     def test_branch_list_with_dag_run(self, mock_get_db_hook):
@@ -1377,24 +1355,17 @@ class TestSqlBranch:
         mock_get_records = mock_get_db_hook.return_value.get_first
         mock_get_records.return_value = [["1"]]
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            assert exc_info.value.tasks == [("branch_3", -1)]
-        else:
-            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.state == State.SUCCESS
-                elif ti.task_id in ("branch_1", "branch_2"):
-                    assert ti.state == State.NONE
-                elif ti.task_id == "branch_3":
-                    assert ti.state == State.SKIPPED
-                else:
-                    raise ValueError(f"Invalid task id {ti.task_id} found!")
+        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        tis = dr.get_task_instances()
+        for ti in tis:
+            if ti.task_id == "make_choice":
+                assert ti.state == State.SUCCESS
+            elif ti.task_id in ("branch_1", "branch_2"):
+                assert ti.state == State.NONE
+            elif ti.task_id == "branch_3":
+                assert ti.state == State.SKIPPED
+            else:
+                raise ValueError(f"Invalid task id {ti.task_id} found!")
 
     @mock.patch("airflow.providers.common.sql.operators.sql.BaseSQLOperator.get_db_hook")
     def test_invalid_query_result_with_dag_run(self, mock_get_db_hook, branch_op):
@@ -1495,24 +1466,17 @@ class TestSqlBranch:
         mock_get_records = mock_get_db_hook.return_value.get_first
         mock_get_records.return_value = [false_value]
 
-        if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            assert exc_info.value.tasks == [("branch_1", -1)]
-        else:
-            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.state == State.SUCCESS
-                elif ti.task_id == "branch_1":
-                    assert ti.state == State.SKIPPED
-                elif ti.task_id == "branch_2":
-                    assert ti.state == State.NONE
-                else:
-                    raise ValueError(f"Invalid task id {ti.task_id} found!")
+        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        tis = dr.get_task_instances()
+        for ti in tis:
+            if ti.task_id == "make_choice":
+                assert ti.state == State.SUCCESS
+            elif ti.task_id == "branch_1":
+                assert ti.state == State.SKIPPED
+            elif ti.task_id == "branch_2":
+                assert ti.state == State.NONE
+            else:
+                raise ValueError(f"Invalid task id {ti.task_id} found!")
 
 
 class TestBaseSQLOperatorSubClass:
