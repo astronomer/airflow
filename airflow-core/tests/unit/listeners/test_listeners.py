@@ -125,7 +125,7 @@ def test_listener_suppresses_exceptions(create_task_instance, session, cap_struc
     lm.add_listener(throwing_listener)
 
     ti = create_task_instance(session=session, state=TaskInstanceState.QUEUED)
-    ti._run_raw_task()
+    ti.run()
     assert "error calling listener" in cap_structlog
 
 
@@ -138,7 +138,7 @@ def test_listener_captures_failed_taskinstances(create_task_instance_of_operator
         BashOperator, dag_id=DAG_ID, logical_date=LOGICAL_DATE, task_id=TASK_ID, bash_command="exit 1"
     )
     with pytest.raises(AirflowException):
-        ti._run_raw_task()
+        ti.run()
 
     assert full_listener.state == [TaskInstanceState.RUNNING, TaskInstanceState.FAILED]
     assert len(full_listener.state) == 2
@@ -152,7 +152,7 @@ def test_listener_captures_longrunning_taskinstances(create_task_instance_of_ope
     ti = create_task_instance_of_operator(
         BashOperator, dag_id=DAG_ID, logical_date=LOGICAL_DATE, task_id=TASK_ID, bash_command="sleep 5"
     )
-    ti._run_raw_task()
+    ti.run()
 
     assert full_listener.state == [TaskInstanceState.RUNNING, TaskInstanceState.SUCCESS]
     assert len(full_listener.state) == 2
@@ -165,9 +165,6 @@ def test_class_based_listener(create_task_instance, session=None):
     lm.add_listener(listener)
 
     ti = create_task_instance(session=session, state=TaskInstanceState.QUEUED)
-    # Using ti.run() instead of ti._run_raw_task() to capture state change to RUNNING
-    # that only happens on `check_and_change_state_before_execution()` that is called before
-    # `run()` calls `_run_raw_task()`
     ti.run()
 
     assert listener.state == [TaskInstanceState.RUNNING, TaskInstanceState.SUCCESS, DagRunState.SUCCESS]
@@ -179,7 +176,7 @@ def test_listener_logs_call(caplog, create_task_instance, session):
     lm.add_listener(full_listener)
 
     ti = create_task_instance(session=session, state=TaskInstanceState.QUEUED)
-    ti._run_raw_task()
+    ti.run()
 
     listener_logs = [r for r in caplog.record_tuples if r[0] == "airflow.listeners.listener"]
     assert all(r[:-1] == ("airflow.listeners.listener", logging.DEBUG) for r in listener_logs)
