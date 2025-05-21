@@ -102,7 +102,7 @@ class TestLatestOnlyOperator:
 
         triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
 
-        dr0 = dag_maker.create_dagrun(
+        dag_maker.create_dagrun(
             run_type=DagRunType.SCHEDULED,
             start_date=timezone.utcnow(),
             logical_date=DEFAULT_DATE,
@@ -111,7 +111,7 @@ class TestLatestOnlyOperator:
             **triggered_by_kwargs,
         )
 
-        dr1 = dag_maker.create_dagrun(
+        dag_maker.create_dagrun(
             run_type=DagRunType.SCHEDULED,
             start_date=timezone.utcnow(),
             logical_date=timezone.datetime(2016, 1, 1, 12),
@@ -120,7 +120,7 @@ class TestLatestOnlyOperator:
             **triggered_by_kwargs,
         )
 
-        dr2 = dag_maker.create_dagrun(
+        dag_maker.create_dagrun(
             run_type=DagRunType.SCHEDULED,
             start_date=timezone.utcnow(),
             logical_date=END_DATE,
@@ -129,46 +129,10 @@ class TestLatestOnlyOperator:
             **triggered_by_kwargs,
         )
 
+        latest_task.run(start_date=DEFAULT_DATE, end_date=END_DATE)
         if AIRFLOW_V_3_0_PLUS:
-            from airflow.exceptions import DownstreamTasksSkipped
-
-            # AIP-72
-            # Running the "latest" task for each of the DAG runs to test the skipping of downstream tasks
-            # via the DownstreamTasksSkipped exception call.
-            # The DownstreamTasksSkipped exception is raised when the task completes successfully so
-            # we can simulate the downstream tasks being skipped by setting their state to SKIPPED
-            # and the task that raised the exception to SUCCESS.
-            latest_ti0 = dr0.get_task_instance(task_id="latest")
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                latest_ti0.run()
-
-            assert exc_info.value.tasks == [("downstream", -1)]
-            # TODO: Set state is needed until #45549 is completed.
-            latest_ti0.set_state(State.SUCCESS)
-            dr0.get_task_instance(task_id="downstream").set_state(State.SKIPPED)
-
-            # ---
-            latest_ti1 = dr1.get_task_instance(task_id="latest")
-            latest_ti1.task = latest_task
-
-            with pytest.raises(DownstreamTasksSkipped) as exc_info:
-                latest_ti1.run()
-
-            assert exc_info.value.tasks == [("downstream", -1)]
-            # TODO: Set state is needed until #45549 is completed.
-            latest_ti1.set_state(State.SUCCESS)
-            dr1.get_task_instance(task_id="downstream").set_state(State.SKIPPED)
-
-            # The last DAG run should run all tasks and latest task should be successful
-            # and not raise DownstreamTasksSkipped exception
-            latest_ti2 = dr2.get_task_instance(task_id="latest")
-            latest_ti2.task = latest_task
-            latest_ti2.run()
-
             date_getter = operator.attrgetter("logical_date")
         else:
-            latest_task.run(start_date=DEFAULT_DATE, end_date=END_DATE)
             date_getter = operator.attrgetter("execution_date")
 
         latest_instances = get_task_instances("latest")

@@ -21,12 +21,8 @@ import pytest
 from pendulum import datetime
 
 from airflow.decorators import task
-from airflow.providers.standard.version_compat import AIRFLOW_V_3_0_PLUS
 from airflow.utils.state import State
 from airflow.utils.trigger_rule import TriggerRule
-
-if AIRFLOW_V_3_0_PLUS:
-    from airflow.exceptions import DownstreamTasksSkipped
 
 pytestmark = pytest.mark.db_test
 
@@ -34,8 +30,7 @@ pytestmark = pytest.mark.db_test
 DEFAULT_DATE = datetime(2022, 8, 17)
 
 
-@pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Test doesn't run on AF3. Companion test below.")
-def test_short_circuit_decorator_af2(dag_maker):
+def test_short_circuit_decorator(dag_maker):
     with dag_maker(serialized=True):
 
         @task
@@ -80,97 +75,6 @@ def test_short_circuit_decorator_af2(dag_maker):
     tis = dr.get_task_instances()
     for ti in tis:
         assert ti.state == task_state_mapping[ti.task_id]
-
-
-@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test only runs on AF3")
-@pytest.mark.parametrize(["condition", "should_be_skipped"], [(True, False), (False, True)])
-def test_short_circuit_decorator_af3(dag_maker, session, condition, should_be_skipped):
-    with dag_maker(serialized=True, session=session):
-
-        @task.short_circuit()
-        def short_circuit(condition):
-            return condition
-
-        @task
-        def empty(): ...
-
-        short_circuit = short_circuit.override(task_id="short_circuit")(condition=condition)
-        task_1 = empty.override(task_id="task_1")()
-        short_circuit >> task_1
-
-    dr = dag_maker.create_dagrun()
-
-    ti_sc = dr.get_task_instance("short_circuit")
-
-    # We only need to assert correct exception is raised for the tasks that should be skipped
-    # The actual logic of task execution and setting state is already covered by Task Execution tests
-    if should_be_skipped:
-        with pytest.raises(DownstreamTasksSkipped) as exc_info:
-            ti_sc.run()
-        assert exc_info.value.tasks == ["task_1"]
-    else:
-        ti_sc.run()
-
-
-@pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Test only runs on AF3")
-@pytest.mark.parametrize(
-    ["ignore_downstream_trigger_rules", "expected"], [(True, State.SKIPPED), (False, State.SUCCESS)]
-)
-def test_short_circuit_decorator__ignore_downstream_trigger_rules(
-    dag_maker, session, ignore_downstream_trigger_rules, expected
-):
-    with dag_maker(
-        dag_id="test_short_circuit_decorator__ignore_downstream_trigger_rules",
-        serialized=True,
-        session=session,
-    ):
-
-        @task.short_circuit()
-        def short_circuit():
-            return False
-
-        @task
-        def empty(): ...
-
-        short_circuit_respect_trigger_rules = short_circuit.override(
-            task_id="short_circuit_respect_trigger_rules",
-            ignore_downstream_trigger_rules=ignore_downstream_trigger_rules,
-        )()
-        task_3 = empty.override(task_id="task_3")()
-        task_4 = empty.override(task_id="task_4")()
-        task_5 = empty.override(task_id="task_5", trigger_rule=TriggerRule.ALL_DONE)()
-        short_circuit_respect_trigger_rules >> [task_3, task_4] >> task_5
-
-    dr = dag_maker.create_dagrun(session=session)
-    tis = dr.get_task_instances(session=session)
-
-    # We only need to assert correct exception is raised for the tasks that should be skipped
-    # The actual logic of task execution and setting state is already covered by Task Execution tests
-    skipped_tasks = set()
-    successful_tasks = set()
-
-    for ti in tis:
-        try:
-            ti.run(session=session)
-
-            # If the task completes successfully without exceptions, add it to the successful_tasks set
-            successful_tasks.add(ti.task_id)
-        except DownstreamTasksSkipped as dts:
-            # `DownstreamTasksSkipped` is raised when the task completes successfully
-            # and the downstream tasks are skipped
-            successful_tasks.add(ti.task_id)
-
-            # Tasks in dts.tasks are going to be skipped in the Task Execution API
-            #   so simulate that here by setting the state to SKIPPED
-            skipped_tasks |= set(dts.tasks)
-
-    assert "short_circuit_respect_trigger_rules" in successful_tasks
-    assert "task_3" in skipped_tasks
-    assert "task_4" in skipped_tasks
-    if expected == State.SUCCESS:
-        assert "task_5" in successful_tasks
-    else:
-        assert "task_5" in skipped_tasks
 
 
 def test_short_circuit_with_multiple_outputs(dag_maker):
