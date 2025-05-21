@@ -474,7 +474,10 @@ class TestBranchOperator(BasePythonTest):
         tis = dr.get_task_instances()
         children_tis = [ti for ti in tis if ti.task_id in branch_op.get_direct_relative_ids()]
         with create_session() as session:
-            clear_task_instances(children_tis, session=session, dag=branch_op.dag)
+            if AIRFLOW_V_3_0_PLUS:
+                clear_task_instances(children_tis, session=session)
+            else:
+                clear_task_instances(children_tis, session=session, dag=branch_op.dag)
 
         # Run the cleared tasks again.
         for task in branches:
@@ -722,9 +725,12 @@ class TestShortCircuitOperator(BasePythonTest):
         # Clear downstream task "op1" that was previously executed.
         tis = dr.get_task_instances()
         with create_session() as session:
-            clear_task_instances(
-                [ti for ti in tis if ti.task_id == "op1"], session=session, dag=short_circuit.dag
-            )
+            if AIRFLOW_V_3_0_PLUS:
+                clear_task_instances([ti for ti in tis if ti.task_id == "op1"], session=session)
+            else:
+                clear_task_instances(
+                    [ti for ti in tis if ti.task_id == "op1"], session=session, dag=short_circuit.dag
+                )
         self.op1.run(start_date=self.default_date, end_date=self.default_date)
         self.assert_expected_task_states(dr, expected_states)
 
@@ -1301,7 +1307,6 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             params,
             run_id,
             task_instance_key_str,
-            test_mode,
             ts,
             ts_nodash,
             ts_nodash_with_tz,
@@ -1337,7 +1342,6 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             outlets,
             run_id,
             task_instance_key_str,
-            test_mode,
             ts,
             ts_nodash,
             ts_nodash_with_tz,
@@ -1369,7 +1373,6 @@ class TestPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
             outlets,
             run_id,
             task_instance_key_str,
-            test_mode,
             ts,
             ts_nodash,
             ts_nodash_with_tz,
@@ -1738,7 +1741,10 @@ class BaseTestBranchPythonVirtualenvOperator(BaseTestPythonVirtualenvOperator):
         tis = dr.get_task_instances()
         children_tis = [ti for ti in tis if ti.task_id in branch_op.get_direct_relative_ids()]
         with create_session() as session:
-            clear_task_instances(children_tis, session=session, dag=branch_op.dag)
+            if AIRFLOW_V_3_0_PLUS:
+                clear_task_instances(children_tis, session=session)
+            else:
+                clear_task_instances(children_tis, session=session, dag=branch_op.dag)
 
         # Run the cleared tasks again.
         for task in branches:
@@ -1907,20 +1913,12 @@ class TestCurrentContextRuntime:
     def test_context_in_task(self):
         with DAG(dag_id="assert_context_dag", default_args=DEFAULT_ARGS, schedule="@once"):
             op = MyContextAssertOperator(task_id="assert_context")
-            if AIRFLOW_V_3_0_PLUS:
-                with pytest.warns(AirflowProviderDeprecationWarning):
-                    op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
-            else:
-                op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
+            op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
 
     def test_get_context_in_old_style_context_task(self):
         with DAG(dag_id="edge_case_context_dag", default_args=DEFAULT_ARGS, schedule="@once"):
             op = PythonOperator(python_callable=get_all_the_context, task_id="get_all_the_context")
-            if AIRFLOW_V_3_0_PLUS:
-                with pytest.warns(AirflowProviderDeprecationWarning):
-                    op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
-            else:
-                op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
+            op.run(ignore_first_depends_on_past=True, ignore_ti_state=True)
 
 
 @pytest.mark.need_serialized_dag(False)
