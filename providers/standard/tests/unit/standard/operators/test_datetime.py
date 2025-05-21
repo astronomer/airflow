@@ -214,7 +214,7 @@ class TestBranchDateTimeOperator:
 
     @pytest.mark.parametrize("target_lower", [target_lower for (target_lower, _) in targets])
     @time_machine.travel("2020-07-07 09:00:00")
-    def test_branch_datetime_operator_lower_comparison_outside_range(self, target_lower, run_task):
+    def test_branch_datetime_operator_lower_comparison_outside_range(self, target_lower):
         """Check BranchDateTimeOperator branch operation"""
         self.branch_op.target_lower = target_lower
         self.branch_op.target_upper = None

@@ -215,7 +215,22 @@ class TestAirflowTaskDecorator(BasePythonTest):
 
         assert identity_notyping_with_decorator_call(5).operator.multiple_outputs is False
 
-    def test_manual_multiple_outputs_false_with_typings(self):
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Different test for AF 2")
+    def test_manual_multiple_outputs_false_with_typings(self, run_task):
+        @task_decorator(multiple_outputs=False)
+        def identity2(x: int, y: int) -> tuple[int, int]:
+            return x, y
+
+        res = identity2(8, 4)
+        run_task(task=res.operator)
+
+        assert not res.operator.multiple_outputs
+        assert run_task.xcom.get(key=res.key) == (8, 4)
+        assert run_task.xcom.get(key="return_value_0") is None
+        assert run_task.xcom.get(key="return_value_1") is None
+
+    @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for AF 3")
+    def test_manual_multiple_outputs_false_with_typings_af2(self):
         @task_decorator(multiple_outputs=False)
         def identity2(x: int, y: int) -> tuple[int, int]:
             return x, y
@@ -233,7 +248,22 @@ class TestAirflowTaskDecorator(BasePythonTest):
         assert ti.xcom_pull(key="return_value_0") is None
         assert ti.xcom_pull(key="return_value_1") is None
 
-    def test_multiple_outputs_ignore_typing(self):
+    @pytest.mark.skipif(not AIRFLOW_V_3_0_PLUS, reason="Different test for AF 2")
+    def test_multiple_outputs_ignore_typing(self, run_task):
+        @task_decorator
+        def identity_tuple(x: int, y: int) -> tuple[int, int]:
+            return x, y
+
+        ident = identity_tuple(35, 36)
+        run_task(task=ident.operator)
+
+        assert not ident.operator.multiple_outputs
+        assert run_task.xcom.get(key=ident.key) == (35, 36)
+        assert run_task.xcom.get(key="return_value_0") is None
+        assert run_task.xcom.get(key="return_value_1") is None
+
+    @pytest.mark.skipif(AIRFLOW_V_3_0_PLUS, reason="Different test for AF 3")
+    def test_multiple_outputs_ignore_typing_af2(self):
         @task_decorator
         def identity_tuple(x: int, y: int) -> tuple[int, int]:
             return x, y
