@@ -1674,7 +1674,7 @@ class TaskInstance(Base, LoggingMixin):
         pool: str | None = None,
         raise_on_defer: bool = False,
         session: Session = NEW_SESSION,
-    ) -> TaskReturnCode | None:
+    ) -> None:
         """
         Run a task, update the state upon completion, and run any appropriate callbacks.
 
@@ -1693,7 +1693,7 @@ class TaskInstance(Base, LoggingMixin):
         if mark_success:
             self.set_state(TaskInstanceState.SUCCESS)
             log.info("[DAG TEST] Marking success for %s ", self.task_id)
-            return
+            return None
 
         taskrun_result = _run_task(ti=self)
         if taskrun_result is not None and taskrun_result.error:
