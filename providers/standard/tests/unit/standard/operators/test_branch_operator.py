@@ -77,7 +77,9 @@ class TestBranchOperator:
 
         branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, TI.logical_date == DEFAULT_DATE):
+        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+
+        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
             if ti.task_id == "make_choice":
                 assert ti.state == State.SUCCESS
             elif ti.task_id == "branch_1":
@@ -116,7 +118,9 @@ class TestBranchOperator:
             "branch_3": State.SKIPPED,
         }
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, TI.logical_date == DEFAULT_DATE):
+        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+
+        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
             if ti.task_id in expected:
                 assert ti.state == expected[ti.task_id]
             else:
@@ -160,7 +164,9 @@ class TestBranchOperator:
             "branch_2": State.SKIPPED,
         }
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, TI.logical_date == DEFAULT_DATE):
+        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+
+        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
             if ti.task_id in expected:
                 assert ti.state == expected[ti.task_id]
             else:
@@ -291,7 +297,9 @@ class TestBranchOperator:
         )
         branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, TI.logical_date == DEFAULT_DATE):
+        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+
+        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
             if ti.task_id == "make_choice":
                 assert ti.state == State.SUCCESS
             elif ti.task_id == "branch_1":
