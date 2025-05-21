@@ -296,7 +296,9 @@ class TestAirflowTaskDecorator(BasePythonTest):
             ret = add_number(2)
 
         self.create_dag_run()
-        with pytest.raises(AirflowException):
+
+        error_expected = TypeError if AIRFLOW_V_3_0_PLUS else AirflowException
+        with pytest.raises(error_expected):
             ret.operator.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
     def test_fail_multiple_outputs_no_dict(self):
@@ -308,7 +310,8 @@ class TestAirflowTaskDecorator(BasePythonTest):
             ret = add_number(2)
 
         self.create_dag_run()
-        with pytest.raises(AirflowException):
+        error_expected = TypeError if AIRFLOW_V_3_0_PLUS else AirflowException
+        with pytest.raises(error_expected):
             ret.operator.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
     def test_multiple_outputs_empty_dict(self):
