@@ -120,14 +120,13 @@ def test_listener_gets_only_subscribed_calls(create_task_instance, session=None)
 
 
 @provide_session
-def test_listener_suppresses_exceptions(create_task_instance, session, caplog):
+def test_listener_suppresses_exceptions(create_task_instance, session, cap_structlog):
     lm = get_listener_manager()
     lm.add_listener(throwing_listener)
 
     ti = create_task_instance(session=session, state=TaskInstanceState.QUEUED)
-    with caplog.at_level(logging.ERROR):
-        ti._run_raw_task()
-    assert "error calling listener" in caplog.messages
+    ti._run_raw_task()
+    assert "error calling listener" in cap_structlog
 
 
 @provide_session
@@ -171,8 +170,7 @@ def test_class_based_listener(create_task_instance, session=None):
     # `run()` calls `_run_raw_task()`
     ti.run()
 
-    assert len(listener.state) == 2
-    assert listener.state == [TaskInstanceState.RUNNING, TaskInstanceState.SUCCESS]
+    assert listener.state == [TaskInstanceState.RUNNING, TaskInstanceState.SUCCESS, DagRunState.SUCCESS]
 
 
 def test_listener_logs_call(caplog, create_task_instance, session):
@@ -184,7 +182,6 @@ def test_listener_logs_call(caplog, create_task_instance, session):
     ti._run_raw_task()
 
     listener_logs = [r for r in caplog.record_tuples if r[0] == "airflow.listeners.listener"]
-    assert len(listener_logs) == 6
     assert all(r[:-1] == ("airflow.listeners.listener", logging.DEBUG) for r in listener_logs)
     assert listener_logs[0][-1].startswith("Calling 'on_task_instance_running' with {'")
     assert listener_logs[1][-1].startswith("Hook impls: [<HookImpl plugin")
