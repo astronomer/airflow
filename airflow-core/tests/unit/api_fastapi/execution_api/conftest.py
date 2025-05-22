@@ -20,10 +20,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
-from svcs import Registry
 
 from airflow.api_fastapi.app import cached_app
 from airflow.api_fastapi.auth.tokens import JWTValidator
+from airflow.api_fastapi.execution_api.app import lifespan
 
 
 @pytest.fixture
@@ -61,22 +61,6 @@ def client(request: pytest.FixtureRequest):
 
         # Set the side_effect for avalidated_claims
         auth.avalidated_claims.side_effect = smart_validated_claims
-
-        # Get the execution API app from the mounted app
-        execution_app = next(route.app for route in app.routes if route.path == "/execution")
-
-        # Create a new registry
-        registry = Registry()
-        registry.register_value(JWTValidator, auth)
-
-        # Set up the lifespan context
-        async def setup_lifespan():
-            execution_app.state.svcs_registry = registry
-            execution_app.state.lifespan_called = True
-
-        # Run the lifespan setup
-        import asyncio
-
-        asyncio.run(setup_lifespan())
+        lifespan.registry.register_value(JWTValidator, auth)
 
         yield client
