@@ -344,13 +344,9 @@ class TestBranchDayOfWeekOperator:
                 branch_op_ti.run()
 
             assert exc_info.value.tasks == [("branch_2", -1)]
-            assert branch_op_ti.xcom_pull(task_ids="make_choice", key=XCOM_SKIPMIXIN_KEY) == {
-                XCOM_SKIPMIXIN_FOLLOWED: ["branch_1"]
-            }
         else:
             branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-            tis = dr.get_task_instances()
-            for ti in tis:
-                if ti.task_id == "make_choice":
-                    assert ti.xcom_pull(task_ids="make_choice") == "branch_1"
+            assert branch_op_ti.xcom_pull(task_ids="make_choice", key=XCOM_SKIPMIXIN_KEY) == {
+                XCOM_SKIPMIXIN_FOLLOWED: ["branch_1"]
+            }
