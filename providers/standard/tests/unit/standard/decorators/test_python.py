@@ -33,7 +33,7 @@ from airflow.utils.trigger_rule import TriggerRule
 from airflow.utils.types import DagRunType
 from airflow.utils.xcom import XCOM_RETURN_KEY
 
-from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
+from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_1, AIRFLOW_V_3_0_PLUS
 from unit.standard.operators.test_python import BasePythonTest
 
 if AIRFLOW_V_3_0_PLUS:
@@ -327,7 +327,7 @@ class TestAirflowTaskDecorator(BasePythonTest):
 
         self.create_dag_run()
 
-        error_expected = TypeError if AIRFLOW_V_3_0_PLUS else AirflowException
+        error_expected = AirflowException if (not AIRFLOW_V_3_0_PLUS or AIRFLOW_V_3_0_1) else TypeError
         with pytest.raises(error_expected):
             ret.operator.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
@@ -340,7 +340,7 @@ class TestAirflowTaskDecorator(BasePythonTest):
             ret = add_number(2)
 
         self.create_dag_run()
-        error_expected = TypeError if AIRFLOW_V_3_0_PLUS else AirflowException
+        error_expected = AirflowException if (not AIRFLOW_V_3_0_PLUS or AIRFLOW_V_3_0_1) else TypeError
         with pytest.raises(error_expected):
             ret.operator.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 

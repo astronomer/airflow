@@ -24,16 +24,16 @@ import pytest
 from airflow.models.taskinstance import TaskInstance as TI
 from airflow.providers.standard.operators.branch import BaseBranchOperator
 from airflow.providers.standard.operators.empty import EmptyOperator
-from airflow.providers.standard.utils.skipmixin import XCOM_SKIPMIXIN_FOLLOWED, XCOM_SKIPMIXIN_KEY
 from airflow.timetables.base import DataInterval
 from airflow.utils import timezone
 from airflow.utils.state import State
 from airflow.utils.task_group import TaskGroup
 from airflow.utils.types import DagRunType
 
-from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_PLUS
+from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_1, AIRFLOW_V_3_0_PLUS
 
 if AIRFLOW_V_3_0_PLUS:
+    from airflow.exceptions import DownstreamTasksSkipped
     from airflow.utils.types import DagRunTriggeredByType
 
 pytestmark = pytest.mark.db_test
@@ -75,20 +75,26 @@ class TestBranchOperator:
             branch_2.set_upstream(branch_op)
         dag_maker.create_dagrun(**triggered_by_kwargs)
 
-        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        if AIRFLOW_V_3_0_1:
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+            assert exc_info.value.tasks == [("branch_2", -1)]
+        else:
+            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
-            if ti.task_id == "make_choice":
-                assert ti.state == State.SUCCESS
-            elif ti.task_id == "branch_1":
-                # should exist with state None
-                assert ti.state == State.NONE
-            elif ti.task_id == "branch_2":
-                assert ti.state == State.SKIPPED
-            else:
-                raise Exception
+            for ti in dag_maker.session.query(TI).filter(
+                TI.dag_id == dag_id, TI.execution_date == DEFAULT_DATE
+            ):
+                if ti.task_id == "make_choice":
+                    assert ti.state == State.SUCCESS
+                elif ti.task_id == "branch_1":
+                    # should exist with state None
+                    assert ti.state == State.NONE
+                elif ti.task_id == "branch_2":
+                    assert ti.state == State.SKIPPED
+                else:
+                    raise Exception
 
     def test_branch_list_without_dag_run(self, dag_maker):
         """This checks if the BranchOperator supports branching off to a list of tasks."""
@@ -109,33 +115,32 @@ class TestBranchOperator:
             branch_3.set_upstream(branch_op)
         dag_maker.create_dagrun(**triggered_by_kwargs)
 
-        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        if AIRFLOW_V_3_0_1:
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        expected = {
-            "make_choice": State.SUCCESS,
-            "branch_1": State.NONE,
-            "branch_2": State.NONE,
-            "branch_3": State.SKIPPED,
-        }
+            assert exc_info.value.tasks == [("branch_3", -1)]
+        else:
+            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+            expected = {
+                "make_choice": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.NONE,
+                "branch_3": State.SKIPPED,
+            }
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
-            if ti.task_id in expected:
-                assert ti.state == expected[ti.task_id]
-            else:
-                raise Exception
+            for ti in dag_maker.session.query(TI).filter(
+                TI.dag_id == dag_id, TI.execution_date == DEFAULT_DATE
+            ):
+                if ti.task_id in expected:
+                    assert ti.state == expected[ti.task_id]
+                else:
+                    raise Exception
 
     def test_with_dag_run(self, dag_maker):
         dag_id = "branch_operator_test"
-        triggered_by_kwargs = (
-            {
-                "triggered_by": DagRunTriggeredByType.TEST,
-                "logical_date": DEFAULT_DATE,
-            }
-            if AIRFLOW_V_3_0_PLUS
-            else {"execution_date": DEFAULT_DATE}
-        )
+        triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
         with dag_maker(
             dag_id,
             default_args={"owner": "airflow", "start_date": DEFAULT_DATE},
@@ -147,30 +152,45 @@ class TestBranchOperator:
             branch_op = ChooseBranchOne(task_id="make_choice")
             branch_1.set_upstream(branch_op)
             branch_2.set_upstream(branch_op)
+        if AIRFLOW_V_3_0_1:
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                logical_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
 
-        dag_maker.create_dagrun(
-            run_type=DagRunType.MANUAL,
-            start_date=timezone.utcnow(),
-            state=State.RUNNING,
-            data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
-            **triggered_by_kwargs,
-        )
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+            assert exc_info.value.tasks == [("branch_2", -1)]
+        else:
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                execution_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
 
-        expected = {
-            "make_choice": State.SUCCESS,
-            "branch_1": State.NONE,
-            "branch_2": State.SKIPPED,
-        }
+            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+            expected = {
+                "make_choice": State.SUCCESS,
+                "branch_1": State.NONE,
+                "branch_2": State.SKIPPED,
+            }
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
-            if ti.task_id in expected:
-                assert ti.state == expected[ti.task_id]
-            else:
-                raise Exception
+            for ti in dag_maker.session.query(TI).filter(
+                TI.dag_id == dag_id, TI.execution_date == DEFAULT_DATE
+            ):
+                if ti.task_id in expected:
+                    assert ti.state == expected[ti.task_id]
+                else:
+                    raise Exception
 
     def test_with_skip_in_branch_downstream_dependencies(self, dag_maker):
         dag_id = "branch_operator_test"
@@ -224,17 +244,10 @@ class TestBranchOperator:
 
     def test_xcom_push(self, dag_maker):
         dag_id = "branch_operator_test"
-        triggered_by_kwargs = (
-            {
-                "triggered_by": DagRunTriggeredByType.TEST,
-                "logical_date": DEFAULT_DATE,
-            }
-            if AIRFLOW_V_3_0_PLUS
-            else {"execution_date": DEFAULT_DATE}
-        )
+        triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
         with dag_maker(
             dag_id,
-            start_date=DEFAULT_DATE,
+            default_args={"owner": "airflow", "start_date": DEFAULT_DATE},
             schedule=INTERVAL,
             serialized=True,
         ):
@@ -244,34 +257,40 @@ class TestBranchOperator:
             branch_1.set_upstream(branch_op)
             branch_2.set_upstream(branch_op)
 
-        dr = dag_maker.create_dagrun(
-            run_type=DagRunType.MANUAL,
-            start_date=timezone.utcnow(),
-            state=State.RUNNING,
-            data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
-            **triggered_by_kwargs,
-        )
+        if AIRFLOW_V_3_0_1:
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                logical_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
 
-        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
-        branch_op_ti = dr.get_task_instance(branch_op.task_id)
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        if AIRFLOW_V_3_0_PLUS:
-            assert branch_op_ti.xcom_pull(task_ids="make_choice", key=XCOM_SKIPMIXIN_KEY) == {
-                XCOM_SKIPMIXIN_FOLLOWED: ["branch_1"]
-            }
+            assert exc_info.value.tasks == [("branch_2", -1)]
         else:
-            assert branch_op_ti.xcom_pull(task_ids="make_choice") == "branch_1"
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                execution_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
+            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+            ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+
+            for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
+                if ti.task_id == "make_choice":
+                    assert ti.xcom_pull(task_ids="make_choice") == "branch_1"
 
     def test_with_dag_run_task_groups(self, dag_maker):
         dag_id = "branch_operator_test"
-        triggered_by_kwargs = (
-            {
-                "triggered_by": DagRunTriggeredByType.TEST,
-                "logical_date": DEFAULT_DATE,
-            }
-            if AIRFLOW_V_3_0_PLUS
-            else {"execution_date": DEFAULT_DATE}
-        )
+        triggered_by_kwargs = {"triggered_by": DagRunTriggeredByType.TEST} if AIRFLOW_V_3_0_PLUS else {}
         with dag_maker(
             dag_id,
             default_args={"owner": "airflow", "start_date": DEFAULT_DATE},
@@ -288,27 +307,43 @@ class TestBranchOperator:
             branch_2.set_upstream(branch_op)
             branch_3.set_upstream(branch_op)
 
-        dag_maker.create_dagrun(
-            run_type=DagRunType.MANUAL,
-            start_date=timezone.utcnow(),
-            state=State.RUNNING,
-            data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
-            **triggered_by_kwargs,
-        )
-        branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        if AIRFLOW_V_3_0_1:
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                logical_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
 
-        ti_date = TI.logical_date if AIRFLOW_V_3_0_PLUS else TI.execution_date
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
 
-        for ti in dag_maker.session.query(TI).filter(TI.dag_id == dag_id, ti_date == DEFAULT_DATE):
-            if ti.task_id == "make_choice":
-                assert ti.state == State.SUCCESS
-            elif ti.task_id == "branch_1":
-                assert ti.state == State.SKIPPED
-            elif ti.task_id == "branch_2":
-                assert ti.state == State.SKIPPED
-            elif ti.task_id == "branch_3.task_1":
-                assert ti.state == State.NONE
-            elif ti.task_id == "branch_3.task_2":
-                assert ti.state == State.NONE
-            else:
-                raise Exception
+            assert set(exc_info.value.tasks) == {("branch_1", -1), ("branch_2", -1)}
+        else:
+            dag_maker.create_dagrun(
+                run_type=DagRunType.MANUAL,
+                start_date=timezone.utcnow(),
+                execution_date=DEFAULT_DATE,
+                state=State.RUNNING,
+                data_interval=DataInterval(DEFAULT_DATE, DEFAULT_DATE),
+                **triggered_by_kwargs,
+            )
+            branch_op.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+
+            for ti in dag_maker.session.query(TI).filter(
+                TI.dag_id == dag_id, TI.execution_date == DEFAULT_DATE
+            ):
+                if ti.task_id == "make_choice":
+                    assert ti.state == State.SUCCESS
+                elif ti.task_id == "branch_1":
+                    assert ti.state == State.SKIPPED
+                elif ti.task_id == "branch_2":
+                    assert ti.state == State.SKIPPED
+                elif ti.task_id == "branch_3.task_1":
+                    assert ti.state == State.NONE
+                elif ti.task_id == "branch_3.task_2":
+                    assert ti.state == State.NONE
+                else:
+                    raise Exception

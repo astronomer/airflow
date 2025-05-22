@@ -22,8 +22,12 @@ from unittest import mock
 import pytest
 
 from airflow.decorators import task
-from airflow.providers.standard.version_compat import AIRFLOW_V_3_0_PLUS
 from airflow.utils.state import State
+
+from tests_common.test_utils.version_compat import AIRFLOW_V_3_0_1, AIRFLOW_V_3_0_PLUS
+
+if AIRFLOW_V_3_0_1:
+    from airflow.exceptions import DownstreamTasksSkipped
 
 pytestmark = pytest.mark.db_test
 
@@ -92,26 +96,32 @@ class TestBranchPythonVirtualenvDecoratedOperator:
 
         dr = dag_maker.create_dagrun()
         df.operator.run(start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True)
+        if AIRFLOW_V_3_0_1:
+            with pytest.raises(DownstreamTasksSkipped) as exc_info:
+                branchoperator.operator.run(
+                    start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True
+                )
+            assert exc_info.value.tasks == [(skipped_task_name, -1)]
+        else:
+            branchoperator.operator.run(
+                start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True
+            )
+            task_1.operator.run(start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True)
+            task_2.operator.run(start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True)
+            tis = dr.get_task_instances()
 
-        branchoperator.operator.run(
-            start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True
-        )
-        task_1.operator.run(start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True)
-        task_2.operator.run(start_date=dr.logical_date, end_date=dr.logical_date, ignore_ti_state=True)
-        tis = dr.get_task_instances()
+            for ti in tis:
+                if ti.task_id == "dummy_f":
+                    assert ti.state == State.SUCCESS
+                if ti.task_id == "branching":
+                    assert ti.state == State.SUCCESS
 
-        for ti in tis:
-            if ti.task_id == "dummy_f":
-                assert ti.state == State.SUCCESS
-            if ti.task_id == "branching":
-                assert ti.state == State.SUCCESS
+                if ti.task_id == "task_1" and branch_task_name == "task_1":
+                    assert ti.state == State.SUCCESS
+                elif ti.task_id == "task_1":
+                    assert ti.state == State.SKIPPED
 
-            if ti.task_id == "task_1" and branch_task_name == "task_1":
-                assert ti.state == State.SUCCESS
-            elif ti.task_id == "task_1":
-                assert ti.state == State.SKIPPED
-
-            if ti.task_id == "task_2" and branch_task_name == "task_2":
-                assert ti.state == State.SUCCESS
-            elif ti.task_id == "task_2":
-                assert ti.state == State.SKIPPED
+                if ti.task_id == "task_2" and branch_task_name == "task_2":
+                    assert ti.state == State.SUCCESS
+                elif ti.task_id == "task_2":
+                    assert ti.state == State.SKIPPED
