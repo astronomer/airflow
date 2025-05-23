@@ -259,6 +259,22 @@ spec:
                 - CONNECTION_CHECK_MAX_COUNT=0 exec /entrypoint python -m celery --app {{ include "celery_executor_namespace" . }} inspect ping -d celery@$(hostname)
                 {{- end }}
           {{- end }}
+          {{- if .Values.workers.readinessProbe.enabled }}
+          readinessProbe:
+            initialDelaySeconds: {{ .Values.workers.readinessProbe.initialDelaySeconds }}
+            timeoutSeconds: {{ .Values.workers.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.workers.readinessProbe.failureThreshold }}
+            periodSeconds: {{ .Values.workers.readinessProbe.periodSeconds }}
+            exec:
+              command:
+                {{- if .Values.workers.readinessProbe.command }}
+                  {{- toYaml .Values.workers.readinessProbe.command | nindent 16 }}
+                {{- else }}
+                - sh
+                - -c
+                - CONNECTION_CHECK_MAX_COUNT=0 exec /entrypoint python -m celery --app {{ include "celery_executor_namespace" . }} inspect ping -d celery@$(hostname)
+                {{- end }}
+          {{- end }}
           ports:
             {{- if .Values.workers.extraPorts }}
               {{- toYaml .Values.workers.extraPorts | nindent 12 }}
