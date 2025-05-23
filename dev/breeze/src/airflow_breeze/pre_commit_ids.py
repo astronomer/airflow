@@ -26,6 +26,7 @@ PRE_COMMIT_LIST = [
     "all",
     "bandit",
     "blacken-docs",
+    "cargo-fmt",
     "check-aiobotocore-optional",
     "check-airflow-k8s-not-used",
     "check-airflow-providers-bug-report-template",

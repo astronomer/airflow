@@ -121,3 +121,7 @@ You can also dive deeper into more specific areas that are important for contrib
 
 * `Execution API versioning <19_execution_api_versioning.rst>`__ describes how to
   version the Task Execution API and how to add new versions of the API.
+* `Rust SDK plan <20_rust_sdk_plan.rst>`__ provides an outline for implementing
+  a Rust version of the Task SDK following the Go SDK design.
+* `task-sdk/docs/rust <../task-sdk/docs/rust/index.rst>`__ contains user
+  documentation for the experimental Rust SDK crate.
