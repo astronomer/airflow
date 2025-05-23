@@ -243,6 +243,11 @@ repos:
         pass_filenames: false
         additional_dependencies: ['libcst>=1.1.0']
         files: ^(providers/.*/)?airflow/.*/(sensors|operators)/.*\.py$
+      - id: cargo-fmt
+        name: Check Rust formatting
+        entry: bash -c 'if rustup component list --installed | grep -q rustfmt; then cargo fmt --all --manifest-path rust-sdk/Cargo.toml -- --check; else echo "rustfmt missing"; fi'
+        language: system
+        types: [rust]
   - repo: https://github.com/asottile/blacken-docs
     rev: 1.19.1
     hooks:
