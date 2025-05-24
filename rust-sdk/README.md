@@ -49,3 +49,30 @@ async fn main() {
     println!("{:?}", result);
 }
 ```
+
+## Celery worker example
+
+A minimal worker using the [`rusty-celery`](https://github.com/rusty-celery/rusty-celery) crate is provided in
+`examples/worker.rs`. It connects to a Redis broker and executes tasks
+received from an Airflow Celery queue.
+
+Run it with:
+
+```bash
+cargo run --example worker -- --broker redis://localhost:6379/0 --queue default
+```
+
+The example uses the `Echo` task defined in the source file and prints the
+result returned by the task.
+
+## OpenAPI client
+
+The Execution API client is generated from the OpenAPI specification using
+[`oapi-codegen`](https://github.com/deepmap/oapi-codegen). After updating the
+API spec, run:
+
+```bash
+cargo run --package oapi-codegen -- path/to/openapi.yaml > src/api/client.gen.rs
+```
+
+The generated module is included at compile time from `src/api/client.gen.rs`.

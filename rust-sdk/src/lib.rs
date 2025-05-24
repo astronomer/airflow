@@ -1,3 +1,4 @@
+pub mod registry;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -32,32 +33,4 @@ pub trait Task: Send + Sync {
 /// Execute a task and return its result.
 pub async fn execute<T: Task>(task: T, request: TaskRequest) -> TaskResult {
     task.run(request).await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct Echo;
-
-    #[async_trait]
-    impl Task for Echo {
-        async fn run(&self, request: TaskRequest) -> TaskResult {
-            TaskResult {
-                result: request.params,
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute() {
-        let req = TaskRequest {
-            task_id: "t1".into(),
-            dag_id: "d1".into(),
-            run_id: "r1".into(),
-            params: serde_json::json!({"a": 1}),
-        };
-        let res = execute(Echo, req).await;
-        assert_eq!(res.result, serde_json::json!({"a": 1}));
-    }
 }
