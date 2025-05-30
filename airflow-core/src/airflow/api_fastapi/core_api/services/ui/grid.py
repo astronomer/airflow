@@ -181,10 +181,6 @@ def fill_task_instance_summaries(
         dag = serdag_cache[sdm.id]
         task_group_map_cache[sdm.id] = task_group_map_cache.get(sdm.id) or get_task_group_map(dag=dag)
         task_node_map = task_group_map_cache[sdm.id]
-        ti_try_number = max([ti.try_number for ti in tis])
-        ti_start_date = min([ti.start_date for ti in tis if ti.start_date], default=None)
-        ti_end_date = max([ti.end_date for ti in tis if ti.end_date], default=None)
-        ti_queued_dttm = min([ti.queued_dttm for ti in tis if ti.queued_dttm], default=None)
         ti_note = min([ti.note for ti in tis if ti.note], default=None)
 
         # Calculate the child states for the task
@@ -233,12 +229,7 @@ def fill_task_instance_summaries(
         task_instance_summaries_to_fill[run_id].append(
             GridTaskInstanceSummary(
                 task_id=task_id,
-                try_number=ti_try_number,
-                start_date=ti_start_date,
-                end_date=ti_end_date,
-                queued_dttm=ti_queued_dttm,
                 child_states=child_states,
-                task_count=sum(_count_tis(n, run_id, session) for n in task_node_map[task_id]["task_count"]),
                 state=TaskInstanceState[overall_ti_state.upper()]
                 if overall_ti_state != "no_status"
                 else None,

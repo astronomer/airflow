@@ -30,7 +30,6 @@ class GridTaskInstanceSummary(BaseModel):
     """Task Instance Summary model for the Grid UI."""
 
     task_id: str
-    try_number: int
     child_states: dict[str, int] | None
     state: TaskInstanceState | None
     note: str | None

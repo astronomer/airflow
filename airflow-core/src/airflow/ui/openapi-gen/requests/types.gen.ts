@@ -1742,7 +1742,6 @@ export type GridTaskInstanceHeaderResponse = {
  */
 export type GridTaskInstanceSummary = {
   task_id: string;
-  try_number: number;
   child_states: {
     [key: string]: number;
   } | null;

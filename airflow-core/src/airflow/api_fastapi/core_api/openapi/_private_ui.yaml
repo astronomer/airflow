@@ -1527,9 +1527,6 @@ components:
         task_id:
           type: string
           title: Task Id
-        try_number:
-          type: integer
-          title: Try Number
         child_states:
           anyOf:
           - additionalProperties:
@@ -1549,7 +1546,6 @@ components:
       type: object
       required:
       - task_id
-      - try_number
       - child_states
       - state
       - note
