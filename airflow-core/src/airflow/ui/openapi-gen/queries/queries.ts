@@ -3080,6 +3080,41 @@ export const useGridServiceGridData = <
     ...options,
   });
 /**
+ * Mapped Or Group Summary
+ * Summary of a mapped task or task group, to show in the grid header bar.
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.runId
+ * @param data.taskDisplayNamePattern SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). Regular expressions are **not** supported.
+ * @returns GridTaskInstanceHeaderResponse Successful Response
+ * @throws ApiError
+ */
+export const useGridServiceMappedOrGroupSummary = <
+  TData = Common.GridServiceMappedOrGroupSummaryDefaultResponse,
+  TError = unknown,
+  TQueryKey extends Array<unknown> = unknown[],
+>(
+  {
+    dagId,
+    runId,
+    taskDisplayNamePattern,
+  }: {
+    dagId: string;
+    runId: string;
+    taskDisplayNamePattern?: string;
+  },
+  queryKey?: TQueryKey,
+  options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
+) =>
+  useQuery<TData, TError>({
+    queryKey: Common.UseGridServiceMappedOrGroupSummaryKeyFn(
+      { dagId, runId, taskDisplayNamePattern },
+      queryKey,
+    ),
+    queryFn: () => GridService.mappedOrGroupSummary({ dagId, runId, taskDisplayNamePattern }) as TData,
+    ...options,
+  });
+/**
  * Create Asset Event
  * Create asset events.
  * @param data The data for the request.

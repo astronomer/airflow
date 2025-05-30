@@ -7004,15 +7004,11 @@ export const $GridResponse = {
   description: "Response model for the Grid UI.",
 } as const;
 
-export const $GridTaskInstanceSummary = {
+export const $GridTaskInstanceHeaderResponse = {
   properties: {
-    task_id: {
-      type: "string",
-      title: "Task Id",
-    },
-    try_number: {
+    successful_task_count: {
       type: "integer",
-      title: "Try Number",
+      title: "Successful Task Count",
     },
     start_date: {
       anyOf: [
@@ -7038,17 +7034,22 @@ export const $GridTaskInstanceSummary = {
       ],
       title: "End Date",
     },
-    queued_dttm: {
-      anyOf: [
-        {
-          type: "string",
-          format: "date-time",
-        },
-        {
-          type: "null",
-        },
-      ],
-      title: "Queued Dttm",
+  },
+  type: "object",
+  required: ["successful_task_count", "start_date", "end_date"],
+  title: "GridTaskInstanceHeaderResponse",
+  description: "Task Instance header in the Grid UI.",
+} as const;
+
+export const $GridTaskInstanceSummary = {
+  properties: {
+    task_id: {
+      type: "string",
+      title: "Task Id",
+    },
+    try_number: {
+      type: "integer",
+      title: "Try Number",
     },
     child_states: {
       anyOf: [
@@ -7063,10 +7064,6 @@ export const $GridTaskInstanceSummary = {
         },
       ],
       title: "Child States",
-    },
-    task_count: {
-      type: "integer",
-      title: "Task Count",
     },
     state: {
       anyOf: [
@@ -7091,17 +7088,7 @@ export const $GridTaskInstanceSummary = {
     },
   },
   type: "object",
-  required: [
-    "task_id",
-    "try_number",
-    "start_date",
-    "end_date",
-    "queued_dttm",
-    "child_states",
-    "task_count",
-    "state",
-    "note",
-  ],
+  required: ["task_id", "try_number", "child_states", "state", "note"],
   title: "GridTaskInstanceSummary",
   description: "Task Instance Summary model for the Grid UI.",
 } as const;

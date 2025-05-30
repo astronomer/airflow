@@ -23,13 +23,13 @@ from typing import Annotated
 
 import structlog
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from airflow import DAG
 from airflow.api_fastapi.auth.managers.models.resource_details import DagAccessEntity
 from airflow.api_fastapi.common.dagbag import DagBagDep
-from airflow.api_fastapi.common.db.common import SessionDep, paginated_select
+from airflow.api_fastapi.common.db.common import SessionDep, apply_filters_to_select, paginated_select
 from airflow.api_fastapi.common.parameters import (
     QueryDagRunRunTypesFilter,
     QueryDagRunStateFilter,
@@ -37,6 +37,7 @@ from airflow.api_fastapi.common.parameters import (
     QueryIncludeUpstream,
     QueryLimit,
     QueryOffset,
+    QueryTITaskDisplayNamePatternSearch,
     RangeFilter,
     SortParam,
     datetime_range_filter_factory,
@@ -45,6 +46,7 @@ from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.ui.grid import (
     GridDAGRunwithTIs,
     GridResponse,
+    GridTaskInstanceHeaderResponse,
 )
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
 from airflow.api_fastapi.core_api.security import requires_access_dag
@@ -262,3 +264,61 @@ def grid_data(
     structure = get_combined_structure(task_instances=flat_tis, session=session)
 
     return GridResponse(dag_runs=grid_dag_runs, structure=structure)
+
+
+@grid_router.get(
+    "/mappedTaskOrTaskGroupSummary/{dag_id}/{run_id}",
+    responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]),
+    dependencies=[
+        Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.TASK_INSTANCE)),
+        Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.RUN)),
+    ],
+)
+def mapped_or_group_summary(
+    dag_id: str,
+    run_id: str,
+    task_display_name_pattern: QueryTITaskDisplayNamePatternSearch,
+    session: SessionDep,
+    dag_bag: DagBagDep,
+) -> GridTaskInstanceHeaderResponse:
+    """Summary of a mapped task or task group, to show in the grid header bar."""
+    dag = dag_bag.get_dag(dag_id)
+    if not dag:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id} was not found")
+
+    dates_query = (
+        select(
+            func.min(TaskInstance.start_date),
+            func.max(TaskInstance.end_date),
+        )
+        .where(TaskInstance.dag_id == dag.dag_id)
+        .where(TaskInstance.run_id == run_id)
+    )
+
+    dates_query = apply_filters_to_select(
+        statement=dates_query,
+        filters=[task_display_name_pattern],
+    )
+
+    results = session.execute(dates_query).all()
+    min_start_date, max_end_date = results[0] if results else (None, None)
+
+    task_count_query = (
+        select(func.count())
+        .where(TaskInstance.dag_id == dag.dag_id)
+        .where(TaskInstance.run_id == run_id)
+        .where(TaskInstance.state == TaskInstanceState.SUCCESS)
+    )
+
+    task_count_query = apply_filters_to_select(
+        statement=task_count_query,
+        filters=[task_display_name_pattern],
+    )
+
+    task_count = session.execute(task_count_query).scalar() or 0
+
+    return GridTaskInstanceHeaderResponse(
+        successful_task_count=task_count,
+        start_date=min_start_date,
+        end_date=max_end_date,
+    )

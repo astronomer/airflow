@@ -223,6 +223,8 @@ import type {
   StructureDataResponse2,
   GridDataData,
   GridDataResponse,
+  MappedOrGroupSummaryData,
+  MappedOrGroupSummaryResponse,
 } from "./types.gen";
 
 export class AssetService {
@@ -3706,6 +3708,37 @@ export class GridService {
         run_after_lte: data.runAfterLte,
         logical_date_gte: data.logicalDateGte,
         logical_date_lte: data.logicalDateLte,
+      },
+      errors: {
+        400: "Bad Request",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Mapped Or Group Summary
+   * Summary of a mapped task or task group, to show in the grid header bar.
+   * @param data The data for the request.
+   * @param data.dagId
+   * @param data.runId
+   * @param data.taskDisplayNamePattern SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). Regular expressions are **not** supported.
+   * @returns GridTaskInstanceHeaderResponse Successful Response
+   * @throws ApiError
+   */
+  public static mappedOrGroupSummary(
+    data: MappedOrGroupSummaryData,
+  ): CancelablePromise<MappedOrGroupSummaryResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/ui/grid/mappedTaskOrTaskGroupSummary/{dag_id}/{run_id}",
+      path: {
+        dag_id: data.dagId,
+        run_id: data.runId,
+      },
+      query: {
+        task_display_name_pattern: data.taskDisplayNamePattern,
       },
       errors: {
         400: "Bad Request",

@@ -1843,6 +1843,26 @@ export const UseGridServiceGridDataKeyFn = (
     },
   ]),
 ];
+export type GridServiceMappedOrGroupSummaryDefaultResponse = Awaited<
+  ReturnType<typeof GridService.mappedOrGroupSummary>
+>;
+export type GridServiceMappedOrGroupSummaryQueryResult<
+  TData = GridServiceMappedOrGroupSummaryDefaultResponse,
+  TError = unknown,
+> = UseQueryResult<TData, TError>;
+export const useGridServiceMappedOrGroupSummaryKey = "GridServiceMappedOrGroupSummary";
+export const UseGridServiceMappedOrGroupSummaryKeyFn = (
+  {
+    dagId,
+    runId,
+    taskDisplayNamePattern,
+  }: {
+    dagId: string;
+    runId: string;
+    taskDisplayNamePattern?: string;
+  },
+  queryKey?: Array<unknown>,
+) => [useGridServiceMappedOrGroupSummaryKey, ...(queryKey ?? [{ dagId, runId, taskDisplayNamePattern }])];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

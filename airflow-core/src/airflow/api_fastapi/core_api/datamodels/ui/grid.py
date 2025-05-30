@@ -31,11 +31,7 @@ class GridTaskInstanceSummary(BaseModel):
 
     task_id: str
     try_number: int
-    start_date: datetime | None
-    end_date: datetime | None
-    queued_dttm: datetime | None
     child_states: dict[str, int] | None
-    task_count: int
     state: TaskInstanceState | None
     note: str | None
 
@@ -62,3 +58,11 @@ class GridResponse(BaseModel):
 
     dag_runs: list[GridDAGRunwithTIs]
     structure: StructureDataResponse
+
+
+class GridTaskInstanceHeaderResponse(BaseModel):
+    """Task Instance header in the Grid UI."""
+
+    successful_task_count: int
+    start_date: datetime | None
+    end_date: datetime | None

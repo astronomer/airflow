@@ -1729,18 +1729,23 @@ export type GridResponse = {
 };
 
 /**
+ * Task Instance header in the Grid UI.
+ */
+export type GridTaskInstanceHeaderResponse = {
+  successful_task_count: number;
+  start_date: string | null;
+  end_date: string | null;
+};
+
+/**
  * Task Instance Summary model for the Grid UI.
  */
 export type GridTaskInstanceSummary = {
   task_id: string;
   try_number: number;
-  start_date: string | null;
-  end_date: string | null;
-  queued_dttm: string | null;
   child_states: {
     [key: string]: number;
   } | null;
-  task_count: number;
   state: TaskInstanceState | null;
   note: string | null;
 };
@@ -2852,6 +2857,17 @@ export type GridDataData = {
 };
 
 export type GridDataResponse = GridResponse;
+
+export type MappedOrGroupSummaryData = {
+  dagId: string;
+  runId: string;
+  /**
+   * SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). Regular expressions are **not** supported.
+   */
+  taskDisplayNamePattern?: string | null;
+};
+
+export type MappedOrGroupSummaryResponse = GridTaskInstanceHeaderResponse;
 
 export type $OpenApiTs = {
   "/api/v2/assets": {
@@ -5769,6 +5785,29 @@ export type $OpenApiTs = {
          * Successful Response
          */
         200: GridResponse;
+        /**
+         * Bad Request
+         */
+        400: HTTPExceptionResponse;
+        /**
+         * Not Found
+         */
+        404: HTTPExceptionResponse;
+        /**
+         * Validation Error
+         */
+        422: HTTPValidationError;
+      };
+    };
+  };
+  "/ui/grid/mappedTaskOrTaskGroupSummary/{dag_id}/{run_id}": {
+    get: {
+      req: MappedOrGroupSummaryData;
+      res: {
+        /**
+         * Successful Response
+         */
+        200: GridTaskInstanceHeaderResponse;
         /**
          * Bad Request
          */

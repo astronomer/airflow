@@ -597,6 +597,66 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /ui/grid/mappedTaskOrTaskGroupSummary/{dag_id}/{run_id}:
+    get:
+      tags:
+      - Grid
+      summary: Mapped Or Group Summary
+      description: Summary of a mapped task or task group, to show in the grid header
+        bar.
+      operationId: mapped_or_group_summary
+      security:
+      - OAuth2PasswordBearer: []
+      parameters:
+      - name: dag_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Dag Id
+      - name: run_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Run Id
+      - name: task_display_name_pattern
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: "SQL LIKE expression \u2014 use `%` / `_` wildcards (e.g. `%customer_%`).\
+            \ Regular expressions are **not** supported."
+          title: Task Display Name Pattern
+        description: "SQL LIKE expression \u2014 use `%` / `_` wildcards (e.g. `%customer_%`).\
+          \ Regular expressions are **not** supported."
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GridTaskInstanceHeaderResponse'
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPExceptionResponse'
+          description: Bad Request
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPExceptionResponse'
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     BackfillCollectionResponse:
@@ -1438,14 +1498,11 @@ components:
       - structure
       title: GridResponse
       description: Response model for the Grid UI.
-    GridTaskInstanceSummary:
+    GridTaskInstanceHeaderResponse:
       properties:
-        task_id:
-          type: string
-          title: Task Id
-        try_number:
+        successful_task_count:
           type: integer
-          title: Try Number
+          title: Successful Task Count
         start_date:
           anyOf:
           - type: string
@@ -1458,12 +1515,21 @@ components:
             format: date-time
           - type: 'null'
           title: End Date
-        queued_dttm:
-          anyOf:
-          - type: string
-            format: date-time
-          - type: 'null'
-          title: Queued Dttm
+      type: object
+      required:
+      - successful_task_count
+      - start_date
+      - end_date
+      title: GridTaskInstanceHeaderResponse
+      description: Task Instance header in the Grid UI.
+    GridTaskInstanceSummary:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        try_number:
+          type: integer
+          title: Try Number
         child_states:
           anyOf:
           - additionalProperties:
@@ -1471,9 +1537,6 @@ components:
             type: object
           - type: 'null'
           title: Child States
-        task_count:
-          type: integer
-          title: Task Count
         state:
           anyOf:
           - $ref: '#/components/schemas/TaskInstanceState'
@@ -1487,11 +1550,7 @@ components:
       required:
       - task_id
       - try_number
-      - start_date
-      - end_date
-      - queued_dttm
       - child_states
-      - task_count
       - state
       - note
       title: GridTaskInstanceSummary

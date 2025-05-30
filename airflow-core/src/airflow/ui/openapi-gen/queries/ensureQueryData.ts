@@ -2575,3 +2575,29 @@ export const ensureUseGridServiceGridDataData = (
         state,
       }),
   });
+/**
+ * Mapped Or Group Summary
+ * Summary of a mapped task or task group, to show in the grid header bar.
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.runId
+ * @param data.taskDisplayNamePattern SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). Regular expressions are **not** supported.
+ * @returns GridTaskInstanceHeaderResponse Successful Response
+ * @throws ApiError
+ */
+export const ensureUseGridServiceMappedOrGroupSummaryData = (
+  queryClient: QueryClient,
+  {
+    dagId,
+    runId,
+    taskDisplayNamePattern,
+  }: {
+    dagId: string;
+    runId: string;
+    taskDisplayNamePattern?: string;
+  },
+) =>
+  queryClient.ensureQueryData({
+    queryKey: Common.UseGridServiceMappedOrGroupSummaryKeyFn({ dagId, runId, taskDisplayNamePattern }),
+    queryFn: () => GridService.mappedOrGroupSummary({ dagId, runId, taskDisplayNamePattern }),
+  });
