@@ -548,10 +548,12 @@ class WatchedSubprocess:
                 process_log_messages_from_subprocess(target_loggers), on_close=self._on_socket_closed
             ),
         )
+
+        # Always use envelope protocol for requests channel for consistency
         self.selector.register(
             requests,
             selectors.EVENT_READ,
-            make_buffered_socket_reader(self.handle_requests(log), on_close=self._on_socket_closed),
+            make_envelope_socket_reader(self.handle_requests(log), on_close=self._on_socket_closed),
         )
 
     def _create_socket_handler(self, loggers, channel, log_level=logging.INFO) -> Callable[[socket], bool]:
@@ -565,19 +567,34 @@ class WatchedSubprocess:
         self._num_open_sockets -= 1
 
     def send_msg(self, msg: BaseModel, **dump_opts):
-        """Send the given pydantic message to the subprocess at once by encoding it and adding a line break."""
-        b = msg.model_dump_json(**dump_opts).encode() + b"\n"
-        self.stdin.sendall(b)
+        """Send a message to the task_runner using envelope protocol."""
+        payload_bytes = msg.model_dump_json(**dump_opts).encode("utf-8")
+
+        # Always use envelope protocol for consistency
+        import uuid
+
+        from airflow.sdk.execution_time.task_runner import MessageEnvelope
+
+        envelope = MessageEnvelope(request_id=str(uuid.uuid4()), content_length=len(payload_bytes))
+        envelope_bytes = envelope.model_dump_json().encode("utf-8") + b"\n"
+
+        # Combine envelope and payload for atomic sending
+        complete_message = envelope_bytes + payload_bytes
+        self.stdin.send(complete_message)
 
     def handle_requests(self, log: FilteringBoundLogger) -> Generator[None, bytes, None]:
         """Handle incoming requests from the task process, respond with the appropriate data."""
         while True:
-            line = yield
+            payload_bytes = yield
 
             try:
-                msg = self.decoder.validate_json(line)
+                msg = self.decoder.validate_json(payload_bytes)
             except Exception:
-                log.exception("Unable to decode message", line=line)
+                log.exception(
+                    "Unable to decode message",
+                    payload_size=len(payload_bytes),
+                    payload_preview=payload_bytes[:200],
+                )
                 continue
 
             try:
@@ -1286,7 +1303,7 @@ class InProcessTestSupervisor(ActivitySubprocess):
         Run a task in-process without spawning a new child process.
 
         This bypasses the standard `ActivitySubprocess.start()` behavior, which expects
-        to launch a subprocess and communicate via stdin/stdout. Instead, it constructs
+        to launch a new subprocess and communicate via stdin/stdout. Instead, it constructs
         the `RuntimeTaskInstance` directly — useful in contexts like `dag.test()` where the
         DAG is already parsed in memory.
 
@@ -1363,7 +1380,7 @@ class InProcessTestSupervisor(ActivitySubprocess):
         return client
 
     def send_msg(self, msg: BaseModel, **dump_opts):
-        """Override to use in-process comms."""
+        """Override to use in-process comms instead of envelope protocol."""
         self.comms.messages.append(msg)
 
     @property
@@ -1423,6 +1440,7 @@ def make_buffered_socket_reader(
     on_close: Callable,
     buffer_size: int = 4096,
 ) -> Callable[[socket], bool]:
+    """Create a line-based buffered socket reader for stdout, stderr, and logs."""
     buffer = bytearray()  # This will hold our accumulated binary data
     read_buffer = bytearray(buffer_size)  # Temporary buffer for each read
 
@@ -1454,6 +1472,85 @@ def make_buffered_socket_reader(
                 on_close()
                 return False
             buffer = buffer[newline_pos + 1 :]  # Update the buffer with remaining data
+
+        return True
+
+    return cb
+
+
+def make_envelope_socket_reader(
+    gen: Generator[None, bytes | bytearray, None],
+    on_close: Callable,
+    buffer_size: int = 4096,
+) -> Callable[[socket], bool]:
+    """Create an envelope-based buffered socket reader for requests channel."""
+    buffer = bytearray()  # This will hold our accumulated binary data
+    read_buffer = bytearray(buffer_size)  # Temporary buffer for each read
+    envelope_stage = True  # True if reading envelope, False if reading payload
+    expected_payload_bytes = 0  # Bytes remaining to read for current payload
+
+    # We need to start up the generator to get it to the point it's at waiting on the yield
+    next(gen)
+
+    def cb(sock: socket):
+        nonlocal buffer, read_buffer, envelope_stage, expected_payload_bytes
+        # Read up to `buffer_size` bytes of data from the socket
+        n_received = sock.recv_into(read_buffer)
+
+        if not n_received:
+            # If no data is returned, the connection is closed. Return whatever is left in the buffer
+            if len(buffer):
+                with suppress(StopIteration):
+                    gen.send(buffer)
+            # Tell loop to close this selector
+            on_close()
+            return False
+
+        buffer.extend(read_buffer[:n_received])
+
+        while True:
+            if envelope_stage:
+                # Look for newline to complete envelope
+                if (newline_pos := buffer.find(b"\n")) != -1:
+                    envelope_line = buffer[:newline_pos]
+                    buffer = buffer[newline_pos + 1 :]  # Remove envelope + newline from buffer
+
+                    try:
+                        from airflow.sdk.execution_time.task_runner import MessageEnvelope
+
+                        envelope = MessageEnvelope.model_validate_json(envelope_line.decode("utf-8"))
+                        expected_payload_bytes = envelope.content_length
+                        envelope_stage = False
+                    except Exception:
+                        # If envelope parsing fails, send the malformed line to handler
+                        try:
+                            gen.send(envelope_line + b"\n")
+                        except StopIteration:
+                            on_close()
+                            return False
+                        continue
+                else:
+                    # Need more data to complete envelope
+                    break
+            else:
+                # Reading payload stage
+                if len(buffer) >= expected_payload_bytes:
+                    # We have enough bytes for the complete payload
+                    complete_message = buffer[:expected_payload_bytes]
+                    buffer = buffer[expected_payload_bytes:]  # Remove payload from buffer
+
+                    try:
+                        gen.send(complete_message)
+                    except StopIteration:
+                        on_close()
+                        return False
+
+                    # Reset for next message
+                    envelope_stage = True
+                    expected_payload_bytes = 0
+                else:
+                    # Need more data to complete payload
+                    break
 
         return True
 

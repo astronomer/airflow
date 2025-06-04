@@ -33,7 +33,6 @@ from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Generic, Literal, TextIO, TypeVar
 
-import aiologic
 import attrs
 import lazy_object_proxy
 import structlog
@@ -109,6 +108,8 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions._internal.abstractoperator import AbstractOperator
     from airflow.sdk.definitions.context import Context
     from airflow.sdk.types import OutletEventAccessorsProtocol
+
+import uuid
 
 
 class TaskRunnerMarker:
@@ -642,41 +643,76 @@ SendMsgType = TypeVar("SendMsgType", bound=BaseModel)
 ReceiveMsgType = TypeVar("ReceiveMsgType", bound=BaseModel)
 
 
-@attrs.define()
+class MessageEnvelope(BaseModel):
+    """Envelope for length-prefixed message protocol."""
+
+    request_id: str
+    content_length: int
+
+
+@attrs.define
 class CommsDecoder(Generic[ReceiveMsgType, SendMsgType]):
-    """Handle communication between the task in this process and the supervisor parent process."""
+    """Helper to decode messages from the supervisor."""
 
     input: TextIO
-
+    decoder: TypeAdapter[ReceiveMsgType] = attrs.field(factory=lambda: TypeAdapter(ToTask), repr=False)
     request_socket: FileIO = attrs.field(init=False, default=None)
 
-    # We could be "clever" here and set the default to this based type parameters and a custom
-    # `__class_getitem__`, but that's a lot of code the one subclass we've got currently. So we'll just use a
-    # "sort of wrong default"
-    decoder: TypeAdapter[ReceiveMsgType] = attrs.field(factory=lambda: TypeAdapter(ToTask), repr=False)
-
-    lock: aiologic.Lock = attrs.field(factory=aiologic.Lock, repr=False)
-
     def get_message(self) -> ReceiveMsgType:
-        """
-        Get a message from the parent.
+        """Get a message from the parent using envelope protocol."""
+        # Read envelope header (JSON line)
+        envelope_line = self.input.readline()
+        if not envelope_line:
+            raise EOFError("Connection closed")
 
-        This will block until the message has been received.
-        """
-        line = None
-
-        # TODO: Investigate why some empty lines are sent to the processes stdin.
-        #   That was highlighted when working on https://github.com/apache/airflow/issues/48183
-        #   and is maybe related to deferred/triggerer only context.
-        while not line:
-            line = self.input.readline()
-
+        # Try to parse as envelope first
         try:
-            msg = self.decoder.validate_json(line)
-        except Exception:
-            structlog.get_logger(logger_name="CommsDecoder").exception("Unable to decode message", line=line)
-            raise
+            envelope = MessageEnvelope.model_validate_json(envelope_line.strip())
 
+            # The challenge: envelope.content_length is in bytes, but TextIO reads characters
+            # Solution: Read characters iteratively until we reach the target byte count
+            target_bytes = envelope.content_length
+            payload_chars = []
+            current_byte_count = 0
+
+            while current_byte_count < target_bytes:
+                # Read one character at a time
+                char = self.input.read(1)
+                if not char:
+                    raise EOFError("Unexpected end of input while reading payload")
+
+                payload_chars.append(char)
+                current_byte_count = len("".join(payload_chars).encode("utf-8"))
+
+                # Safety check to prevent infinite loops
+                if len(payload_chars) > target_bytes * 2:  # Reasonable upper bound
+                    raise EOFError(
+                        f"Read too many characters ({len(payload_chars)}) for target bytes ({target_bytes})"
+                    )
+
+            payload_data = "".join(payload_chars)
+
+            # Final validation
+            actual_bytes = len(payload_data.encode("utf-8"))
+            if actual_bytes != target_bytes:
+                raise EOFError(f"Expected {target_bytes} bytes, got {actual_bytes} bytes")
+
+            msg = self.decoder.validate_json(payload_data)
+        except Exception:
+            # Fallback to line-based protocol for backwards compatibility
+            try:
+                msg = self.decoder.validate_json(envelope_line.strip())
+            except Exception:
+                structlog.get_logger(logger_name="CommsDecoder").exception(
+                    "Unable to decode message", line=envelope_line
+                )
+                raise
+
+        self._handle_special_messages(msg)
+        return msg
+
+    def _handle_special_messages(self, msg):
+        """Handle special messages that need processing."""
         if isinstance(msg, StartupDetails):
             # If we read a startup message, pull out the FDs we care about!
             if msg.requests_fd > 0:
@@ -685,13 +721,23 @@ class CommsDecoder(Generic[ReceiveMsgType, SendMsgType]):
             structlog.get_logger(logger_name="task").error("Error response from the API Server")
             raise AirflowRuntimeError(error=msg)
 
-        return msg
-
     def send_request(self, log: Logger, msg: SendMsgType):
-        encoded_msg = msg.model_dump_json().encode() + b"\n"
+        """Send a request to supervisor using envelope protocol."""
+        payload_json = msg.model_dump_json()
+        payload_bytes = payload_json.encode("utf-8")
 
-        log.debug("Sending request", json=encoded_msg)
-        self.request_socket.write(encoded_msg)
+        envelope = MessageEnvelope(
+            request_id=str(uuid.uuid4()),
+            content_length=len(payload_bytes),  # Use byte count to match supervisor expectation
+        )
+        envelope_json = envelope.model_dump_json()
+        envelope_bytes = envelope_json.encode("utf-8") + b"\n"
+
+        # Combine envelope and payload for atomic sending
+        complete_message = envelope_bytes + payload_bytes
+
+        log.debug("Sending request", payload_size=len(payload_bytes), envelope_size=len(envelope_bytes))
+        self.request_socket.write(complete_message)
 
 
 # This global variable will be used by Connection/Variable/XCom classes, or other parts of the task's execution,
