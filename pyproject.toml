@@ -229,6 +229,9 @@ packages = []
 "google" = [
     "apache-airflow-providers-google>=10.24.0"
 ]
+"greatexpectations" = [
+    "apache-airflow-providers-greatexpectations"
+]
 "grpc" = [
     "apache-airflow-providers-grpc>=3.7.0"
 ]
@@ -431,6 +434,7 @@ packages = []
     "apache-airflow-providers-git>=0.0.2", # Set from MIN_VERSION_OVERRIDE in update_airflow_pyproject_toml.py
     "apache-airflow-providers-github>=2.8.0",
     "apache-airflow-providers-google>=10.24.0",
+    "apache-airflow-providers-greatexpectations",
     "apache-airflow-providers-grpc>=3.7.0",
     "apache-airflow-providers-hashicorp>=4.0.0",
     "apache-airflow-providers-http>=4.13.2",
@@ -1077,6 +1081,8 @@ mypy_path = [
     "$MYPY_CONFIG_FILE_DIR/providers/github/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/google/src",
     "$MYPY_CONFIG_FILE_DIR/providers/google/tests",
+    "$MYPY_CONFIG_FILE_DIR/providers/greatexpectations/src",
+    "$MYPY_CONFIG_FILE_DIR/providers/greatexpectations/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/grpc/src",
     "$MYPY_CONFIG_FILE_DIR/providers/grpc/tests",
     "$MYPY_CONFIG_FILE_DIR/providers/hashicorp/src",
@@ -1325,6 +1331,7 @@ apache-airflow-providers-ftp = { workspace = true }
 apache-airflow-providers-git = { workspace = true }
 apache-airflow-providers-github = { workspace = true }
 apache-airflow-providers-google = { workspace = true }
+apache-airflow-providers-greatexpectations = { workspace = true }
 apache-airflow-providers-grpc = { workspace = true }
 apache-airflow-providers-hashicorp = { workspace = true }
 apache-airflow-providers-http = { workspace = true }
@@ -1439,6 +1446,7 @@ members = [
     "providers/git",
     "providers/github",
     "providers/google",
+    "providers/greatexpectations",
     "providers/grpc",
     "providers/hashicorp",
     "providers/http",
