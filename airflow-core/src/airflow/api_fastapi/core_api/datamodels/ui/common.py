@@ -52,6 +52,15 @@ E = TypeVar("E", bound=BaseEdgeResponse)
 N = TypeVar("N", bound=BaseNodeResponse)
 
 
+class GridNodeResponse(BaseModel):
+    """Base Node serializer for responses."""
+
+    id: str
+    label: str
+    children: list[GridNodeResponse] | None
+    is_mapped: bool | None
+
+
 class BaseGraphResponse(BaseModel, Generic[E, N]):
     """Base Graph serializer for responses."""
 
