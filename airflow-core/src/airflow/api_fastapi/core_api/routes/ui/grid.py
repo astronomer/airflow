@@ -57,9 +57,10 @@ from airflow.api_fastapi.core_api.services.ui.grid import (
     get_structure_from_dag,
     get_task_group_map,
 )
-from airflow.models import DagRun, TaskInstance
 from airflow.models.dag_version import DagVersion
+from airflow.models.dagrun import DagRun
 from airflow.models.serialized_dag import SerializedDagModel
+from airflow.models.taskinstance import TaskInstance
 from airflow.models.taskinstancehistory import TaskInstanceHistory
 from airflow.utils.state import TaskInstanceState
 from airflow.utils.task_group import (
@@ -273,13 +274,7 @@ def grid_data(
 
 def _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_type, session, state):
     # Retrieve, sort the previous DAG Runs
-    base_query = (
-        select(DagRun)
-        .join(DagRun.dag_run_note, isouter=True)
-        .options(joinedload(DagRun.task_instances).joinedload(TaskInstance.dag_version))
-        .options(joinedload(DagRun.task_instances_histories).joinedload(TaskInstanceHistory.dag_version))
-        .where(DagRun.dag_id == dag.dag_id)
-    )
+    base_query = select(DagRun.id).where(DagRun.dag_id == dag.dag_id)
     # This comparison is to falls to DAG timetable when no order_by is provided
     if order_by.value == order_by.get_primary_key_string():
         order_by = SortParam(
@@ -297,8 +292,8 @@ def _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_ty
         offset=offset,
         limit=limit,
     )
-    dag_runs = list(session.scalars(dag_runs_select_filter).unique())
-    return dag_runs
+    run_ids = list(session.scalars(dag_runs_select_filter))
+    return run_ids
 
 
 @grid_router.get(
@@ -310,11 +305,10 @@ def _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_ty
     ],
     response_model_exclude_none=True,
 )
-def get_dag_structure(
+async def get_dag_structure(
     dag_id: str,
     session: SessionDep,
     offset: QueryOffset,
-    dag_bag: DagBagDep,
     run_type: QueryDagRunRunTypesFilter,
     state: QueryDagRunStateFilter,
     limit: QueryLimit,
@@ -329,12 +323,21 @@ def get_dag_structure(
     root: str | None = None,
 ) -> list[GridNodeResponse]:
     """Return unified dag structure for grid view."""
-    dag: DAG = dag_bag.get_dag(dag_id)
-    if not dag:
+    current_serdag = session.scalar(
+        select(SerializedDagModel)
+        .where(
+            SerializedDagModel.dag_id == dag_id,
+        )
+        .order_by(SerializedDagModel.id.desc())
+        .limit(1)
+    )
+    if not current_serdag:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id} was not found")
-
-    dag_runs = _runs_for_grid(
-        dag=dag,
+    # todo: let's load serdag once maybe?
+    # todo: runs for dag should be faster
+    latest_dag = current_serdag.dag
+    run_ids = _runs_for_grid(
+        dag=latest_dag,
         limit=limit,
         logical_date=logical_date,
         offset=offset,
@@ -345,25 +348,21 @@ def get_dag_structure(
         state=state,
     )
     task_group_sort = get_task_group_children_getter()
-    if not dag_runs:
-        nodes = [task_group_to_dict_grid(x) for x in task_group_sort(dag.task_group)]
+    if not run_ids:
+        nodes = [task_group_to_dict_grid(x) for x in task_group_sort(latest_dag.task_group)]
         return nodes
-
-    run_ids = [x.id for x in dag_runs]
 
     serdags = session.scalars(
         select(SerializedDagModel).where(
             SerializedDagModel.dag_version_id.in_(
                 select(TaskInstance.dag_version_id)
                 .join(TaskInstance.dag_run)
-                .where(
-                    DagRun.id.in_(run_ids),
-                )
+                .where(DagRun.id.in_(run_ids), SerializedDagModel.id != current_serdag.id)
             )
         )
     )
-    merged_nodes = []
-    dags = []
+    merged_nodes: list[GridNodeResponse] = []
+    dags = [latest_dag]
     for serdag in serdags:
         if serdag:
             dags.append(serdag.dag)
