@@ -103,8 +103,35 @@ def grid_data(
     if not dag:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id} was not found")
 
-    dag_runs = _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_type, session, state)
+    # Retrieve, sort the previous DAG Runs
+    base_query = (
+        select(DagRun)
+        .join(DagRun.dag_run_note, isouter=True)
+        .options(joinedload(DagRun.task_instances).joinedload(TaskInstance.dag_version))
+        .options(joinedload(DagRun.task_instances_histories).joinedload(TaskInstanceHistory.dag_version))
+        .where(DagRun.dag_id == dag.dag_id)
+    )
 
+    # This comparison is to falls to DAG timetable when no order_by is provided
+    if order_by.value == order_by.get_primary_key_string():
+        order_by = SortParam(
+            allowed_attrs=[run_ordering for run_ordering in dag.timetable.run_ordering], model=DagRun
+        ).set_value(dag.timetable.run_ordering[0])
+
+    dag_runs_select_filter, _ = paginated_select(
+        statement=base_query,
+        filters=[
+            run_type,
+            state,
+            run_after,
+            logical_date,
+        ],
+        order_by=order_by,
+        offset=offset,
+        limit=limit,
+    )
+
+    dag_runs = list(session.scalars(dag_runs_select_filter).unique())
     # Check if there are any DAG Runs with given criteria to eliminate unnecessary queries/errors
     if not dag_runs:
         structure = get_structure_from_dag(dag=dag)
