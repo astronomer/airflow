@@ -74,6 +74,7 @@ body:
         - http
         - imap
         - influxdb
+        - interactive
         - jdbc
         - jenkins
         - keycloak
