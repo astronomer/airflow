@@ -223,6 +223,8 @@ import type {
   StructureDataResponse2,
   GridDataData,
   GridDataResponse,
+  GetDagStructureData,
+  GetDagStructureResponse,
 } from "./types.gen";
 
 export class AssetService {
@@ -3692,6 +3694,55 @@ export class GridService {
     return __request(OpenAPI, {
       method: "GET",
       url: "/ui/grid/{dag_id}",
+      path: {
+        dag_id: data.dagId,
+      },
+      query: {
+        include_upstream: data.includeUpstream,
+        include_downstream: data.includeDownstream,
+        root: data.root,
+        offset: data.offset,
+        run_type: data.runType,
+        state: data.state,
+        limit: data.limit,
+        order_by: data.orderBy,
+        run_after_gte: data.runAfterGte,
+        run_after_lte: data.runAfterLte,
+        logical_date_gte: data.logicalDateGte,
+        logical_date_lte: data.logicalDateLte,
+      },
+      errors: {
+        400: "Bad Request",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Get Dag Structure
+   * Return unified dag structure for grid view.
+   * @param data The data for the request.
+   * @param data.dagId
+   * @param data.includeUpstream
+   * @param data.includeDownstream
+   * @param data.root
+   * @param data.offset
+   * @param data.runType
+   * @param data.state
+   * @param data.limit
+   * @param data.orderBy
+   * @param data.runAfterGte
+   * @param data.runAfterLte
+   * @param data.logicalDateGte
+   * @param data.logicalDateLte
+   * @returns GridNodeResponse Successful Response
+   * @throws ApiError
+   */
+  public static getDagStructure(data: GetDagStructureData): CancelablePromise<GetDagStructureResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/ui/grid/structure/{dag_id}",
       path: {
         dag_id: data.dagId,
       },

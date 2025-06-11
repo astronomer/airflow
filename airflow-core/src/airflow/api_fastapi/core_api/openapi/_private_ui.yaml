@@ -1591,11 +1591,18 @@ components:
           - type: boolean
           - type: 'null'
           title: Is Mapped
+        setup_teardown_type:
+          anyOf:
+          - type: string
+            enum:
+            - setup
+            - teardown
+          - type: 'null'
+          title: Setup Teardown Type
       type: object
       required:
       - id
       - label
-      - children
       - is_mapped
       title: GridNodeResponse
       description: Base Node serializer for responses.

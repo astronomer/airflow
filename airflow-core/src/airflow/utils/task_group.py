@@ -105,12 +105,17 @@ def task_group_to_dict_grid(task_item_or_group, parent_group_is_mapped=False):
         is_mapped = None
         if isinstance(task, MappedOperator) or parent_group_is_mapped:
             is_mapped = True
-
+        setup_teardown_type = None
+        if task.is_setup is True:
+            setup_teardown_type = "setup"
+        elif task.is_teardown is True:
+            setup_teardown_type = "teardown"
         return {
             "id": task.task_id,
             "label": task.label,
             "is_mapped": is_mapped,
             "children": None,
+            "setup_teardown_type": setup_teardown_type,
         }
 
     task_group = task_item_or_group

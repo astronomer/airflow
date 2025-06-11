@@ -1846,6 +1846,65 @@ export const UseGridServiceGridDataKeyFn = (
     },
   ]),
 ];
+export type GridServiceGetDagStructureDefaultResponse = Awaited<
+  ReturnType<typeof GridService.getDagStructure>
+>;
+export type GridServiceGetDagStructureQueryResult<
+  TData = GridServiceGetDagStructureDefaultResponse,
+  TError = unknown,
+> = UseQueryResult<TData, TError>;
+export const useGridServiceGetDagStructureKey = "GridServiceGetDagStructure";
+export const UseGridServiceGetDagStructureKeyFn = (
+  {
+    dagId,
+    includeDownstream,
+    includeUpstream,
+    limit,
+    logicalDateGte,
+    logicalDateLte,
+    offset,
+    orderBy,
+    root,
+    runAfterGte,
+    runAfterLte,
+    runType,
+    state,
+  }: {
+    dagId: string;
+    includeDownstream?: boolean;
+    includeUpstream?: boolean;
+    limit?: number;
+    logicalDateGte?: string;
+    logicalDateLte?: string;
+    offset?: number;
+    orderBy?: string;
+    root?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
+    runType?: string[];
+    state?: string[];
+  },
+  queryKey?: Array<unknown>,
+) => [
+  useGridServiceGetDagStructureKey,
+  ...(queryKey ?? [
+    {
+      dagId,
+      includeDownstream,
+      includeUpstream,
+      limit,
+      logicalDateGte,
+      logicalDateLte,
+      offset,
+      orderBy,
+      root,
+      runAfterGte,
+      runAfterLte,
+      runType,
+      state,
+    },
+  ]),
+];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

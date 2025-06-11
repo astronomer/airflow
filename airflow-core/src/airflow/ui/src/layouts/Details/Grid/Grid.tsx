@@ -25,6 +25,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { useOpenGroups } from "src/context/openGroups";
 import { useGrid } from "src/queries/useGrid";
+import { useGridStructure } from "src/queries/useGridStructure.ts";
 
 import { Bar } from "./Bar";
 import { DurationAxis } from "./DurationAxis";
@@ -43,7 +44,7 @@ export const Grid = ({ limit }: Props) => {
   const { dagId = "" } = useParams();
 
   const { data: gridData, isLoading, runAfter } = useGrid(limit);
-
+  const { data: dagStructure } = useGridStructure(limit);
   const runs: Array<RunWithDuration> = useMemo(
     () =>
       (gridData?.dag_runs ?? []).map((run) => {
@@ -66,8 +67,8 @@ export const Grid = ({ limit }: Props) => {
   );
 
   const { flatNodes } = useMemo(
-    () => flattenNodes(gridData === undefined ? [] : gridData.structure.nodes, openGroupIds),
-    [gridData, openGroupIds],
+    () => flattenNodes(dagStructure, openGroupIds),
+    [dagStructure, openGroupIds],
   );
 
   return (

@@ -6985,6 +6985,60 @@ export const $GridDAGRunwithTIs = {
   description: "DAG Run model for the Grid UI.",
 } as const;
 
+export const $GridNodeResponse = {
+  properties: {
+    id: {
+      type: "string",
+      title: "Id",
+    },
+    label: {
+      type: "string",
+      title: "Label",
+    },
+    children: {
+      anyOf: [
+        {
+          items: {
+            $ref: "#/components/schemas/GridNodeResponse",
+          },
+          type: "array",
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "Children",
+    },
+    is_mapped: {
+      anyOf: [
+        {
+          type: "boolean",
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "Is Mapped",
+    },
+    setup_teardown_type: {
+      anyOf: [
+        {
+          type: "string",
+          enum: ["setup", "teardown"],
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "Setup Teardown Type",
+    },
+  },
+  type: "object",
+  required: ["id", "label", "is_mapped"],
+  title: "GridNodeResponse",
+  description: "Base Node serializer for responses.",
+} as const;
+
 export const $GridResponse = {
   properties: {
     dag_runs: {

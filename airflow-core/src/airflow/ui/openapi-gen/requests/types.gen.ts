@@ -1721,6 +1721,17 @@ export type GridDAGRunwithTIs = {
 };
 
 /**
+ * Base Node serializer for responses.
+ */
+export type GridNodeResponse = {
+  id: string;
+  label: string;
+  children?: Array<GridNodeResponse> | null;
+  is_mapped: boolean | null;
+  setup_teardown_type?: "setup" | "teardown" | null;
+};
+
+/**
  * Response model for the Grid UI.
  */
 export type GridResponse = {
@@ -2853,6 +2864,24 @@ export type GridDataData = {
 };
 
 export type GridDataResponse = GridResponse;
+
+export type GetDagStructureData = {
+  dagId: string;
+  includeDownstream?: boolean;
+  includeUpstream?: boolean;
+  limit?: number;
+  logicalDateGte?: string | null;
+  logicalDateLte?: string | null;
+  offset?: number;
+  orderBy?: string;
+  root?: string | null;
+  runAfterGte?: string | null;
+  runAfterLte?: string | null;
+  runType?: Array<string>;
+  state?: Array<string>;
+};
+
+export type GetDagStructureResponse = Array<GridNodeResponse>;
 
 export type $OpenApiTs = {
   "/api/v2/assets": {
@@ -5770,6 +5799,29 @@ export type $OpenApiTs = {
          * Successful Response
          */
         200: GridResponse;
+        /**
+         * Bad Request
+         */
+        400: HTTPExceptionResponse;
+        /**
+         * Not Found
+         */
+        404: HTTPExceptionResponse;
+        /**
+         * Validation Error
+         */
+        422: HTTPValidationError;
+      };
+    };
+  };
+  "/ui/grid/structure/{dag_id}": {
+    get: {
+      req: GetDagStructureData;
+      res: {
+        /**
+         * Successful Response
+         */
+        200: Array<GridNodeResponse>;
         /**
          * Bad Request
          */

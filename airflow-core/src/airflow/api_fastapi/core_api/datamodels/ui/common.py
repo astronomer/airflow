@@ -57,8 +57,9 @@ class GridNodeResponse(BaseModel):
 
     id: str
     label: str
-    children: list[GridNodeResponse] | None
+    children: list[GridNodeResponse] | None = None
     is_mapped: bool | None
+    setup_teardown_type: Literal["setup", "teardown"] | None = None
 
 
 class BaseGraphResponse(BaseModel, Generic[E, N]):
