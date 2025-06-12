@@ -66,10 +66,7 @@ export const Grid = ({ limit }: Props) => {
     runs.map((dr) => dr.duration),
   );
 
-  const { flatNodes } = useMemo(
-    () => flattenNodes(dagStructure, openGroupIds),
-    [dagStructure, openGroupIds],
-  );
+  const { flatNodes } = useMemo(() => flattenNodes(dagStructure, openGroupIds), [dagStructure, openGroupIds]);
 
   return (
     <Flex justifyContent="flex-start" position="relative" pt={50} width="100%">

@@ -7048,12 +7048,9 @@ export const $GridResponse = {
       type: "array",
       title: "Dag Runs",
     },
-    structure: {
-      $ref: "#/components/schemas/StructureDataResponse",
-    },
   },
   type: "object",
-  required: ["dag_runs", "structure"],
+  required: ["dag_runs"],
   title: "GridResponse",
   description: "Response model for the Grid UI.",
 } as const;

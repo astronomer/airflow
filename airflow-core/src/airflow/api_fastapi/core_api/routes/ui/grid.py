@@ -53,8 +53,6 @@ from airflow.api_fastapi.core_api.services.ui.grid import (
     _merge_node_dicts,
     fill_task_instance_summaries,
     get_child_task_map,
-    get_combined_structure,
-    get_structure_from_dag,
     get_task_group_map,
 )
 from airflow.models.dag_version import DagVersion
@@ -135,8 +133,7 @@ def grid_data(
     dag_runs = list(session.scalars(dag_runs_select_filter).unique())
     # Check if there are any DAG Runs with given criteria to eliminate unnecessary queries/errors
     if not dag_runs:
-        structure = get_structure_from_dag(dag=dag)
-        return GridResponse(dag_runs=[], structure=structure)
+        return GridResponse(dag_runs=[])
 
     # Retrieve, sort and encode the Task Instances
     tis_of_dag_runs, _ = paginated_select(
@@ -265,11 +262,7 @@ def grid_data(
         )
         for dag_run in dag_runs
     ]
-
-    flat_tis = itertools.chain.from_iterable(tis_by_run_id.values())
-    structure = get_combined_structure(task_instances=flat_tis, session=session)
-
-    return GridResponse(dag_runs=grid_dag_runs, structure=structure)
+    return GridResponse(dag_runs=grid_dag_runs)
 
 
 def _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_type, session, state):

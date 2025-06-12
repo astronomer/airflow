@@ -1736,7 +1736,6 @@ export type GridNodeResponse = {
  */
 export type GridResponse = {
   dag_runs: Array<GridDAGRunwithTIs>;
-  structure: StructureDataResponse;
 };
 
 /**
