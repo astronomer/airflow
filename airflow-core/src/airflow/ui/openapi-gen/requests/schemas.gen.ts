@@ -7055,6 +7055,55 @@ export const $GridResponse = {
   description: "Response model for the Grid UI.",
 } as const;
 
+export const $GridRunsResponse = {
+  properties: {
+    run_id: {
+      type: "string",
+      title: "Run Id",
+    },
+    start_date: {
+      anyOf: [
+        {
+          type: "string",
+          format: "date-time",
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "Start Date",
+    },
+    end_date: {
+      anyOf: [
+        {
+          type: "string",
+          format: "date-time",
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "End Date",
+    },
+    duration: {
+      anyOf: [
+        {
+          type: "integer",
+        },
+        {
+          type: "null",
+        },
+      ],
+      title: "Duration",
+      readOnly: true,
+    },
+  },
+  type: "object",
+  required: ["run_id", "start_date", "end_date", "duration"],
+  title: "GridRunsResponse",
+  description: "Base Node serializer for responses.",
+} as const;
+
 export const $GridTaskInstanceSummary = {
   properties: {
     task_id: {

@@ -1857,54 +1857,37 @@ export const useGridServiceGetDagStructureKey = "GridServiceGetDagStructure";
 export const UseGridServiceGetDagStructureKeyFn = (
   {
     dagId,
-    includeDownstream,
-    includeUpstream,
     limit,
-    logicalDateGte,
-    logicalDateLte,
     offset,
     orderBy,
-    root,
-    runAfterGte,
-    runAfterLte,
-    runType,
-    state,
   }: {
     dagId: string;
-    includeDownstream?: boolean;
-    includeUpstream?: boolean;
     limit?: number;
-    logicalDateGte?: string;
-    logicalDateLte?: string;
     offset?: number;
     orderBy?: string;
-    root?: string;
-    runAfterGte?: string;
-    runAfterLte?: string;
-    runType?: string[];
-    state?: string[];
   },
   queryKey?: Array<unknown>,
-) => [
-  useGridServiceGetDagStructureKey,
-  ...(queryKey ?? [
-    {
-      dagId,
-      includeDownstream,
-      includeUpstream,
-      limit,
-      logicalDateGte,
-      logicalDateLte,
-      offset,
-      orderBy,
-      root,
-      runAfterGte,
-      runAfterLte,
-      runType,
-      state,
-    },
-  ]),
-];
+) => [useGridServiceGetDagStructureKey, ...(queryKey ?? [{ dagId, limit, offset, orderBy }])];
+export type GridServiceGetGridRunsDefaultResponse = Awaited<ReturnType<typeof GridService.getGridRuns>>;
+export type GridServiceGetGridRunsQueryResult<
+  TData = GridServiceGetGridRunsDefaultResponse,
+  TError = unknown,
+> = UseQueryResult<TData, TError>;
+export const useGridServiceGetGridRunsKey = "GridServiceGetGridRuns";
+export const UseGridServiceGetGridRunsKeyFn = (
+  {
+    dagId,
+    limit,
+    offset,
+    orderBy,
+  }: {
+    dagId: string;
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+  },
+  queryKey?: Array<unknown>,
+) => [useGridServiceGetGridRunsKey, ...(queryKey ?? [{ dagId, limit, offset, orderBy }])];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

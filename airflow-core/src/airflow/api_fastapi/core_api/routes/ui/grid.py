@@ -42,7 +42,7 @@ from airflow.api_fastapi.common.parameters import (
     datetime_range_filter_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
-from airflow.api_fastapi.core_api.datamodels.ui.common import GridNodeResponse
+from airflow.api_fastapi.core_api.datamodels.ui.common import GridNodeResponse, GridRunsResponse
 from airflow.api_fastapi.core_api.datamodels.ui.grid import (
     GridDAGRunwithTIs,
     GridResponse,
@@ -265,30 +265,6 @@ def grid_data(
     return GridResponse(dag_runs=grid_dag_runs)
 
 
-def _runs_for_grid(dag, limit, logical_date, offset, order_by, run_after, run_type, session, state):
-    # Retrieve, sort the previous DAG Runs
-    base_query = select(DagRun.id).where(DagRun.dag_id == dag.dag_id)
-    # This comparison is to falls to DAG timetable when no order_by is provided
-    if order_by.value == order_by.get_primary_key_string():
-        order_by = SortParam(
-            allowed_attrs=[run_ordering for run_ordering in dag.timetable.run_ordering], model=DagRun
-        ).set_value(dag.timetable.run_ordering[0])
-    dag_runs_select_filter, _ = paginated_select(
-        statement=base_query,
-        filters=[
-            run_type,
-            state,
-            run_after,
-            logical_date,
-        ],
-        order_by=order_by,
-        offset=offset,
-        limit=limit,
-    )
-    run_ids = list(session.scalars(dag_runs_select_filter))
-    return run_ids
-
-
 @grid_router.get(
     "/structure/{dag_id}",
     responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]),
@@ -302,18 +278,11 @@ async def get_dag_structure(
     dag_id: str,
     session: SessionDep,
     offset: QueryOffset,
-    run_type: QueryDagRunRunTypesFilter,
-    state: QueryDagRunStateFilter,
     limit: QueryLimit,
     order_by: Annotated[
         SortParam,
         Depends(SortParam(["run_after", "logical_date", "start_date", "end_date"], DagRun).dynamic_depends()),
     ],
-    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
-    logical_date: Annotated[RangeFilter, Depends(datetime_range_filter_factory("logical_date", DagRun))],
-    include_upstream: QueryIncludeUpstream = False,
-    include_downstream: QueryIncludeDownstream = False,
-    root: str | None = None,
 ) -> list[GridNodeResponse]:
     """Return unified dag structure for grid view."""
     current_serdag = session.scalar(
@@ -329,17 +298,22 @@ async def get_dag_structure(
     # todo: let's load serdag once maybe?
     # todo: runs for dag should be faster
     latest_dag = current_serdag.dag
-    run_ids = _runs_for_grid(
-        dag=latest_dag,
-        limit=limit,
-        logical_date=logical_date,
-        offset=offset,
+
+    # Retrieve, sort the previous DAG Runs
+    base_query = select(DagRun.id).where(DagRun.dag_id == latest_dag.dag_id)
+    # This comparison is to falls to DAG timetable when no order_by is provided
+    if order_by.value == order_by.get_primary_key_string():
+        order_by = SortParam(
+            allowed_attrs=[run_ordering for run_ordering in latest_dag.timetable.run_ordering], model=DagRun
+        ).set_value(latest_dag.timetable.run_ordering[0])
+    dag_runs_select_filter, _ = paginated_select(
+        statement=base_query,
         order_by=order_by,
-        run_after=run_after,
-        run_type=run_type,
-        session=session,
-        state=state,
+        offset=offset,
+        limit=limit,
     )
+    run_ids = list(session.scalars(dag_runs_select_filter))
+
     task_group_sort = get_task_group_children_getter()
     if not run_ids:
         nodes = [task_group_to_dict_grid(x) for x in task_group_sort(latest_dag.task_group)]
@@ -364,3 +338,66 @@ async def get_dag_structure(
         _merge_node_dicts(merged_nodes, nodes)
 
     return merged_nodes
+
+
+@grid_router.get(
+    "/grid/runs/{dag_id}",
+    responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]),
+    dependencies=[
+        Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.TASK_INSTANCE)),
+        Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.RUN)),
+    ],
+    response_model_exclude_none=True,
+)
+async def get_grid_runs(
+    dag_id: str,
+    session: SessionDep,
+    offset: QueryOffset,
+    limit: QueryLimit,
+    order_by: Annotated[
+        SortParam,
+        Depends(
+            SortParam(
+                [
+                    "run_after",
+                    "logical_date",
+                    "start_date",
+                    "end_date",
+                ],
+                DagRun,
+            ).dynamic_depends()
+        ),
+    ],
+) -> list[GridRunsResponse]:
+    """Return unified dag structure for grid view."""
+    current_serdag = session.scalar(
+        select(SerializedDagModel)
+        .where(
+            SerializedDagModel.dag_id == dag_id,
+        )
+        .order_by(SerializedDagModel.id.desc())
+        .limit(1)
+    )
+    if not current_serdag:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id} was not found")
+    # todo: let's load serdag once maybe?
+    # todo: runs for dag should be faster
+    latest_dag = current_serdag.dag
+
+    # Retrieve, sort the previous DAG Runs
+    base_query = select(DagRun.id, DagRun.start_date, DagRun.end_date).where(
+        DagRun.dag_id == latest_dag.dag_id
+    )
+    # This comparison is to falls to DAG timetable when no order_by is provided
+    if order_by.value == order_by.get_primary_key_string():
+        order_by = SortParam(
+            allowed_attrs=[run_ordering for run_ordering in latest_dag.timetable.run_ordering], model=DagRun
+        ).set_value(latest_dag.timetable.run_ordering[0])
+    dag_runs_select_filter, _ = paginated_select(
+        statement=base_query,
+        order_by=order_by,
+        offset=offset,
+        limit=limit,
+    )
+    runs = list(session.scalars(dag_runs_select_filter))
+    return runs

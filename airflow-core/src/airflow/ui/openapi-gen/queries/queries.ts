@@ -3089,18 +3089,9 @@ export const useGridServiceGridData = <
  * Return unified dag structure for grid view.
  * @param data The data for the request.
  * @param data.dagId
- * @param data.includeUpstream
- * @param data.includeDownstream
- * @param data.root
  * @param data.offset
- * @param data.runType
- * @param data.state
  * @param data.limit
  * @param data.orderBy
- * @param data.runAfterGte
- * @param data.runAfterLte
- * @param data.logicalDateGte
- * @param data.logicalDateLte
  * @returns GridNodeResponse Successful Response
  * @throws ApiError
  */
@@ -3111,71 +3102,56 @@ export const useGridServiceGetDagStructure = <
 >(
   {
     dagId,
-    includeDownstream,
-    includeUpstream,
     limit,
-    logicalDateGte,
-    logicalDateLte,
     offset,
     orderBy,
-    root,
-    runAfterGte,
-    runAfterLte,
-    runType,
-    state,
   }: {
     dagId: string;
-    includeDownstream?: boolean;
-    includeUpstream?: boolean;
     limit?: number;
-    logicalDateGte?: string;
-    logicalDateLte?: string;
     offset?: number;
     orderBy?: string;
-    root?: string;
-    runAfterGte?: string;
-    runAfterLte?: string;
-    runType?: string[];
-    state?: string[];
   },
   queryKey?: TQueryKey,
   options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
 ) =>
   useQuery<TData, TError>({
-    queryKey: Common.UseGridServiceGetDagStructureKeyFn(
-      {
-        dagId,
-        includeDownstream,
-        includeUpstream,
-        limit,
-        logicalDateGte,
-        logicalDateLte,
-        offset,
-        orderBy,
-        root,
-        runAfterGte,
-        runAfterLte,
-        runType,
-        state,
-      },
-      queryKey,
-    ),
-    queryFn: () =>
-      GridService.getDagStructure({
-        dagId,
-        includeDownstream,
-        includeUpstream,
-        limit,
-        logicalDateGte,
-        logicalDateLte,
-        offset,
-        orderBy,
-        root,
-        runAfterGte,
-        runAfterLte,
-        runType,
-        state,
-      }) as TData,
+    queryKey: Common.UseGridServiceGetDagStructureKeyFn({ dagId, limit, offset, orderBy }, queryKey),
+    queryFn: () => GridService.getDagStructure({ dagId, limit, offset, orderBy }) as TData,
+    ...options,
+  });
+/**
+ * Get Grid Runs
+ * Return unified dag structure for grid view.
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.offset
+ * @param data.limit
+ * @param data.orderBy
+ * @returns GridRunsResponse Successful Response
+ * @throws ApiError
+ */
+export const useGridServiceGetGridRuns = <
+  TData = Common.GridServiceGetGridRunsDefaultResponse,
+  TError = unknown,
+  TQueryKey extends Array<unknown> = unknown[],
+>(
+  {
+    dagId,
+    limit,
+    offset,
+    orderBy,
+  }: {
+    dagId: string;
+    limit?: number;
+    offset?: number;
+    orderBy?: string;
+  },
+  queryKey?: TQueryKey,
+  options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
+) =>
+  useQuery<TData, TError>({
+    queryKey: Common.UseGridServiceGetGridRunsKeyFn({ dagId, limit, offset, orderBy }, queryKey),
+    queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy }) as TData,
     ...options,
   });
 /**

@@ -17,7 +17,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Generic, Literal, TypeVar
+
+from pydantic import computed_field
 
 from airflow.api_fastapi.core_api.base import BaseModel
 
@@ -60,6 +63,20 @@ class GridNodeResponse(BaseModel):
     children: list[GridNodeResponse] | None = None
     is_mapped: bool | None
     setup_teardown_type: Literal["setup", "teardown"] | None = None
+
+
+class GridRunsResponse(BaseModel):
+    """Base Node serializer for responses."""
+
+    run_id: str
+    start_date: datetime | None
+    end_date: datetime | None
+
+    @computed_field
+    @property
+    def duration(self) -> int | None:
+        if self.start_date and self.end_date:
+            return (self.end_date - self.start_date).seconds
 
 
 class BaseGraphResponse(BaseModel, Generic[E, N]):

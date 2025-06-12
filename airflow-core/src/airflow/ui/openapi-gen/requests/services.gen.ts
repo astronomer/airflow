@@ -225,6 +225,8 @@ import type {
   GridDataResponse,
   GetDagStructureData,
   GetDagStructureResponse,
+  GetGridRunsData,
+  GetGridRunsResponse,
 } from "./types.gen";
 
 export class AssetService {
@@ -3724,18 +3726,9 @@ export class GridService {
    * Return unified dag structure for grid view.
    * @param data The data for the request.
    * @param data.dagId
-   * @param data.includeUpstream
-   * @param data.includeDownstream
-   * @param data.root
    * @param data.offset
-   * @param data.runType
-   * @param data.state
    * @param data.limit
    * @param data.orderBy
-   * @param data.runAfterGte
-   * @param data.runAfterLte
-   * @param data.logicalDateGte
-   * @param data.logicalDateLte
    * @returns GridNodeResponse Successful Response
    * @throws ApiError
    */
@@ -3747,18 +3740,40 @@ export class GridService {
         dag_id: data.dagId,
       },
       query: {
-        include_upstream: data.includeUpstream,
-        include_downstream: data.includeDownstream,
-        root: data.root,
         offset: data.offset,
-        run_type: data.runType,
-        state: data.state,
         limit: data.limit,
         order_by: data.orderBy,
-        run_after_gte: data.runAfterGte,
-        run_after_lte: data.runAfterLte,
-        logical_date_gte: data.logicalDateGte,
-        logical_date_lte: data.logicalDateLte,
+      },
+      errors: {
+        400: "Bad Request",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Get Grid Runs
+   * Return unified dag structure for grid view.
+   * @param data The data for the request.
+   * @param data.dagId
+   * @param data.offset
+   * @param data.limit
+   * @param data.orderBy
+   * @returns GridRunsResponse Successful Response
+   * @throws ApiError
+   */
+  public static getGridRuns(data: GetGridRunsData): CancelablePromise<GetGridRunsResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/ui/grid/grid/runs/{dag_id}",
+      path: {
+        dag_id: data.dagId,
+      },
+      query: {
+        offset: data.offset,
+        limit: data.limit,
+        order_by: data.orderBy,
       },
       errors: {
         400: "Bad Request",

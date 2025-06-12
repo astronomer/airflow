@@ -1739,6 +1739,16 @@ export type GridResponse = {
 };
 
 /**
+ * Base Node serializer for responses.
+ */
+export type GridRunsResponse = {
+  run_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  readonly duration: number | null;
+};
+
+/**
  * Task Instance Summary model for the Grid UI.
  */
 export type GridTaskInstanceSummary = {
@@ -2866,21 +2876,21 @@ export type GridDataResponse = GridResponse;
 
 export type GetDagStructureData = {
   dagId: string;
-  includeDownstream?: boolean;
-  includeUpstream?: boolean;
   limit?: number;
-  logicalDateGte?: string | null;
-  logicalDateLte?: string | null;
   offset?: number;
   orderBy?: string;
-  root?: string | null;
-  runAfterGte?: string | null;
-  runAfterLte?: string | null;
-  runType?: Array<string>;
-  state?: Array<string>;
 };
 
 export type GetDagStructureResponse = Array<GridNodeResponse>;
+
+export type GetGridRunsData = {
+  dagId: string;
+  limit?: number;
+  offset?: number;
+  orderBy?: string;
+};
+
+export type GetGridRunsResponse = Array<GridRunsResponse>;
 
 export type $OpenApiTs = {
   "/api/v2/assets": {
@@ -5821,6 +5831,29 @@ export type $OpenApiTs = {
          * Successful Response
          */
         200: Array<GridNodeResponse>;
+        /**
+         * Bad Request
+         */
+        400: HTTPExceptionResponse;
+        /**
+         * Not Found
+         */
+        404: HTTPExceptionResponse;
+        /**
+         * Validation Error
+         */
+        422: HTTPValidationError;
+      };
+    };
+  };
+  "/ui/grid/grid/runs/{dag_id}": {
+    get: {
+      req: GetGridRunsData;
+      res: {
+        /**
+         * Successful Response
+         */
+        200: Array<GridRunsResponse>;
         /**
          * Bad Request
          */
