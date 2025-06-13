@@ -3150,3 +3150,34 @@ export const useGridServiceGetGridRunsSuspense = <
       GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }) as TData,
     ...options,
   });
+/**
+ * Get Grid Ti Summaries
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.runId
+ * @param data.offset
+ * @returns GridTISummaries Successful Response
+ * @throws ApiError
+ */
+export const useGridServiceGetGridTiSummariesSuspense = <
+  TData = Common.GridServiceGetGridTiSummariesDefaultResponse,
+  TError = unknown,
+  TQueryKey extends Array<unknown> = unknown[],
+>(
+  {
+    dagId,
+    offset,
+    runId,
+  }: {
+    dagId: string;
+    offset?: number;
+    runId: string;
+  },
+  queryKey?: TQueryKey,
+  options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
+) =>
+  useSuspenseQuery<TData, TError>({
+    queryKey: Common.UseGridServiceGetGridTiSummariesKeyFn({ dagId, offset, runId }, queryKey),
+    queryFn: () => GridService.getGridTiSummaries({ dagId, offset, runId }) as TData,
+    ...options,
+  });

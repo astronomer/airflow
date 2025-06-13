@@ -19,11 +19,12 @@
 import { Box, Flex, IconButton } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import dayjsDuration from "dayjs/plugin/duration";
-import {useMemo, useState} from "react";
+import { useMemo, useState } from "react";
 import { FiChevronsRight } from "react-icons/fi";
 import { Link, useParams } from "react-router-dom";
 
 import { useOpenGroups } from "src/context/openGroups";
+import { useGridRuns } from "src/queries/useGridRuns.ts";
 import { useGridStructure } from "src/queries/useGridStructure.ts";
 
 import { Bar } from "./Bar";
@@ -31,7 +32,6 @@ import { DurationAxis } from "./DurationAxis";
 import { DurationTick } from "./DurationTick";
 import { TaskNames } from "./TaskNames";
 import { flattenNodes } from "./utils";
-import {useGridRuns} from "src/queries/useGridRuns.ts";
 
 dayjs.extend(dayjsDuration);
 
@@ -48,10 +48,7 @@ export const Grid = ({ limit }: Props) => {
   const { data: dagStructure } = useGridStructure(limit);
   const [runAfter, setRunAfter] = useState<string | undefined>();
   // calculate dag run bar heights relative to max
-  const max = Math.max.apply(
-    undefined,
-    gridRuns === undefined ? [] : gridRuns.map((dr) => dr.duration),
-  );
+  const max = Math.max.apply(undefined, gridRuns === undefined ? [] : gridRuns.map((dr) => dr.duration));
   const { flatNodes } = useMemo(() => flattenNodes(dagStructure, openGroupIds), [dagStructure, openGroupIds]);
 
   return (
@@ -74,9 +71,7 @@ export const Grid = ({ limit }: Props) => {
             )}
           </Flex>
           <Flex flexDirection="row-reverse">
-            {gridRuns?.map((dr) => (
-              <Bar key={dr.run_id} max={max} nodes={flatNodes} run={dr} />
-            ))}
+            {gridRuns?.map((dr) => <Bar key={dr.run_id} max={max} nodes={flatNodes} run_id={dr.run_id} />)}
           </Flex>
           {runAfter === undefined ? undefined : (
             <Link to={`/dags/${dagId}`}>

@@ -7085,6 +7085,24 @@ export const $GridRunsResponse = {
       ],
       title: "End Date",
     },
+    run_after: {
+      type: "string",
+      format: "date-time",
+      title: "Run After",
+    },
+    state: {
+      anyOf: [
+        {
+          $ref: "#/components/schemas/TaskInstanceState",
+        },
+        {
+          type: "null",
+        },
+      ],
+    },
+    run_type: {
+      $ref: "#/components/schemas/DagRunType",
+    },
     duration: {
       anyOf: [
         {
@@ -7099,9 +7117,33 @@ export const $GridRunsResponse = {
     },
   },
   type: "object",
-  required: ["run_id", "start_date", "end_date", "duration"],
+  required: ["run_id", "start_date", "end_date", "run_after", "state", "run_type", "duration"],
   title: "GridRunsResponse",
   description: "Base Node serializer for responses.",
+} as const;
+
+export const $GridTISummaries = {
+  properties: {
+    run_id: {
+      type: "string",
+      title: "Run Id",
+    },
+    dag_id: {
+      type: "string",
+      title: "Dag Id",
+    },
+    task_instances: {
+      items: {
+        $ref: "#/components/schemas/GridTaskInstanceSummary",
+      },
+      type: "array",
+      title: "Task Instances",
+    },
+  },
+  type: "object",
+  required: ["run_id", "dag_id", "task_instances"],
+  title: "GridTISummaries",
+  description: "DAG Run model for the Grid UI.",
 } as const;
 
 export const $GridTaskInstanceSummary = {

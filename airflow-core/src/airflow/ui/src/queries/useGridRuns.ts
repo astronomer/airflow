@@ -18,10 +18,10 @@
  */
 import { useParams } from "react-router-dom";
 
-import { useGridServiceGetDagStructure } from "openapi/queries";
+import { useGridServiceGetGridRuns } from "openapi/queries";
 import { useAutoRefresh } from "src/utils";
 
-export const useGridStructure = (limit: number) => {
+export const useGridRuns = (limit: number) => {
   const { dagId = "" } = useParams();
   // const [runAfter, setRunAfter] = useState<string | undefined>();
 
@@ -29,12 +29,12 @@ export const useGridStructure = (limit: number) => {
 
   // This is necessary for keepPreviousData
 
-  const { data: dagStructure, ...rest } = useGridServiceGetDagStructure(
+  const { data: GridRuns, ...rest } = useGridServiceGetGridRuns(
     {
       dagId,
       limit,
       orderBy: "-run_after",
-      // runAfterLte: runAfter, // todo: this doesn't make sense if sorting by logical date
+      // runAfterLte: runAfter,
     },
     undefined,
     {
@@ -43,5 +43,5 @@ export const useGridStructure = (limit: number) => {
     },
   );
 
-  return { data: dagStructure, ...rest };
+  return { data: GridRuns, ...rest };
 };

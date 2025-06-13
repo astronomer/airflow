@@ -2664,3 +2664,28 @@ export const prefetchUseGridServiceGetGridRuns = (
     }),
     queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }),
   });
+/**
+ * Get Grid Ti Summaries
+ * @param data The data for the request.
+ * @param data.dagId
+ * @param data.runId
+ * @param data.offset
+ * @returns GridTISummaries Successful Response
+ * @throws ApiError
+ */
+export const prefetchUseGridServiceGetGridTiSummaries = (
+  queryClient: QueryClient,
+  {
+    dagId,
+    offset,
+    runId,
+  }: {
+    dagId: string;
+    offset?: number;
+    runId: string;
+  },
+) =>
+  queryClient.prefetchQuery({
+    queryKey: Common.UseGridServiceGetGridTiSummariesKeyFn({ dagId, offset, runId }),
+    queryFn: () => GridService.getGridTiSummaries({ dagId, offset, runId }),
+  });

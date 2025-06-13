@@ -227,6 +227,8 @@ import type {
   GetDagStructureResponse,
   GetGridRunsData,
   GetGridRunsResponse,
+  GetGridTiSummariesData,
+  GetGridTiSummariesResponse,
 } from "./types.gen";
 
 export class AssetService {
@@ -3782,6 +3784,36 @@ export class GridService {
         order_by: data.orderBy,
         run_after_gte: data.runAfterGte,
         run_after_lte: data.runAfterLte,
+      },
+      errors: {
+        400: "Bad Request",
+        404: "Not Found",
+        422: "Validation Error",
+      },
+    });
+  }
+
+  /**
+   * Get Grid Ti Summaries
+   * @param data The data for the request.
+   * @param data.dagId
+   * @param data.runId
+   * @param data.offset
+   * @returns GridTISummaries Successful Response
+   * @throws ApiError
+   */
+  public static getGridTiSummaries(
+    data: GetGridTiSummariesData,
+  ): CancelablePromise<GetGridTiSummariesResponse> {
+    return __request(OpenAPI, {
+      method: "GET",
+      url: "/ui/grid/ti_summaries/{dag_id}/{run_id}",
+      path: {
+        dag_id: data.dagId,
+        run_id: data.runId,
+      },
+      query: {
+        offset: data.offset,
       },
       errors: {
         400: "Bad Request",

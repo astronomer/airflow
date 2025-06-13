@@ -19,6 +19,7 @@
 import { Flex, Box } from "@chakra-ui/react";
 import { useParams, useSearchParams } from "react-router-dom";
 
+import type { GridRunsResponse } from "openapi/requests";
 import { RunTypeIcon } from "src/components/RunTypeIcon";
 
 import { GridButton } from "./GridButton";
@@ -30,14 +31,14 @@ const BAR_HEIGHT = 100;
 type Props = {
   readonly max: number;
   readonly nodes: Array<GridTask>;
-  readonly run: RunWithDuration;
+  readonly run: GridRunsResponse;
 };
 
 export const Bar = ({ max, nodes, run }: Props) => {
   const { dagId = "", runId } = useParams();
   const [searchParams] = useSearchParams();
 
-  const isSelected = runId === run.dag_run_id;
+  const isSelected = runId === run.run_id;
 
   const search = searchParams.toString();
 
@@ -62,11 +63,11 @@ export const Bar = ({ max, nodes, run }: Props) => {
           color="white"
           dagId={dagId}
           flexDir="column"
-          height={`${(run.duration / max) * BAR_HEIGHT}px`}
+          height={`${((run.duration ?? 0) / max) * BAR_HEIGHT}px`}
           justifyContent="flex-end"
           label={run.run_after}
           minHeight="14px"
-          runId={run.dag_run_id}
+          runId={run.run_id}
           searchParams={search}
           state={run.state}
           zIndex={1}
@@ -74,7 +75,7 @@ export const Bar = ({ max, nodes, run }: Props) => {
           {run.run_type !== "scheduled" && <RunTypeIcon runType={run.run_type} size="10px" />}
         </GridButton>
       </Flex>
-      <TaskInstancesColumn nodes={nodes} runId={run.dag_run_id} taskInstances={run.task_instances} />
+      <TaskInstancesColumn nodes={nodes} runId={run.run_id} taskInstances={run.task_instances} />
     </Box>
   );
 };

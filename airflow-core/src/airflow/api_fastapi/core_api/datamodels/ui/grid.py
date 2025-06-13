@@ -56,6 +56,14 @@ class GridDAGRunwithTIs(BaseModel):
     task_instances: list[GridTaskInstanceSummary]
 
 
+class GridTISummaries(BaseModel):
+    """DAG Run model for the Grid UI."""
+
+    run_id: str
+    dag_id: str
+    task_instances: list[GridTaskInstanceSummary]
+
+
 class GridResponse(BaseModel):
     """Response model for the Grid UI."""
 

@@ -23,6 +23,8 @@ from typing import Generic, Literal, TypeVar
 from pydantic import computed_field
 
 from airflow.api_fastapi.core_api.base import BaseModel
+from airflow.utils.state import TaskInstanceState
+from airflow.utils.types import DagRunType
 
 
 class BaseEdgeResponse(BaseModel):
@@ -71,6 +73,9 @@ class GridRunsResponse(BaseModel):
     run_id: str
     start_date: datetime | None
     end_date: datetime | None
+    run_after: datetime
+    state: TaskInstanceState | None
+    run_type: DagRunType
 
     @computed_field
     @property

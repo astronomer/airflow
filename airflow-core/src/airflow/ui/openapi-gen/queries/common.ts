@@ -1902,6 +1902,26 @@ export const UseGridServiceGetGridRunsKeyFn = (
   useGridServiceGetGridRunsKey,
   ...(queryKey ?? [{ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }]),
 ];
+export type GridServiceGetGridTiSummariesDefaultResponse = Awaited<
+  ReturnType<typeof GridService.getGridTiSummaries>
+>;
+export type GridServiceGetGridTiSummariesQueryResult<
+  TData = GridServiceGetGridTiSummariesDefaultResponse,
+  TError = unknown,
+> = UseQueryResult<TData, TError>;
+export const useGridServiceGetGridTiSummariesKey = "GridServiceGetGridTiSummaries";
+export const UseGridServiceGetGridTiSummariesKeyFn = (
+  {
+    dagId,
+    offset,
+    runId,
+  }: {
+    dagId: string;
+    offset?: number;
+    runId: string;
+  },
+  queryKey?: Array<unknown>,
+) => [useGridServiceGetGridTiSummariesKey, ...(queryKey ?? [{ dagId, offset, runId }])];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

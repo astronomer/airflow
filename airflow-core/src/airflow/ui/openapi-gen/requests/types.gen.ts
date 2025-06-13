@@ -1745,7 +1745,19 @@ export type GridRunsResponse = {
   run_id: string;
   start_date: string | null;
   end_date: string | null;
+  run_after: string;
+  state: TaskInstanceState | null;
+  run_type: DagRunType;
   readonly duration: number | null;
+};
+
+/**
+ * DAG Run model for the Grid UI.
+ */
+export type GridTISummaries = {
+  run_id: string;
+  dag_id: string;
+  task_instances: Array<GridTaskInstanceSummary>;
 };
 
 /**
@@ -2895,6 +2907,14 @@ export type GetGridRunsData = {
 };
 
 export type GetGridRunsResponse = Array<GridRunsResponse>;
+
+export type GetGridTiSummariesData = {
+  dagId: string;
+  offset?: number;
+  runId: string;
+};
+
+export type GetGridTiSummariesResponse = GridTISummaries;
 
 export type $OpenApiTs = {
   "/api/v2/assets": {
@@ -5858,6 +5878,29 @@ export type $OpenApiTs = {
          * Successful Response
          */
         200: Array<GridRunsResponse>;
+        /**
+         * Bad Request
+         */
+        400: HTTPExceptionResponse;
+        /**
+         * Not Found
+         */
+        404: HTTPExceptionResponse;
+        /**
+         * Validation Error
+         */
+        422: HTTPValidationError;
+      };
+    };
+  };
+  "/ui/grid/ti_summaries/{dag_id}/{run_id}": {
+    get: {
+      req: GetGridTiSummariesData;
+      res: {
+        /**
+         * Successful Response
+         */
+        200: GridTISummaries;
         /**
          * Bad Request
          */
