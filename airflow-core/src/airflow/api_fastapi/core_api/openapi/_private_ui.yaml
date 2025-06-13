@@ -671,7 +671,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /ui/grid/grid/runs/{dag_id}:
+  /ui/grid/runs/{dag_id}:
     get:
       tags:
       - Grid

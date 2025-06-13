@@ -283,6 +283,7 @@ async def get_dag_structure(
         SortParam,
         Depends(SortParam(["run_after", "logical_date", "start_date", "end_date"], DagRun).dynamic_depends()),
     ],
+    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
 ) -> list[GridNodeResponse]:
     """Return unified dag structure for grid view."""
     current_serdag = session.scalar(
@@ -310,6 +311,9 @@ async def get_dag_structure(
         statement=base_query,
         order_by=order_by,
         offset=offset,
+        filters=[
+            run_after,
+        ],
         limit=limit,
     )
     run_ids = list(session.scalars(dag_runs_select_filter))
@@ -341,7 +345,7 @@ async def get_dag_structure(
 
 
 @grid_router.get(
-    "/grid/runs/{dag_id}",
+    "/runs/{dag_id}",
     responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]),
     dependencies=[
         Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.TASK_INSTANCE)),
@@ -368,6 +372,7 @@ async def get_grid_runs(
             ).dynamic_depends()
         ),
     ],
+    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
 ) -> list[GridRunsResponse]:
     """Return unified dag structure for grid view."""
     current_serdag = session.scalar(
@@ -385,9 +390,10 @@ async def get_grid_runs(
     latest_dag = current_serdag.dag
 
     # Retrieve, sort the previous DAG Runs
-    base_query = select(DagRun.id, DagRun.start_date, DagRun.end_date).where(
+    base_query = select(DagRun.run_id, DagRun.start_date, DagRun.end_date).where(
         DagRun.dag_id == latest_dag.dag_id
     )
+
     # This comparison is to falls to DAG timetable when no order_by is provided
     if order_by.value == order_by.get_primary_key_string():
         order_by = SortParam(
@@ -397,7 +403,9 @@ async def get_grid_runs(
         statement=base_query,
         order_by=order_by,
         offset=offset,
+        filters=[
+            run_after,
+        ],
         limit=limit,
     )
-    runs = list(session.scalars(dag_runs_select_filter))
-    return runs
+    return session.execute(dag_runs_select_filter)
