@@ -2910,7 +2910,6 @@ export type GetGridRunsResponse = Array<GridRunsResponse>;
 
 export type GetGridTiSummariesData = {
   dagId: string;
-  offset?: number;
   runId: string;
 };
 

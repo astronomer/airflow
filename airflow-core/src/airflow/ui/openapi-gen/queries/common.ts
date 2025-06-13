@@ -1913,15 +1913,13 @@ export const useGridServiceGetGridTiSummariesKey = "GridServiceGetGridTiSummarie
 export const UseGridServiceGetGridTiSummariesKeyFn = (
   {
     dagId,
-    offset,
     runId,
   }: {
     dagId: string;
-    offset?: number;
     runId: string;
   },
   queryKey?: Array<unknown>,
-) => [useGridServiceGetGridTiSummariesKey, ...(queryKey ?? [{ dagId, offset, runId }])];
+) => [useGridServiceGetGridTiSummariesKey, ...(queryKey ?? [{ dagId, runId }])];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

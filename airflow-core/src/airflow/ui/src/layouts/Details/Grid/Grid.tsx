@@ -71,7 +71,7 @@ export const Grid = ({ limit }: Props) => {
             )}
           </Flex>
           <Flex flexDirection="row-reverse">
-            {gridRuns?.map((dr) => <Bar key={dr.run_id} max={max} nodes={flatNodes} run_id={dr.run_id} />)}
+            {gridRuns?.map((dr) => <Bar key={dr.run_id} max={max} nodes={flatNodes} run={dr} />)}
           </Flex>
           {runAfter === undefined ? undefined : (
             <Link to={`/dags/${dagId}`}>

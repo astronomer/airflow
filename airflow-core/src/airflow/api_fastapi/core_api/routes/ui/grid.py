@@ -430,7 +430,6 @@ def get_grid_ti_summaries(
     dag_id: str,
     run_id: str,
     session: SessionDep,
-    offset: QueryOffset,
 ) -> GridTISummaries:
     # todo: update to assume only one dag_run -- should be able to simplify the structures
     tis_of_dag_runs, _ = paginated_select(
@@ -440,7 +439,6 @@ def get_grid_ti_summaries(
         .where(TaskInstance.run_id == run_id),
         filters=[],
         order_by=SortParam(allowed_attrs=["task_id", "run_id"], model=TaskInstance).set_value("task_id"),
-        offset=offset,
         limit=None,
     )
 

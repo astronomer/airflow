@@ -2669,7 +2669,6 @@ export const ensureUseGridServiceGetGridRunsData = (
  * @param data The data for the request.
  * @param data.dagId
  * @param data.runId
- * @param data.offset
  * @returns GridTISummaries Successful Response
  * @throws ApiError
  */
@@ -2677,15 +2676,13 @@ export const ensureUseGridServiceGetGridTiSummariesData = (
   queryClient: QueryClient,
   {
     dagId,
-    offset,
     runId,
   }: {
     dagId: string;
-    offset?: number;
     runId: string;
   },
 ) =>
   queryClient.ensureQueryData({
-    queryKey: Common.UseGridServiceGetGridTiSummariesKeyFn({ dagId, offset, runId }),
-    queryFn: () => GridService.getGridTiSummaries({ dagId, offset, runId }),
+    queryKey: Common.UseGridServiceGetGridTiSummariesKeyFn({ dagId, runId }),
+    queryFn: () => GridService.getGridTiSummaries({ dagId, runId }),
   });

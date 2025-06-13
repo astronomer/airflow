@@ -21,6 +21,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 
 import type { GridRunsResponse } from "openapi/requests";
 import { RunTypeIcon } from "src/components/RunTypeIcon";
+import { useGridTiSummaries } from "src/queries/useGridTISummaries.ts";
 
 import { GridButton } from "./GridButton";
 import { TaskInstancesColumn } from "./TaskInstancesColumn";
@@ -38,9 +39,12 @@ export const Bar = ({ max, nodes, run }: Props) => {
   const { dagId = "", runId } = useParams();
   const [searchParams] = useSearchParams();
 
+  // debugger;
+
   const isSelected = runId === run.run_id;
 
   const search = searchParams.toString();
+  const { data: gridTISummaries } = useGridTiSummaries(run);
 
   return (
     <Box
@@ -75,7 +79,11 @@ export const Bar = ({ max, nodes, run }: Props) => {
           {run.run_type !== "scheduled" && <RunTypeIcon runType={run.run_type} size="10px" />}
         </GridButton>
       </Flex>
-      <TaskInstancesColumn nodes={nodes} runId={run.run_id} taskInstances={run.task_instances} />
+      <TaskInstancesColumn
+        nodes={nodes}
+        runId={run.run_id}
+        taskInstances={gridTISummaries?.task_instances ?? []}
+      />
     </Box>
   );
 };

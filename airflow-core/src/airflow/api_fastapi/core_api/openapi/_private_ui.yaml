@@ -795,14 +795,6 @@ paths:
         schema:
           type: string
           title: Run Id
-      - name: offset
-        in: query
-        required: false
-        schema:
-          type: integer
-          minimum: 0
-          default: 0
-          title: Offset
       responses:
         '200':
           description: Successful Response

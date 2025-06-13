@@ -3798,7 +3798,6 @@ export class GridService {
    * @param data The data for the request.
    * @param data.dagId
    * @param data.runId
-   * @param data.offset
    * @returns GridTISummaries Successful Response
    * @throws ApiError
    */
@@ -3811,9 +3810,6 @@ export class GridService {
       path: {
         dag_id: data.dagId,
         run_id: data.runId,
-      },
-      query: {
-        offset: data.offset,
       },
       errors: {
         400: "Bad Request",
