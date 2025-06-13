@@ -2588,6 +2588,8 @@ export const prefetchUseGridServiceGridData = (
  * @param data.offset
  * @param data.limit
  * @param data.orderBy
+ * @param data.runAfterGte
+ * @param data.runAfterLte
  * @returns GridNodeResponse Successful Response
  * @throws ApiError
  */
@@ -2598,16 +2600,27 @@ export const prefetchUseGridServiceGetDagStructure = (
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
 ) =>
   queryClient.prefetchQuery({
-    queryKey: Common.UseGridServiceGetDagStructureKeyFn({ dagId, limit, offset, orderBy }),
-    queryFn: () => GridService.getDagStructure({ dagId, limit, offset, orderBy }),
+    queryKey: Common.UseGridServiceGetDagStructureKeyFn({
+      dagId,
+      limit,
+      offset,
+      orderBy,
+      runAfterGte,
+      runAfterLte,
+    }),
+    queryFn: () => GridService.getDagStructure({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }),
   });
 /**
  * Get Grid Runs
@@ -2617,6 +2630,8 @@ export const prefetchUseGridServiceGetDagStructure = (
  * @param data.offset
  * @param data.limit
  * @param data.orderBy
+ * @param data.runAfterGte
+ * @param data.runAfterLte
  * @returns GridRunsResponse Successful Response
  * @throws ApiError
  */
@@ -2627,14 +2642,25 @@ export const prefetchUseGridServiceGetGridRuns = (
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
 ) =>
   queryClient.prefetchQuery({
-    queryKey: Common.UseGridServiceGetGridRunsKeyFn({ dagId, limit, offset, orderBy }),
-    queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy }),
+    queryKey: Common.UseGridServiceGetGridRunsKeyFn({
+      dagId,
+      limit,
+      offset,
+      orderBy,
+      runAfterGte,
+      runAfterLte,
+    }),
+    queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }),
   });

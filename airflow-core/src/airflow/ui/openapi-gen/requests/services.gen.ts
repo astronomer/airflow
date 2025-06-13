@@ -3729,6 +3729,8 @@ export class GridService {
    * @param data.offset
    * @param data.limit
    * @param data.orderBy
+   * @param data.runAfterGte
+   * @param data.runAfterLte
    * @returns GridNodeResponse Successful Response
    * @throws ApiError
    */
@@ -3743,6 +3745,8 @@ export class GridService {
         offset: data.offset,
         limit: data.limit,
         order_by: data.orderBy,
+        run_after_gte: data.runAfterGte,
+        run_after_lte: data.runAfterLte,
       },
       errors: {
         400: "Bad Request",
@@ -3760,13 +3764,15 @@ export class GridService {
    * @param data.offset
    * @param data.limit
    * @param data.orderBy
+   * @param data.runAfterGte
+   * @param data.runAfterLte
    * @returns GridRunsResponse Successful Response
    * @throws ApiError
    */
   public static getGridRuns(data: GetGridRunsData): CancelablePromise<GetGridRunsResponse> {
     return __request(OpenAPI, {
       method: "GET",
-      url: "/ui/grid/grid/runs/{dag_id}",
+      url: "/ui/grid/runs/{dag_id}",
       path: {
         dag_id: data.dagId,
       },
@@ -3774,6 +3780,8 @@ export class GridService {
         offset: data.offset,
         limit: data.limit,
         order_by: data.orderBy,
+        run_after_gte: data.runAfterGte,
+        run_after_lte: data.runAfterLte,
       },
       errors: {
         400: "Bad Request",

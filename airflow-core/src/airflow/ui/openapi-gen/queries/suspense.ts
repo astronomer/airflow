@@ -3068,6 +3068,8 @@ export const useGridServiceGridDataSuspense = <
  * @param data.offset
  * @param data.limit
  * @param data.orderBy
+ * @param data.runAfterGte
+ * @param data.runAfterLte
  * @returns GridNodeResponse Successful Response
  * @throws ApiError
  */
@@ -3081,18 +3083,26 @@ export const useGridServiceGetDagStructureSuspense = <
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
   queryKey?: TQueryKey,
   options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
 ) =>
   useSuspenseQuery<TData, TError>({
-    queryKey: Common.UseGridServiceGetDagStructureKeyFn({ dagId, limit, offset, orderBy }, queryKey),
-    queryFn: () => GridService.getDagStructure({ dagId, limit, offset, orderBy }) as TData,
+    queryKey: Common.UseGridServiceGetDagStructureKeyFn(
+      { dagId, limit, offset, orderBy, runAfterGte, runAfterLte },
+      queryKey,
+    ),
+    queryFn: () =>
+      GridService.getDagStructure({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }) as TData,
     ...options,
   });
 /**
@@ -3103,6 +3113,8 @@ export const useGridServiceGetDagStructureSuspense = <
  * @param data.offset
  * @param data.limit
  * @param data.orderBy
+ * @param data.runAfterGte
+ * @param data.runAfterLte
  * @returns GridRunsResponse Successful Response
  * @throws ApiError
  */
@@ -3116,17 +3128,25 @@ export const useGridServiceGetGridRunsSuspense = <
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
   queryKey?: TQueryKey,
   options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">,
 ) =>
   useSuspenseQuery<TData, TError>({
-    queryKey: Common.UseGridServiceGetGridRunsKeyFn({ dagId, limit, offset, orderBy }, queryKey),
-    queryFn: () => GridService.getGridRuns({ dagId, limit, offset, orderBy }) as TData,
+    queryKey: Common.UseGridServiceGetGridRunsKeyFn(
+      { dagId, limit, offset, orderBy, runAfterGte, runAfterLte },
+      queryKey,
+    ),
+    queryFn: () =>
+      GridService.getGridRuns({ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }) as TData,
     ...options,
   });

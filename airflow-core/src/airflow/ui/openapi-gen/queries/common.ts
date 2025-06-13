@@ -1860,14 +1860,21 @@ export const UseGridServiceGetDagStructureKeyFn = (
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
   queryKey?: Array<unknown>,
-) => [useGridServiceGetDagStructureKey, ...(queryKey ?? [{ dagId, limit, offset, orderBy }])];
+) => [
+  useGridServiceGetDagStructureKey,
+  ...(queryKey ?? [{ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }]),
+];
 export type GridServiceGetGridRunsDefaultResponse = Awaited<ReturnType<typeof GridService.getGridRuns>>;
 export type GridServiceGetGridRunsQueryResult<
   TData = GridServiceGetGridRunsDefaultResponse,
@@ -1880,14 +1887,21 @@ export const UseGridServiceGetGridRunsKeyFn = (
     limit,
     offset,
     orderBy,
+    runAfterGte,
+    runAfterLte,
   }: {
     dagId: string;
     limit?: number;
     offset?: number;
     orderBy?: string;
+    runAfterGte?: string;
+    runAfterLte?: string;
   },
   queryKey?: Array<unknown>,
-) => [useGridServiceGetGridRunsKey, ...(queryKey ?? [{ dagId, limit, offset, orderBy }])];
+) => [
+  useGridServiceGetGridRunsKey,
+  ...(queryKey ?? [{ dagId, limit, offset, orderBy, runAfterGte, runAfterLte }]),
+];
 export type AssetServiceCreateAssetEventMutationResult = Awaited<
   ReturnType<typeof AssetService.createAssetEvent>
 >;

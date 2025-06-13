@@ -2879,6 +2879,8 @@ export type GetDagStructureData = {
   limit?: number;
   offset?: number;
   orderBy?: string;
+  runAfterGte?: string | null;
+  runAfterLte?: string | null;
 };
 
 export type GetDagStructureResponse = Array<GridNodeResponse>;
@@ -2888,6 +2890,8 @@ export type GetGridRunsData = {
   limit?: number;
   offset?: number;
   orderBy?: string;
+  runAfterGte?: string | null;
+  runAfterLte?: string | null;
 };
 
 export type GetGridRunsResponse = Array<GridRunsResponse>;
@@ -5846,7 +5850,7 @@ export type $OpenApiTs = {
       };
     };
   };
-  "/ui/grid/grid/runs/{dag_id}": {
+  "/ui/grid/runs/{dag_id}": {
     get: {
       req: GetGridRunsData;
       res: {
