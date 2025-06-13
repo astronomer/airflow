@@ -31,6 +31,7 @@ from airflow.api_fastapi.common.parameters import (
 )
 from airflow.api_fastapi.core_api.datamodels.ui.grid import (
     GridTaskInstanceSummary,
+    LightGridTaskInstanceSummary,
 )
 from airflow.api_fastapi.core_api.datamodels.ui.structure import (
     StructureDataResponse,
@@ -309,3 +310,95 @@ def _get_node_by_id(nodes, node_id):
         if node["id"] == node_id:
             return node
     return {}
+
+
+def fill_task_instance_summaries_simple(
+    grouped_task_instances: dict[str, list],
+    session: SessionDep,
+):
+    """
+    Fill the Task Instance Summaries for the Grouped Task Instances.
+
+    :param grouped_task_instances: Grouped Task Instances
+    :param task_instance_summaries_to_fill: Task Instance Summaries to fill
+    :param task_node_map: Task Node Map
+    :param session: Session
+
+    :return: None
+    """
+    # Additional logic to calculate the overall states to cascade recursive task states
+    # todo: must be a faster way
+    #   it also doesn't necessarily make sense if the last state in the group is success
+    overall_states: dict[str, str] = {
+        task_id: next(
+            (
+                str(state.value)
+                for state in state_priority
+                for ti in tis
+                if state is not None and ti.state == state
+            ),
+            "no_status",
+        )
+        for task_id, tis in grouped_task_instances.items()
+    }
+
+    serdag_cache: dict[UUID, SerializedDAG] = {}
+    task_group_map_cache: dict[UUID, dict[str, dict[str, Any]]] = {}
+
+    for task_id, tis in grouped_task_instances.items():
+        sdm = _get_serdag(tis[0], session)
+        serdag_cache[sdm.id] = serdag_cache.get(sdm.id) or sdm.dag
+        dag = serdag_cache[sdm.id]
+        if not tis:
+            continue
+
+        task_group_map_cache[sdm.id] = task_group_map_cache.get(sdm.id) or get_task_group_map(dag=dag)
+        task_node_map = task_group_map_cache[sdm.id]
+
+        # Calculate the child states for the task
+        # Initialize the child states with 0
+        child_states = {"no_status" if state is None else state.name.lower(): 0 for state in state_priority}
+        # Update Task States for non-grouped tasks
+        child_states.update(
+            {
+                "no_status" if state is None else state.name.lower(): len(
+                    [ti for ti in tis if ti.state == state]
+                    if not task_node_map[task_id]["is_group"]
+                    else [
+                        ti
+                        for ti in tis
+                        if ti.state == state and ti.task_id in get_child_task_map(task_id, task_node_map)
+                    ]
+                )
+                for state in state_priority
+            }
+        )
+
+        # Update Nested Task Group States by aggregating the child states
+        child_states.update(
+            {
+                overall_states[task_node_id].lower(): child_states.get(
+                    overall_states[task_node_id].lower(), 0
+                )
+                + 1
+                for task_node_id in get_child_task_map(task_id, task_node_map)
+                if task_node_map[task_node_id]["is_group"] and task_node_id in overall_states
+            }
+        )
+
+        # Get the overall state for the task
+        overall_ti_state = next(
+            (
+                state
+                for state in state_priority
+                for state_name, state_count in child_states.items()
+                if state_count > 0 and state_name == state
+            ),
+            "no_status",
+        )
+
+        # Task Count is either integer or a TaskGroup to get the task count
+        yield LightGridTaskInstanceSummary(
+            task_id=task_id,
+            state=TaskInstanceState[overall_ti_state.upper()] if overall_ti_state != "no_status" else None,
+        )

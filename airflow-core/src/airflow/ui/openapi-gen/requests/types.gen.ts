@@ -1757,7 +1757,7 @@ export type GridRunsResponse = {
 export type GridTISummaries = {
   run_id: string;
   dag_id: string;
-  task_instances: Array<GridTaskInstanceSummary>;
+  task_instances: Array<LightGridTaskInstanceSummary>;
 };
 
 /**
@@ -1784,6 +1784,14 @@ export type HistoricalMetricDataResponse = {
   dag_run_types: DAGRunTypes;
   dag_run_states: DAGRunStates;
   task_instance_states: TaskInstanceStateCount;
+};
+
+/**
+ * Task Instance Summary model for the Grid UI.
+ */
+export type LightGridTaskInstanceSummary = {
+  task_id: string;
+  state: TaskInstanceState | null;
 };
 
 /**

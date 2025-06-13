@@ -19,8 +19,8 @@
 import { useParams } from "react-router-dom";
 
 import { useGridServiceGetGridTiSummaries } from "openapi/queries";
-import {isStatePending, useAutoRefresh} from "src/utils";
-import {GridRunsResponse} from "openapi/requests";
+import type { GridRunsResponse } from "openapi/requests";
+import { isStatePending, useAutoRefresh } from "src/utils";
 
 export const useGridTiSummaries = (run: GridRunsResponse) => {
   const { dagId = "" } = useParams();

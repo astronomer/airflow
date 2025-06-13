@@ -1747,7 +1747,7 @@ components:
           title: Dag Id
         task_instances:
           items:
-            $ref: '#/components/schemas/GridTaskInstanceSummary'
+            $ref: '#/components/schemas/LightGridTaskInstanceSummary'
           type: array
           title: Task Instances
       type: object
@@ -1852,6 +1852,21 @@ components:
       - task_instance_states
       title: HistoricalMetricDataResponse
       description: Historical Metric Data serializer for responses.
+    LightGridTaskInstanceSummary:
+      properties:
+        task_id:
+          type: string
+          title: Task Id
+        state:
+          anyOf:
+          - $ref: '#/components/schemas/TaskInstanceState'
+          - type: 'null'
+      type: object
+      required:
+      - task_id
+      - state
+      title: LightGridTaskInstanceSummary
+      description: Task Instance Summary model for the Grid UI.
     MenuItem:
       type: string
       enum:

@@ -39,6 +39,13 @@ class GridTaskInstanceSummary(BaseModel):
     note: str | None
 
 
+class LightGridTaskInstanceSummary(BaseModel):
+    """Task Instance Summary model for the Grid UI."""
+
+    task_id: str
+    state: TaskInstanceState | None
+
+
 class GridDAGRunwithTIs(BaseModel):
     """DAG Run model for the Grid UI."""
 
@@ -61,7 +68,7 @@ class GridTISummaries(BaseModel):
 
     run_id: str
     dag_id: str
-    task_instances: list[GridTaskInstanceSummary]
+    task_instances: list[LightGridTaskInstanceSummary]
 
 
 class GridResponse(BaseModel):

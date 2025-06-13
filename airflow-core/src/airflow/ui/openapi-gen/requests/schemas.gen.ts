@@ -7134,7 +7134,7 @@ export const $GridTISummaries = {
     },
     task_instances: {
       items: {
-        $ref: "#/components/schemas/GridTaskInstanceSummary",
+        $ref: "#/components/schemas/LightGridTaskInstanceSummary",
       },
       type: "array",
       title: "Task Instances",
@@ -7264,6 +7264,29 @@ export const $HistoricalMetricDataResponse = {
   required: ["dag_run_types", "dag_run_states", "task_instance_states"],
   title: "HistoricalMetricDataResponse",
   description: "Historical Metric Data serializer for responses.",
+} as const;
+
+export const $LightGridTaskInstanceSummary = {
+  properties: {
+    task_id: {
+      type: "string",
+      title: "Task Id",
+    },
+    state: {
+      anyOf: [
+        {
+          $ref: "#/components/schemas/TaskInstanceState",
+        },
+        {
+          type: "null",
+        },
+      ],
+    },
+  },
+  type: "object",
+  required: ["task_id", "state"],
+  title: "LightGridTaskInstanceSummary",
+  description: "Task Instance Summary model for the Grid UI.",
 } as const;
 
 export const $MenuItem = {

@@ -53,6 +53,7 @@ from airflow.api_fastapi.core_api.security import requires_access_dag
 from airflow.api_fastapi.core_api.services.ui.grid import (
     _merge_node_dicts,
     fill_task_instance_summaries,
+    fill_task_instance_summaries_simple,
     get_child_task_map,
     get_task_group_map,
 )
@@ -417,6 +418,28 @@ def get_grid_runs(
     return session.execute(dag_runs_select_filter)
 
 
+def _get_serdag(tis, session) -> SerializedDagModel | None:
+    # this is a simplification - we account for structure based on the first task
+    version = tis[0].dag_version
+    if not version:
+        version = session.scalar(
+            select(DagVersion)
+            .where(
+                DagVersion.dag_id == tis[0].dag_id,
+            )
+            .order_by(DagVersion.id)  # ascending cus this is mostly for pre-3.0 upgrade
+            .limit(1)
+        )
+    if not (serdag := version.serialized_dag):
+        log.error(
+            "No serialized dag found",
+            dag_id=tis[0].dag_id,
+            version_id=version.id,
+            version_number=version.version_number,
+        )
+    return serdag
+
+
 @grid_router.get(
     "/ti_summaries/{dag_id}/{run_id}",
     responses=create_openapi_http_exception_doc([status.HTTP_400_BAD_REQUEST, status.HTTP_404_NOT_FOUND]),
@@ -434,7 +457,6 @@ def get_grid_ti_summaries(
     # todo: update to assume only one dag_run -- should be able to simplify the structures
     tis_of_dag_runs, _ = paginated_select(
         statement=select(TaskInstance)
-        .options(selectinload(TaskInstance.task_instance_note))
         .where(TaskInstance.dag_id == dag_id)
         .where(TaskInstance.run_id == run_id),
         filters=[],
@@ -442,72 +464,58 @@ def get_grid_ti_summaries(
         limit=None,
     )
 
-    task_instances = session.scalars(tis_of_dag_runs)
-
-    tis_by_run_id: dict[str, list[TaskInstance]] = collections.defaultdict(list)
-    for ti in task_instances:
-        tis_by_run_id[ti.run_id].append(ti)
+    task_instances = list(session.scalars(tis_of_dag_runs))
 
     # Group the Task Instances by Parent Task (TaskGroup or Mapped) and All Task Instances
-    parent_tis: dict[tuple[str, str], list] = collections.defaultdict(list)
-    all_tis: dict[tuple[str, str], list] = collections.defaultdict(list)
+    parent_tis: dict[str, list] = collections.defaultdict(list)
+    all_tis: dict[str, list] = collections.defaultdict(list)
 
-    for tis in tis_by_run_id.values():
-        # this is a simplification - we account for structure based on the first task
-        version = tis[0].dag_version
-        if not version:
-            version = session.scalar(
-                select(DagVersion)
-                .where(
-                    DagVersion.dag_id == tis[0].dag_id,
-                )
-                .order_by(DagVersion.id)  # ascending cus this is mostly for pre-3.0 upgrade
-                .limit(1)
-            )
-        if not version.serialized_dag:
-            log.error(
-                "No serialized dag found",
-                dag_id=tis[0].dag_id,
-                version_id=version.id,
-                version_number=version.version_number,
-            )
+    serdag = _get_serdag(task_instances, session)
+    if not serdag:
+        return GridTISummaries(run_id=run_id, dag_id=dag_id, task_instances=[])
+    dag = serdag.dag
+    task_node_map = get_task_group_map(dag=dag)
+    print(f"{task_node_map=}")
+
+    for ti in task_instances:
+        # Skip the Task Instances if the task was removed.
+        if ti.state == TaskInstanceState.REMOVED:
             continue
-        run_dag = version.serialized_dag.dag
-        task_node_map = get_task_group_map(dag=run_dag)
-        for ti in tis:
-            # Skip the Task Instances if the task was removed.
-            if ti.state == TaskInstanceState.REMOVED:
-                continue
 
-            # Populate the Grouped Task Instances (All Task Instances except the Parent Task Instances)
-            if ti.task_id in get_child_task_map(
-                parent_task_id=task_node_map[ti.task_id]["parent_id"], task_node_map=task_node_map
-            ):
-                all_tis[(ti.task_id, ti.run_id)].append(ti)
-            # Populate the Parent Task Instances
-            parent_id = task_node_map[ti.task_id]["parent_id"]
-            if not parent_id and task_node_map[ti.task_id]["is_group"]:
-                parent_tis[(ti.task_id, ti.run_id)].append(ti)
-            elif parent_id and task_node_map[parent_id]["is_group"]:
-                parent_tis[(parent_id, ti.run_id)].append(ti)
-
-    # Create the Task Instance Summaries to be used in the Grid Response
-    task_instance_summaries: dict[str, list] = {
-        run_id: [] for _, run_id in itertools.chain(parent_tis, all_tis)
-    }
+        # Populate the Grouped Task Instances (All Task Instances except the Parent Task Instances)
+        if ti.task_id in get_child_task_map(
+            parent_task_id=task_node_map[ti.task_id]["parent_id"],
+            task_node_map=task_node_map,
+        ):
+            all_tis[ti.task_id].append(ti)
+        # Populate the Parent Task Instances
+        parent_id = task_node_map[ti.task_id]["parent_id"]
+        if not parent_id and task_node_map[ti.task_id]["is_group"]:
+            parent_tis[ti.task_id].append(ti)
+        elif parent_id and task_node_map[parent_id]["is_group"]:
+            parent_tis[parent_id].append(ti)
 
     # Fill the Task Instance Summaries for the Parent and Grouped Task Instances.
     # First the Parent Task Instances because they are used in the Grouped Task Instances
-    fill_task_instance_summaries(
-        grouped_task_instances=parent_tis,
-        task_instance_summaries_to_fill=task_instance_summaries,
-        session=session,
+    parent_summaries = list(
+        fill_task_instance_summaries_simple(
+            grouped_task_instances=parent_tis,
+            session=session,
+        )
     )
+    print(f"{parent_summaries}")
     # Fill the Task Instance Summaries for the Grouped Task Instances
-    fill_task_instance_summaries(
-        grouped_task_instances=all_tis,
-        task_instance_summaries_to_fill=task_instance_summaries,
-        session=session,
+    all_summaries = list(
+        fill_task_instance_summaries_simple(
+            grouped_task_instances=all_tis,
+            session=session,
+        )
     )
+    print(f"{all_summaries}")
+
     # todo: maybe flatten this object? error handling on no tis?
-    return GridTISummaries(run_id=run_id, dag_id=dag_id, task_instances=task_instance_summaries[run_id])
+    return GridTISummaries(
+        run_id=run_id,
+        dag_id=dag_id,
+        task_instances=[*parent_summaries, *all_summaries],
+    )
