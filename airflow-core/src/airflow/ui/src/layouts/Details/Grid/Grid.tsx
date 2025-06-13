@@ -19,19 +19,19 @@
 import { Box, Flex, IconButton } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import dayjsDuration from "dayjs/plugin/duration";
-import { useMemo } from "react";
+import {useMemo, useState} from "react";
 import { FiChevronsRight } from "react-icons/fi";
 import { Link, useParams } from "react-router-dom";
 
 import { useOpenGroups } from "src/context/openGroups";
-import { useGrid } from "src/queries/useGrid";
 import { useGridStructure } from "src/queries/useGridStructure.ts";
 
 import { Bar } from "./Bar";
 import { DurationAxis } from "./DurationAxis";
 import { DurationTick } from "./DurationTick";
 import { TaskNames } from "./TaskNames";
-import { flattenNodes, type RunWithDuration } from "./utils";
+import { flattenNodes } from "./utils";
+import {useGridRuns} from "src/queries/useGridRuns.ts";
 
 dayjs.extend(dayjsDuration);
 
@@ -43,29 +43,15 @@ export const Grid = ({ limit }: Props) => {
   const { openGroupIds } = useOpenGroups();
   const { dagId = "" } = useParams();
 
-  const { data: gridData, isLoading, runAfter } = useGrid(limit);
+  // const { data: gridData, isLoading, runAfter } = useGrid(limit);
+  const { data: gridRuns, isLoading } = useGridRuns(limit);
   const { data: dagStructure } = useGridStructure(limit);
-  const runs: Array<RunWithDuration> = useMemo(
-    () =>
-      (gridData?.dag_runs ?? []).map((run) => {
-        const duration = dayjs
-          .duration(dayjs(run.end_date ?? undefined).diff(run.start_date ?? undefined))
-          .asSeconds();
-
-        return {
-          ...run,
-          duration,
-        };
-      }),
-    [gridData?.dag_runs],
-  );
-
+  const [runAfter, setRunAfter] = useState<string | undefined>();
   // calculate dag run bar heights relative to max
   const max = Math.max.apply(
     undefined,
-    runs.map((dr) => dr.duration),
+    gridRuns === undefined ? [] : gridRuns.map((dr) => dr.duration),
   );
-
   const { flatNodes } = useMemo(() => flattenNodes(dagStructure, openGroupIds), [dagStructure, openGroupIds]);
 
   return (
@@ -79,7 +65,7 @@ export const Grid = ({ limit }: Props) => {
           <DurationAxis top="50px" />
           <DurationAxis top="4px" />
           <Flex flexDirection="column-reverse" height="100px" position="relative" width="100%">
-            {Boolean(runs.length) && (
+            {Boolean(gridRuns?.length) && (
               <>
                 <DurationTick bottom="92px">{Math.floor(max)}s</DurationTick>
                 <DurationTick bottom="46px">{Math.floor(max / 2)}s</DurationTick>
@@ -88,8 +74,8 @@ export const Grid = ({ limit }: Props) => {
             )}
           </Flex>
           <Flex flexDirection="row-reverse">
-            {runs.map((dr) => (
-              <Bar key={dr.dag_run_id} max={max} nodes={flatNodes} run={dr} />
+            {gridRuns?.map((dr) => (
+              <Bar key={dr.run_id} max={max} nodes={flatNodes} run={dr} />
             ))}
           </Flex>
           {runAfter === undefined ? undefined : (

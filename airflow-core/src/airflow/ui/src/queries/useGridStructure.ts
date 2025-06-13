@@ -18,7 +18,7 @@
  */
 import { useParams } from "react-router-dom";
 
-import { useGridServiceGetDagStructure } from "openapi/queries";
+import {useGridServiceGetDagStructure} from "openapi/queries";
 import { useAutoRefresh } from "src/utils";
 
 export const useGridStructure = (limit: number) => {
@@ -34,7 +34,7 @@ export const useGridStructure = (limit: number) => {
       dagId,
       limit,
       orderBy: "-run_after",
-      // runAfterLte: runAfter,
+      // runAfterLte: runAfter, // todo: this doesn't make sense if sorting by logical date
     },
     undefined,
     {

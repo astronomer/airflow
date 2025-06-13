@@ -274,7 +274,7 @@ def grid_data(
     ],
     response_model_exclude_none=True,
 )
-async def get_dag_structure(
+def get_dag_structure(
     dag_id: str,
     session: SessionDep,
     offset: QueryOffset,
@@ -353,7 +353,7 @@ async def get_dag_structure(
     ],
     response_model_exclude_none=True,
 )
-async def get_grid_runs(
+def get_grid_runs(
     dag_id: str,
     session: SessionDep,
     offset: QueryOffset,
