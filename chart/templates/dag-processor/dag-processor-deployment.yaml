@@ -241,10 +241,6 @@ spec:
               command:
               {{- if .Values.scheduler.logGroomerSidecar.livenessProbe.command }}
                 {{- toYaml .Values.scheduler.logGroomerSidecar.livenessProbe.command | nindent 16 }}
-              {{- else }}
-                - sh
-                - -c
-                - "test -f /clean-logs && grep -q 'AIRFLOW__LOG_RETENTION_DAYS' /clean-logs"
               {{- end }}
           {{- end }}
 
@@ -258,10 +254,6 @@ spec:
               command:
               {{- if .Values.scheduler.logGroomerSidecar.readinessProbe.command }}
                 {{- toYaml .Values.scheduler.logGroomerSidecar.readinessProbe.command | nindent 16 }}
-                {{- else }}
-                - sh
-                - -c
-                - "test -e /clean-logs"
               {{- end }}
           {{- end }}
 
