@@ -239,8 +239,8 @@ spec:
             periodSeconds: {{ .Values.dagProcessor.logGroomerSidecar.livenessProbe.periodSeconds }}
             exec:
               command:
-              {{- if .Values.scheduler.logGroomerSidecar.livenessProbe.command }}
-                {{- toYaml .Values.scheduler.logGroomerSidecar.livenessProbe.command | nindent 16 }}
+              {{- if .Values.dagProcessor.logGroomerSidecar.livenessProbe.command }}
+                {{- toYaml .Values.dagProcessor.logGroomerSidecar.livenessProbe.command | nindent 16 }}
               {{- end }}
           {{- end }}
 
@@ -252,8 +252,8 @@ spec:
             periodSeconds: {{ .Values.dagProcessor.logGroomerSidecar.readinessProbe.periodSeconds }}
             exec:
               command:
-              {{- if .Values.scheduler.logGroomerSidecar.readinessProbe.command }}
-                {{- toYaml .Values.scheduler.logGroomerSidecar.readinessProbe.command | nindent 16 }}
+              {{- if .Values.dagProcessor.logGroomerSidecar.readinessProbe.command }}
+                {{- toYaml .Values.dagProcessor.logGroomerSidecar.readinessProbe.command | nindent 16 }}
               {{- end }}
           {{- end }}
 
