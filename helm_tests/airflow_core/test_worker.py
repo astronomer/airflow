@@ -983,6 +983,43 @@ class TestWorker:
             "spec.volumeClaimTemplates[0].spec.storageClassName", docs[0]
         )
 
+    @pytest.mark.parametrize(
+    "probe_type, probe_config, expected_periods",
+    [
+        ("livenessProbe", {"periodSeconds": 45}, 45),
+        ("livenessProbe", {"periodSeconds": 90}, 90),
+        ("readinessProbe", {"periodSeconds": 45}, 45),
+        ("readinessProbe", {"periodSeconds": 90}, 90),
+    ],
+    )
+    def test_log_groomer_sidecar_probe_period_configuration(self, probe_type, probe_config, expected_periods):
+        """Test that log groomer probe periods are configurable via workers config for both liveness and readiness probes."""
+        values = {
+            "executor": "CeleryExecutor",
+            "workers": {
+                "logGroomerSidecar": {
+                    "enabled": True,
+                    probe_type: probe_config
+                }
+            }
+        }
+        docs = render_chart(
+            values=values,
+            show_only=["templates/workers/worker-deployment.yaml"],
+        )
+        containers = jmespath.search("spec.template.spec.containers", docs[0])
+        log_groomer_container = None
+        for container in containers:
+            if container.get("name") == "worker-log-groomer":
+                log_groomer_container = container
+                break
+        if log_groomer_container and expected_periods:
+            assert expected_periods == jmespath.search(f"{probe_type}.periodSeconds", log_groomer_container)
+        elif log_groomer_container and not expected_periods:
+            period = jmespath.search(f"{probe_type}.periodSeconds", log_groomer_container)
+            assert period is None or isinstance(period, int)
+
+
 
 class TestWorkerLogGroomer(LogGroomerTestBase):
     """Worker groomer."""
