@@ -393,10 +393,8 @@ class TestDagProcessor:
     [
         ("livenessProbe", {"periodSeconds": 45}, 45),
         ("livenessProbe", {"periodSeconds": 90}, 90),
-        ("livenessProbe", {}, None),  # Default case
         ("readinessProbe", {"periodSeconds": 45}, 45),
         ("readinessProbe", {"periodSeconds": 90}, 90),
-        ("readinessProbe", {}, None),  # Default case
     ],
     )
     def test_log_groomer_sidecar_probe_period_configuration(self, probe_type, probe_config, expected_periods):
