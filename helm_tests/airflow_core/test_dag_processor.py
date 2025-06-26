@@ -388,6 +388,60 @@ class TestDagProcessor:
             docs[0],
         )
 
+    def test_log_groomer_sidecar_liveness_probe_command_configuration(self):
+        """Test that log groomer sidecar liveness probe uses dagProcessor configuration."""
+        docs = render_chart(
+            values={
+                "dagProcessor": {
+                    "enabled": True,
+                    "logGroomerSidecar": {
+                        "enabled": True,
+                        "livenessProbe": {
+                            "command": ["custom", "liveness", "command"]
+                        }
+                    }
+                }
+            },
+            show_only=["templates/dag-processor/dag-processor-deployment.yaml"],
+        )
+        containers = jmespath.search("spec.template.spec.containers", docs[0])
+        log_groomer_container = None
+        for container in containers:
+            if container.get("name") == "dag-processor-log-groomer":
+                log_groomer_container = container
+                break
+        assert log_groomer_container is not None
+        assert ["custom", "liveness", "command"] == jmespath.search(
+            "livenessProbe.exec.command", log_groomer_container
+        )
+
+    def test_log_groomer_sidecar_readiness_probe_command_configuration(self):
+        """Test that log groomer sidecar readiness probe uses dagProcessor configuration."""
+        docs = render_chart(
+            values={
+                "dagProcessor": {
+                    "enabled": True,
+                    "logGroomerSidecar": {
+                        "enabled": True,
+                        "readinessProbe": {
+                            "command": ["custom", "readiness", "command"]
+                        }
+                    }
+                }
+            },
+            show_only=["templates/dag-processor/dag-processor-deployment.yaml"],
+        )
+        containers = jmespath.search("spec.template.spec.containers", docs[0])
+        log_groomer_container = None
+        for container in containers:
+            if container.get("name") == "dag-processor-log-groomer":
+                log_groomer_container = container
+                break
+        assert log_groomer_container is not None
+        assert ["custom", "readiness", "command"] == jmespath.search(
+            "readinessProbe.exec.command", log_groomer_container
+        )
+
     def test_livenessprobe_values_are_configurable(self):
         docs = render_chart(
             values={
