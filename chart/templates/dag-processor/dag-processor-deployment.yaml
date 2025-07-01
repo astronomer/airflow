@@ -187,7 +187,7 @@ spec:
             exec:
               command:
                 {{- if .Values.dagProcessor.livenessProbe.command }}
-                  {{- toYaml .Values.dagProcessor.livenessProbe.command | nindent 16 }}
+                  {{- toYaml .Values.dagProcessor.livenessProbe.command | nindent 14 }}
                 {{- else }}
                   {{- include "dag_processor_liveness_check_command" . | indent 14 }}
                 {{- end }}
@@ -200,7 +200,7 @@ spec:
             exec:
               command:
                 {{- if .Values.dagProcessor.readinessProbe.command }}
-                  {{- toYaml .Values.dagProcessor.readinessProbe.command | nindent 16 }}
+                  {{- toYaml .Values.dagProcessor.readinessProbe.command | nindent 14 }}
                 {{- else }}
                   {{- include "dag_processor_readiness_check_command" . | indent 14 }}
                 {{- end }}
@@ -237,10 +237,10 @@ spec:
             timeoutSeconds: {{ .Values.dagProcessor.logGroomerSidecar.livenessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.dagProcessor.logGroomerSidecar.livenessProbe.failureThreshold }}
             periodSeconds: {{ .Values.dagProcessor.logGroomerSidecar.livenessProbe.periodSeconds }}
+            {{- if .Values.dagProcessor.logGroomerSidecar.livenessProbe.exec }}
             exec:
               command:
-              {{- if .Values.dagProcessor.logGroomerSidecar.livenessProbe.command }}
-                {{- toYaml .Values.dagProcessor.logGroomerSidecar.livenessProbe.command | nindent 16 }}
+                {{- toYaml .Values.dagProcessor.logGroomerSidecar.livenessProbe.exec.command | nindent 14 }}
               {{- end }}
           {{- end }}
 
@@ -250,10 +250,10 @@ spec:
             timeoutSeconds: {{ .Values.dagProcessor.logGroomerSidecar.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.dagProcessor.logGroomerSidecar.readinessProbe.failureThreshold }}
             periodSeconds: {{ .Values.dagProcessor.logGroomerSidecar.readinessProbe.periodSeconds }}
+            {{- if .Values.dagProcessor.logGroomerSidecar.readinessProbe.exec }}
             exec:
               command:
-              {{- if .Values.dagProcessor.logGroomerSidecar.readinessProbe.command }}
-                {{- toYaml .Values.dagProcessor.logGroomerSidecar.readinessProbe.command | nindent 16 }}
+                {{- toYaml .Values.dagProcessor.logGroomerSidecar.readinessProbe.exec.command | nindent 14 }}
               {{- end }}
           {{- end }}
 
