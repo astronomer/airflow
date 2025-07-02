@@ -36,6 +36,7 @@ from pydantic import TypeAdapter
 from pydantic.v1.utils import deep_update
 from requests.adapters import Response
 
+from airflow._vendor.airflow_common.timezone import datetime
 from airflow.config_templates.airflow_local_settings import DEFAULT_LOGGING_CONFIG
 from airflow.executors import executor_constants, executor_loader
 from airflow.jobs.job import Job
@@ -57,7 +58,6 @@ from airflow.utils.log.logging_mixin import set_context
 from airflow.utils.net import get_hostname
 from airflow.utils.session import create_session
 from airflow.utils.state import State, TaskInstanceState
-from airflow.utils.timezone import datetime
 from airflow.utils.types import DagRunType
 
 from tests_common.test_utils.config import conf_vars

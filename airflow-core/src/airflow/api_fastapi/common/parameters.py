@@ -37,6 +37,7 @@ from pydantic import AfterValidator, BaseModel, NonNegativeInt
 from sqlalchemy import Column, and_, case, func, or_
 from sqlalchemy.inspection import inspect
 
+from airflow._vendor.airflow_common import timezone
 from airflow.api_fastapi.core_api.base import OrmClause
 from airflow.models import Base
 from airflow.models.asset import (
@@ -54,7 +55,6 @@ from airflow.models.pool import Pool
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.variable import Variable
 from airflow.typing_compat import Self
-from airflow.utils import timezone
 from airflow.utils.state import DagRunState, TaskInstanceState
 from airflow.utils.types import DagRunType
 

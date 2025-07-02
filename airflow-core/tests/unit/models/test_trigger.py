@@ -27,6 +27,7 @@ import pytest
 import pytz
 from cryptography.fernet import Fernet
 
+from airflow._vendor.airflow_common import timezone
 from airflow.jobs.job import Job
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
 from airflow.models import TaskInstance, Trigger
@@ -41,7 +42,6 @@ from airflow.triggers.base import (
     TaskSuccessEvent,
     TriggerEvent,
 )
-from airflow.utils import timezone
 from airflow.utils.session import create_session
 from airflow.utils.state import State
 from airflow.utils.xcom import XCOM_RETURN_KEY

@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import StatementError
 
 from airflow import settings
+from airflow._vendor.airflow_common.timezone import utcnow
 from airflow.models.dag import DAG
 from airflow.serialization.enums import DagAttributeTypes, Encoding
 from airflow.serialization.serialized_objects import BaseSerialization
@@ -41,7 +42,6 @@ from airflow.utils.sqlalchemy import (
     with_row_locks,
 )
 from airflow.utils.state import State
-from airflow.utils.timezone import utcnow
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
 pytestmark = pytest.mark.db_test

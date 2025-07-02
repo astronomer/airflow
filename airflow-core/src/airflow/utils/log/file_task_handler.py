@@ -137,7 +137,7 @@ if not _parse_timestamp:
 def _parse_log_lines(
     lines: str | LogMessages,
 ) -> Iterable[tuple[datetime | None, int, StructuredLogMessage]]:
-    from airflow.utils.timezone import coerce_datetime
+    from airflow._vendor.airflow_common.timezone import coerce_datetime
 
     timestamp = None
     next_timestamp = None

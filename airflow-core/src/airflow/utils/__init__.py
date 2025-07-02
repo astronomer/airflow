@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import sys
+
 
 def _deprecate_this_module(message: str, **shims: tuple[str, str]):
     import warnings
@@ -34,3 +36,15 @@ def _deprecate_this_module(message: str, **shims: tuple[str, str]):
         return getattr(__import__(impa), attr)
 
     return __getattr__
+
+
+def __getattr__(name):
+    if name == "timezone":
+        # Compat, likely from providers
+        if "airflow.sdk" in sys.modules:
+            from airflow.sdk._vendor.airflow_common import timezone
+        else:
+            from airflow._vendor.airflow_common import timezone  # type: ignore[attr-defined,no-redef]
+        globals()[name] = timezone
+        return timezone
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

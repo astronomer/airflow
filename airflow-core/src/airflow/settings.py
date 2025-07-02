@@ -37,12 +37,12 @@ from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.pool import NullPool
 
 from airflow import __version__ as airflow_version, policies
+from airflow._vendor.airflow_common.timezone import TIMEZONE as TIMEZONE
 from airflow.configuration import AIRFLOW_HOME, conf
 from airflow.exceptions import AirflowInternalRuntimeError
 from airflow.logging_config import configure_logging
 from airflow.utils.orm_event_handlers import setup_event_handlers
 from airflow.utils.sqlalchemy import is_sqlalchemy_v1
-from airflow.utils.timezone import local_timezone, parse_timezone, utc
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -50,16 +50,6 @@ if TYPE_CHECKING:
     from airflow.api_fastapi.common.types import UIAlert
 
 log = logging.getLogger(__name__)
-
-try:
-    if (tz := conf.get_mandatory_value("core", "default_timezone")) != "system":
-        TIMEZONE = parse_timezone(tz)
-    else:
-        TIMEZONE = local_timezone()
-except Exception:
-    TIMEZONE = utc
-
-log.info("Configured default timezone %s", TIMEZONE)
 
 if conf.has_option("database", "sql_alchemy_session_maker"):
     log.info(

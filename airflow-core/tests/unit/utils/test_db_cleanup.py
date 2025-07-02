@@ -30,10 +30,10 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.declarative import DeclarativeMeta
 
+from airflow._vendor.airflow_common import timezone
 from airflow.exceptions import AirflowException
 from airflow.models import DagModel, DagRun, TaskInstance
 from airflow.providers.standard.operators.python import PythonOperator
-from airflow.utils import timezone
 from airflow.utils.db_cleanup import (
     ARCHIVE_TABLE_PREFIX,
     ARCHIVED_TABLES_FROM_DB_MIGRATIONS,

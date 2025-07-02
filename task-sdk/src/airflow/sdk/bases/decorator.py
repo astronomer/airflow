@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, Generic, Protocol, TypeVar, cas
 import attr
 import typing_extensions
 
+from airflow.sdk._vendor.airflow_common import timezone
 from airflow.sdk.bases.operator import (
     BaseOperator,
     coerce_resources,
@@ -47,7 +48,6 @@ from airflow.sdk.definitions.asset import Asset
 from airflow.sdk.definitions.mappedoperator import MappedOperator, ensure_xcomarg_return_value
 from airflow.sdk.definitions.xcom_arg import XComArg
 from airflow.typing_compat import ParamSpec
-from airflow.utils import timezone
 from airflow.utils.context import KNOWN_CONTEXT_KEYS
 from airflow.utils.decorators import remove_task_decorator
 from airflow.utils.helpers import prevent_duplicates

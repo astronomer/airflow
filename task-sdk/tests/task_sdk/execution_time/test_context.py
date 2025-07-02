@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.sdk import BaseOperator, get_current_context
+from airflow.sdk._vendor.airflow_common import timezone
 from airflow.sdk.api.datamodels._generated import AssetEventResponse, AssetResponse
 from airflow.sdk.definitions.asset import (
     Asset,
@@ -62,7 +63,6 @@ from airflow.sdk.execution_time.context import (
     context_to_airflow_vars,
     set_current_context,
 )
-from airflow.utils import timezone
 
 
 def test_convert_connection_result_conn():

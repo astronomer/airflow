@@ -30,6 +30,7 @@ import pytest
 import structlog
 from pydantic import TypeAdapter
 
+from airflow._vendor.airflow_common import timezone
 from airflow.api_fastapi.execution_api.app import InProcessExecutionAPI
 from airflow.callbacks.callback_requests import CallbackRequest, DagCallbackRequest, TaskCallbackRequest
 from airflow.configuration import conf
@@ -45,7 +46,6 @@ from airflow.models.baseoperator import BaseOperator
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.sdk.api.client import Client
 from airflow.sdk.execution_time import comms
-from airflow.utils import timezone
 from airflow.utils.session import create_session
 from airflow.utils.state import DagRunState, TaskInstanceState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType

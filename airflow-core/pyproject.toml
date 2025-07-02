@@ -279,3 +279,15 @@ required-version = ">=0.6.3"
 [tool.uv.sources]
 apache-airflow-core = {workspace = true}
 apache-airflow-devel-common = { workspace = true }
+airflow_common = {workspace = true}
+
+
+[tool.vendoring]
+destination = "src/airflow/_vendor/"
+requirements = "src/airflow/_vendor/vendor.txt"
+namespace = "airflow._vendor"
+
+protected-files = ["__init__.py", "README.md", "vendor.txt"]
+
+[tool.vendoring.typing-stubs]
+distro = []

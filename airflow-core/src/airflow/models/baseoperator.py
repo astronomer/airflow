@@ -35,6 +35,8 @@ import pendulum
 from sqlalchemy import select
 from sqlalchemy.orm.exc import NoResultFound
 
+from airflow._vendor.airflow_common import timezone
+
 # Keeping this file at all is a temp thing as we migrate the repo to the task sdk as the base, but to keep
 # main working and useful for others to develop against we use the TaskSDK here but keep this file around
 from airflow.models.taskinstance import TaskInstance, clear_task_instances
@@ -58,7 +60,6 @@ from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
 from airflow.ti_deps.deps.not_previously_skipped_dep import NotPreviouslySkippedDep
 from airflow.ti_deps.deps.prev_dagrun_dep import PrevDagrunDep
 from airflow.ti_deps.deps.trigger_rule_dep import TriggerRuleDep
-from airflow.utils import timezone
 from airflow.utils.session import NEW_SESSION, provide_session
 from airflow.utils.state import DagRunState
 from airflow.utils.types import DagRunTriggeredByType
