@@ -76,8 +76,10 @@ YouTube = "https://www.youtube.com/channel/UCSXwxpWZQ7XZ1WL3wqevChA/"
 
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-build-time-vendoring @ https://test-files.pythonhosted.org/packages/ff/48/f72ed6569112d3a41b7d6ec8de4c921152d2bca5ea2ab86d6827dafec7d3/hatch_build_time_vendoring-0.1.dev4-py3-none-any.whl"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.hooks.vendoring]
 
 [tool.hatch.version]
 path = "src/airflow/sdk/__init__.py"
@@ -228,7 +230,7 @@ destination = "src/airflow/sdk/_vendor/"
 requirements = "src/airflow/sdk/_vendor/vendor.txt"
 namespace = "airflow.sdk._vendor"
 
-protected-files = ["__init__.py", "README.rst", "vendor.txt"]
+protected-files = ["__init__.py", "README.rst", "vendor.txt", ".gitignore"]
 
 [tool.vendoring.typing-stubs]
 distro = []
