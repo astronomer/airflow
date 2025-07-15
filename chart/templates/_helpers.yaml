@@ -98,7 +98,7 @@ If release name contains chart name it will be used as a full name.
         name: {{ template "webserver_secret_key_secret" . }}
         key: webserver-secret-key
   {{- end }}
-  {{- if or (eq .Values.executor "CeleryExecutor") (eq .Values.executor "CeleryKubernetesExecutor") }}
+  {{- if or (contains "CeleryExecutor" .Values.executor) (contains "CeleryKubernetesExecutor" .Values.executor) }}
     {{- if or (semverCompare "<2.4.0" .Values.airflowVersion) (.Values.data.resultBackendSecretName) (.Values.data.resultBackendConnection) }}
     {{- if .Values.enableBuiltInSecretEnvVars.AIRFLOW__CELERY__CELERY_RESULT_BACKEND }}
   # (Airflow 1.10.* variant)
@@ -142,6 +142,15 @@ If release name contains chart name it will be used as a full name.
         key: connection
     {{- end }}
   {{- end }}
+  {{- if .Values.opensearch.enabled }}
+    {{- if .Values.enableBuiltInSecretEnvVars.AIRFLOW__OPENSEARCH__HOST }}
+  - name: AIRFLOW__OPENSEARCH__HOST
+    valueFrom:
+      secretKeyRef:
+        name: {{ template "opensearch_secret" . }}
+        key: connection
+    {{- end }}
+  {{- end }}
 {{- end }}
 
 {{/* User defined Airflow environment variables */}}
@@ -150,7 +159,7 @@ If release name contains chart name it will be used as a full name.
   {{- range $i, $config := .Values.env }}
   - name: {{ $config.name }}
     value: {{ $config.value | quote }}
-    {{- if or (eq $.Values.executor "KubernetesExecutor") (eq $.Values.executor "LocalKubernetesExecutor") (eq $.Values.executor "CeleryKubernetesExecutor") }}
+    {{- if or (contains "KubernetesExecutor" $.Values.executor) (contains "LocalKubernetesExecutor" $.Values.executor) (contains "CeleryKubernetesExecutor" $.Values.executor) }}
   - name: AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__{{ $config.name }}
     value: {{ $config.value | quote }}
     {{- end }}
@@ -163,7 +172,7 @@ If release name contains chart name it will be used as a full name.
         name: {{ $config.secretName }}
         key: {{ default "value" $config.secretKey }}
   {{- end }}
-  {{- if or (eq $.Values.executor "LocalKubernetesExecutor") (eq $.Values.executor "KubernetesExecutor") (eq $.Values.executor "CeleryKubernetesExecutor") }}
+  {{- if or (contains "LocalKubernetesExecutor" $.Values.executor) (contains "KubernetesExecutor" $.Values.executor) (contains "CeleryKubernetesExecutor" $.Values.executor) }}
     {{- range $i, $config := .Values.secret }}
   - name: AIRFLOW__KUBERNETES_SECRETS__{{ $config.envName }}
     value: {{ printf "%s=%s" $config.secretName $config.secretKey }}
@@ -433,6 +442,10 @@ If release name contains chart name it will be used as a full name.
   {{- default (printf "%s-elasticsearch" (include "airflow.fullname" .)) .Values.elasticsearch.secretName }}
 {{- end }}
 
+{{- define "opensearch_secret" -}}
+  {{- default (printf "%s-opensearch" (include "airflow.fullname" .)) .Values.opensearch.secretName }}
+{{- end }}
+
 {{- define "flower_secret" -}}
   {{- default (printf "%s-flower" (include "airflow.fullname" .)) .Values.flower.secretName }}
 {{- end }}
@@ -575,6 +588,17 @@ server_tls_key_file = /etc/pgbouncer/server.key
   readOnly: True
 {{- end }}
 
+{{- define "airflow_api_server_config_configmap_name" -}}
+  {{- default (printf "%s-api-server-config" .Release.Name) .Values.webserver.webserverConfigConfigMapName }}
+{{- end }}
+
+{{- define "airflow_api_server_config_mount" -}}
+- name: api-server-config
+  mountPath: {{ template "airflow_webserver_config_path" . }}
+  subPath: webserver_config.py
+  readOnly: True
+{{- end }}
+
 {{- define "airflow_local_setting_path" -}}
   {{- printf "%s/config/airflow_local_settings.py" .Values.airflowHome | quote }}
 {{- end }}
@@ -612,6 +636,20 @@ server_tls_key_file = /etc/pgbouncer/server.key
   {{- else }}
     {{- tpl (default "default" .Values._rpcServer.serviceAccount.name) . -}}
   {{- end }}
+{{/* Helper to generate service account name respecting .Values.$section.serviceAccount flags */}}
+{{- define "_serviceAccountName" -}}
+  {{- $sa := get (get .Values .key) "serviceAccount" }}
+  {{- if $sa.create }}
+    {{- default (printf "%s-%s" (include "airflow.serviceAccountName" .) (default .key .nameSuffix )) $sa.name | quote }}
+  {{- else }}
+    {{- default "default" $sa.name | quote }}
+  {{- end }}
+{{- end }}
+
+
+{{/* Create the name of the API server service account to use */}}
+{{- define "apiServer.serviceAccountName" -}}
+  {{- include "_serviceAccountName" (merge (dict "key" "apiServer" "nameSuffix" "api-server" ) .) -}}
 {{- end }}
 
 {{/* Create the name of the redis service account to use */}}
@@ -685,6 +723,12 @@ server_tls_key_file = /etc/pgbouncer/server.key
     {{- tpl (default "default" .Values.triggerer.serviceAccount.name) . -}}
   {{- end }}
 {{- end }}
+
+{{/* Determine trigger capacity, taking Airflow 2 and 3 config option differences into account */}}
+{{- define "triggerer.capacity" -}}
+  {{- $triggerer_section := .Values.config.triggerer | default dict }}
+  {{- $triggerer_section.capacity | default $triggerer_section.default_capacity | default 1000 | int -}}
+{{- end -}}
 
 {{/* Create the name of the dag processor service account to use */}}
 {{- define "dagProcessor.serviceAccountName" -}}
@@ -1150,7 +1194,7 @@ capabilities:
         key: {{ $config.valueFrom.configMapKeyRef.key }}
       {{- end }}
     {{- end }}
-    {{- if or (eq $.Values.executor "KubernetesExecutor") (eq $.Values.executor "LocalKubernetesExecutor") (eq $.Values.executor "CeleryKubernetesExecutor") }}
+    {{- if or (contains "KubernetesExecutor" $.Values.executor) (contains "LocalKubernetesExecutor" $.Values.executor) (contains "CeleryKubernetesExecutor" $.Values.executor) }}
   - name: AIRFLOW__KUBERNETES_ENVIRONMENT_VARIABLES__{{ $config.name }}
     {{- if $config.value }}
     value: {{ $config.value | quote }}

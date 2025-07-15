@@ -18,10 +18,14 @@ from __future__ import annotations
 
 import random
 import string
+from pathlib import Path
 
 import pytest
 
 from airflow_breeze.prepare_providers.provider_documentation import (
+    VERSION_MAJOR_INDEX,
+    VERSION_MINOR_INDEX,
+    VERSION_PATCHLEVEL_INDEX,
     Change,
     TypeOfChange,
     _convert_git_changes_to_table,
@@ -29,10 +33,9 @@ from airflow_breeze.prepare_providers.provider_documentation import (
     _get_change_from_line,
     _get_changes_classified,
     _get_git_log_command,
-    _verify_changelog_exists,
+    get_most_impactful_change,
     get_version_tag,
 )
-from airflow_breeze.utils.path_utils import AIRFLOW_SOURCES_ROOT
 
 CHANGELOG_CONTENT = """
 Changelog
@@ -97,28 +100,47 @@ def test_get_version_tag(version: str, provider_id: str, suffix: str, tag: str):
 
 
 @pytest.mark.parametrize(
-    "from_commit, to_commit, git_command",
+    "folder_paths, from_commit, to_commit, git_command",
     [
-        (None, None, ["git", "log", "--pretty=format:%H %h %cd %s", "--date=short", "--", "."]),
+        (None, None, None, ["git", "log", "--pretty=format:%H %h %cd %s", "--date=short", "--", "."]),
         (
+            None,
             "from_tag",
             None,
             ["git", "log", "--pretty=format:%H %h %cd %s", "--date=short", "from_tag", "--", "."],
         ),
         (
+            None,
             "from_tag",
             "to_tag",
             ["git", "log", "--pretty=format:%H %h %cd %s", "--date=short", "from_tag...to_tag", "--", "."],
         ),
+        (
+            [Path("a"), Path("b")],
+            "from_tag",
+            "to_tag",
+            [
+                "git",
+                "log",
+                "--pretty=format:%H %h %cd %s",
+                "--date=short",
+                "from_tag...to_tag",
+                "--",
+                "a",
+                "b",
+            ],
+        ),
     ],
 )
-def test_get_git_log_command(from_commit: str | None, to_commit: str | None, git_command: list[str]):
-    assert _get_git_log_command(from_commit, to_commit) == git_command
+def test_get_git_log_command(
+    folder_paths: list[str] | None, from_commit: str | None, to_commit: str | None, git_command: list[str]
+):
+    assert _get_git_log_command(folder_paths, from_commit, to_commit) == git_command
 
 
 def test_get_git_log_command_wrong():
     with pytest.raises(ValueError, match=r"to_commit without from_commit"):
-        _get_git_log_command(None, "to_commit")
+        _get_git_log_command(None, None, "to_commit")
 
 
 @pytest.mark.parametrize(
@@ -173,13 +195,13 @@ LONG_HASH_123144 SHORT_HASH 2023-01-01 Description `with` pr (#12346)
 
 Latest change: 2023-01-01
 
-============================================  ===========  ==================================
-Commit                                        Committed    Subject
-============================================  ===========  ==================================
-`SHORT_HASH <https://url/LONG_HASH_123144>`_  2023-01-01   ``Description 'with' no pr``
-`SHORT_HASH <https://url/LONG_HASH_123144>`_  2023-01-01   ``Description 'with' pr (#12345)``
-`SHORT_HASH <https://url/LONG_HASH_123144>`_  2023-01-01   ``Description 'with' pr (#12346)``
-============================================  ===========  ==================================""",
+=============================================  ===========  ==================================
+Commit                                         Committed    Subject
+=============================================  ===========  ==================================
+`SHORT_HASH <https://url/LONG_HASH_123144>`__  2023-01-01   ``Description 'with' no pr``
+`SHORT_HASH <https://url/LONG_HASH_123144>`__  2023-01-01   ``Description 'with' pr (#12345)``
+`SHORT_HASH <https://url/LONG_HASH_123144>`__  2023-01-01   ``Description 'with' pr (#12346)``
+=============================================  ===========  ==================================""",
             False,
             3,
         ),
@@ -212,13 +234,6 @@ def test_convert_git_changes_to_table(input: str, output: str, markdown: bool, c
     assert list_of_changes[0].pr is None
     assert list_of_changes[1].pr == "12345"
     assert list_of_changes[2].pr == "12346"
-
-
-def test_verify_changelog_exists():
-    assert (
-        _verify_changelog_exists("asana")
-        == AIRFLOW_SOURCES_ROOT / "providers" / "src" / "airflow" / "providers" / "asana" / "CHANGELOG.rst"
-    )
 
 
 def generate_random_string(length):
@@ -288,3 +303,91 @@ def test_classify_changes_automatically(
     assert len(classified_changes.other) == other_count
     assert len(classified_changes.other) == other_count
     assert len(classified_changes.misc) == misc_count
+
+
+@pytest.mark.parametrize(
+    "initial_version, bump_index, expected_version",
+    [
+        ("4.2.1", VERSION_MAJOR_INDEX, "5.0.0"),
+        ("3.5.9", VERSION_MINOR_INDEX, "3.6.0"),
+        ("2.0.0", VERSION_PATCHLEVEL_INDEX, "2.0.1"),
+    ],
+)
+def test_version_bump_for_provider_documentation(initial_version, bump_index, expected_version):
+    from airflow_breeze.prepare_providers.provider_documentation import Version, bump_version
+
+    result = bump_version(Version(initial_version), bump_index)
+    assert str(result) == expected_version
+
+
+@pytest.mark.parametrize(
+    "changes, expected",
+    [
+        pytest.param([TypeOfChange.SKIP], TypeOfChange.SKIP, id="only-skip"),
+        pytest.param([TypeOfChange.DOCUMENTATION], TypeOfChange.DOCUMENTATION, id="only-doc"),
+        pytest.param([TypeOfChange.MISC], TypeOfChange.MISC, id="only-misc"),
+        pytest.param([TypeOfChange.BUGFIX], TypeOfChange.BUGFIX, id="only-bugfix"),
+        pytest.param(
+            [TypeOfChange.MIN_AIRFLOW_VERSION_BUMP],
+            TypeOfChange.MIN_AIRFLOW_VERSION_BUMP,
+            id="only-min-airflow-bump",
+        ),
+        pytest.param([TypeOfChange.FEATURE], TypeOfChange.FEATURE, id="only-feature"),
+        pytest.param([TypeOfChange.BREAKING_CHANGE], TypeOfChange.BREAKING_CHANGE, id="only-breaking"),
+        pytest.param(
+            [TypeOfChange.SKIP, TypeOfChange.DOCUMENTATION], TypeOfChange.DOCUMENTATION, id="doc-vs-skip"
+        ),
+        pytest.param([TypeOfChange.SKIP, TypeOfChange.MISC], TypeOfChange.MISC, id="misc-vs-skip"),
+        pytest.param([TypeOfChange.DOCUMENTATION, TypeOfChange.MISC], TypeOfChange.MISC, id="misc-vs-doc"),
+        pytest.param([TypeOfChange.MISC, TypeOfChange.BUGFIX], TypeOfChange.BUGFIX, id="bugfix-vs-misc"),
+        pytest.param(
+            [TypeOfChange.BUGFIX, TypeOfChange.MIN_AIRFLOW_VERSION_BUMP],
+            TypeOfChange.MIN_AIRFLOW_VERSION_BUMP,
+            id="bump-vs-bugfix",
+        ),
+        pytest.param(
+            [TypeOfChange.MIN_AIRFLOW_VERSION_BUMP, TypeOfChange.FEATURE],
+            TypeOfChange.FEATURE,
+            id="feature-vs-bump",
+        ),
+        pytest.param(
+            [TypeOfChange.FEATURE, TypeOfChange.BREAKING_CHANGE],
+            TypeOfChange.BREAKING_CHANGE,
+            id="breaking-vs-feature",
+        ),
+        # Bigger combos
+        pytest.param(
+            [
+                TypeOfChange.SKIP,
+                TypeOfChange.DOCUMENTATION,
+                TypeOfChange.MISC,
+                TypeOfChange.BUGFIX,
+                TypeOfChange.MIN_AIRFLOW_VERSION_BUMP,
+                TypeOfChange.FEATURE,
+                TypeOfChange.BREAKING_CHANGE,
+            ],
+            TypeOfChange.BREAKING_CHANGE,
+            id="full-spectrum",
+        ),
+        pytest.param(
+            [
+                TypeOfChange.DOCUMENTATION,
+                TypeOfChange.BUGFIX,
+                TypeOfChange.MIN_AIRFLOW_VERSION_BUMP,
+            ],
+            TypeOfChange.MIN_AIRFLOW_VERSION_BUMP,
+            id="version-bump-over-bugfix-doc",
+        ),
+        pytest.param(
+            [
+                TypeOfChange.DOCUMENTATION,
+                TypeOfChange.MISC,
+                TypeOfChange.SKIP,
+            ],
+            TypeOfChange.MISC,
+            id="misc-over-doc-skip",
+        ),
+    ],
+)
+def test_get_most_impactful_change(changes, expected):
+    assert get_most_impactful_change(changes) == expected

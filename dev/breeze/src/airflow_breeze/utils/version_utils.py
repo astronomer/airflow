@@ -31,7 +31,32 @@ def get_latest_helm_chart_version():
 def get_latest_airflow_version():
     import requests
 
-    response = requests.get("https://pypi.org/pypi/apache-airflow/json")
+    response = requests.get(
+        "https://pypi.org/pypi/apache-airflow/json", headers={"User-Agent": "Python requests"}
+    )
     response.raise_for_status()
     latest_released_version = response.json()["info"]["version"]
     return latest_released_version
+
+
+def remove_local_version_suffix(version_suffix: str) -> str:
+    if "+" in version_suffix:
+        return version_suffix.split("+")[0]
+    return version_suffix
+
+
+def is_local_package_version(version_suffix: str) -> bool:
+    """
+    Check if the given version suffix is a local version suffix. A local version suffix will contain a
+    plus sign ('+'). This function does not guarantee that the version suffix is a valid local version suffix.
+
+    Args:
+        version_suffix (str): The version suffix to check.
+
+    Returns:
+        bool: True if the version suffix contains a '+', False otherwise. Please note this does not
+        guarantee that the version suffix is a valid local version suffix.
+    """
+    if version_suffix and ("+" in version_suffix):
+        return True
+    return False

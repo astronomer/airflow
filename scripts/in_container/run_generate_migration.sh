@@ -19,6 +19,8 @@
 . "$(dirname "${BASH_SOURCE[0]}")/_in_container_script_init.sh"
 
 cd "${AIRFLOW_SOURCES}" || exit 1
-cd "airflow" || exit 1
-airflow db reset
+cd "airflow-core/src/airflow" || exit 1
+airflow db reset -y
+airflow db downgrade -n 2.10.3 -y
+airflow db migrate -r heads
 alembic revision --autogenerate -m "${@}"

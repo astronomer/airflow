@@ -21,14 +21,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import tempfile
 from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from shutil import copyfile
 from typing import Callable
-
-import re2 as re
 
 import airflow
 
@@ -426,7 +425,7 @@ def generate_copies_of_performance_dag(
 
     :yields: a pair consisting of path to the temporary directory
         and a list with paths to copies of performance DAG
-    :type: Tuple[str, List[str]]
+    :type: tuple[str, list[str]]
     """
     dag_files_count = int(
         get_performance_dag_environment_variable(performance_dag_conf, "PERF_DAG_FILES_COUNT")
@@ -599,8 +598,7 @@ def get_performance_dag_environment_variable(performance_dag_conf: dict[str, str
     if env_name in MANDATORY_performance_DAG_VARIABLES:
         if env_name not in performance_dag_conf:
             raise ValueError(
-                f"Mandatory environment variable '{env_name}' "
-                f"is missing from performance dag configuration."
+                f"Mandatory environment variable '{env_name}' is missing from performance dag configuration."
             )
         return performance_dag_conf[env_name]
 
@@ -665,7 +663,7 @@ def parse_start_date(date, start_ago):
 
     Returns the start date for the performance DAGs and string to be used as part of their ids.
 
-    :return Tuple[datetime.datetime, str]: A tuple of datetime.datetime object to be used
+    :return tuple[datetime.datetime, str]: A tuple of datetime.datetime object to be used
         as a start_date and a string that should be used as part of the dag_id.
     """
     if date:

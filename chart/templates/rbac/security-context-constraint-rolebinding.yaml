@@ -67,7 +67,7 @@ subjects:
     name: {{ include "statsd.serviceAccountName" . }}
     namespace: "{{ .Release.Namespace }}"
   {{- end }}
-  {{- if and .Values.flower.enabled (or (eq .Values.executor "CeleryExecutor") (eq .Values.executor "CeleryKubernetesExecutor")) }}
+  {{- if and .Values.flower.enabled (or (contains "CeleryExecutor" .Values.executor) (contains "CeleryKubernetesExecutor" .Values.executor)) }}
   - kind: ServiceAccount
     name: {{ include "flower.serviceAccountName" . }}
     namespace: "{{ .Release.Namespace }}"
@@ -85,7 +85,7 @@ subjects:
     name: {{ include "createUserJob.serviceAccountName" . }}
     namespace: "{{ .Release.Namespace }}"
   {{- end }}
-  {{- if and .Values.cleanup.enabled }}
+  {{- if .Values.cleanup.enabled }}
   - kind: ServiceAccount
     name: {{ include "cleanup.serviceAccountName" . }}
     namespace: "{{ .Release.Namespace }}"

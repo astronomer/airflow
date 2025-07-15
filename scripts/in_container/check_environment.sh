@@ -28,50 +28,24 @@ EXIT_CODE=0
 # Even if this message might be harmless, it might hide the real reason for the problem
 # Which is the long time needed to start some services, seeing this message might be totally misleading
 # when you try to analyse the problem, that's why it's best to avoid it,
-function run_nc() {
-    local host=${1}
-    local port=${2}
-    local ip
-    ip=$(python -c "import socket; print(socket.gethostbyname('${host}'))")
 
-    nc -zvvn "${ip}" "${port}"
-}
+. "$( dirname "${BASH_SOURCE[0]}" )/check_connectivity.sh"
+
+export COLOR_YELLOW=$'\e[33m'
+export COLOR_RESET=$'\e[0m'
 
 function check_service {
     local label=$1
     local call=$2
     local max_check=${3:=1}
+    local initial_delay="${4:-0}"
 
-    echo -n "${label}: "
-    while true
-    do
-        set +e
-        local last_check_result
-        last_check_result=$(eval "${call}" 2>&1)
-        local res=$?
-        set -e
-        if [[ ${res} == 0 ]]; then
-            echo  "${COLOR_GREEN}OK.  ${COLOR_RESET}"
-            break
-        else
-            echo -n "."
-            max_check=$((max_check-1))
-        fi
-        if [[ ${max_check} == 0 ]]; then
-            echo "${COLOR_RED}ERROR: Maximum number of retries while checking service. Exiting ${COLOR_RESET}"
-            break
-        else
-            sleep 1
-        fi
-    done
-    if [[ ${res} != 0 ]]; then
-        echo "Service could not be started!"
-        echo
-        echo "$ ${call}"
-        echo "${last_check_result}"
-        echo
-        EXIT_CODE=${res}
+    if [[ ${initial_delay} != 0 ]]; then
+        echo "${COLOR_YELLOW}Adding initial delay. Waiting ${initial_delay} seconds before checking ${label}.${COLOR_RESET}"
+        sleep "${initial_delay}"
     fi
+    check_service_connection "${label}" "${call}" "${max_check}"
+    EXIT_CODE=$?
 }
 
 function check_db_backend {
@@ -133,7 +107,12 @@ function startairflow_if_requested() {
             # set the removed AIRFLOW__DATABASE__LOAD_DEFAULT_CONNECTIONS
             AIRFLOW__DATABASE__LOAD_DEFAULT_CONNECTIONS=${LOAD_DEFAULT_CONNECTIONS} airflow db init
         fi
-        airflow users create -u admin -p admin -f Thor -l Adminstra -r Admin -e admin@email.domain
+
+        if airflow config get-value core auth_manager | grep -q "FabAuthManager"; then
+            airflow users create -u admin -p admin -f Thor -l Adminstra -r Admin -e admin@email.domain || true
+        else
+            echo "Skipping user creation as auth manager different from Fab is used"
+        fi
 
         . "$( dirname "${BASH_SOURCE[0]}" )/run_init_script.sh"
 
@@ -201,6 +180,10 @@ fi
 
 if [[ ${INTEGRATION_YDB} == "true" ]]; then
     check_service "YDB Cluster" "run_nc ydb 2136" 50
+fi
+
+if [[ ${INTEGRATION_GREMLIN} == "true" ]]; then
+    check_service "gremlin" "run_nc gremlin 8182" 100 30
 fi
 
 if [[ ${EXIT_CODE} != 0 ]]; then

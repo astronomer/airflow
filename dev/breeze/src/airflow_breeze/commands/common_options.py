@@ -25,15 +25,20 @@ from airflow_breeze.global_constants import (
     ALL_HISTORICAL_PYTHON_VERSIONS,
     ALLOWED_BACKENDS,
     ALLOWED_DOCKER_COMPOSE_PROJECTS,
-    ALLOWED_INSTALLATION_PACKAGE_FORMATS,
+    ALLOWED_INSTALLATION_DISTRIBUTION_FORMATS,
     ALLOWED_MOUNT_OPTIONS,
     ALLOWED_MYSQL_VERSIONS,
     ALLOWED_POSTGRES_VERSIONS,
     ALLOWED_PYTHON_MAJOR_MINOR_VERSIONS,
     ALLOWED_USE_AIRFLOW_VERSIONS,
     APACHE_AIRFLOW_GITHUB_REPOSITORY,
-    AUTOCOMPLETE_INTEGRATIONS,
+    AUTOCOMPLETE_ALL_INTEGRATIONS,
+    AUTOCOMPLETE_CORE_INTEGRATIONS,
+    AUTOCOMPLETE_PROVIDERS_INTEGRATIONS,
     DEFAULT_UV_HTTP_TIMEOUT,
+    DOCKER_DEFAULT_PLATFORM,
+    SINGLE_PLATFORMS,
+    normalize_platform_machine,
 )
 from airflow_breeze.utils.custom_param_types import (
     AnswerChoice,
@@ -47,7 +52,7 @@ from airflow_breeze.utils.custom_param_types import (
     UseAirflowVersionType,
     VerboseOption,
 )
-from airflow_breeze.utils.packages import get_available_packages
+from airflow_breeze.utils.packages import get_available_distributions
 from airflow_breeze.utils.recording import generating_command_images
 
 
@@ -74,7 +79,7 @@ argument_doc_packages = click.argument(
     nargs=-1,
     required=False,
     type=NotVerifiedBetterChoice(
-        get_available_packages(
+        get_available_distributions(
             include_non_provider_doc_packages=True,
             include_all_providers=True,
             include_removed=True,
@@ -130,9 +135,11 @@ option_commit_sha = click.option(
 )
 option_db_reset = click.option(
     "-d",
-    "--db-reset",
+    "--db-reset/--no-db-reset",
     help="Reset DB when entering the container.",
     is_flag=True,
+    default=False,
+    show_default=True,
     envvar="DB_RESET",
 )
 option_debug_resources = click.option(
@@ -140,12 +147,6 @@ option_debug_resources = click.option(
     is_flag=True,
     help="Whether to show resource information while running in parallel.",
     envvar="DEBUG_RESOURCES",
-)
-option_database_isolation = click.option(
-    "--database-isolation",
-    help="Run airflow in database isolation mode.",
-    is_flag=True,
-    envvar="DATABASE_ISOLATION",
 )
 option_docker_host = click.option(
     "--docker-host",
@@ -226,25 +227,31 @@ option_include_not_ready_providers = click.option(
 )
 option_include_success_outputs = click.option(
     "--include-success-outputs",
-    help="Whether to include outputs of successful parallel runs (skipped by default).",
+    help="Whether to include outputs of successful runs (not shown by default).",
     is_flag=True,
     envvar="INCLUDE_SUCCESS_OUTPUTS",
 )
-option_integration = click.option(
+option_all_integration = click.option(
     "--integration",
-    help="Integration(s) to enable when running (can be more than one).",
-    type=BetterChoice(AUTOCOMPLETE_INTEGRATIONS),
+    help="Core Integrations to enable when running (can be more than one).",
+    type=BetterChoice(AUTOCOMPLETE_ALL_INTEGRATIONS),
+    multiple=True,
+)
+
+option_core_integration = click.option(
+    "--integration",
+    help="Core Integrations to enable when running (can be more than one).",
+    type=BetterChoice(AUTOCOMPLETE_CORE_INTEGRATIONS),
+    multiple=True,
+)
+option_providers_integration = click.option(
+    "--integration",
+    help="Providers Integration(s) to enable when running (can be more than one).",
+    type=BetterChoice(AUTOCOMPLETE_PROVIDERS_INTEGRATIONS),
     multiple=True,
 )
 option_image_name = click.option(
-    "-n", "--image-name", help="Name of the image to verify (overrides --python and --image-tag)."
-)
-option_image_tag_for_running = click.option(
-    "--image-tag",
-    help="Tag of the image which is used to run the image (implies --mount-sources=skip).",
-    show_default=True,
-    default="latest",
-    envvar="IMAGE_TAG",
+    "-n", "--image-name", help="Name of the image to verify (overrides --python)."
 )
 option_keep_env_variables = click.option(
     "--keep-env-variables",
@@ -281,13 +288,13 @@ option_no_db_cleanup = click.option(
     help="Do not clear the database before each test module",
     is_flag=True,
 )
-option_installation_package_format = click.option(
-    "--package-format",
-    type=BetterChoice(ALLOWED_INSTALLATION_PACKAGE_FORMATS),
+option_installation_distribution_format = click.option(
+    "--distribution-format",
+    type=BetterChoice(ALLOWED_INSTALLATION_DISTRIBUTION_FORMATS),
     help="Format of packages that should be installed from dist.",
-    default=ALLOWED_INSTALLATION_PACKAGE_FORMATS[0],
+    default=ALLOWED_INSTALLATION_DISTRIBUTION_FORMATS[0],
     show_default=True,
-    envvar="PACKAGE_FORMAT",
+    envvar="DISTRIBUTION_FORMAT",
 )
 option_parallelism = click.option(
     "--parallelism",
@@ -325,6 +332,14 @@ option_python = click.option(
     help="Python major/minor version used in Airflow image for images.",
     envvar="PYTHON_MAJOR_MINOR_VERSION",
 )
+option_python_no_default = click.option(
+    "-p",
+    "--python",
+    type=BetterChoice(ALLOWED_PYTHON_MAJOR_MINOR_VERSIONS),
+    help="Python major/minor version used in Airflow image for images "
+    "(if not specified - all python versions are used).",
+    envvar="PYTHON_MAJOR_MINOR_VERSION",
+)
 option_python_versions = click.option(
     "--python-versions",
     help="Space separated list of python versions used for build with multiple versions.",
@@ -357,9 +372,11 @@ option_skip_db_tests = click.option(
     envvar="SKIP_DB_TESTS",
 )
 option_standalone_dag_processor = click.option(
-    "--standalone-dag-processor",
-    help="Run standalone dag processor for start-airflow.",
+    "--standalone-dag-processor/--no-standalone-dag-processor",
     is_flag=True,
+    default=True,
+    show_default=True,
+    help="Run standalone dag processor for start-airflow (required for Airflow 3).",
     envvar="STANDALONE_DAG_PROCESSOR",
 )
 option_upgrade_boto = click.option(
@@ -419,9 +436,51 @@ option_verbose = click.option(
     type=VerboseOption(),
     callback=_set_default_from_parent,
 )
-option_version_suffix_for_pypi = click.option(
-    "--version-suffix-for-pypi",
-    help="Version suffix used for PyPI packages (alpha, beta, rc1, etc.).",
-    envvar="VERSION_SUFFIX_FOR_PYPI",
+
+
+def _is_number_greater_than_expected(value: str) -> bool:
+    digits = [c for c in value.split("+")[0] if c.isdigit()]
+    if not digits:
+        return False
+    if len(digits) == 1 and digits[0] == "0" and not value.startswith(".dev"):
+        return False
+    return True
+
+
+def _validate_version_suffix(ctx: click.core.Context, param: click.core.Option, value: str):
+    if not value:
+        return value
+    if any(
+        value.startswith(s) for s in ("a", "b", "rc", "+", ".dev", ".post")
+    ) and _is_number_greater_than_expected(value):
+        return value
+    raise click.BadParameter(
+        "Version suffix for PyPI packages should be empty or or start with a/b/rc/+/.dev/.post and number "
+        "should be greater than 0 for non-dev version."
+    )
+
+
+option_version_suffix = click.option(
+    "--version-suffix",
+    help="Version suffix used for PyPI packages (a1, a2, b1, rc1, rc2, .dev0, .dev1, .post1, .post2 etc.)."
+    " Note the `.` is need in `.dev0` and `.post`. Might be followed with +local_version",
+    envvar="VERSION_SUFFIX",
+    callback=_validate_version_suffix,
     default="",
+)
+
+
+def _normalize_platform(ctx: click.core.Context, param: click.core.Option, value: str):
+    if not value:
+        return value
+    return normalize_platform_machine(value)
+
+
+option_platform_single = click.option(
+    "--platform",
+    help="Platform for Airflow image.",
+    default=DOCKER_DEFAULT_PLATFORM if not generating_command_images() else SINGLE_PLATFORMS[0],
+    envvar="PLATFORM",
+    callback=_normalize_platform,
+    type=BetterChoice(SINGLE_PLATFORMS),
 )
