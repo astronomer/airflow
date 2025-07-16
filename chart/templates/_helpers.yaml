@@ -636,6 +636,7 @@ server_tls_key_file = /etc/pgbouncer/server.key
   {{- else }}
     {{- tpl (default "default" .Values._rpcServer.serviceAccount.name) . -}}
   {{- end }}
+{{- end }}
 {{/* Helper to generate service account name respecting .Values.$section.serviceAccount flags */}}
 {{- define "_serviceAccountName" -}}
   {{- $sa := get (get .Values .key) "serviceAccount" }}
