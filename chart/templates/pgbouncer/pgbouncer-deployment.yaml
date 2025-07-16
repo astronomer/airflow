@@ -203,6 +203,7 @@ spec:
         {{- if .Values.pgbouncer.extraContainers }}
           {{- tpl (toYaml .Values.pgbouncer.extraContainers) . | nindent 8 }}
         {{- end }}
+        {{- end }}
       {{- if or .Values.pgbouncer.mountConfigSecret .Values.pgbouncer.ssl.ca .Values.pgbouncer.ssl.cert .Values.pgbouncer.ssl.key .Values.volumes .Values.pgbouncer.extraVolumes }}
       volumes:
         {{- if .Values.pgbouncer.mountConfigSecret }}
