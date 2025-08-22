@@ -38,7 +38,7 @@ repos:
       - id: ruff-format
         name: Run 'ruff format'
         description: "Run 'ruff format' for extremely fast Python formatting"
-        entry: ./scripts/ci/pre_commit/ruff_format.py
+        entry: ./scripts/ci/prek/ruff_format.py
         language: python
         types_or: [python, pyi]
         args: []
@@ -48,7 +48,7 @@ repos:
       - id: mypy-airflow-core
         name: Run mypy for airflow-core
         language: python
-        entry: ./scripts/ci/pre_commit/mypy.py
+        entry: ./scripts/ci/prek/mypy.py
         files: airflow-core/.*\.py$
         require_serial: true
         additional_dependencies: [ 'rich>=12.4.4' ]
@@ -58,7 +58,7 @@ repos:
         stages: ['manual']
         types_or: [javascript, ts, tsx]
         files: ^airflow-core/src/airflow/ui/|^airflow-core/src/airflow/api_fastapi/auth/managers/simple/ui/
-        entry: ./scripts/ci/pre_commit/compile_ui_assets.py
+        entry: ./scripts/ci/prek/compile_ui_assets.py
         pass_filenames: false
         additional_dependencies: [ 'pnpm@9.7.1' ]
       - id: compile-ui-assets-dev
@@ -67,6 +67,6 @@ repos:
         stages: ['manual']
         types_or: [javascript, ts, tsx]
         files: ^airflow-core/src/airflow/ui/|^airflow-core/src/airflow/api_fastapi/auth/managers/simple/ui/
-        entry: ./scripts/ci/pre_commit/compile_ui_assets_dev.py
+        entry: ./scripts/ci/prek/compile_ui_assets_dev.py
         pass_filenames: false
         additional_dependencies: [ 'pnpm@9.7.1' ]
