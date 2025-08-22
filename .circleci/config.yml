@@ -84,7 +84,9 @@ jobs:
           command: |
             mkdir files
             mkdir dist
-            breeze static-checks --only-my-changes
+            uv tool install prek
+            prek install -f
+            prek --only-my-changes
 
   compare-commit-hash:
     machine:
