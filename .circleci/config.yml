@@ -32,6 +32,11 @@ jobs:
             && sudo apt-get update -y \
             && sudo apt-get install google-cloud-cli -y
       - run:
+          name: "Install prek"
+          command: |
+            pip install uv
+            uv tool install prek
+      - run:
           name: "Create Airflow Core Python Wheel"
           command: ./scripts/ci/astronomer-release.sh
       - run:
