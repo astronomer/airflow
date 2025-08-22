@@ -86,7 +86,7 @@ jobs:
             mkdir dist
             uv tool install prek
             prek install -f
-            prek --only-my-changes
+            prek --show-diff-on-failure --color always
 
   compare-commit-hash:
     machine:
