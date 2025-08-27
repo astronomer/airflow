@@ -3029,8 +3029,6 @@ def test_mapped_task_with_operator_extra_links_property():
     assert mapped_task.extra_links == sorted({"airflow", "github"})
 
 
-# TODO: Remove xfail
-@pytest.mark.xfail(reason="TODO: Need to add support for v1 & v2 to v3")
 def test_handle_v1_serdag():
     v1 = {
         "__version": 1,
@@ -3090,6 +3088,7 @@ def test_handle_v1_serdag():
                         "_task_module": "airflow.providers.standard.operators.bash",
                         "owner": "airflow1",
                         "pool": "pool1",
+                        "task_display_name": "my_bash_task",
                         "is_setup": False,
                         "is_teardown": False,
                         "on_failure_fail_dagrun": False,
@@ -3315,6 +3314,14 @@ def test_handle_v1_serdag():
     expected["dag"]["dag_dependencies"] = expected_dag_dependencies
     del expected["dag"]["tasks"][1]["__var"]["_operator_extra_links"]
 
+    # Removing empty fields in v1 -- since they aren't stored in v2
+    for k in ["is_setup", "downstream_task_ids", "is_teardown", "on_failure_fail_dagrun"]:
+        del v1["dag"]["tasks"][0]["__var"][k]
+        del v1["dag"]["tasks"][1]["__var"][k]
+
+    # Remove schema default
+    for k in ["template_ext", "template_fields_renderers", "pool"]:
+        del v1["dag"]["tasks"][1]["__var"][k]
     assert v1 == expected
 
 

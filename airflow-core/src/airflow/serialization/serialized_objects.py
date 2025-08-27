@@ -2348,7 +2348,7 @@ class SerializedDAG(DAG, BaseSerialization):
             ("_task_group", "task_group"),
             ("_access_control", "access_control"),
         ]
-        task_renames = [("_task_type", "task_type")]
+        task_renames = [("_task_type", "task_type"), ("task_display_name", "_task_display_name")]
         #
         tasks_remove = [
             "_log_config_logger_name",
@@ -2451,7 +2451,8 @@ class SerializedDAG(DAG, BaseSerialization):
             for k in tasks_remove:
                 task_var.pop(k, None)
             for old, new in task_renames:
-                task_var[new] = task_var.pop(old)
+                if old in task_var:
+                    task_var[new] = task_var.pop(old)
             for item in itertools.chain(*(task_var.get(key, []) for key in ("inlets", "outlets"))):
                 original_item_type = item["__type"]
                 if isinstance(item, dict) and "__type" in item:
