@@ -406,7 +406,18 @@
           "type": "integer",
           "exclusiveMinimum": 0
         },
-        "dag": { "$ref": "#/definitions/dag" }
+        "dag": { "$ref": "#/definitions/dag" },
+        "client_defaults": {
+          "type": "object",
+          "description": "SDK-specific default values that differ from schema defaults",
+          "properties": {
+            "tasks": {
+              "type": "object",
+              "description": "Task-level default overrides"
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false,
       "required": [ "__version", "dag" ]

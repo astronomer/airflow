@@ -121,6 +121,7 @@ TYPE = Encoding.TYPE
 VAR = Encoding.VAR
 serialized_simple_dag_ground_truth = {
     "__version": 2,
+    "client_defaults": {"tasks": {"retry_delay": 300.0}},
     "dag": {
         "default_args": {
             "__type": "dict",
