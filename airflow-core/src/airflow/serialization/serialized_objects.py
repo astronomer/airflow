@@ -1436,9 +1436,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         if op.partial_kwargs:
             serialized_op["partial_kwargs"] = {}
             for k, v in op.partial_kwargs.items():
-                if k == "retry_delay" and v == datetime.timedelta(seconds=300):
-                    # TODO: Remove this hardcoded default
-                    continue
                 if cls._is_excluded(v, k, op):
                     continue
 
