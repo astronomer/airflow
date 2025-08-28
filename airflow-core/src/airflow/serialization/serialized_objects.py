@@ -1294,8 +1294,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     template_fields: Collection[str] = ()
     template_fields_renderers: ClassVar[dict[str, str]] = {}
 
-    # TODO: following should take enum or str
-    trigger_rule: TriggerRule = "all_success"
+    trigger_rule: str | TriggerRule = "all_success"
 
     # TODO: Remove the following, they aren't used anymore
     ui_color: str = "#fff"
