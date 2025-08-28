@@ -3701,34 +3701,72 @@ class TestMappedOperatorSerializationAndClientDefaults:
         # Explicit values should override client_defaults
         assert deserialized_task.retries == 5  # Explicitly set value
 
-    def test_mapped_operator_serialization_size_optimization(self):
-        """Test that MappedOperator serialization is optimized by excluding client defaults."""
-        with DAG(dag_id="test_mapped_size") as dag:
-            # Create mapped operator that would benefit from client_defaults
+    @pytest.mark.parametrize(
+        ["task_config", "dag_id", "task_id", "non_default_fields"],
+        [
+            # Test case 1: Size optimization with non-default values
+            pytest.param(
+                {"retries": 3},  # Only set non-default values
+                "test_mapped_size",
+                "mapped_size_test",
+                {"retries"},
+                id="non_default_fields",
+            ),
+            # Test case 2: No duplication with default values
+            pytest.param(
+                {"retries": 0},  # This should match client_defaults and be optimized out
+                "test_no_duplication",
+                "mapped_task",
+                set(),  # No fields should be non-default (all optimized out)
+                id="duplicate_fields",
+            ),
+            # Test case 3: Mixed default/non-default values
+            pytest.param(
+                {"retries": 2, "max_active_tis_per_dag": 16},  # Mix of default and non-default
+                "test_mixed_optimization",
+                "mixed_task",
+                {"retries", "max_active_tis_per_dag"},  # Both should be preserved as they're non-default
+                id="test_mixed_optimization",
+            ),
+        ],
+    )
+    def test_mapped_operator_client_defaults_optimization(
+        self, task_config, dag_id, task_id, non_default_fields
+    ):
+        """Test that MappedOperator serialization optimizes using client defaults."""
+        with DAG(dag_id=dag_id) as dag:
+            # Create mapped operator with specified configuration
             BashOperator.partial(
-                task_id="mapped_size_test",
-                # Only set non-default values
-                retries=3,
+                task_id=task_id,
+                **task_config,
             ).expand(bash_command=["echo 1", "echo 2", "echo 3"])
 
         serialized_dag = SerializedDAG.to_dict(dag)
-
         mapped_task_serialized = serialized_dag["dag"]["tasks"][0]["__var"]
 
         assert mapped_task_serialized is not None
         assert mapped_task_serialized.get("_is_mapped") is True
 
-        # Check that client defaults are being used for size optimization
+        # Check optimization behavior
         client_defaults = serialized_dag["client_defaults"]["tasks"]
         partial_kwargs = mapped_task_serialized["partial_kwargs"]
 
-        # Fields that match client_defaults should not be in partial_kwargs
+        # Check that all fields are optimized correctly
         for field, default_value in client_defaults.items():
-            if field != "retries":  # We explicitly set retries=3
-                # Field should either not be in partial_kwargs or be different from default
+            if field in non_default_fields:
+                # Non-default fields should be present in partial_kwargs
+                assert field in partial_kwargs, (
+                    f"Field '{field}' should be in partial_kwargs as it's non-default"
+                )
+                # And have different values than defaults
+                assert partial_kwargs[field] != default_value, (
+                    f"Field '{field}' should have non-default value"
+                )
+            else:
+                # Default fields should either not be present or have different values if present
                 if field in partial_kwargs:
                     assert partial_kwargs[field] != default_value, (
-                        f"Field {field} with default value {default_value} should not be in partial_kwargs"
+                        f"Field '{field}' with default value should be optimized out"
                     )
 
     def test_mapped_operator_expand_input_preservation(self):
@@ -3755,30 +3793,79 @@ class TestMappedOperatorSerializationAndClientDefaults:
         assert expand_value["bash_command"] == ["echo 1", "echo 2", "echo 3"]
         assert expand_value["env"] == {"VAR1": "value1", "VAR2": "value2"}
 
-    def test_mapped_operator_client_defaults_not_duplicated_in_partial_kwargs(self):
-        """Test that fields matching client_defaults are not duplicated in partial_kwargs."""
-        with DAG(dag_id="test_no_duplication") as dag:
-            # Create mapped operator with default values
+    @pytest.mark.parametrize(
+        ["partial_kwargs_data", "expected_results"],
+        [
+            # Test case 1: Encoded format with client defaults
+            pytest.param(
+                {
+                    "retry_delay": {"__type": "timedelta", "__var": 600.0},
+                    "execution_timeout": {"__type": "timedelta", "__var": 1800.0},
+                    "owner": "test_user",
+                },
+                {
+                    "retry_delay": timedelta(seconds=600),
+                    "execution_timeout": timedelta(seconds=1800),
+                    "owner": "test_user",
+                },
+                id="encoded_with_client_defaults",
+            ),
+            # Test case 2: Non-encoded format (optimized)
+            pytest.param(
+                {
+                    "retry_delay": 600.0,
+                    "execution_timeout": 1800.0,
+                },
+                {
+                    "retry_delay": timedelta(seconds=600),
+                    "execution_timeout": timedelta(seconds=1800),
+                },
+                id="non_encoded_optimized",
+            ),
+            # Test case 3: Mixed format (some encoded, some not)
+            pytest.param(
+                {
+                    "retry_delay": {"__type": "timedelta", "__var": 600.0},  # Encoded
+                    "execution_timeout": 1800.0,  # Non-encoded
+                },
+                {
+                    "retry_delay": timedelta(seconds=600),
+                    "execution_timeout": timedelta(seconds=1800),
+                },
+                id="mixed_encoded_non_encoded",
+            ),
+        ],
+    )
+    def test_partial_kwargs_deserialization_formats(self, partial_kwargs_data, expected_results):
+        """Test deserialization of partial_kwargs in various formats (encoded, non-encoded, mixed)."""
+        result = SerializedBaseOperator._deserialize_partial_kwargs(partial_kwargs_data)
+
+        # Verify all expected results
+        for key, expected_value in expected_results.items():
+            assert key in result, f"Missing key '{key}' in result"
+            assert result[key] == expected_value, f"key '{key}': expected {expected_value}, got {result[key]}"
+
+    def test_partial_kwargs_end_to_end_deserialization(self):
+        """Test end-to-end partial_kwargs deserialization with real MappedOperator."""
+        with DAG(dag_id="test_e2e_partial_kwargs") as dag:
             BashOperator.partial(
                 task_id="mapped_task",
-                retries=0,  # This should match client_defaults
+                retry_delay=timedelta(seconds=600),  # Non-default value
+                owner="custom_owner",  # Non-default value
+                # retries not specified, should potentially get from client_defaults
             ).expand(bash_command=["echo 1", "echo 2"])
 
+        # Serialize and deserialize the DAG
         serialized_dag = SerializedDAG.to_dict(dag)
+        deserialized_dag = SerializedDAG.from_dict(serialized_dag)
+        deserialized_task = deserialized_dag.get_task("mapped_task")
 
-        mapped_task_serialized = serialized_dag["dag"]["tasks"][0]["__var"]
+        # Verify the task has correct values after round-trip
+        assert deserialized_task.retry_delay == timedelta(seconds=600)
+        assert deserialized_task.owner == "custom_owner"
 
-        assert mapped_task_serialized is not None
-        partial_kwargs = mapped_task_serialized["partial_kwargs"]
-        client_defaults = serialized_dag.get("client_defaults", {}).get("tasks", {})
-
-        # Fields that match client_defaults should either:
-        # 1. Not be present in partial_kwargs (optimized out), or
-        # 2. Have different values than the defaults if present
-        for field, default_value in client_defaults.items():
-            if field in partial_kwargs:
-                # If present, should have different value (no optimization possible)
-                # This test specifically uses default values, so they should be optimized out
-                assert partial_kwargs[field] != default_value, (
-                    f"Field {field} with default value {default_value} should be optimized out"
-                )
+        # Verify partial_kwargs were deserialized correctly
+        assert "retry_delay" in deserialized_task.partial_kwargs
+        assert "owner" in deserialized_task.partial_kwargs
+        assert deserialized_task.partial_kwargs["retry_delay"] == timedelta(seconds=600)
+        assert deserialized_task.partial_kwargs["owner"] == "custom_owner"

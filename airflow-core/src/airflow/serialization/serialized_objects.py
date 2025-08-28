@@ -1289,6 +1289,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     start_from_trigger: bool = False
     start_trigger_args: StartTriggerArgs | None = None
 
+    task_type: str = "BaseOperator"
     template_ext: Sequence[str] = []
     template_fields: Collection[str] = []
     template_fields_renderers: ClassVar[dict[str, str]] = {}
@@ -1316,9 +1317,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         self._BaseOperator__from_mapped = _airflow_from_mapped
         self.task_id = task_id
         self.params = ParamsDict(params)
-        # task_type is used by UI to display the correct class type, because UI only
-        # receives BaseOperator from deserialized DAGs.
-        self._task_type = "BaseOperator"
         # Move class attributes into object attributes.
         self.deps = DEFAULT_OPERATOR_DEPS
         self._operator_name: str | None = None
@@ -1382,17 +1380,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         if not link:
             return None
         return link.get_link(self, ti_key=ti.key)  # type: ignore[arg-type] # TODO: GH-52141 - BaseOperatorLink.get_link expects BaseOperator but receives SerializedBaseOperator
-
-    @property
-    def task_type(self) -> str:
-        # Overwrites task_type of BaseOperator to use _task_type instead of
-        # __class__.__name__.
-
-        return self._task_type
-
-    @task_type.setter
-    def task_type(self, task_type: str):
-        self._task_type = task_type
 
     @property
     def operator_name(self) -> str:
@@ -1536,8 +1523,10 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         DAG is hydrated.
         """
         # Apply defaults by merging them into encoded_op BEFORE main deserialization
-        # TODO: We don't do anything of client_defaults for MappedOperator yet
         encoded_op = cls._apply_defaults_to_encoded_op(encoded_op, client_defaults)
+
+        # Preprocess and upgrade all field names for backward compatibility and consistency
+        encoded_op = cls._preprocess_encoded_operator(encoded_op)
         # Extra Operator Links defined in Plugins
         op_extra_links_from_plugin = {}
 
@@ -1572,42 +1561,9 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         deserialized_partial_kwarg_defaults = {}
 
         for k, v in encoded_op.items():
-            # TODO: Can we do something smarter -- e.g we we only have 1 type in schema -- we don't add a type
-            # python_callable_name only serves to detect function name changes
-            if k == "python_callable_name":
-                continue
-            if k in ("_outlets", "_inlets"):
-                # `_outlets` -> `outlets`
-                k = k[1:]
-            elif k == "task_type":
-                k = "_task_type"
-            elif k == "task_display_name":
-                # Upgrade from old format/name
-                k = "_task_display_name"
-            if k == "_downstream_task_ids":
-                # Upgrade from old format/name
-                k = "downstream_task_ids"
-
-            if k == "label":
-                # Label shouldn't be set anymore --  it's computed from task_id now
-                continue
-            if k == "downstream_task_ids":
-                v = set(v)
-            elif k in [f"on_{x}_callback" for x in ("execute", "failure", "success", "retry", "skipped")]:
-                k = f"has_{k}"
-                v = bool(v)
-            elif k in {"retry_delay", "execution_timeout", "max_retry_delay"}:
-                # If operator's execution_timeout is None and core.default_task_execution_timeout is not None,
-                # v will be None so do not deserialize into timedelta
-                # if v is not None and not isinstance(v, dict):
-                if v is not None:
-                    v = cls._deserialize_timedelta(v)
-            elif k in encoded_op.get("template_fields", []):
-                pass
-            elif k == "resources":
-                v = Resources.from_dict(v)
-            elif k.endswith("_date"):
-                v = cls._deserialize_datetime(v)
+            # Use centralized field deserialization logic
+            if k in encoded_op.get("template_fields", []):
+                pass  # Template fields are handled separately
             elif k == "_operator_extra_links":
                 if cls._load_operator_extra_links:
                     op_predefined_extra_links = cls._deserialize_operator_extra_links(v)
@@ -1626,10 +1582,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                     v, new = op.params, v
                     v.update(new)
             elif k == "partial_kwargs":
-                # TODO: We can optimize this to support non-encoded values since we know that
-                #   the only keys included in partial_kwargs will be the SerializedBaseOperator attribs
-                #   that are also part of SerializedBaseOperator.get_serialized_fields
-                v = {arg: cls.deserialize(value) for arg, value in v.items()}
+                # Use unified deserializer that supports both encoded and non-encoded values
+                v = cls._deserialize_partial_kwargs(v, client_defaults)
             elif k in {"expand_input", "op_kwargs_expand_input"}:
                 v = _ExpandInputRef(v["type"], cls.deserialize(v["value"]))
             elif k == "operator_class":
@@ -1652,20 +1606,26 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             elif k == "weight_rule":
                 k = "_weight_rule"
                 v = decode_priority_weight_strategy(v)
+            else:
+                # Apply centralized deserialization for all other fields
+                v = cls._deserialize_field_value(k, v)
 
-            # TODO: I do not like what we have to do here to get models.MappedOperator and partial_kwargs working
-            #   We should figure out a better way for deserializing models.MappedOperator
+            # Handle field differences between SerializedBaseOperator and MappedOperator
+            # Fields that exist in SerializedBaseOperator but not in MappedOperator need to go to partial_kwargs
             if (
                 op.is_mapped
                 and k in SerializedBaseOperator.get_serialized_fields()
                 and k not in op.get_serialized_fields()
             ):
+                # This field belongs to SerializedBaseOperator but not MappedOperator
+                # Store it in partial_kwargs where it belongs
                 deserialized_partial_kwarg_defaults[k] = v
                 continue
 
             # else use v as it is
             setattr(op, k, v)
 
+        # Apply the fields that belong in partial_kwargs for MappedOperator
         if op.is_mapped:
             for k, v in deserialized_partial_kwarg_defaults.items():
                 if k not in op.partial_kwargs:
@@ -1762,17 +1722,56 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                 start_trigger_args=encoded_op.get("start_trigger_args", None),
                 start_from_trigger=encoded_op.get("start_from_trigger", False),
             )
-            # TODO: We cannot uncomment the following right now as the following fields
-            #   are not encoded for optimization
-            # if encoded_op.get("partial_kwargs", {}) and client_defaults:
-            #     for k, v in client_defaults.items():
-            #         if k not in encoded_op:
-            #             encoded_op["partial_kwargs"].update(client_defaults)
         else:
             op = SerializedBaseOperator(task_id=encoded_op["task_id"])
+
         cls.populate_operator(op, encoded_op, client_defaults)
 
         return op
+
+    @classmethod
+    def _preprocess_encoded_operator(cls, encoded_op: dict[str, Any]) -> dict[str, Any]:
+        """
+        Preprocess and upgrade all field names for backward compatibility and consistency.
+
+        This consolidates all field name transformations in one place:
+        - Callback field renaming (on_*_callback -> has_on_*_callback)
+        - Other field upgrades and renames
+        - Field exclusions
+        """
+        preprocessed = encoded_op.copy()
+
+        # Handle callback field renaming for backward compatibility
+        for callback_type in ("execute", "failure", "success", "retry", "skipped"):
+            old_key = f"on_{callback_type}_callback"
+            new_key = f"has_{old_key}"
+            if old_key in preprocessed:
+                preprocessed[new_key] = bool(preprocessed[old_key])
+                del preprocessed[old_key]
+
+        # Handle other field renames and upgrades from old format/name
+        field_renames = {
+            "task_display_name": "_task_display_name",
+            "_downstream_task_ids": "downstream_task_ids",
+            "_task_type": "task_type",
+            "_outlets": "outlets",
+            "_inlets": "inlets",
+        }
+
+        for old_name, new_name in field_renames.items():
+            if old_name in preprocessed:
+                preprocessed[new_name] = preprocessed.pop(old_name)
+
+        # Remove fields that shouldn't be processed
+        fields_to_exclude = {
+            "python_callable_name",  # Only serves to detect function name changes
+            "label",  # Shouldn't be set anymore - computed from task_id now
+        }
+
+        for field in fields_to_exclude:
+            preprocessed.pop(field, None)
+
+        return preprocessed
 
     @classmethod
     def detect_dependencies(cls, op: SdkOperator) -> set[DagDependency]:
@@ -2034,6 +2033,75 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             client_defaults[k] = serialized_value
 
         return client_defaults
+
+    @classmethod
+    def _deserialize_field_value(cls, field_name: str, value: Any) -> Any:
+        """
+        Deserialize a single field value using the same logic as populate_operator.
+
+        This method centralizes field-specific deserialization logic to avoid duplication.
+
+        :param field_name: The name of the field being deserialized
+        :param value: The value to deserialize
+        :return: The deserialized value
+        """
+        if field_name == "downstream_task_ids":
+            return set(value) if value is not None else set()
+        elif field_name in [
+            f"has_on_{x}_callback" for x in ("execute", "failure", "success", "retry", "skipped")
+        ]:
+            return bool(value)
+        elif field_name in {"retry_delay", "execution_timeout", "max_retry_delay"}:
+            # Reuse existing timedelta deserialization logic
+            if value is not None:
+                return cls._deserialize_timedelta(value)
+            return None
+        elif field_name == "resources":
+            return Resources.from_dict(value) if value is not None else None
+        elif field_name.endswith("_date"):
+            return cls._deserialize_datetime(value) if value is not None else None
+        else:
+            # For all other fields, return as-is (strings, ints, bools, etc.)
+            return value
+
+    @classmethod
+    def _deserialize_partial_kwargs(
+        cls, partial_kwargs_data: dict[str, Any], client_defaults: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """
+        Deserialize partial_kwargs supporting both encoded and non-encoded values.
+
+        This method can handle:
+        1. Encoded values: {"__type": "timedelta", "__var": 300.0}
+        2. Non-encoded values: 300.0 (for optimization)
+
+        It also applies client_defaults for missing fields.
+
+        :param partial_kwargs_data: The partial_kwargs data from serialized JSON
+        :param client_defaults: Client defaults to apply for missing fields
+        :return: Deserialized partial_kwargs dict
+        """
+        deserialized = {}
+
+        for k, v in partial_kwargs_data.items():
+            # Check if this is an encoded value (has __type and __var structure)
+            if isinstance(v, dict) and Encoding.TYPE in v and Encoding.VAR in v:
+                # This is encoded - use full deserialization
+                deserialized[k] = cls.deserialize(v)
+            else:
+                # This is non-encoded (optimized format)
+                # Reuse the same deserialization logic from populate_operator
+                deserialized[k] = cls._deserialize_field_value(k, v)
+
+        # Apply client_defaults for missing fields if provided
+        if client_defaults and "tasks" in client_defaults:
+            task_defaults = client_defaults["tasks"]
+            for k, default_value in task_defaults.items():
+                if k not in deserialized:
+                    # Apply the same deserialization logic to client_defaults
+                    deserialized[k] = cls._deserialize_field_value(k, default_value)
+
+        return deserialized
 
     @classmethod
     def _apply_defaults_to_encoded_op(

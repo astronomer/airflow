@@ -96,7 +96,7 @@ class MappedOperator(DAGNode):
     _can_skip_downstream: bool = attrs.field(alias="can_skip_downstream")
     _is_sensor: bool = attrs.field(alias="is_sensor", default=False)
     _task_module: str
-    _task_type: str
+    task_type: str
     _operator_name: str
     start_trigger_args: StartTriggerArgs | None
     start_from_trigger: bool = False
@@ -142,11 +142,6 @@ class MappedOperator(DAGNode):
 
     # TODO (GH-52141): Review if any of the properties below are used in the
     # SDK and the scheduler, and remove those not needed.
-
-    @property
-    def task_type(self) -> str:
-        """Implementing Operator."""
-        return self._task_type
 
     @property
     def operator_name(self) -> str:
