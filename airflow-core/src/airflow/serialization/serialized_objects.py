@@ -1227,7 +1227,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     _is_empty: bool
     _needs_expansion: bool
     _task_display_name: str | None
-    _on_failure_fail_dagrun: bool = False
     _weight_rule: str | PriorityWeightStrategy = "downstream"
 
     dag: DAG | None = None
@@ -1241,7 +1240,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     doc_json: str | None = None
     doc_yaml: str | None = None
     doc_rst: str | None = None
-
+    downstream_task_ids: set[str] = set()
     email: str | Sequence[str] | None
 
     # Following 2 should be deprecated
@@ -1271,6 +1270,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     has_on_skipped_callback: bool = False
 
     operator_extra_links: Collection[BaseOperatorLink] = ()
+    on_failure_fail_dagrun: bool = False
 
     outlets: Sequence = []
     owner: str = "airflow"
@@ -1290,8 +1290,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     start_from_trigger: bool = False
     start_trigger_args: StartTriggerArgs | None = None
 
-    template_ext: Sequence[str] = ()
-    template_fields: Collection[str] = ()
+    template_ext: Sequence[str] = []
+    template_fields: Collection[str] = []
     template_fields_renderers: ClassVar[dict[str, str]] = {}
 
     trigger_rule: str | TriggerRule = "all_success"
@@ -1408,15 +1408,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     @property
     def task_display_name(self) -> str:
         return self._task_display_name or self.task_id
-
-    # TODO (GH-52141): For compatibility... can we just rename this?
-    @property
-    def on_failure_fail_dagrun(self):
-        return self._on_failure_fail_dagrun
-
-    @on_failure_fail_dagrun.setter
-    def on_failure_fail_dagrun(self, value):
-        self._on_failure_fail_dagrun = value
 
     def expand_start_trigger_args(self, *, context: Context) -> StartTriggerArgs | None:
         return self.start_trigger_args
@@ -1659,8 +1650,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                 or k in ("outlets", "inlets")
             ):
                 v = cls.deserialize(v)
-            elif k == "on_failure_fail_dagrun":
-                k = "_on_failure_fail_dagrun"
+            elif k == "_on_failure_fail_dagrun":
+                k = "on_failure_fail_dagrun"
             elif k == "weight_rule":
                 k = "_weight_rule"
                 v = decode_priority_weight_strategy(v)
@@ -1984,6 +1975,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                 "has_on_retry_callback",
                 "has_on_skipped_callback",
                 "has_on_success_callback",
+                "on_failure_fail_dagrun",
                 "outlets",
                 "owner",
                 "params",
