@@ -1199,7 +1199,6 @@ class DependencyDetector:
         yield from dag.timetable.asset_condition.iter_dag_dependencies(source="", target=dag.dag_id)
 
 
-# TODO: Evaluate if we can use Pydantic instead to get s10n, validation, conversion for free!
 # TODO (GH-52141): Duplicate DAGNode in the scheduler.
 class SerializedBaseOperator(DAGNode, BaseSerialization):
     """
@@ -1218,7 +1217,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
 
     _decorated_fields = {"executor_config"}
 
-    # TODO: Remove Task SDK dependencies - hardcoded constructor params instead of signature introspection
     _CONSTRUCTOR_PARAMS = {}
 
     _json_schema: Validator = lazy_object_proxy.Proxy(load_dag_schema)
@@ -1280,7 +1278,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     queue: str = "default"
 
     resources: dict[str, Any] | None = None
-    retries: int | None = 0
+    retries: int = 0
+    retry_delay: datetime.timedelta
     retry_exponential_backoff: bool = False
     run_as_user: str | None = None
 
@@ -1747,12 +1746,12 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             op = SchedulerMappedOperator(
                 operator_class=operator_class_info,
                 task_id=encoded_op["task_id"],
-                operator_extra_links=BaseOperator.operator_extra_links,
-                template_ext=BaseOperator.template_ext,
-                template_fields=BaseOperator.template_fields,
-                template_fields_renderers=BaseOperator.template_fields_renderers,
-                ui_color=BaseOperator.ui_color,
-                ui_fgcolor=BaseOperator.ui_fgcolor,
+                operator_extra_links=SerializedBaseOperator.operator_extra_links,
+                template_ext=SerializedBaseOperator.template_ext,
+                template_fields=SerializedBaseOperator.template_fields,
+                template_fields_renderers=SerializedBaseOperator.template_fields_renderers,
+                ui_color=SerializedBaseOperator.ui_color,
+                ui_fgcolor=SerializedBaseOperator.ui_fgcolor,
                 is_sensor=encoded_op.get("_is_sensor", False),
                 can_skip_downstream=encoded_op.get("_can_skip_downstream", False),
                 task_module=encoded_op["_task_module"],
@@ -1769,10 +1768,9 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             #     for k, v in client_defaults.items():
             #         if k not in encoded_op:
             #             encoded_op["partial_kwargs"].update(client_defaults)
-            cls.populate_operator(op, encoded_op, client_defaults)
         else:
             op = SerializedBaseOperator(task_id=encoded_op["task_id"])
-            cls.populate_operator(op, encoded_op, client_defaults)
+        cls.populate_operator(op, encoded_op, client_defaults)
 
         return op
 
@@ -1826,9 +1824,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         schema_defaults = cls.get_schema_defaults("operator")
 
         if attrname in schema_defaults:
-            # log.info(f"Schema defaults for {attrname}: {schema_defaults[attrname]}")
             if schema_defaults[attrname] == var:
-                # log.info(f"Excluding {attrname} for {attrname}: {var}")
                 return True
         optional_fields = cls.get_operator_optional_fields_from_schema()
         if var is None:

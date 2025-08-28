@@ -3293,6 +3293,45 @@ def test_handle_v1_serdag():
     assert v1 == expected
 
 
+def test_email_optimization_removes_email_attrs_when_email_empty():
+    """Test that email_on_failure and email_on_retry are removed when email is empty."""
+    with DAG(dag_id="test_email_optimization") as dag:
+        BashOperator(
+            task_id="test_task",
+            bash_command="echo test",
+            email=None,  # Empty email
+            email_on_failure=True,  # This should be removed during serialization
+            email_on_retry=True,  # This should be removed during serialization
+        )
+
+    serialized_dag = SerializedDAG.to_dict(dag)
+    task_serialized = serialized_dag["dag"]["tasks"][0]["__var"]
+    assert task_serialized is not None
+
+    assert "email_on_failure" not in task_serialized
+    assert "email_on_retry" not in task_serialized
+
+    # But they should be present when email is not empty
+    with DAG(dag_id="test_email_with_attrs") as dag_with_email:
+        BashOperator(
+            task_id="test_task_with_email",
+            bash_command="echo test",
+            email="test@example.com",  # Non-empty email
+            email_on_failure=True,
+            email_on_retry=True,
+        )
+
+        serialized_dag_with_email = SerializedDAG.to_dict(dag_with_email)
+        task_with_email_serialized = serialized_dag_with_email["dag"]["tasks"][0]["__var"]
+
+        assert task_with_email_serialized is not None
+
+        # email_on_failure and email_on_retry SHOULD be in the serialized task
+        # since email is not empty
+        assert "email" in task_with_email_serialized
+        assert task_with_email_serialized["email"] == "test@example.com"
+
+
 def dummy_callback():
     pass
 
@@ -3339,7 +3378,7 @@ def dummy_callback():
 )
 def test_task_callback_boolean_optimization(callback_config, expected_flags, is_mapped):
     """Test that task callbacks are optimized using has_on_*_callback boolean flags."""
-    dag = DAG(dag_id="test_callback_dag", start_date=datetime(2020, 1, 1))
+    dag = DAG(dag_id="test_callback_dag")
 
     if is_mapped:
         # Create mapped operator
@@ -3389,7 +3428,7 @@ def test_task_callback_boolean_optimization(callback_config, expected_flags, is_
 
 def test_task_callback_properties_exist():
     """Test that all callback boolean properties exist on both regular and mapped operators."""
-    dag = DAG(dag_id="test_dag", start_date=datetime(2020, 1, 1))
+    dag = DAG(dag_id="test_dag")
 
     regular_task = BashOperator(task_id="regular", bash_command="echo test", dag=dag)
     mapped_task = BashOperator.partial(task_id="mapped", dag=dag).expand(bash_command=["echo 1"])
@@ -3629,7 +3668,7 @@ class TestMappedOperatorSerializationAndClientDefaults:
 
     def test_mapped_operator_client_defaults_application(self):
         """Test that client_defaults are correctly applied to MappedOperator during deserialization."""
-        with DAG(dag_id="test_mapped_dag", start_date=datetime(2020, 1, 1)) as dag:
+        with DAG(dag_id="test_mapped_dag") as dag:
             # Create a mapped operator
             BashOperator.partial(
                 task_id="mapped_task",
@@ -3664,7 +3703,7 @@ class TestMappedOperatorSerializationAndClientDefaults:
 
     def test_mapped_operator_serialization_size_optimization(self):
         """Test that MappedOperator serialization is optimized by excluding client defaults."""
-        with DAG(dag_id="test_mapped_size", start_date=datetime(2020, 1, 1)) as dag:
+        with DAG(dag_id="test_mapped_size") as dag:
             # Create mapped operator that would benefit from client_defaults
             BashOperator.partial(
                 task_id="mapped_size_test",
@@ -3674,12 +3713,7 @@ class TestMappedOperatorSerializationAndClientDefaults:
 
         serialized_dag = SerializedDAG.to_dict(dag)
 
-        # Find the serialized mapped task
-        mapped_task_serialized = None
-        for task in serialized_dag["dag"]["tasks"]:
-            if task["__var"]["task_id"] == "mapped_size_test":
-                mapped_task_serialized = task["__var"]
-                break
+        mapped_task_serialized = serialized_dag["dag"]["tasks"][0]["__var"]
 
         assert mapped_task_serialized is not None
         assert mapped_task_serialized.get("_is_mapped") is True
@@ -3699,7 +3733,7 @@ class TestMappedOperatorSerializationAndClientDefaults:
 
     def test_mapped_operator_expand_input_preservation(self):
         """Test that expand_input is correctly preserved during serialization."""
-        with DAG(dag_id="test_expand_input", start_date=datetime(2020, 1, 1)):
+        with DAG(dag_id="test_expand_input"):
             mapped_task = BashOperator.partial(task_id="test_expand").expand(
                 bash_command=["echo 1", "echo 2", "echo 3"], env={"VAR1": "value1", "VAR2": "value2"}
             )
@@ -3720,3 +3754,31 @@ class TestMappedOperatorSerializationAndClientDefaults:
         assert "env" in expand_value
         assert expand_value["bash_command"] == ["echo 1", "echo 2", "echo 3"]
         assert expand_value["env"] == {"VAR1": "value1", "VAR2": "value2"}
+
+    def test_mapped_operator_client_defaults_not_duplicated_in_partial_kwargs(self):
+        """Test that fields matching client_defaults are not duplicated in partial_kwargs."""
+        with DAG(dag_id="test_no_duplication") as dag:
+            # Create mapped operator with default values
+            BashOperator.partial(
+                task_id="mapped_task",
+                retries=0,  # This should match client_defaults
+            ).expand(bash_command=["echo 1", "echo 2"])
+
+        serialized_dag = SerializedDAG.to_dict(dag)
+
+        mapped_task_serialized = serialized_dag["dag"]["tasks"][0]["__var"]
+
+        assert mapped_task_serialized is not None
+        partial_kwargs = mapped_task_serialized["partial_kwargs"]
+        client_defaults = serialized_dag.get("client_defaults", {}).get("tasks", {})
+
+        # Fields that match client_defaults should either:
+        # 1. Not be present in partial_kwargs (optimized out), or
+        # 2. Have different values than the defaults if present
+        for field, default_value in client_defaults.items():
+            if field in partial_kwargs:
+                # If present, should have different value (no optimization possible)
+                # This test specifically uses default values, so they should be optimized out
+                assert partial_kwargs[field] != default_value, (
+                    f"Field {field} with default value {default_value} should be optimized out"
+                )

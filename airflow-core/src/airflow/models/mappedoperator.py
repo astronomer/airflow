@@ -30,17 +30,6 @@ from sqlalchemy.orm import Session
 from airflow.exceptions import AirflowException
 from airflow.sdk import BaseOperator as TaskSDKBaseOperator
 from airflow.sdk.definitions._internal.abstractoperator import (
-    DEFAULT_EXECUTOR,
-    DEFAULT_IGNORE_FIRST_DEPENDS_ON_PAST,
-    DEFAULT_OWNER,
-    DEFAULT_POOL_NAME,
-    DEFAULT_POOL_SLOTS,
-    DEFAULT_PRIORITY_WEIGHT,
-    DEFAULT_QUEUE,
-    DEFAULT_RETRIES,
-    DEFAULT_RETRY_DELAY,
-    DEFAULT_TRIGGER_RULE,
-    DEFAULT_WEIGHT_RULE,
     NotMapped,
 )
 from airflow.sdk.definitions._internal.node import DAGNode
@@ -186,11 +175,11 @@ class MappedOperator(DAGNode):
 
     @property
     def owner(self) -> str:
-        return self.partial_kwargs.get("owner", DEFAULT_OWNER)
+        return self.partial_kwargs.get("owner", SerializedBaseOperator.owner)
 
     @property
     def trigger_rule(self) -> TriggerRule:
-        return self.partial_kwargs.get("trigger_rule", DEFAULT_TRIGGER_RULE)
+        return self.partial_kwargs.get("trigger_rule", SerializedBaseOperator.trigger_rule)
 
     @property
     def is_setup(self) -> bool:
@@ -206,7 +195,9 @@ class MappedOperator(DAGNode):
 
     @property
     def ignore_first_depends_on_past(self) -> bool:
-        value = self.partial_kwargs.get("ignore_first_depends_on_past", DEFAULT_IGNORE_FIRST_DEPENDS_ON_PAST)
+        value = self.partial_kwargs.get(
+            "ignore_first_depends_on_past", SerializedBaseOperator.ignore_first_depends_on_past
+        )
         return bool(value)
 
     @property
@@ -215,19 +206,19 @@ class MappedOperator(DAGNode):
 
     @property
     def retries(self) -> int:
-        return self.partial_kwargs.get("retries", DEFAULT_RETRIES)
+        return self.partial_kwargs.get("retries", SerializedBaseOperator.retries)
 
     @property
     def queue(self) -> str:
-        return self.partial_kwargs.get("queue", DEFAULT_QUEUE)
+        return self.partial_kwargs.get("queue", SerializedBaseOperator.queue)
 
     @property
     def pool(self) -> str:
-        return self.partial_kwargs.get("pool", DEFAULT_POOL_NAME)
+        return self.partial_kwargs.get("pool", SerializedBaseOperator.pool)
 
     @property
     def pool_slots(self) -> int:
-        return self.partial_kwargs.get("pool_slots", DEFAULT_POOL_SLOTS)
+        return self.partial_kwargs.get("pool_slots", SerializedBaseOperator.pool_slots)
 
     @property
     def resources(self) -> Resources | None:
@@ -267,11 +258,11 @@ class MappedOperator(DAGNode):
 
     @property
     def priority_weight(self) -> int:
-        return self.partial_kwargs.get("priority_weight", DEFAULT_PRIORITY_WEIGHT)
+        return self.partial_kwargs.get("priority_weight", SerializedBaseOperator.priority_weight)
 
     @property
     def retry_delay(self) -> datetime.timedelta:
-        return self.partial_kwargs.get("retry_delay", DEFAULT_RETRY_DELAY)
+        return self.partial_kwargs["retry_delay"]
 
     @property
     def retry_exponential_backoff(self) -> bool:
@@ -280,12 +271,12 @@ class MappedOperator(DAGNode):
     @property
     def weight_rule(self) -> PriorityWeightStrategy:
         return validate_and_load_priority_weight_strategy(
-            self.partial_kwargs.get("weight_rule", DEFAULT_WEIGHT_RULE)
+            self.partial_kwargs.get("weight_rule", SerializedBaseOperator._weight_rule)
         )
 
     @property
     def executor(self) -> str | None:
-        return self.partial_kwargs.get("executor", DEFAULT_EXECUTOR)
+        return self.partial_kwargs.get("executor")
 
     @property
     def executor_config(self) -> dict:
