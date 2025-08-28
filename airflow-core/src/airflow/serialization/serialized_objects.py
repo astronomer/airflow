@@ -51,7 +51,7 @@ from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.models.xcom import XComModel
 from airflow.models.xcom_arg import SchedulerXComArg, deserialize_xcom_arg
 from airflow.sdk import Asset, AssetAlias, AssetAll, AssetAny, AssetWatcher, BaseOperator, XComArg
-from airflow.sdk.bases.operator import OPERATOR_DEFAULTS # TODO: Copy this into the scheduler?
+from airflow.sdk.bases.operator import OPERATOR_DEFAULTS  # TODO: Copy this into the scheduler?
 from airflow.sdk.definitions._internal.node import DAGNode
 from airflow.sdk.definitions.asset import (
     AssetAliasEvent,
