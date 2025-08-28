@@ -3425,3 +3425,54 @@ def test_task_callback_properties_exist():
 
         assert hasattr(serialized_regular, prop), f"Deserialized regular operator missing {prop}"
         assert hasattr(serialized_mapped, prop), f"Deserialized mapped operator missing {prop}"
+
+
+@pytest.mark.parametrize(
+    "old_callback_name,new_callback_name",
+    [
+        ("on_execute_callback", "has_on_execute_callback"),
+        ("on_failure_callback", "has_on_failure_callback"),
+        ("on_success_callback", "has_on_success_callback"),
+        ("on_retry_callback", "has_on_retry_callback"),
+        ("on_skipped_callback", "has_on_skipped_callback"),
+    ],
+)
+def test_task_callback_backward_compatibility(old_callback_name, new_callback_name):
+    """Test that old serialized DAGs with on_*_callback keys are correctly converted to has_on_*_callback."""
+
+    old_serialized_task = {
+        "is_setup": False,
+        old_callback_name: [
+            "        def dumm_callback(*args, **kwargs):\n            # hello\n            pass\n"
+        ],
+        "is_teardown": False,
+        "task_type": "BaseOperator",
+        "pool": "default_pool",
+        "task_id": "simple_task",
+        "template_fields": [],
+        "on_failure_fail_dagrun": False,
+        "downstream_task_ids": [],
+        "template_ext": [],
+        "ui_fgcolor": "#000",
+        "weight_rule": "downstream",
+        "ui_color": "#fff",
+        "template_fields_renderers": {},
+        "_needs_expansion": False,
+        "start_from_trigger": False,
+        "_task_module": "airflow.sdk.bases.operator",
+        "start_trigger_args": None,
+    }
+
+    # Test deserialization converts old format to new format
+    deserialized_task = SerializedBaseOperator.deserialize_operator(old_serialized_task)
+
+    # Verify the new format is present and correct
+    assert hasattr(deserialized_task, new_callback_name)
+    assert getattr(deserialized_task, new_callback_name) is True
+    assert not hasattr(deserialized_task, old_callback_name)
+
+    # Test with empty/None callback (should convert to False)
+    old_serialized_task[old_callback_name] = None
+
+    deserialized_task_empty = SerializedBaseOperator.deserialize_operator(old_serialized_task)
+    assert getattr(deserialized_task_empty, new_callback_name) is False

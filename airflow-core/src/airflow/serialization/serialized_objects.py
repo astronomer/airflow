@@ -1605,6 +1605,9 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                 continue
             if k == "downstream_task_ids":
                 v = set(v)
+            elif k in [f"on_{x}_callback" for x in ("execute", "failure", "success", "retry", "skipped")]:
+                k = f"has_{k}"
+                v = bool(v)
             elif k in {"retry_delay", "execution_timeout", "max_retry_delay"}:
                 # If operator's execution_timeout is None and core.default_task_execution_timeout is not None,
                 # v will be None so do not deserialize into timedelta
