@@ -292,13 +292,15 @@
         "ui_fgcolor": { "$ref": "#/definitions/color" },
         "template_fields": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "default": []
         },
         "template_ext": {"type": "array", "default": []},
         "template_fields_renderers": {"$ref": "#/definitions/dict", "default": {}},
         "downstream_task_ids": {
           "type": "array",
-          "items": { "type": "string" }
+          "items": { "type": "string" },
+          "default": []
         },
         "doc":  { "type": "string" },
         "doc_md":  { "type": "string" },

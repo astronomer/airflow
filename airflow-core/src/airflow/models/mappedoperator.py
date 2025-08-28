@@ -110,7 +110,7 @@ class MappedOperator(DAGNode):
     _task_type: str
     _operator_name: str
     start_trigger_args: StartTriggerArgs | None
-    start_from_trigger: bool
+    start_from_trigger: bool = False
     _needs_expansion: bool = True
 
     dag: SchedulerDAG = attrs.field(init=False)
@@ -313,6 +313,7 @@ class MappedOperator(DAGNode):
 
     @classmethod
     def get_serialized_fields(cls):
+        """Fields to extract from JSON-Serialized DAG."""
         return frozenset(
             {
                 "_disallow_kwargs_override",
@@ -336,6 +337,9 @@ class MappedOperator(DAGNode):
                 "template_fields_renderers",
                 "ui_color",
                 "ui_fgcolor",
+                # TODO: Need to verify if the following two are needed on the server side.
+                "expand_input",
+                "op_kwargs_expand_input",
             }
         )
 

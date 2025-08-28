@@ -76,6 +76,7 @@ from airflow.task.priority_strategy import (
     PriorityWeightStrategy,
     airflow_priority_weight_strategies,
     airflow_priority_weight_strategies_classes,
+    validate_and_load_priority_weight_strategy,
 )
 from airflow.ti_deps.deps.mapped_task_upstream_dep import MappedTaskUpstreamDep
 from airflow.ti_deps.deps.not_in_retry_period_dep import NotInRetryPeriodDep
@@ -675,7 +676,13 @@ class BaseSerialization:
             elif key == "timetable" and value is not None:
                 serialized_object[key] = encode_timetable(value)
             elif key == "weight_rule" and value is not None:
-                serialized_object[key] = encode_priority_weight_strategy(value)
+                encoded_priority_weight_strategy = encode_priority_weight_strategy(value)
+
+                # Exclude if it is just default
+                default_pri_weight_stra = cls.get_schema_defaults("operator").get(key, None)
+                if default_pri_weight_stra != encoded_priority_weight_strategy:
+                    serialized_object[key] = encoded_priority_weight_strategy
+
             else:
                 value = cls.serialize(value)
                 if isinstance(value, dict) and Encoding.TYPE in value:
@@ -1063,6 +1070,9 @@ class BaseSerialization:
     def get_operator_optional_fields_from_schema(cls) -> set[str]:
         schema_loader = cls._json_schema
 
+        if schema_loader is None:
+            return set()
+
         schema_data = schema_loader.schema
         operator_def = schema_data.get("definitions", {}).get("operator", {})
         operator_fields = set(operator_def.get("properties", {}).keys())
@@ -1081,6 +1091,9 @@ class BaseSerialization:
         """
         # Load schema if needed (handles lazy loading)
         schema_loader = cls._json_schema
+
+        if schema_loader is None:
+            return {}
 
         # Access the schema definitions (trigger lazy loading)
         schema_data = schema_loader.schema
@@ -1215,6 +1228,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     _needs_expansion: bool
     _task_display_name: str | None
     _on_failure_fail_dagrun: bool = False
+    _weight_rule: str | PriorityWeightStrategy = "downstream"
 
     dag: DAG | None = None
     task_group: TaskGroup | None = None
@@ -1289,7 +1303,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
 
     wait_for_downstream: bool = False
     wait_for_past_depends_before_skipping: bool = False
-    weight_rule: str | PriorityWeightStrategy = "downstream"
 
     is_mapped = False
 
@@ -1409,6 +1422,10 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
     def expand_start_trigger_args(self, *, context: Context) -> StartTriggerArgs | None:
         return self.start_trigger_args
 
+    @property
+    def weight_rule(self) -> PriorityWeightStrategy:
+        return validate_and_load_priority_weight_strategy(self._weight_rule)
+
     def __getattr__(self, name):
         # Handle missing attributes with task_type instead of SerializedBaseOperator
         # Don't intercept special methods that Python internals might check
@@ -1482,7 +1499,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         serialize_op["start_trigger_args"] = (
             encode_start_trigger_args(op.start_trigger_args) if op.start_trigger_args else None
         )
-        serialize_op["start_from_trigger"] = op.start_from_trigger
 
         if op.operator_extra_links:
             serialize_op["_operator_extra_links"] = cls._serialize_operator_extra_links(
@@ -1532,6 +1548,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         DAG is hydrated.
         """
         # Apply defaults by merging them into encoded_op BEFORE main deserialization
+        # TODO: We currently don't do anything of dag_default_args for both operators
+        #   and don't do anything of client_defaults for MappedOperator
         encoded_op = cls._apply_defaults_to_encoded_op(encoded_op, client_defaults, dag_default_args)
         # Extra Operator Links defined in Plugins
         op_extra_links_from_plugin = {}
@@ -1564,12 +1582,10 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                     list(op_extra_links_from_plugin.values()),
                 )
 
+        deserialized_partial_kwarg_defaults = {}
+
         for k, v in encoded_op.items():
-            if v == Encoding.TYPE:
-                # If "__type" exist, we need to deserialize it!
-                v = cls.deserialize(v)
-                setattr(op, k, v)
-                continue
+            # TODO: Can we do something smarter -- e.g we we only have 1 type in schema -- we don't add a type
             # python_callable_name only serves to detect function name changes
             if k == "python_callable_name":
                 continue
@@ -1620,6 +1636,9 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                     v, new = op.params, v
                     v.update(new)
             elif k == "partial_kwargs":
+                # TODO: We can optimize this to support non-encoded values since we know that
+                #   the only keys included in partial_kwargs will be the SerializedBaseOperator attribs
+                #   that are also part of SerializedBaseOperator.get_serialized_fields
                 v = {arg: cls.deserialize(value) for arg, value in v.items()}
             elif k in {"expand_input", "op_kwargs_expand_input"}:
                 v = _ExpandInputRef(v["type"], cls.deserialize(v["value"]))
@@ -1641,11 +1660,26 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             elif k == "on_failure_fail_dagrun":
                 k = "_on_failure_fail_dagrun"
             elif k == "weight_rule":
+                k = "_weight_rule"
                 v = decode_priority_weight_strategy(v)
 
-            # else use v as it is
+            # TODO: I do not like what we have to do here to get models.MappedOperator and partial_kwargs working
+            #   We should figure out a better way for deserializing models.MappedOperator
+            if (
+                op.is_mapped
+                and k in SerializedBaseOperator.get_serialized_fields()
+                and k not in op.get_serialized_fields()
+            ):
+                deserialized_partial_kwarg_defaults[k] = v
+                continue
 
+            # else use v as it is
             setattr(op, k, v)
+
+        if op.is_mapped:
+            for k, v in deserialized_partial_kwarg_defaults.items():
+                if k not in op.partial_kwargs:
+                    op.partial_kwargs[k] = v
 
         for k in op.get_serialized_fields() - encoded_op.keys():
             # TODO: refactor deserialization of BaseOperator and MappedOperator (split it out), then check
@@ -1739,7 +1773,13 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
                 start_trigger_args=encoded_op.get("start_trigger_args", None),
                 start_from_trigger=encoded_op.get("start_from_trigger", False),
             )
-            cls.populate_operator(op, encoded_op)
+            # TODO: We cannot uncomment the following right now as the following fields
+            #   are not encoded for optimization
+            # if encoded_op.get("partial_kwargs", {}) and client_defaults:
+            #     for k, v in client_defaults.items():
+            #         if k not in encoded_op:
+            #             encoded_op["partial_kwargs"].update(client_defaults)
+            cls.populate_operator(op, encoded_op, client_defaults, dag_default_args)
         else:
             op = SerializedBaseOperator(task_id=encoded_op["task_id"])
             cls.populate_operator(op, encoded_op, client_defaults, dag_default_args)
@@ -1989,6 +2029,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
 
         # Only include OPERATOR_DEFAULTS values that differ from schema defaults
         for k, v in OPERATOR_DEFAULTS.items():
+            if k not in cls.get_serialized_fields():
+                continue
             # Exclude values that are the same as the schema defaults
             if k in schema_defaults and schema_defaults[k] == v:
                 continue
@@ -2021,6 +2063,7 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             client_defaults: SDK-specific defaults from client_defaults section
             dag_default_args: DAG-level default_args (already deserialized)
 
+        # TODO: See if we can overload default_args instead of a separate client_defaults setting.
         Hierarchy (lowest to highest priority):
         1. client_defaults.tasks (SDK-specific defaults)
         2. DAG default_args (DAG-level overrides)
@@ -2463,6 +2506,11 @@ class SerializedDAG(DAG, BaseSerialization):
                     var_["name"] = var_["uri"]
                 var_["group"] = "asset"
 
+            for k, v in list(task_var.items()):
+                op_defaults = SerializedDAG.get_schema_defaults("operator")
+                if k in op_defaults and v == op_defaults[k]:
+                    del task_var[k]
+
         # Set on the root TG
         dag_dict["task_group"]["group_display_name"] = ""
 
@@ -2635,7 +2683,11 @@ class LazyDeserializedDAG(pydantic.BaseModel):
 
     @cached_property
     def _real_dag(self):
-        return SerializedDAG.from_dict(self.data)
+        try:
+            return SerializedDAG.from_dict(self.data)
+        except Exception:
+            log.exception("Failed to deserialize DAG")
+            raise
 
     def __getattr__(self, name: str, /) -> Any:
         if name in self.NULLABLE_PROPERTIES:

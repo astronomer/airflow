@@ -198,9 +198,7 @@ serialized_simple_dag_ground_truth = {
                     },
                     "doc_md": "### Task Tutorial Documentation",
                     "_needs_expansion": False,
-                    "weight_rule": "downstream",
                     "start_trigger_args": None,
-                    "start_from_trigger": False,
                     "inlets": [
                         {
                             "__type": "asset",
@@ -244,9 +242,7 @@ serialized_simple_dag_ground_truth = {
                     "_operator_name": "@custom",
                     "_task_module": "tests_common.test_utils.mock_operators",
                     "_needs_expansion": False,
-                    "weight_rule": "downstream",
                     "start_trigger_args": None,
-                    "start_from_trigger": False,
                 },
             },
         ],
@@ -2500,7 +2496,6 @@ def test_operator_expand_serde():
         "_task_module": "airflow.providers.standard.operators.bash",
         "task_type": "BashOperator",
         "start_trigger_args": None,
-        "start_from_trigger": False,
         "expand_input": {
             "type": "dict-of-lists",
             "value": {
@@ -2573,7 +2568,6 @@ def test_operator_expand_xcomarg_serde():
         "_disallow_kwargs_override": False,
         "_expand_input_attr": "expand_input",
         "start_trigger_args": None,
-        "start_from_trigger": False,
     }
 
     op = BaseSerialization.deserialize(serialized)
@@ -2631,7 +2625,6 @@ def test_operator_expand_kwargs_literal_serde(strict):
         "_disallow_kwargs_override": strict,
         "_expand_input_attr": "expand_input",
         "start_trigger_args": None,
-        "start_from_trigger": False,
     }
 
     op = BaseSerialization.deserialize(serialized)
@@ -2686,7 +2679,6 @@ def test_operator_expand_kwargs_xcomarg_serde(strict):
         "_disallow_kwargs_override": strict,
         "_expand_input_attr": "expand_input",
         "start_trigger_args": None,
-        "start_from_trigger": False,
     }
 
     op = BaseSerialization.deserialize(serialized)
@@ -2798,7 +2790,6 @@ def test_taskflow_expand_serde():
         "_expand_input_attr": "op_kwargs_expand_input",
         "python_callable_name": qualname(x),
         "start_trigger_args": None,
-        "start_from_trigger": False,
     }
 
     deserialized = BaseSerialization.deserialize(serialized)
@@ -2867,7 +2858,6 @@ def test_taskflow_expand_kwargs_serde(strict):
         "_operator_name": "@task",
         "python_callable_name": qualname(x),
         "start_trigger_args": None,
-        "start_from_trigger": False,
         "partial_kwargs": {
             "op_args": [],
             "op_kwargs": {
@@ -3013,7 +3003,6 @@ def test_mapped_task_with_operator_extra_links_property():
         "_task_module": "unit.serialization.test_dag_serialization",
         "_is_mapped": True,
         "start_trigger_args": None,
-        "start_from_trigger": False,
     }
     deserialized_dag = SerializedDAG.deserialize_dag(serialized_dag[Encoding.VAR])
     # operator defined links have to be instances of XComOperatorLink
@@ -3314,14 +3303,7 @@ def test_handle_v1_serdag():
     expected["dag"]["dag_dependencies"] = expected_dag_dependencies
     del expected["dag"]["tasks"][1]["__var"]["_operator_extra_links"]
 
-    # Removing empty fields in v1 -- since they aren't stored in v2
-    for k in ["is_setup", "downstream_task_ids", "is_teardown", "on_failure_fail_dagrun"]:
-        del v1["dag"]["tasks"][0]["__var"][k]
-        del v1["dag"]["tasks"][1]["__var"][k]
-
-    # Remove schema default
-    for k in ["template_ext", "template_fields_renderers", "pool"]:
-        del v1["dag"]["tasks"][1]["__var"][k]
+    del expected["client_defaults"]
     assert v1 == expected
 
 
