@@ -30,6 +30,7 @@ import { getFilterCount } from "src/utils/filterUtils";
 
 import { FavoriteFilter } from "./FavoriteFilter";
 import { PausedFilter } from "./PausedFilter";
+import { PendingActionsFilter } from "./PendingActionsFilter";
 import { StateFilters } from "./StateFilters";
 import { TagFilter } from "./TagFilter";
 
@@ -39,6 +40,7 @@ const {
   NEEDS_REVIEW: NEEDS_REVIEW_PARAM,
   OFFSET: OFFSET_PARAM,
   PAUSED: PAUSED_PARAM,
+  PENDING_HITL: PENDING_HITL_PARAM,
   TAGS: TAGS_PARAM,
   TAGS_MATCH_MODE: TAGS_MATCH_MODE_PARAM,
 }: SearchParamsKeysType = SearchParamsKeys;
@@ -99,6 +101,25 @@ export const DagsFilters = () => {
         searchParams.delete(FAVORITE_PARAM);
       } else {
         searchParams.set(FAVORITE_PARAM, val);
+      }
+      setTableURLState({
+        pagination: { ...pagination, pageIndex: 0 },
+        sorting,
+      });
+      searchParams.delete(OFFSET_PARAM);
+      setSearchParams(searchParams);
+    },
+    [pagination, searchParams, setSearchParams, setTableURLState, sorting],
+  );
+
+  const handlePendingActionsChange = useCallback(
+    ({ value }: { value: Array<string> }) => {
+      const [val] = value;
+
+      if (val === undefined || val === "all") {
+        searchParams.delete(PENDING_HITL_PARAM);
+      } else {
+        searchParams.set(PENDING_HITL_PARAM, val);
       }
       setTableURLState({
         pagination: { ...pagination, pageIndex: 0 },
@@ -174,6 +195,7 @@ export const DagsFilters = () => {
 
   const filterCount = getFilterCount({
     needsReview,
+    needsReview,
     selectedTags,
     showFavorites,
     showPaused,
@@ -212,6 +234,10 @@ export const DagsFilters = () => {
           tags={data?.pages.flatMap((dagResponse) => dagResponse.tags) ?? []}
         />
         <FavoriteFilter onFavoriteChange={handleFavoriteChange} showFavorites={showFavorites} />
+        <PendingActionsFilter
+          onPendingActionsChange={handlePendingActionsChange}
+          showPendingActions={needsReview}
+        />
       </HStack>
       <Box>
         <ResetButton filterCount={filterCount} onClearFilters={onClearFilters} />
