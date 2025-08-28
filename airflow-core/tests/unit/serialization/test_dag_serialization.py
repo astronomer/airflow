@@ -64,7 +64,7 @@ from airflow.providers.cncf.kubernetes.pod_generator import PodGenerator
 from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import AssetAlias, BaseHook, teardown
 from airflow.sdk.bases.decorator import DecoratedOperator
-from airflow.sdk.bases.operator import BaseOperator
+from airflow.sdk.bases.operator import OPERATOR_DEFAULTS, BaseOperator
 from airflow.sdk.definitions._internal.expandinput import EXPAND_INPUT_EMPTY
 from airflow.sdk.definitions.asset import Asset, AssetUniqueKey
 from airflow.sdk.definitions.operator_resources import Resources
@@ -3462,3 +3462,261 @@ def test_task_callback_backward_compatibility(old_callback_name, new_callback_na
 
     deserialized_task_empty = SerializedBaseOperator.deserialize_operator(old_serialized_task)
     assert getattr(deserialized_task_empty, new_callback_name) is False
+
+
+class TestClientDefaultsGeneration:
+    """Test client defaults generation functionality."""
+
+    def test_generate_client_defaults_basic(self):
+        """Test basic client defaults generation."""
+        client_defaults = SerializedBaseOperator.generate_client_defaults()
+
+        assert isinstance(client_defaults, dict)
+
+        # Should only include serializable fields
+        serialized_fields = SerializedBaseOperator.get_serialized_fields()
+        for field in client_defaults:
+            assert field in serialized_fields, f"Field {field} not in serialized fields"
+
+    def test_generate_client_defaults_excludes_schema_defaults(self):
+        """Test that client defaults excludes values that match schema defaults."""
+        client_defaults = SerializedBaseOperator.generate_client_defaults()
+        schema_defaults = SerializedBaseOperator.get_schema_defaults("operator")
+
+        # Check that values matching schema defaults are excluded
+        for field, value in client_defaults.items():
+            if field in schema_defaults:
+                assert value != schema_defaults[field], (
+                    f"Field {field} has value {value!r} which matches schema default {schema_defaults[field]!r}"
+                )
+
+    def test_generate_client_defaults_excludes_none_and_empty(self):
+        """Test that client defaults excludes None and empty collection values."""
+        client_defaults = SerializedBaseOperator.generate_client_defaults()
+
+        for field, value in client_defaults.items():
+            assert value is not None, f"Field {field} has None value"
+            assert value not in [[], (), set(), {}], f"Field {field} has empty collection value: {value!r}"
+
+    def test_generate_client_defaults_caching(self):
+        """Test that client defaults generation is cached."""
+        # Clear cache first
+        SerializedBaseOperator.generate_client_defaults.cache_clear()
+
+        # First call
+        client_defaults_1 = SerializedBaseOperator.generate_client_defaults()
+
+        # Second call should return same object (cached)
+        client_defaults_2 = SerializedBaseOperator.generate_client_defaults()
+
+        assert client_defaults_1 is client_defaults_2, "Client defaults should be cached"
+
+        # Check cache info
+        cache_info = SerializedBaseOperator.generate_client_defaults.cache_info()
+        assert cache_info.hits >= 1, "Cache should have at least one hit"
+
+    def test_generate_client_defaults_only_operator_defaults_fields(self):
+        """Test that only fields from OPERATOR_DEFAULTS are considered."""
+        client_defaults = SerializedBaseOperator.generate_client_defaults()
+
+        # All fields in client_defaults should originate from OPERATOR_DEFAULTS
+        for field in client_defaults:
+            assert field in OPERATOR_DEFAULTS, f"Field {field} not in OPERATOR_DEFAULTS"
+
+
+class TestSchemaDefaults:
+    """Test schema defaults functionality."""
+
+    def test_get_schema_defaults_operator(self):
+        """Test getting schema defaults for operator type."""
+        schema_defaults = SerializedBaseOperator.get_schema_defaults("operator")
+
+        assert isinstance(schema_defaults, dict)
+
+        # Should contain expected operator defaults
+        expected_fields = [
+            "owner",
+            "trigger_rule",
+            "depends_on_past",
+            "retries",
+            "queue",
+            "pool",
+            "pool_slots",
+            "priority_weight",
+            "weight_rule",
+            "do_xcom_push",
+        ]
+
+        for field in expected_fields:
+            assert field in schema_defaults, f"Expected field {field} not in schema defaults"
+
+    def test_get_schema_defaults_nonexistent_type(self):
+        """Test getting schema defaults for nonexistent type."""
+        schema_defaults = SerializedBaseOperator.get_schema_defaults("nonexistent")
+        assert schema_defaults == {}
+
+    def test_get_operator_optional_fields_from_schema(self):
+        """Test getting optional fields from schema."""
+        optional_fields = SerializedBaseOperator.get_operator_optional_fields_from_schema()
+
+        assert isinstance(optional_fields, set)
+
+        # Should not contain required fields
+        required_fields = {
+            "task_type",
+            "_task_module",
+            "task_id",
+            "ui_color",
+            "ui_fgcolor",
+            "template_fields",
+        }
+        overlap = optional_fields & required_fields
+        assert not overlap, f"Optional fields should not overlap with required fields: {overlap}"
+
+
+class TestDeserializationDefaultsResolution:
+    """Test defaults resolution during deserialization."""
+
+    def test_apply_defaults_to_encoded_op(self):
+        encoded_op = {"task_id": "test_task", "task_type": "BashOperator", "retries": 10}
+        client_defaults = {"tasks": {"retry_delay": 300.0, "retries": 2}}  # Fix: wrap in "tasks"
+
+        result = SerializedBaseOperator._apply_defaults_to_encoded_op(encoded_op, client_defaults)
+
+        # Should merge in order: client_defaults, encoded_op
+        assert result["retry_delay"] == 300.0  # From client_defaults
+        assert result["task_id"] == "test_task"  # From encoded_op (highest priority)
+        assert result["retries"] == 10
+
+    def test_apply_defaults_to_encoded_op_none_inputs(self):
+        """Test defaults application with None inputs."""
+        encoded_op = {"task_id": "test_task"}
+
+        # With None client_defaults
+        result = SerializedBaseOperator._apply_defaults_to_encoded_op(encoded_op, None)
+        assert result == encoded_op
+
+    def test_multiple_tasks_share_client_defaults(self):
+        """Test that multiple tasks can share the same client_defaults."""
+        with DAG(dag_id="test_dag") as dag:
+            BashOperator(task_id="task1", bash_command="echo 1")
+            BashOperator(task_id="task2", bash_command="echo 2")
+
+        serialized = SerializedDAG.to_dict(dag)
+
+        # Should have one client_defaults section for all tasks
+        assert "client_defaults" in serialized
+        assert "tasks" in serialized["client_defaults"]
+
+        # All tasks should benefit from the same client_defaults
+        client_defaults = serialized["client_defaults"]["tasks"]
+
+        # Deserialize and check both tasks get the defaults
+        deserialized_dag = SerializedDAG.from_dict(serialized)
+        deserialized_task1 = deserialized_dag.get_task("task1")
+        deserialized_task2 = deserialized_dag.get_task("task2")
+
+        # Both tasks should have the same default values from client_defaults
+        for field in client_defaults:
+            if hasattr(deserialized_task1, field) and hasattr(deserialized_task2, field):
+                value1 = getattr(deserialized_task1, field)
+                value2 = getattr(deserialized_task2, field)
+                assert value1 == value2, f"Tasks have different values for {field}: {value1} vs {value2}"
+
+
+class TestMappedOperatorSerializationAndClientDefaults:
+    """Test MappedOperator serialization with client defaults and callback properties."""
+
+    def test_mapped_operator_client_defaults_application(self):
+        """Test that client_defaults are correctly applied to MappedOperator during deserialization."""
+        with DAG(dag_id="test_mapped_dag", start_date=datetime(2020, 1, 1)) as dag:
+            # Create a mapped operator
+            BashOperator.partial(
+                task_id="mapped_task",
+                retries=5,  # Override default
+            ).expand(bash_command=["echo 1", "echo 2", "echo 3"])
+
+        # Serialize the DAG
+        serialized_dag = SerializedDAG.to_dict(dag)
+
+        # Should have client_defaults section
+        assert "client_defaults" in serialized_dag
+        assert "tasks" in serialized_dag["client_defaults"]
+
+        # Deserialize and check that client_defaults are applied
+        deserialized_dag = SerializedDAG.from_dict(serialized_dag)
+        deserialized_task = deserialized_dag.get_task("mapped_task")
+
+        # Verify it's still a MappedOperator
+        from airflow.models.mappedoperator import MappedOperator as SchedulerMappedOperator
+
+        assert isinstance(deserialized_task, SchedulerMappedOperator)
+
+        # Check that client_defaults values are applied (e.g., retry_delay from client_defaults)
+        client_defaults = serialized_dag["client_defaults"]["tasks"]
+        if "retry_delay" in client_defaults:
+            # If retry_delay wasn't explicitly set, it should come from client_defaults
+            # Since we can't easily convert timedelta back, check the serialized format
+            assert hasattr(deserialized_task, "retry_delay")
+
+        # Explicit values should override client_defaults
+        assert deserialized_task.retries == 5  # Explicitly set value
+
+    def test_mapped_operator_serialization_size_optimization(self):
+        """Test that MappedOperator serialization is optimized by excluding client defaults."""
+        with DAG(dag_id="test_mapped_size", start_date=datetime(2020, 1, 1)) as dag:
+            # Create mapped operator that would benefit from client_defaults
+            BashOperator.partial(
+                task_id="mapped_size_test",
+                # Only set non-default values
+                retries=3,
+            ).expand(bash_command=["echo 1", "echo 2", "echo 3"])
+
+        serialized_dag = SerializedDAG.to_dict(dag)
+
+        # Find the serialized mapped task
+        mapped_task_serialized = None
+        for task in serialized_dag["dag"]["tasks"]:
+            if task["__var"]["task_id"] == "mapped_size_test":
+                mapped_task_serialized = task["__var"]
+                break
+
+        assert mapped_task_serialized is not None
+        assert mapped_task_serialized.get("_is_mapped") is True
+
+        # Check that client defaults are being used for size optimization
+        client_defaults = serialized_dag["client_defaults"]["tasks"]
+        partial_kwargs = mapped_task_serialized["partial_kwargs"]
+
+        # Fields that match client_defaults should not be in partial_kwargs
+        for field, default_value in client_defaults.items():
+            if field != "retries":  # We explicitly set retries=3
+                # Field should either not be in partial_kwargs or be different from default
+                if field in partial_kwargs:
+                    assert partial_kwargs[field] != default_value, (
+                        f"Field {field} with default value {default_value} should not be in partial_kwargs"
+                    )
+
+    def test_mapped_operator_expand_input_preservation(self):
+        """Test that expand_input is correctly preserved during serialization."""
+        with DAG(dag_id="test_expand_input", start_date=datetime(2020, 1, 1)):
+            mapped_task = BashOperator.partial(task_id="test_expand").expand(
+                bash_command=["echo 1", "echo 2", "echo 3"], env={"VAR1": "value1", "VAR2": "value2"}
+            )
+
+        # Serialize and deserialize
+        serialized = BaseSerialization.serialize(mapped_task)
+        deserialized = BaseSerialization.deserialize(serialized)
+
+        # Check expand_input structure
+        assert hasattr(deserialized, "expand_input")
+        expand_input = deserialized.expand_input
+
+        # Verify the expand_input contains the expected data
+        assert hasattr(expand_input, "value")
+        expand_value = expand_input.value
+
+        assert "bash_command" in expand_value
+        assert "env" in expand_value
+        assert expand_value["bash_command"] == ["echo 1", "echo 2", "echo 3"]
+        assert expand_value["env"] == {"VAR1": "value1", "VAR2": "value2"}

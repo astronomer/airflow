@@ -1527,7 +1527,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         op: SchedulerOperator,
         encoded_op: dict[str, Any],
         client_defaults: dict[str, Any] | None = None,
-        dag_default_args: dict[str, Any] | None = None,
     ) -> None:
         """
         Populate operator attributes with serialized values.
@@ -1538,9 +1537,8 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         DAG is hydrated.
         """
         # Apply defaults by merging them into encoded_op BEFORE main deserialization
-        # TODO: We currently don't do anything of dag_default_args for both operators
-        #   and don't do anything of client_defaults for MappedOperator
-        encoded_op = cls._apply_defaults_to_encoded_op(encoded_op, client_defaults, dag_default_args)
+        # TODO: We don't do anything of client_defaults for MappedOperator yet
+        encoded_op = cls._apply_defaults_to_encoded_op(encoded_op, client_defaults)
         # Extra Operator Links defined in Plugins
         op_extra_links_from_plugin = {}
 
@@ -1728,7 +1726,6 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         cls,
         encoded_op: dict[str, Any],
         client_defaults: dict[str, Any] | None = None,
-        dag_default_args: dict[str, Any] | None = None,
     ) -> SchedulerOperator:
         """Deserializes an operator from a JSON object."""
         op: SchedulerOperator
@@ -1772,10 +1769,10 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             #     for k, v in client_defaults.items():
             #         if k not in encoded_op:
             #             encoded_op["partial_kwargs"].update(client_defaults)
-            cls.populate_operator(op, encoded_op, client_defaults, dag_default_args)
+            cls.populate_operator(op, encoded_op, client_defaults)
         else:
             op = SerializedBaseOperator(task_id=encoded_op["task_id"])
-            cls.populate_operator(op, encoded_op, client_defaults, dag_default_args)
+            cls.populate_operator(op, encoded_op, client_defaults)
 
         return op
 
@@ -2047,22 +2044,20 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
         cls,
         encoded_op: dict[str, Any],
         client_defaults: dict[str, Any] | None = None,
-        dag_default_args: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
-        Apply hierarchical defaults by merging them into encoded_op before deserialization.
+        Apply client defaults to encoded operator before deserialization.
 
         Args:
-            encoded_op: The serialized operator data
+            encoded_op: The serialized operator data (already includes applied default_args)
             client_defaults: SDK-specific defaults from client_defaults section
-            dag_default_args: DAG-level default_args (already deserialized)
 
-        # TODO: See if we can overload default_args instead of a separate client_defaults setting.
+        Note: DAG default_args are already applied during task creation in the SDK,
+        so encoded_op contains the final resolved values.
+
         Hierarchy (lowest to highest priority):
-        1. client_defaults.tasks (SDK-specific defaults)
-        2. DAG default_args (DAG-level overrides)
-        3. partial_kwargs (MappedOperator common values)
-        4. Explicit task values (already in encoded_op)
+        1. client_defaults.tasks (SDK-wide defaults for size optimization)
+        2. Explicit task values (already in encoded_op, includes applied default_args)
 
         Returns a new dict with defaults merged in.
         """
@@ -2075,15 +2070,9 @@ class SerializedBaseOperator(DAGNode, BaseSerialization):
             task_defaults = client_defaults.get("tasks", {})
             result.update(task_defaults)
 
-        # TODO: Level 2: Apply DAG default_args (overrides client_defaults)
-        # Values are already deserialized from encoded format
-        # if dag_default_args:
-        #     result.update(dag_default_args)
-
-        # Level 3: Apply explicit task values (highest priority - overrides everything)
-        result.update(encoded_op)  # encoded_op values override all defaults
-
-        # Note: partial_kwargs for MappedOperator are already included in encoded_op from serialization
+        # Level 2: Apply explicit task values (highest priority - overrides everything)
+        # Note: encoded_op already contains default_args applied during task creation
+        result.update(encoded_op)
 
         return result
 
@@ -2267,10 +2256,6 @@ class SerializedDAG(DAG, BaseSerialization):
 
         dag = SerializedDAG(dag_id=encoded_dag["dag_id"], schedule=None)
 
-        # Extract and deserialize default_args for task deserialization
-        dag_default_args_raw = encoded_dag.get("default_args", {})
-        dag_default_args = cls.deserialize(dag_default_args_raw) if dag_default_args_raw else {}
-
         # Note: Context is passed explicitly through method parameters, no class attributes needed
 
         for k, v in encoded_dag.items():
@@ -2282,7 +2267,7 @@ class SerializedDAG(DAG, BaseSerialization):
                 for obj in v:
                     if obj.get(Encoding.TYPE) == DAT.OP:
                         deser = SerializedBaseOperator.deserialize_operator(
-                            obj[Encoding.VAR], client_defaults, dag_default_args
+                            obj[Encoding.VAR], client_defaults
                         )
                         tasks[deser.task_id] = deser
                 k = "task_dict"
