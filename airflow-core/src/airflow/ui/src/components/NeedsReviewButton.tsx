@@ -50,7 +50,7 @@ export const NeedsReviewButton = ({
         count={hitlTIsCount}
         icon={<LuUserRoundPen />}
         isLoading={isLoading}
-        label={translate("requiredAction_other")}
+        label={translate("needsReview")}
         link="dags?needs_review=true"
       />
     </Box>
