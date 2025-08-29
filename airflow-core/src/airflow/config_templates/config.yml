@@ -229,6 +229,16 @@ core:
       type: integer
       example: ~
       default: "2"
+    dagbag_max_cached_dag:
+      description: |
+          The maximum number of DAGs to keep in the DBDagBag's in-memory cache.
+          This is primarily used to limit memory usage when there are a large number of DAGs.
+          When the number of DAGs in the DBDagBag exceeds this number, the least recently used
+          DAGs will be removed from the cache.
+      version_added: 2.3.0
+      type: integer
+      example: ~
+      default: "20"
     default_impersonation:
       description: |
         If set, tasks without a ``run_as_user`` argument will be run with this user

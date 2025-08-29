@@ -29,6 +29,7 @@ import textwrap
 import traceback
 import warnings
 import zipfile
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
@@ -671,19 +672,34 @@ class DBDagBag:
     :meta private:
     """
 
-    def __init__(self, load_op_links: bool = True):
-        self._dags: dict[str, DAG] = {}  # dag_version_id to dag
+    def __init__(
+        self,
+        load_op_links: bool = True,
+        max_cached_dags: int = conf.getint("core", "dagbag_max_cached_dags", fallback=20),
+    ):
+        # LRU cache of deserialized DAGs by dag_version_id
+        self._dags: OrderedDict[str, DAG] = OrderedDict()
         self.load_op_links = load_op_links
+        self._max_cached_dags: int = max_cached_dags
 
     def _read_dag(self, serdag: SerializedDagModel) -> DAG | None:
         serdag.load_op_links = self.load_op_links
         if dag := serdag.dag:
-            self._dags[serdag.dag_version_id] = dag
+            version_id = serdag.dag_version_id
+            # Insert/move to most-recently-used position
+            if version_id in self._dags:
+                self._dags.move_to_end(version_id)
+            self._dags[version_id] = dag
+            # Evict if over capacity
+            while len(self._dags) > self._max_cached_dags:
+                self._dags.popitem(last=False)
         return dag
 
     def _get_dag(self, version_id: str, session: Session) -> DAG | None:
-        if dag := self._dags.get(version_id):
-            return dag
+        if version_id in self._dags:
+            # Touch as most-recently-used
+            self._dags.move_to_end(version_id)
+            return self._dags[version_id]
         dag_version = session.get(DagVersion, version_id, options=[joinedload(DagVersion.serialized_dag)])
         if not dag_version:
             return None
