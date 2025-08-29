@@ -42,7 +42,6 @@ export enum SearchParamsKeys {
   OPERATOR = "operator",
   OWNERS = "owners",
   PAUSED = "paused",
-  PENDING_HITL = "pending_hitl",
   POOL = "pool",
   RESPONSE_RECEIVED = "response_received",
   RETRIES = "retries",
