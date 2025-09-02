@@ -40,7 +40,7 @@ const links = [
   },
   {
     href: "/required_actions",
-    key: "requiredActions",
+    key: "reviewHistory",
     title: "Required Actions",
   },
 ];

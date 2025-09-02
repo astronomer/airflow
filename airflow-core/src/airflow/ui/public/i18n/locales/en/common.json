@@ -22,7 +22,7 @@
   "backfill_other": "Backfills",
   "browse": {
     "auditLog": "Audit Log",
-    "requiredActions": "Required Actions",
+    "reviewHistory": "Review History",
     "xcoms": "XComs"
   },
   "collapseDetailsPanel": "Collapse Details Panel",

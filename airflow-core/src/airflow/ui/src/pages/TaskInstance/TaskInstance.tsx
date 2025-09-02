@@ -19,8 +19,9 @@
 import { ReactFlowProvider } from "@xyflow/react";
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { FiCode, FiDatabase, FiUser } from "react-icons/fi";
-import { MdDetails, MdOutlineEventNote, MdOutlineTask, MdReorder, MdSyncAlt } from "react-icons/md";
+import { FiCode, FiDatabase } from "react-icons/fi";
+import { LuUserRoundPen } from "react-icons/lu";
+import { MdDetails, MdOutlineEventNote, MdReorder, MdSyncAlt } from "react-icons/md";
 import { PiBracketsCurlyBold } from "react-icons/pi";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
@@ -28,7 +29,7 @@ import {
   useHumanInTheLoopServiceGetHitlDetails,
   useTaskInstanceServiceGetMappedTaskInstance,
 } from "openapi/queries";
-import { usePluginTabs } from "src/hooks/usePluginTabs";
+import { useDagTabs } from "src/hooks/useDagTabs";
 import { DetailsLayout } from "src/layouts/Details/DetailsLayout";
 import { useGridTiSummaries } from "src/queries/useGridTISummaries.ts";
 import { isStatePending, useAutoRefresh } from "src/utils";
@@ -40,12 +41,10 @@ export const TaskInstance = () => {
   const { dagId = "", mapIndex = "-1", runId = "", taskId = "" } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  // Get external views with task_instance destination
-  const externalTabs = usePluginTabs("task_instance");
 
-  const tabs = [
+  const baseTabs = [
     { icon: <MdReorder />, label: translate("tabs.logs"), value: "" },
-    { icon: <FiUser />, label: translate("tabs.requiredActions"), value: "required_actions" },
+    { icon: <LuUserRoundPen />, label: translate("tabs.reviewHistory"), value: "required_actions" },
     {
       icon: <PiBracketsCurlyBold />,
       label: translate("tabs.renderedTemplates"),
@@ -56,7 +55,6 @@ export const TaskInstance = () => {
     { icon: <MdOutlineEventNote />, label: translate("tabs.auditLog"), value: "events" },
     { icon: <FiCode />, label: translate("tabs.code"), value: "code" },
     { icon: <MdDetails />, label: translate("tabs.details"), value: "details" },
-    ...externalTabs,
   ];
 
   const refetchInterval = useAutoRefresh({ dagId });
@@ -103,28 +101,13 @@ export const TaskInstance = () => {
         .reduce((sum, val) => sum + val, 0),
     [taskInstanceSummary],
   );
-  let newTabs = tabs;
 
-  if (taskInstance && taskInstance.map_index > -1) {
-    newTabs = [
-      ...tabs.slice(0, 1),
-      {
-        icon: <MdOutlineTask />,
-        label: translate("tabs.mappedTaskInstances_other", {
-          count: Number(taskCount),
-        }),
-        value: "task_instances",
-      },
-      ...tabs.slice(1),
-    ];
-  }
-
-  const displayTabs = newTabs.filter((tab) => {
-    if (tab.value === "required_actions" && !hasHitlForTask) {
-      return false;
-    }
-
-    return true;
+  const { displayTabs } = useDagTabs(baseTabs, "task_instance", {
+    hitlDetails,
+    mappedInstance: {
+      isMapped: taskInstance ? taskInstance.map_index > -1 : false,
+      taskCount,
+    },
   });
 
   useEffect(() => {
