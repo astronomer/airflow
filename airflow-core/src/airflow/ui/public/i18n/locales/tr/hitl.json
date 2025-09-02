@@ -1,7 +1,6 @@
 {
   "requiredAction_one": "Gerekli işlem",
   "requiredAction_other": "Gerekli işlemler",
-  "requiredActionState": "Gerekli işlemin durumu",
   "response": {
     "error": "Yanıt alınamadı",
     "optionsDescription": "Bu görev örneği için seçenekleri seçin",

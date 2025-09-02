@@ -1,7 +1,6 @@
 {
   "requiredAction_one": "פעולה נדרשת",
   "requiredAction_other": "פעולות נדרשות",
-  "requiredActionState": "מצב פעולה נדרשת",
   "response": {
     "error": "התגובה נכשלה",
     "optionsDescription": "בחר את האפשרויות למופע המשימה הזה",

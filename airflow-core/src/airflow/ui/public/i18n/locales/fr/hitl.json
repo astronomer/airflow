@@ -1,7 +1,6 @@
 {
   "requiredAction_one": "Actions requises",
   "requiredAction_other": "Actions requises",
-  "requiredActionState": "État de l'action requise",
   "response": {
     "error": "Échec de la réponse",
     "optionsDescription": "Choisissez vos options pour cette instance de tâche",

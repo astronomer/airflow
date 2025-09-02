@@ -57,7 +57,7 @@ const taskInstanceColumns = ({
     cell: ({ row: { original } }: TaskInstanceRow) => (
       <StateBadge state={original.task_instance.state}>{getHITLState(translate, original)}</StateBadge>
     ),
-    header: translate("requiredActionState"),
+    header: translate("common:state"),
   },
   {
     accessorKey: "subject",
@@ -164,7 +164,7 @@ export const HITLTaskInstances = () => {
     <Box>
       {!Boolean(dagId) && !Boolean(runId) && !Boolean(taskId) ? (
         <Heading size="md">
-          {data?.total_entries} {translate("requiredAction", { count: data?.total_entries })}
+          {data?.total_entries} {translate("reviewHistory")}
         </Heading>
       ) : undefined}
       <Box mt={3}>
@@ -197,7 +197,7 @@ export const HITLTaskInstances = () => {
         errorMessage={<ErrorAlert error={error} />}
         initialState={tableURLState}
         isLoading={isLoading}
-        modelName={translate("requiredAction_other")}
+        modelName={translate("reviewHistory")}
         onStateChange={setTableURLState}
         total={data?.total_entries}
       />

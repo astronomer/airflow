@@ -18,12 +18,13 @@
  */
 import { ReactFlowProvider } from "@xyflow/react";
 import { useTranslation } from "react-i18next";
-import { FiCode, FiDatabase, FiUser } from "react-icons/fi";
+import { FiCode, FiDatabase } from "react-icons/fi";
+import { LuUserRoundPen } from "react-icons/lu";
 import { MdDetails, MdOutlineEventNote, MdOutlineTask } from "react-icons/md";
 import { useParams } from "react-router-dom";
 
 import { useDagRunServiceGetDagRun, useHumanInTheLoopServiceGetHitlDetails } from "openapi/queries";
-import { usePluginTabs } from "src/hooks/usePluginTabs";
+import { useDagTabs } from "src/hooks/useDagTabs";
 import { DetailsLayout } from "src/layouts/Details/DetailsLayout";
 import { isStatePending, useAutoRefresh } from "src/utils";
 
@@ -33,17 +34,13 @@ export const Run = () => {
   const { t: translate } = useTranslation("dag");
   const { dagId = "", runId = "" } = useParams();
 
-  // Get external views with dag_run destination
-  const externalTabs = usePluginTabs("dag_run");
-
-  const tabs = [
+  const baseTabs = [
     { icon: <MdOutlineTask />, label: translate("tabs.taskInstances"), value: "" },
-    { icon: <FiUser />, label: translate("tabs.requiredActions"), value: "required_actions" },
+    { icon: <LuUserRoundPen />, label: translate("tabs.reviewHistory"), value: "required_actions" },
     { icon: <FiDatabase />, label: translate("tabs.assetEvents"), value: "asset_events" },
     { icon: <MdOutlineEventNote />, label: translate("tabs.auditLog"), value: "events" },
     { icon: <FiCode />, label: translate("tabs.code"), value: "code" },
     { icon: <MdDetails />, label: translate("tabs.details"), value: "details" },
-    ...externalTabs,
   ];
 
   const refetchInterval = useAutoRefresh({ dagId });
@@ -74,14 +71,8 @@ export const Run = () => {
     },
   );
 
-  const hasHitlTasksForRun = Boolean(hitlData?.hitl_details.length);
-
-  const displayTabs = tabs.filter((tab) => {
-    if (tab.value === "required_actions" && !hasHitlTasksForRun) {
-      return false;
-    }
-
-    return true;
+  const { displayTabs } = useDagTabs(baseTabs, "dag_run", {
+    hitlDetails: hitlData,
   });
 
   return (

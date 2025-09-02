@@ -12,7 +12,6 @@
   "requiredAction_other": "إجراءات مطلوبة",
   "requiredAction_two": "إجراءان مطلوبان",
   "requiredAction_zero": "لا إجراءات مطلوبة",
-  "requiredActionState": "حالة الإجراء المطلوب",
   "response": {
     "error": "فشل في الاستجابة",
     "optionsDescription": "اختر الخيارات لهذا مثيل المهمة",

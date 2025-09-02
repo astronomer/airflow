@@ -1,7 +1,6 @@
 {
   "requiredAction_one": "आवश्यक क्रिया",
   "requiredAction_other": "आवश्यक क्रियाएं",
-  "requiredActionState": "आवश्यक क्रिया स्थिति",
   "response": {
     "error": "प्रतिक्रिया विफल",
     "optionsDescription": "इस टास्क इंस्टेंस के लिए अपने विकल्प चुनें",

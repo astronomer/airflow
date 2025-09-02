@@ -8,7 +8,6 @@
   },
   "requiredAction_one": "待回應的任務實例",
   "requiredAction_other": "待回應的任務實例",
-  "requiredActionState": "待回應的任務實例狀態",
   "response": {
     "error": "回應失敗",
     "optionsDescription": "請為此任務實例選擇一個選項",

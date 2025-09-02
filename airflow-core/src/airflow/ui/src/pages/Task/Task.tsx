@@ -18,13 +18,12 @@
  */
 import { ReactFlowProvider } from "@xyflow/react";
 import { useTranslation } from "react-i18next";
-import { FiUser } from "react-icons/fi";
-import { LuChartColumn } from "react-icons/lu";
+import { LuChartColumn, LuUserRoundPen } from "react-icons/lu";
 import { MdOutlineEventNote, MdOutlineTask } from "react-icons/md";
 import { useParams } from "react-router-dom";
 
 import { useTaskServiceGetTask, useHumanInTheLoopServiceGetHitlDetails } from "openapi/queries";
-import { usePluginTabs } from "src/hooks/usePluginTabs";
+import { useDagTabs } from "src/hooks/useDagTabs";
 import { DetailsLayout } from "src/layouts/Details/DetailsLayout";
 import { useGridStructure } from "src/queries/useGridStructure.ts";
 import { getGroupTask } from "src/utils/groupTask";
@@ -33,18 +32,14 @@ import { GroupTaskHeader } from "./GroupTaskHeader";
 import { Header } from "./Header";
 
 export const Task = () => {
-  const { t: translate } = useTranslation("dag");
+  const { t: translate } = useTranslation(["dag", "hitl"]);
   const { dagId = "", groupId, runId, taskId } = useParams();
 
-  // Get external views with task destination
-  const externalTabs = usePluginTabs("task");
-
-  const tabs = [
+  const baseTabs = [
     { icon: <LuChartColumn />, label: translate("tabs.overview"), value: "" },
     { icon: <MdOutlineTask />, label: translate("tabs.taskInstances"), value: "task_instances" },
-    { icon: <FiUser />, label: translate("tabs.requiredActions"), value: "required_actions" },
+    { icon: <LuUserRoundPen />, label: translate("hitl:review"), value: "required_actions" },
     { icon: <MdOutlineEventNote />, label: translate("tabs.auditLog"), value: "events" },
-    ...externalTabs,
   ];
 
   const {
@@ -72,11 +67,10 @@ export const Task = () => {
     },
   );
 
-  const hasHitlForTask = (hitlData?.total_entries ?? 0) > 0;
-
-  const displayTabs = (groupId === undefined ? tabs : tabs.filter((tab) => tab.value !== "events")).filter(
-    (tab) => tab.value !== "required_actions" || hasHitlForTask,
-  );
+  const { displayTabs } = useDagTabs(baseTabs, "task", {
+    groupId,
+    hitlDetails: hitlData,
+  });
 
   return (
     <ReactFlowProvider>

@@ -10,7 +10,6 @@
   "requiredAction_many": "Wymaganych akcji",
   "requiredAction_one": "Wymagana akcja",
   "requiredAction_other": "Wymagane akcje",
-  "requiredActionState": "Stan wymaganej akcji",
   "response": {
     "error": "Nie udało się uzyskać odpowiedzi",
     "optionsDescription": "Wybierz opcje dla tej instancji zadania",

@@ -8,7 +8,6 @@
   },
   "requiredAction_one": "Erforderliche Interaktion",
   "requiredAction_other": "Erforderliche Interaktionen",
-  "requiredActionState": "Status der Interaktion",
   "response": {
     "error": "Senden der Antwort fehlgeschlagen",
     "optionsDescription": "Wählen Sie Ihre Optionen für diesen Task",
