@@ -139,9 +139,9 @@
     "mappedTaskInstances_other": "Task Instances [{{count}}]",
     "overview": "Overview",
     "renderedTemplates": "Rendered Templates",
-    "reviewHistory": "Review History",
     "runs": "Runs",
     "taskInstances": "Task Instances",
+    "taskReviews": "Task Reviews",
     "tasks": "Tasks",
     "xcom": "XCom"
   },

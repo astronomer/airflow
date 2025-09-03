@@ -70,8 +70,6 @@ export const filterTabs = ({
   const pendingHitlCount =
     data.hitlDetails?.hitl_details.filter((hitl) => hitl.response_received !== true).length ?? 0;
 
-  console.log("hasPendingHitl", hasPendingHitl);
-
   return tabs
     .filter((tab) => {
       switch (page) {
@@ -133,7 +131,7 @@ export const filterTabs = ({
             }
           : {
               ...tab,
-              label: translate("hitl:reviewHistory"),
+              label: translate("tabs.taskReviews"),
             };
       }
 

@@ -44,7 +44,7 @@ export const TaskInstance = () => {
 
   const baseTabs = [
     { icon: <MdReorder />, label: translate("tabs.logs"), value: "" },
-    { icon: <LuUserRoundPen />, label: translate("tabs.reviewHistory"), value: "required_actions" },
+    { icon: <LuUserRoundPen />, label: translate("tabs.taskReview_other"), value: "required_actions" },
     {
       icon: <PiBracketsCurlyBold />,
       label: translate("tabs.renderedTemplates"),

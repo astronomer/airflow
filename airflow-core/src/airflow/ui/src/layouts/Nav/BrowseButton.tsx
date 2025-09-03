@@ -40,7 +40,8 @@ const links = [
   },
   {
     href: "/required_actions",
-    key: "reviewHistory",
+    key: "taskReviews",
+    // TODO: Change when auth manager is updated
     title: "Required Actions",
   },
 ];

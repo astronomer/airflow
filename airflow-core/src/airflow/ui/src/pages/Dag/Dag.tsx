@@ -47,7 +47,7 @@ export const Dag = () => {
     { icon: <FiBarChart />, label: translate("tabs.runs"), value: "runs" },
     { icon: <TaskIcon />, label: translate("tabs.tasks"), value: "tasks" },
     { icon: <FiCalendar />, label: translate("tabs.calendar"), value: "calendar" },
-    { icon: <LuUserRoundPen />, label: translate("tabs.reviewHistory"), value: "required_actions" },
+    { icon: <LuUserRoundPen />, label: translate("tabs.taskReview_other"), value: "required_actions" },
     { icon: <RiArrowGoBackFill />, label: translate("tabs.backfills"), value: "backfills" },
     { icon: <MdOutlineEventNote />, label: translate("tabs.auditLog"), value: "events" },
     { icon: <FiCode />, label: translate("tabs.code"), value: "code" },
@@ -79,8 +79,6 @@ export const Dag = () => {
       enabled: Boolean(dagId),
     },
   );
-
-  console.log("hitlData", hitlData);
 
   const { displayTabs } = useDagTabs(baseTabs, "dag", {
     dag: { timetable_summary: dag?.timetable_summary },

@@ -17,7 +17,6 @@
     "success": "{{taskId}} response successful",
     "title": "Human Task Instance - {{taskId}}"
   },
-  "reviewHistory": "Review History",
   "state": {
     "approvalReceived": "Approval Received",
     "approvalRequired": "Approval Required",
@@ -28,5 +27,8 @@
     "responseReceived": "Response Received",
     "responseRequired": "Response Required"
   },
-  "subject": "Subject"
+  "subject": "Subject",
+  "taskReview": "Task Review",
+  "taskReview_one": "{{count}} Task Review",
+  "taskReview_other": "{{count}} Task Reviews"
 }
