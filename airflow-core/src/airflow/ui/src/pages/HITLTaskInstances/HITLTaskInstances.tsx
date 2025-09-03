@@ -163,9 +163,7 @@ export const HITLTaskInstances = () => {
   return (
     <Box>
       {!Boolean(dagId) && !Boolean(runId) && !Boolean(taskId) ? (
-        <Heading size="md">
-          {data?.total_entries} {translate("reviewHistory")}
-        </Heading>
+        <Heading size="md">{translate("taskReview", { count: data?.total_entries })}</Heading>
       ) : undefined}
       <Box mt={3}>
         <Select.Root
@@ -197,7 +195,7 @@ export const HITLTaskInstances = () => {
         errorMessage={<ErrorAlert error={error} />}
         initialState={tableURLState}
         isLoading={isLoading}
-        modelName={translate("reviewHistory")}
+        modelName={translate("taskReview")}
         onStateChange={setTableURLState}
         total={data?.total_entries}
       />
