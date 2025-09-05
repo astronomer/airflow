@@ -1311,6 +1311,13 @@ class SerializedBaseOperator(BaseOperator, BaseSerialization):
             if v == default:
                 del serialized_partial[k]
 
+        # we want to store python_callable_name, not python_callable
+        python_callable = op.partial_kwargs.get("python_callable", None)
+        if python_callable:
+            callable_name = qualname(python_callable)
+            serialized_op["partial_kwargs"]["python_callable_name"] = callable_name
+            del serialized_op["partial_kwargs"]["python_callable"]
+
         serialized_op["_is_mapped"] = True
         return serialized_op
 
