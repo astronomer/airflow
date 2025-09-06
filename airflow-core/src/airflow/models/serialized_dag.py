@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Callable, Literal
 import sqlalchemy_jsonfield
 import uuid6
 from sqlalchemy import Column, ForeignKey, LargeBinary, String, exc, select, tuple_
-from sqlalchemy.orm import backref, foreign, relationship
+from sqlalchemy.orm import backref, foreign, relationship, reconstructor
 from sqlalchemy.sql.expression import func, literal
 from sqlalchemy_utils import UUIDType
 
@@ -343,6 +343,35 @@ class SerializedDagModel(Base):
         # when COMPRESS_SERIALIZED_DAGS is True
         self.__data_cache = dag_data
 
+    @reconstructor
+    def _on_load_from_db(self):
+        if self._data is not None:
+            self._strip_callbacks_old_vers(self._data)
+
+    @staticmethod
+    def _strip_callbacks_old_vers(data):
+        callbacks = {
+            "on_failure_callback",
+            "on_success_callback",
+            "on_execute_callback",
+            "on_skipped_callback",
+            "on_retry_callback",
+        }
+
+        try:
+            if data["__version"] >= 3:
+                return
+
+            for task in data["dag"]["tasks"]:
+                for name in callbacks:
+                    if cb := task["__var"].get(name, None):
+                        # This was a repr of the callbacks! We don't need that, we just want truthy value so
+                        # things behave
+                        cb[:] = [True]
+        except Exception:
+            # Don't die if anything goes wrong, better to have more memory use but be alive.
+            pass
+
     def __repr__(self) -> str:
         return f"<SerializedDag: {self.dag_id}>"
 
@@ -544,6 +573,7 @@ class SerializedDagModel(Base):
         if not hasattr(self, "_SerializedDagModel__data_cache") or self.__data_cache is None:
             if self._data_compressed:
                 self.__data_cache = json.loads(zlib.decompress(self._data_compressed))
+                self._strip_callbacks_old_vers(self.__data_cache)
             else:
                 self.__data_cache = self._data
 
