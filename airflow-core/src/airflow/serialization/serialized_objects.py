@@ -1318,6 +1318,18 @@ class SerializedBaseOperator(BaseOperator, BaseSerialization):
             serialized_op["partial_kwargs"]["python_callable_name"] = callable_name
             del serialized_op["partial_kwargs"]["python_callable"]
 
+        # Change callbacks from strings to bools - we just need to know if they are set
+        callbacks = {
+            "on_failure_callback",
+            "on_success_callback",
+            "on_execute_callback",
+            "on_skipped_callback",
+            "on_retry_callback",
+        }
+        for name in callbacks:
+            if serialized_op["partial_kwargs"].get(name, None):
+                serialized_op["partial_kwargs"][name] = [True]
+
         serialized_op["_is_mapped"] = True
         return serialized_op
 
@@ -1360,6 +1372,19 @@ class SerializedBaseOperator(BaseOperator, BaseSerialization):
                 if isinstance(op.operator_extra_links, property)
                 else op.operator_extra_links
             )
+
+        # Change callbacks from strings to bools - we just need to know if they are set
+        callbacks = {
+            "on_failure_callback",
+            "on_success_callback",
+            "on_execute_callback",
+            "on_skipped_callback",
+            "on_retry_callback",
+        }
+        for name in callbacks:
+            if serialize_op.get(name, None):
+                serialize_op[name] = [True]
+
 
         # Store all template_fields as they are if there are JSON Serializable
         # If not, store them as strings

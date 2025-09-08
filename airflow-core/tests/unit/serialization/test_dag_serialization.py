@@ -3129,6 +3129,59 @@ def test_python_callable_in_partial_kwargs():
     assert deserialized.partial_kwargs["python_callable_name"] == qualname(empty_function)
 
 
+def test_roundtrip_operator_callbacks():
+    callbacks = {
+        "on_failure_callback",
+        "on_success_callback",
+        "on_execute_callback",
+        "on_retry_callback",
+        "on_skipped_callback",
+    }
+
+    kwargs = {
+        "task_id": "test_callbacks",
+        "bash_command": "echo hi",
+        **{cb: empty_function for cb in callbacks},
+    }
+
+    operator = BashOperator(**kwargs)
+    serialized = SerializedBaseOperator.serialize_operator(operator)
+    for cb in callbacks:
+        assert serialized[cb] == [True]
+
+    # And also true when we deserialize - we just track presence of callback
+    deserialized = SerializedBaseOperator.deserialize_operator(serialized)
+    for cb in callbacks:
+        assert getattr(deserialized, cb) == [True]
+
+
+def test_roundtrip_mapped_operator_callbacks():
+    from airflow.serialization.serialized_objects import SerializedBaseOperator
+
+    callbacks = {
+        "on_failure_callback",
+        "on_success_callback",
+        "on_execute_callback",
+        "on_retry_callback",
+        "on_skipped_callback",
+    }
+
+    mapped_op = BashOperator.partial(
+        task_id="test_mapped_callbacks",
+        **{cb: empty_function for cb in callbacks},
+    ).expand(bash_command=["echo hi", "echo hi2"])
+
+    serialized = SerializedBaseOperator.serialize_mapped_operator(mapped_op)
+
+    partial_kwargs = serialized["partial_kwargs"]
+    for cb in callbacks:
+        assert partial_kwargs[cb] == [True]
+
+    deserialized = SerializedBaseOperator.deserialize_operator(serialized)
+    for cb in callbacks:
+        assert getattr(deserialized, cb) == [True]
+
+
 def test_handle_v1_serdag():
     v1 = {
         "__version": 1,
