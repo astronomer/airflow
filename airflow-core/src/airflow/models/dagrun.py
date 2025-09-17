@@ -208,6 +208,8 @@ class DagRun(Base, LoggingMixin):
     :meta private:
     """
 
+    partition_key = Column(StringID())
+
     # Remove this `if` after upgrading Sphinx-AutoAPI
     if not TYPE_CHECKING and "BUILDING_AIRFLOW_DOCS" in os.environ:
         dag: SerializedDAG | None
