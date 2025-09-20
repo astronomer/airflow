@@ -14,12 +14,12 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Serializers for Airflow objects."""
+"""Deserializers for Airflow objects."""
 
 from __future__ import annotations
 
-from airflow.serialization.serializers.base import BaseSerializer
-from airflow.serialization.serializers.dag import DAGSerializer
-from airflow.serialization.serializers.operator import OperatorSerializer
+from airflow.serialization.deserializers.base import BaseDeserializer
+from airflow.serialization.deserializers.dag import DAGDeserializer
+from airflow.serialization.deserializers.operator import OperatorDeserializer
 
-__all__ = ["BaseSerializer", "OperatorSerializer", "DAGSerializer"]
+__all__ = ["BaseDeserializer", "OperatorDeserializer", "DAGDeserializer"]
