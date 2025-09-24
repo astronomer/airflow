@@ -612,6 +612,15 @@ database:
       type: integer
       example: ~
       default: "1800"
+    sql_alchemy_pool_timeout:
+      description: |
+        The number of seconds to wait before giving up on returning a connection.
+        This timeout is applied when getting a connection from the pool.
+        If this timeout is reached, a ``TimeoutError`` will be raised.
+      version_added: 3.0.0
+      type: integer
+      example: ~
+      default: "30"
     sql_alchemy_pool_pre_ping:
       description: |
         Check connection at the start of each connection pool checkout.

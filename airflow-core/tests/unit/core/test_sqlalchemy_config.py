@@ -63,6 +63,7 @@ class TestSqlAlchemySettings:
             pool_pre_ping=True,
             pool_recycle=1800,
             pool_size=5,
+            pool_timeout=30,
             isolation_level="READ COMMITTED",
             future=True,
         )

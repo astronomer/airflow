@@ -490,6 +490,11 @@ def prepare_engine_args(disable_connection_pool=False, pool_class=None):
         # pool_recycle to an equal or smaller value.
         pool_recycle = conf.getint("database", "SQL_ALCHEMY_POOL_RECYCLE", fallback=1800)
 
+        # The number of seconds to wait before giving up on returning a connection.
+        # This timeout is applied when getting a connection from the pool.
+        # If this timeout is reached, a TimeoutError will be raised.
+        pool_timeout = conf.getint("database", "SQL_ALCHEMY_POOL_TIMEOUT", fallback=30)
+
         # Check connection at the start of each connection pool checkout.
         # Typically, this is a simple statement like "SELECT 1", but may also make use
         # of some DBAPI-specific method to test the connection for liveness.
@@ -499,16 +504,18 @@ def prepare_engine_args(disable_connection_pool=False, pool_class=None):
 
         log.debug(
             "settings.prepare_engine_args(): Using pool settings. pool_size=%d, max_overflow=%d, "
-            "pool_recycle=%d, pid=%d",
+            "pool_recycle=%d, pool_timeout=%d, pid=%d",
             pool_size,
             max_overflow,
             pool_recycle,
+            pool_timeout,
             os.getpid(),
         )
         engine_args["pool_size"] = pool_size
         engine_args["pool_recycle"] = pool_recycle
         engine_args["pool_pre_ping"] = pool_pre_ping
         engine_args["max_overflow"] = max_overflow
+        engine_args["pool_timeout"] = pool_timeout
 
     # The default isolation level for MySQL (REPEATABLE READ) can introduce inconsistencies when
     # running multiple schedulers, as repeated queries on the same session may read from stale snapshots.
