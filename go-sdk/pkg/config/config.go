@@ -15,17 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package shared
+package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"strings"
 
+	"github.com/MatusOllah/slogcolor"
+	"github.com/fatih/color"
+	cc "github.com/ivanpirog/coloredcobra"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	"github.com/apache/airflow/go-sdk/pkg/logging/shclog"
 )
 
 type BundleConfig struct {
@@ -33,6 +39,55 @@ type BundleConfig struct {
 }
 
 var envKeyReplacer *strings.Replacer = strings.NewReplacer(".", "__", "-", "_")
+
+func InitColor(rootCmd *cobra.Command) {
+	cc.Init(&cc.Config{
+		RootCmd:       rootCmd,
+		Headings:      cc.Bold,
+		Commands:      cc.Yellow + cc.Bold,
+		Example:       cc.Italic,
+		ExecName:      cc.HiMagenta + cc.Bold,
+		Flags:         cc.Green,
+		FlagsDataType: cc.Italic + cc.White,
+	})
+}
+
+func Configure(cmd *cobra.Command) error {
+	var cfgFile string
+	cfgFlag := cmd.Flags().Lookup("config")
+	if cfgFlag != nil {
+		cfgFile = cfgFlag.Value.String()
+	}
+
+	if err := SetupViper(cfgFile); err != nil {
+		return err
+	}
+	// Bind the current command's flags to viper
+	BindFlagsToViper(cmd)
+
+	logger := makeLogger()
+	slog.SetDefault(logger)
+
+	return nil
+}
+
+func makeLogger() *slog.Logger {
+	opts := *slogcolor.DefaultOptions
+	leveler := &slog.LevelVar{}
+	leveler.Set(shclog.SlogLevelTrace)
+
+	opts.Level = leveler
+	opts.LevelTags = map[slog.Level]string{
+		shclog.SlogLevelTrace: color.New(color.FgHiGreen).Sprint("TRACE"),
+		slog.LevelDebug:       color.New(color.BgCyan, color.FgHiWhite).Sprint("DEBUG"),
+		slog.LevelInfo:        color.New(color.BgGreen, color.FgHiWhite).Sprint("INFO "),
+		slog.LevelWarn:        color.New(color.BgYellow, color.FgHiWhite).Sprint("WARN "),
+		slog.LevelError:       color.New(color.BgRed, color.FgHiWhite).Sprint("ERROR"),
+	}
+
+	log := slog.New(slogcolor.NewHandler(os.Stderr, &opts))
+	return log
+}
 
 func SetupViper(cfgFile string) error {
 	if cfgFile != "" {
@@ -87,6 +142,11 @@ func BindFlagsToViper(cmd *cobra.Command) {
 		if ann, ok := f.Annotations["viper-mapping"]; ok {
 			configName = ann[0]
 		} else {
+			// Skip  the default "help" flag
+			if f.Name == "help" {
+				return
+			}
+
 			// Since viper does case-insensitive comparisons, we don't need to bother fixing the case, and only need to remove the hyphens.
 			configName = envKeyReplacer.Replace(f.Name)
 		}
@@ -103,6 +163,14 @@ func BindFlagsToViper(cmd *cobra.Command) {
 			// If we have a viper config but no flag, set the flag value. This lets `MarkRequiredFlag` work
 			val := viper.Get(configName)
 			cmd.Flags().Set(f.Name, fmt.Sprintf("%v", val))
+		} else if f.Value.String() != "" {
+			// No changed flag (i.e. default), and no explicit viper set, set the viper value to the flag default
+			val := f.Value
+			if slice, ok := val.(pflag.SliceValue); ok {
+				viper.Set(configName, strings.Join(slice.GetSlice(), " "))
+			} else {
+				viper.Set(configName, f.Value.String())
+			}
 		}
 	})
 }
