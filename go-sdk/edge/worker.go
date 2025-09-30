@@ -100,7 +100,7 @@ func Run(ctx context.Context) error {
 
 func configOrDefault[T cast.Basic](key string, fallback T) T {
 	x := viper.Get(key)
-	if x == "" {
+	if x == nil {
 		return fallback
 	}
 	return cast.To[T](x)
