@@ -20,7 +20,7 @@
 Add partition_key field.
 
 Revision ID: cbd203f1e5ec
-Revises: eaf332f43c7c
+Revises: 15d84ca19038
 Create Date: 2025-09-17 09:48:43.202614
 
 """
@@ -32,7 +32,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "cbd203f1e5ec"
-down_revision = "eaf332f43c7c"
+down_revision = "15d84ca19038"
 branch_labels = None
 depends_on = None
 airflow_version = "3.2.0"

@@ -540,6 +540,7 @@ class DagRun(BaseModel):
     state: DagRunState
     conf: Annotated[dict[str, Any] | None, Field(title="Conf")] = None
     consumed_asset_events: Annotated[list[AssetEventDagRunReference], Field(title="Consumed Asset Events")]
+    partition_key: Annotated[str | None, Field(title="Partition Key")] = None
 
 
 class HITLDetailRequest(BaseModel):

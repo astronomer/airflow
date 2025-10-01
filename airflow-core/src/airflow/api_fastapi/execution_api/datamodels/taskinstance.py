@@ -300,6 +300,7 @@ class DagRun(StrictBaseModel):
     state: DagRunState
     conf: Annotated[dict[str, Any], Field(default_factory=dict)]
     consumed_asset_events: list[AssetEventDagRunReference]
+    partition_key: str | None
 
 
 class TIRunContext(BaseModel):

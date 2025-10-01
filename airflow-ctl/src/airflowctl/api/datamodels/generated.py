@@ -249,6 +249,7 @@ class CreateAssetEventsBody(BaseModel):
         extra="forbid",
     )
     asset_id: Annotated[int, Field(title="Asset Id")]
+    partition_key: Annotated[str | None, Field(title="Partition Key")] = None
     extra: Annotated[dict[str, Any] | None, Field(title="Extra")] = None
 
 
