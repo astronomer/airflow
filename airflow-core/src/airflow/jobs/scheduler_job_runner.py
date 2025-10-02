@@ -40,6 +40,7 @@ from sqlalchemy.sql import expression
 from airflow import settings
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.execution_api.datamodels.taskinstance import DagRun as DRDataModel, TIRunContext
+from airflow.assets.evaluation import AssetEvaluator
 from airflow.callbacks.callback_requests import (
     DagCallbackRequest,
     DagRunContext,
@@ -75,6 +76,7 @@ from airflow.models.dagwarning import DagWarning, DagWarningType
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.trigger import TRIGGER_FAIL_REPR, Trigger, TriggerFailureReason
+from airflow.sdk.definitions.asset import AssetUniqueKey, BaseAsset
 from airflow.stats import Stats
 from airflow.ti_deps.dependencies_states import EXECUTION_STATES
 from airflow.timetables.simple import AssetTriggeredTimetable, PartitionedAssetTimetable
@@ -1493,6 +1495,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         return num_queued_tis
 
     def _create_dagruns_for_partitioned_asset_dags(self, session: Session):
+        evaluator = AssetEvaluator(session)
+
+        def dag_ready(dag_id: str, cond: BaseAsset, statuses: dict[AssetUniqueKey, bool]) -> bool | None:
+            try:
+                return evaluator.run(cond, statuses)
+            except AttributeError:
+                # if dag was serialized before 2.9 and we *just* upgraded,
+                # we may be dealing with old version.  In that case,
+                # just wait for the dag to be reserialized.
+                self.log.warning("dag '%s' has old serialization; skipping DAG run creation.", dag_id)
+                return None
+
         apdrs: Iterable[AssetPartitionDagRun] = session.scalars(
             select(AssetPartitionDagRun).where(AssetPartitionDagRun.target_dag_run_id.is_(None))
         )
@@ -1509,15 +1523,19 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id
                 )
             )
-            for asset in timetable.asset_condition
-            for kl in key_logs:
-                asset = session.scalar(select(AssetModel).where(AssetModel.id == kl.asset_id))
-
-
-            # evaluate whether run should be created
-            timetable: PartitionedAssetTimetable = dag.timetable
-
-            timetable.partition_mapper
+            assets = session.scalars(
+                select(AssetModel).where(AssetModel.id.in_(
+                    (x.asset_id for x in key_logs)
+                ))
+            )
+            statuses = {AssetUniqueKey.from_asset(a): True for a in assets}
+            # todo: AIP-76 so, this basically works when we only require one partition from each asset to be there
+            #  but, we ultimately need rollup ability
+            #  that is, we need to ensure that whenever it is many -> one partitions, then we need to ensure
+            #  that all the required keys are there
+            #  one way to do this would be just to figure out what the count should be 
+            if not dag_ready(dag.dag_id, cond=dag.timetable.asset_condition, statuses=statuses):
+                continue
 
             run_after = timezone.utcnow()
             dag_run = dag.create_dagrun(
