@@ -63,6 +63,7 @@ from airflow.models.asset import (
     AssetWatcherModel,
     DagScheduleAssetAliasReference,
     DagScheduleAssetReference,
+    PartitionedAssetKeyLog,
     TaskOutletAssetReference,
 )
 from airflow.models.backfill import Backfill
@@ -76,7 +77,7 @@ from airflow.models.taskinstance import TaskInstance
 from airflow.models.trigger import TRIGGER_FAIL_REPR, Trigger, TriggerFailureReason
 from airflow.stats import Stats
 from airflow.ti_deps.dependencies_states import EXECUTION_STATES
-from airflow.timetables.simple import AssetTriggeredTimetable
+from airflow.timetables.simple import AssetTriggeredTimetable, PartitionedAssetTimetable
 from airflow.traces import utils as trace_utils
 from airflow.traces.tracer import DebugTrace, Trace, add_debug_span
 from airflow.utils.dates import datetime_to_nano
@@ -1508,6 +1509,21 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 self.log.error("DAG '%s' not found in serialized_dag table", apdr.target_dag_id)
                 continue
 
+            key_logs = session.scalars(
+                select(PartitionedAssetKeyLog).where(
+                    PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id
+                )
+            )
+            for asset in timetable.asset_condition
+            for kl in key_logs:
+                asset = session.scalar(select(AssetModel).where(AssetModel.id == kl.asset_id))
+
+
+            # evaluate whether run should be created
+            timetable: PartitionedAssetTimetable = dag.timetable
+
+            timetable.partition_mapper
+
             run_after = timezone.utcnow()
             dag_run = dag.create_dagrun(
                 run_id=DagRun.generate_run_id(
@@ -1532,7 +1548,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     @retry_db_transaction
     def _create_dagruns_for_dags(self, guard: CommitProhibitorGuard, session: Session) -> None:
         """Find Dag Models needing DagRuns and Create Dag Runs with retries in case of OperationalError."""
-        asset_partition_dags: set[str] = self._create_dagruns_for_partitioned_asset_dags(session)
+        ignore_list: set[str] = self._create_dagruns_for_partitioned_asset_dags(session)
         # todo: AIP-76 I do not think we can /  should support boolean logic with partitioned asset scheduling
         #  it's just not clear what that would even mean
 
@@ -1547,11 +1563,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             dag for dag in all_dags_needing_dag_runs if dag.dag_id in triggered_date_by_dag
         ]
         non_asset_dags = all_dags_needing_dag_runs.difference(asset_triggered_dags)
-        non_asset_dags = set(x for x in non_asset_dags if x.dag_id not in asset_partition_dags)
+        non_asset_dags = set(x for x in non_asset_dags if x.dag_id not in ignore_list)
         self._create_dag_runs(non_asset_dags, session)
         if asset_triggered_dags:
             self._create_dag_runs_asset_triggered(
-                dag_models=[x for x in asset_triggered_dags if x.dag_id not in asset_partition_dags],
+                dag_models=[x for x in asset_triggered_dags if x.dag_id not in ignore_list],
                 triggered_date_by_dag=triggered_date_by_dag,
                 session=session,
             )
