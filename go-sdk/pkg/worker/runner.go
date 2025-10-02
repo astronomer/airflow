@@ -37,9 +37,14 @@ import (
 )
 
 type (
-	// task is an interface of an task implementation.
+	// Task is an interface of an task implementation.
 	Task interface {
-		Execute(ctx context.Context, logger *slog.Logger) error
+		Execute(
+			ctx context.Context,
+			logger *slog.Logger,
+			workload api.ExecuteTaskWorkload,
+			runtimeState *api.TIRunState,
+		) error
 	}
 	// Bundle interface defines a type that is used "at execution time" to lookup a Task to execute
 	Bundle interface {
@@ -285,8 +290,6 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 		return err
 	}
 
-	taskContext = context.WithValue(taskContext, sdkcontext.RuntimeTIContextKey, runtimeContext)
-
 	// Make the heartbreat Context a child of the task context, so it finishes automatically when the task
 	// context does.
 	heartbeatCtx, stopHeartbeating := context.WithCancel(taskContext)
@@ -319,7 +322,9 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 
 	go heartbeater.Run(heartbeatCtx)
 
-	err = task.Execute(taskContext, taskLogger)
+	taskContext = context.WithValue(taskContext, sdkcontext.RuntimeTIContextKey, runtimeContext)
+
+	err = task.Execute(taskContext, taskLogger, workload, runtimeContext)
 	endTime := time.Now().UTC()
 
 	stopHeartbeating()

@@ -960,7 +960,7 @@ func (_c *XcomsClient_HeadResponse_Call) RunAndReturn(run func(ctx context.Conte
 }
 
 // Set provides a mock function for the type XcomsClient
-func (_mock *XcomsClient) Set(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{}) (*interface{}, error) {
+func (_mock *XcomsClient) Set(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue) (*interface{}, error) {
 	ret := _mock.Called(ctx, dagId, runId, taskId, key, params, body)
 
 	if len(ret) == 0 {
@@ -969,17 +969,17 @@ func (_mock *XcomsClient) Set(ctx context.Context, dagId string, runId string, t
 
 	var r0 *interface{}
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) (*interface{}, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) (*interface{}, error)); ok {
 		return returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) *interface{}); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) *interface{}); ok {
 		r0 = returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*interface{})
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) error); ok {
 		r1 = returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	} else {
 		r1 = ret.Error(1)
@@ -999,12 +999,12 @@ type XcomsClient_Set_Call struct {
 //   - taskId string
 //   - key string
 //   - params *api.SetXcomParams
-//   - body *interface{}
+//   - body *api.JsonValue
 func (_e *XcomsClient_Expecter) Set(ctx interface{}, dagId interface{}, runId interface{}, taskId interface{}, key interface{}, params interface{}, body interface{}) *XcomsClient_Set_Call {
 	return &XcomsClient_Set_Call{Call: _e.mock.On("Set", ctx, dagId, runId, taskId, key, params, body)}
 }
 
-func (_c *XcomsClient_Set_Call) Run(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{})) *XcomsClient_Set_Call {
+func (_c *XcomsClient_Set_Call) Run(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue)) *XcomsClient_Set_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1030,9 +1030,9 @@ func (_c *XcomsClient_Set_Call) Run(run func(ctx context.Context, dagId string, 
 		if args[5] != nil {
 			arg5 = args[5].(*api.SetXcomParams)
 		}
-		var arg6 *interface{}
+		var arg6 *api.JsonValue
 		if args[6] != nil {
-			arg6 = args[6].(*interface{})
+			arg6 = args[6].(*api.JsonValue)
 		}
 		run(
 			arg0,
@@ -1052,13 +1052,13 @@ func (_c *XcomsClient_Set_Call) Return(ifaceVal *interface{}, err error) *XcomsC
 	return _c
 }
 
-func (_c *XcomsClient_Set_Call) RunAndReturn(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{}) (*interface{}, error)) *XcomsClient_Set_Call {
+func (_c *XcomsClient_Set_Call) RunAndReturn(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue) (*interface{}, error)) *XcomsClient_Set_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetResponse provides a mock function for the type XcomsClient
-func (_mock *XcomsClient) SetResponse(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{}) (*resty.Response, error) {
+func (_mock *XcomsClient) SetResponse(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue) (*resty.Response, error) {
 	ret := _mock.Called(ctx, dagId, runId, taskId, key, params, body)
 
 	if len(ret) == 0 {
@@ -1067,17 +1067,17 @@ func (_mock *XcomsClient) SetResponse(ctx context.Context, dagId string, runId s
 
 	var r0 *resty.Response
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) (*resty.Response, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) (*resty.Response, error)); ok {
 		return returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) *resty.Response); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) *resty.Response); ok {
 		r0 = returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*resty.Response)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, *api.SetXcomParams, *interface{}) error); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string, *api.SetXcomParams, *api.JsonValue) error); ok {
 		r1 = returnFunc(ctx, dagId, runId, taskId, key, params, body)
 	} else {
 		r1 = ret.Error(1)
@@ -1097,12 +1097,12 @@ type XcomsClient_SetResponse_Call struct {
 //   - taskId string
 //   - key string
 //   - params *api.SetXcomParams
-//   - body *interface{}
+//   - body *api.JsonValue
 func (_e *XcomsClient_Expecter) SetResponse(ctx interface{}, dagId interface{}, runId interface{}, taskId interface{}, key interface{}, params interface{}, body interface{}) *XcomsClient_SetResponse_Call {
 	return &XcomsClient_SetResponse_Call{Call: _e.mock.On("SetResponse", ctx, dagId, runId, taskId, key, params, body)}
 }
 
-func (_c *XcomsClient_SetResponse_Call) Run(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{})) *XcomsClient_SetResponse_Call {
+func (_c *XcomsClient_SetResponse_Call) Run(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue)) *XcomsClient_SetResponse_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1128,9 +1128,9 @@ func (_c *XcomsClient_SetResponse_Call) Run(run func(ctx context.Context, dagId 
 		if args[5] != nil {
 			arg5 = args[5].(*api.SetXcomParams)
 		}
-		var arg6 *interface{}
+		var arg6 *api.JsonValue
 		if args[6] != nil {
-			arg6 = args[6].(*interface{})
+			arg6 = args[6].(*api.JsonValue)
 		}
 		run(
 			arg0,
@@ -1150,7 +1150,7 @@ func (_c *XcomsClient_SetResponse_Call) Return(response *resty.Response, err err
 	return _c
 }
 
-func (_c *XcomsClient_SetResponse_Call) RunAndReturn(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *interface{}) (*resty.Response, error)) *XcomsClient_SetResponse_Call {
+func (_c *XcomsClient_SetResponse_Call) RunAndReturn(run func(ctx context.Context, dagId string, runId string, taskId string, key string, params *api.SetXcomParams, body *api.JsonValue) (*resty.Response, error)) *XcomsClient_SetResponse_Call {
 	_c.Call.Return(run)
 	return _c
 }

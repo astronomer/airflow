@@ -98,7 +98,7 @@ func (c *client) PutXComForTi(
 
 func (*client) PutXCom(
 	ctx context.Context,
-	dagId, runId, taskId string,
+	dagID, runID, taskID string,
 	mapIndex *int,
 	key string,
 	value any,
@@ -109,8 +109,14 @@ func (*client) PutXCom(
 		params.MapIndex = mapIndex
 	}
 
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	val := api.JsonValueFromBytes(encoded)
+
 	httpClient := ctx.Value(sdkcontext.ApiClientContextKey).(api.ClientInterface)
-	_, err := httpClient.Xcoms().SetResponse(ctx, dagId, runId, taskId, key, &params, &value)
+	_, err = httpClient.Xcoms().SetResponse(ctx, dagID, runID, taskID, key, &params, &val)
 	if err != nil {
 		return err
 	}
@@ -119,17 +125,16 @@ func (*client) PutXCom(
 
 func (*client) GetXCom(
 	ctx context.Context,
-	dagId, runId, taskId string,
+	dagID, runID, taskID string,
 	mapIndex *int,
 	key string,
-	value any,
 ) (any, error) {
 	params := api.GetXcomParams{
 		MapIndex: mapIndex,
 	}
 
 	httpClient := ctx.Value(sdkcontext.ApiClientContextKey).(api.ClientInterface)
-	res, err := httpClient.Xcoms().Get(ctx, dagId, runId, taskId, key, &params)
+	res, err := httpClient.Xcoms().Get(ctx, dagID, runID, taskID, key, &params)
 	if err != nil {
 		var httpError *api.GeneralHTTPError
 		if errors.As(err, &httpError) && httpError.Response.StatusCode() == 404 {

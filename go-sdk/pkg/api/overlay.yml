@@ -66,3 +66,21 @@ actions:
           - $ref: "#/components/schemas/TIRescheduleStatePayload"
           - $ref: "#/components/schemas/TIRetryStatePayload"
         title: "TI UpdateState Payload"
+
+  - description: |-
+      Update the type to have better JSON semantics. This is fixed in later versions of the schema (but the
+      content sent is the same regardless)
+    target: $.paths['/xcoms/{dag_id}/{run_id}/{task_id}/{key}'].post.requestBody.content['application/json'].schema
+    update:
+      "$ref": "#/components/schemas/JsonValue"
+
+  - description: |-
+      Temp hack. Add this in a later version of the api
+    target: $.components.schemas.TIRunContext.properties
+    update:
+      task_args:
+        items:
+          "$ref": "#/components/schemas/JsonValue"
+        type: "array"
+        nullable: true
+        title: "Task Args"

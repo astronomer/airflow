@@ -22,11 +22,18 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/apache/airflow/go-sdk/pkg/api"
+	apimock "github.com/apache/airflow/go-sdk/pkg/api/mocks"
 	"github.com/apache/airflow/go-sdk/pkg/logging"
+	"github.com/apache/airflow/go-sdk/pkg/sdkcontext"
 	"github.com/apache/airflow/go-sdk/sdk"
 )
+
+// helper to create a pointer
+func ptr[T any](v T) *T { return &v }
 
 type TaskSuite struct {
 	suite.Suite
@@ -66,6 +73,7 @@ func (s *TaskSuite) TestReturnValidation() {
 }
 
 func (s *TaskSuite) TestArgumentBinding() {
+	ctxKey := struct{ string }{"abc"}
 	cases := map[string]struct {
 		fn any
 	}{
@@ -74,13 +82,13 @@ func (s *TaskSuite) TestArgumentBinding() {
 		},
 		"context": {
 			func(ctx context.Context) error {
-				s.Equal("def", ctx.Value("abc"))
+				s.Equal("def", ctx.Value(ctxKey))
 				return nil
 			},
 		},
 		"context-and-logger": {
 			func(ctx context.Context, logger *slog.Logger) error {
-				s.Equal("def", ctx.Value("abc"))
+				s.Equal("def", ctx.Value(ctxKey))
 				s.NotNil(logger)
 				return nil
 			},
@@ -111,9 +119,88 @@ func (s *TaskSuite) TestArgumentBinding() {
 			task, err := NewTaskFunction(tt.fn)
 			s.Require().NoError(err)
 
-			ctx := context.WithValue(context.Background(), "abc", "def")
+			ctx := context.WithValue(context.Background(), ctxKey, "def")
 			logger := slog.New(logging.NewTeeLogger())
-			task.Execute(ctx, logger)
+			task.Execute(ctx, logger, api.ExecuteTaskWorkload{}, &api.TIRunContext{})
+		})
+	}
+}
+
+func (s *TaskSuite) TestArgumentRuntimeParamBinding() {
+	workload := api.ExecuteTaskWorkload{
+		TI: TaskInstance{
+			DagId:     "dag",
+			RunId:     "runid",
+			TaskId:    "currenttask",
+			TryNumber: 1,
+		},
+	}
+	var client api.ClientInterface
+
+	cases := map[string]struct {
+		fn any
+		api.TIRunState
+		setup func()
+	}{
+		"int-args": {
+			func(ctx context.Context, val int) error {
+				s.Equal(2, val)
+				return nil
+			},
+			api.TIRunState{
+				TaskArgs: ptr([]api.JsonValue{
+					api.JsonValueFromBytes([]byte(`2.0`)),
+				}),
+			},
+			nil,
+		},
+		"xcom-int-arg": {
+			func(ctx context.Context, val int) error {
+				s.Equal(42, val)
+				return nil
+			},
+			api.TIRunState{
+				TaskArgs: ptr([]api.JsonValue{
+					api.JsonValueFromBytes([]byte(`
+						{"__type": "XComArg", "__var": {"task_id": "upstream1"}}`)),
+				}),
+			},
+			func() {
+				mockClient := &apimock.ClientInterface{}
+				client = mockClient
+				xcoms := &apimock.XcomsClient{}
+				mockClient.EXPECT().Xcoms().Return(xcoms)
+				xcoms.EXPECT().
+					Get(mock.Anything, "dag", "runid", "upstream1", "return_value", mock.Anything).
+					Return(&api.XComResponse{
+						Key:   "return_value",
+						Value: ptr(api.JsonValueFromBytes([]byte(`42.0`))),
+					}, nil)
+
+				s.T().Cleanup(func() {
+					xcoms.AssertExpectations(s.T())
+					mockClient.AssertExpectations(s.T())
+				})
+			},
+		},
+	}
+
+	for name, tt := range cases {
+		s.Run(name, func() {
+			client = nil
+
+			if tt.setup != nil {
+				tt.setup()
+			}
+
+			ctx := context.WithValue(context.Background(), sdkcontext.ApiClientContextKey, client)
+
+			task, err := NewTaskFunction(tt.fn)
+			s.Require().NoError(err)
+
+			logger := slog.New(logging.NewTeeLogger())
+			err = task.Execute(ctx, logger, workload, &tt.TIRunState)
+			s.NoError(err)
 		})
 	}
 }
