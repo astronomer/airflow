@@ -40,6 +40,7 @@ from sqlalchemy.sql import expression
 from airflow import settings
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.execution_api.datamodels.taskinstance import DagRun as DRDataModel, TIRunContext
+from airflow.assets.evaluation import AssetEvaluator
 from airflow.callbacks.callback_requests import (
     DagCallbackRequest,
     DagRunContext,
@@ -63,6 +64,7 @@ from airflow.models.asset import (
     AssetWatcherModel,
     DagScheduleAssetAliasReference,
     DagScheduleAssetReference,
+    PartitionedAssetKeyLog,
     TaskOutletAssetReference,
 )
 from airflow.models.backfill import Backfill
@@ -75,6 +77,7 @@ from airflow.models.dagwarning import DagWarning, DagWarningType
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.trigger import TRIGGER_FAIL_REPR, Trigger, TriggerFailureReason
+from airflow.sdk.definitions.asset import AssetUniqueKey, BaseAsset
 from airflow.stats import Stats
 from airflow.ti_deps.dependencies_states import EXECUTION_STATES
 from airflow.timetables.simple import AssetTriggeredTimetable
@@ -1558,6 +1561,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         return num_queued_tis
 
     def _create_dagruns_for_partitioned_asset_dags(self, session: Session):
+        evaluator = AssetEvaluator(session)
+
+        def dag_ready(dag_id: str, cond: BaseAsset, statuses: dict[AssetUniqueKey, bool]) -> bool | None:
+            try:
+                return evaluator.run(cond, statuses)
+            except AttributeError:
+                # if dag was serialized before 2.9 and we *just* upgraded,
+                # we may be dealing with old version.  In that case,
+                # just wait for the dag to be reserialized.
+                self.log.warning("dag '%s' has old serialization; skipping DAG run creation.", dag_id)
+                return None
+
         apdrs: Iterable[AssetPartitionDagRun] = session.scalars(
             select(AssetPartitionDagRun).where(AssetPartitionDagRun.created_dag_run_id.is_(None))
         )
@@ -1567,6 +1582,23 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             dag = _get_current_dag(dag_id=apdr.target_dag_id, session=session)
             if not dag:
                 self.log.error("DAG '%s' not found in serialized_dag table", apdr.target_dag_id)
+                continue
+
+            key_logs = session.scalars(
+                select(PartitionedAssetKeyLog).where(
+                    PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id
+                )
+            )
+            assets = session.scalars(
+                select(AssetModel).where(AssetModel.id.in_(x.asset_id for x in key_logs))
+            )
+            statuses = {AssetUniqueKey.from_asset(a): True for a in assets}
+            # todo: AIP-76 so, this basically works when we only require one partition from each asset to be there
+            #  but, we ultimately need rollup ability
+            #  that is, we need to ensure that whenever it is many -> one partitions, then we need to ensure
+            #  that all the required keys are there
+            #  one way to do this would be just to figure out what the count should be
+            if not dag_ready(dag.dag_id, cond=dag.timetable.asset_condition, statuses=statuses):
                 continue
 
             run_after = timezone.utcnow()
@@ -1593,7 +1625,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     @retry_db_transaction
     def _create_dagruns_for_dags(self, guard: CommitProhibitorGuard, session: Session) -> None:
         """Find Dag Models needing DagRuns and Create Dag Runs with retries in case of OperationalError."""
-        asset_partition_dags: set[str] = self._create_dagruns_for_partitioned_asset_dags(session)
+        ignore_list: set[str] = self._create_dagruns_for_partitioned_asset_dags(session)
         # todo: AIP-76 I do not think we can /  should support boolean logic with partitioned asset scheduling
         #  it's just not clear what that would even mean
 
@@ -1608,11 +1640,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             dag for dag in all_dags_needing_dag_runs if dag.dag_id in triggered_date_by_dag
         ]
         non_asset_dags = all_dags_needing_dag_runs.difference(asset_triggered_dags)
-        non_asset_dags = set(x for x in non_asset_dags if x.dag_id not in asset_partition_dags)
+        non_asset_dags = set(x for x in non_asset_dags if x.dag_id not in ignore_list)
         self._create_dag_runs(non_asset_dags, session)
         if asset_triggered_dags:
             self._create_dag_runs_asset_triggered(
-                dag_models=[x for x in asset_triggered_dags if x.dag_id not in asset_partition_dags],
+                dag_models=[x for x in asset_triggered_dags if x.dag_id not in ignore_list],
                 triggered_date_by_dag=triggered_date_by_dag,
                 session=session,
             )
