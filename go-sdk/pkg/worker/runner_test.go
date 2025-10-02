@@ -105,7 +105,7 @@ func (s *WorkerSuite) ExpectTaskRun(taskId string) {
 	s.T().Helper()
 	s.ti.EXPECT().
 		Run(mock.Anything, uuid.MustParse(taskId), mock.Anything).
-		Return(&api.TIRunContext{}, nil)
+		Return(&api.TIRunState{}, nil)
 	s.client.EXPECT().TaskInstances().Return(s.ti)
 }
 

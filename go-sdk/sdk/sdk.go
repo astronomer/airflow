@@ -66,10 +66,9 @@ type ConnectionClient interface {
 type XComClient interface {
 	GetXCom(
 		ctx context.Context,
-		dagId, runId, taskId string,
+		dagID, runID, taskID string,
 		mapIndex *int,
 		key string,
-		value any,
 	) (any, error)
 	PushXCom(ctx context.Context, ti api.TaskInstance, key string, value any) error
 }
