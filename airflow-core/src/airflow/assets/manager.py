@@ -158,7 +158,7 @@ class AssetManager(LoggingMixin):
         else:
             try:
                 logical_date: datetime = task_instance.dag_run.logical_date
-                eff_key = logical_date.strftime("%Y-%m-%d %H:%M")
+                eff_key = logical_date.strftime("%Y-%m-%d %H")
             except Exception:
                 log.exception("no logical date to string", logical_date=task_instance.dag_run.logical_date)
         event_kwargs = {
