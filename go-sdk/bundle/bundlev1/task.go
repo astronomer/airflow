@@ -64,6 +64,9 @@ func (f *taskFunction) Execute(
 	var err error
 
 	reflectArgs, err := f.bindArgs(ctx, logger)
+	if err != nil {
+		return err
+	}
 
 	slog.Debug("Attempting to call fn", "fn", f.fn, "args", reflectArgs)
 	retValues := f.fn.Call(reflectArgs)

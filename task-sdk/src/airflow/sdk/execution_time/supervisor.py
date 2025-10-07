@@ -901,6 +901,9 @@ def _remote_logging_conn(client: Client):
                 del os.environ[key]
             else:
                 os.environ[key] = old
+    else:
+        # No conn found, likely using something like AWS Instance Profile etc, so nothing explicit to set up
+        yield
 
 
 @attrs.define(kw_only=True)

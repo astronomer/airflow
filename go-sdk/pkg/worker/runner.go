@@ -138,6 +138,9 @@ func (h *heartbeater) Run(
 	defer ticker.Stop()
 	for {
 		select {
+		case <-ctx.Done():
+			// Something signaled us to stop.
+			return
 		case <-ticker.C:
 			// TODO: Record when last successful heartbeat was, and fail+abort if we haven't managed to record
 			// one recently enough
@@ -176,9 +179,6 @@ func (h *heartbeater) Run(
 				}
 
 			}
-		case <-ctx.Done():
-			// Something signaled us to stop.
-			return
 		}
 	}
 }
@@ -238,27 +238,6 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 		return err
 	}
 
-	var task Task
-	var exists bool = w.Bundle != nil
-	if exists {
-		// Only try looking up the task if we actually have a bundle
-		task, exists = w.LookupTask(workload.TI.DagId, workload.TI.TaskId)
-	}
-	if !exists {
-		taskLogger.ErrorContext(
-			taskContext,
-			"Task not registered",
-			"dag_id",
-			workload.TI.DagId,
-			"task_id",
-			workload.TI.TaskId,
-		)
-		return reportStateFailed(ctx)
-	}
-
-	// TODO: Timeout etc on the context
-	// TODO: Add in retries on the api client
-
 	runtimeContext, err := workloadClient.TaskInstances().
 		Run(ctx, workload.TI.Id, &api.TIEnterRunningPayload{
 			Hostname:  Hostname,
@@ -267,6 +246,13 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 			State:     api.Running,
 			StartDate: time.Now().UTC(),
 		})
+	logger.LogAttrs(
+		ctx,
+		slog.LevelInfo,
+		"Start context",
+		slog.Any("resp", runtimeContext),
+		logging.AttrErr(err),
+	)
 	if err != nil {
 		var httpError *api.GeneralHTTPError
 		if errors.As(err, &httpError) {
@@ -289,6 +275,27 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 		}
 		return err
 	}
+
+	var task Task
+	var exists bool = w.Bundle != nil
+	if exists {
+		// Only try looking up the task if we actually have a bundle
+		task, exists = w.LookupTask(workload.TI.DagId, workload.TI.TaskId)
+	}
+	if !exists {
+		taskLogger.ErrorContext(
+			taskContext,
+			"Task not registered",
+			"dag_id",
+			workload.TI.DagId,
+			"task_id",
+			workload.TI.TaskId,
+		)
+		return reportStateFailed(ctx)
+	}
+
+	// TODO: Timeout etc on the context
+	// TODO: Add in retries on the api client
 
 	// Make the heartbreat Context a child of the task context, so it finishes automatically when the task
 	// context does.
@@ -341,7 +348,7 @@ func (w *worker) ExecuteTaskWorkload(ctx context.Context, workload api.ExecuteTa
 		})
 	} else if err != nil {
 		logger.InfoContext(ctx, "Task returned an error, execution complete")
-		taskLogger.InfoContext(
+		taskLogger.ErrorContext(
 			taskContext,
 			"Task failed with error, marking task as failed",
 			"error",

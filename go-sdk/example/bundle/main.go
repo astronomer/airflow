@@ -49,6 +49,10 @@ func (m *myBundle) RegisterDags(dagbag v1.Registry) error {
 	tutorial_dag.AddTask(extract)
 	tutorial_dag.AddTask(transform)
 	tutorial_dag.AddTask(load)
+	tutorial_dag = dagbag.AddDag("tutorial_taskflow_api")
+	tutorial_dag.AddTask(extract)
+	tutorial_dag.AddTask(transform)
+	tutorial_dag.AddTask(load)
 
 	return nil
 }
@@ -85,18 +89,18 @@ func extract(ctx context.Context, client sdk.Client, log *slog.Logger) (any, err
 	return ret, nil
 }
 
-func transform(ctx context.Context, client sdk.VariableClient, log *slog.Logger) error {
+func transform(
+	ctx context.Context,
+	client sdk.VariableClient,
+	log *slog.Logger,
+	extracted map[string]any,
+) error {
 	// This function takes a VariableClient and not a Client to make unit testing it easier. See
 	// `./main_test.go` for an example unit of this task fn. Functionally taking a `sdk.Client` is the same (as
 	// Client includes VariableClient) but by using the dedicated type it can be easier to write unit tests.
 	//
 	// It also gives a better indication of what features the tasks use
-	key := "my_variable"
-	val, err := client.GetVariable(ctx, key)
-	if err != nil {
-		return err
-	}
-	log.Info("Obtained variable", key, val)
+	log.Info("Passed XComValue", "val", extracted)
 	return nil
 }
 

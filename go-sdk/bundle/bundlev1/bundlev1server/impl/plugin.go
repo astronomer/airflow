@@ -24,6 +24,7 @@ package impl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"sync"
@@ -123,13 +124,20 @@ func (g *server) getBundle(ctx context.Context) (bundlev1.Bundle, error) {
 func (g *server) Execute(
 	ctx context.Context,
 	req *proto.Execute_Request,
-) (*proto.Execute_Response, error) {
+) (_ *proto.Execute_Response, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("Reocvered from panic in `Execute` GRPC endpoint: %w", r)
+		}
+	}()
 	if executeTask := req.GetTask(); executeTask != nil {
-		return nil, g.executeTask(ctx, executeTask)
+		err = g.executeTask(ctx, executeTask)
+		return
 	}
 
 	which := req.WhichWorkload().String()
-	return nil, status.Errorf(codes.Unimplemented, "Unimplmeneted workload %q", which)
+	err = status.Errorf(codes.Unimplemented, "Unimplmeneted workload %q", which)
+	return
 }
 
 func (g *server) executeTask(ctx context.Context, executeTask *proto.ExecuteTaskWorkload) error {
