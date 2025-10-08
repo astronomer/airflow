@@ -16,8 +16,11 @@
 # under the License.
 from __future__ import annotations
 
+import datetime
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
+
+import pendulum
 
 from airflow._shared.timezones import timezone
 from airflow.timetables.base import DagRunInfo, DataInterval, Timetable
@@ -227,7 +230,44 @@ class IdentityMapper(PartitionMapper):
         return key
 
     def inverse_map(self, key):
-        return key
+        yield key
+
+
+class DayToWeekMapper(PartitionMapper):
+    def map(self, key):
+        dt = datetime.datetime.strptime(key, "%Y-%m-%d")
+        dt_p = pendulum.instance(dt)
+        return dt_p.start_of("week").to_date_string()
+
+    def inverse_map(self, key):
+        dt = pendulum.parse(key)
+        for num in range(7):
+            yield dt.add(days=num).to_date_string()
+
+
+class FiveMinuteMapper(PartitionMapper):
+    def _bin(self, key) -> datetime:
+        dt_p = pendulum.parse(key)
+        minutes = dt_p.minute
+        minutes = int(minutes / 5) * 5
+        dt_p = dt_p.replace(minute=minutes, second=0, microsecond=0, tzinfo=None)
+        print(dt_p)
+        return dt_p
+
+    def map(self, key):
+        dt_p = self._bin(key)
+        out = dt_p.strftime("%Y-%m-%d %H:%M")
+        return out
+
+    def inverse_map(self, key):
+        dt = self._bin(key)
+        for num in range(5):
+            out = dt.add(minutes=num)
+            yield out.strftime("%Y-%m-%d %H:%M")
+
+mm = FiveMinuteMapper()
+mm.map('2025-03-04 15:04')
+list(mm.map('2025-03-04 15:04'))
 
 
 class PartitionedAssetTimetable(AssetTriggeredTimetable):
@@ -246,10 +286,26 @@ class PartitionedAssetTimetable(AssetTriggeredTimetable):
         #  this mapper attribute could be a dictionary of asset -> mapper, OR we apply the same
         #  mapper to all asset deps but that doesn't really sound all that great
 
+    def serialize(self) -> dict[str, Any]:
+        from airflow.serialization.serialized_objects import encode_asset_condition
+
+        return {
+            "asset_condition": encode_asset_condition(self.asset_condition),
+            "partition_mapper_cls": self.partition_mapper.__class__.__name__,
+        }
 
     @classmethod
     def deserialize(cls, data: dict[str, Any]) -> Timetable:
         from airflow.serialization.serialized_objects import decode_asset_condition
 
         # todo: AIP-76 need to properly serialize / deserialize
-        return cls(decode_asset_condition(data["asset_condition"]), partition_mapper=IdentityMapper())
+        ser_asset_condition = data["asset_condition"]
+        mapper_class_name = data.get("partition_mapper_cls", None)
+        if mapper_class_name:
+            mapper_class = globals()[mapper_class_name]
+        else:
+            mapper_class = IdentityMapper
+        return cls(
+            assets=decode_asset_condition(ser_asset_condition),
+            partition_mapper=mapper_class(),
+        )
