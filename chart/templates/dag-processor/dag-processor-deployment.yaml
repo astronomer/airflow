@@ -121,6 +121,9 @@ spec:
         - name: {{ template "registry_secret" . }}
       {{- end }}
       initContainers:
+        {{- if .Values.dagProcessor.preAirflowExtraInitContainers }}
+          {{- tpl (toYaml .Values.dagProcessor.preAirflowExtraInitContainers) . | nindent 8 }}
+        {{- end }}
         {{- if .Values.dagProcessor.waitForMigrations.enabled }}
         - name: wait-for-airflow-migrations
           resources: {{- toYaml .Values.dagProcessor.resources | nindent 12 }}
@@ -238,7 +241,7 @@ spec:
           {{- if .Values.dagProcessor.logGroomerSidecar.env }}
               {{- tpl (toYaml .Values.dagProcessor.logGroomerSidecar.env) $ | nindent 12 }}
           {{- end }}
-          
+
           {{- if .Values.dagProcessor.logGroomerSidecar.livenessProbe }}
           livenessProbe:
             initialDelaySeconds: {{ .Values.dagProcessor.logGroomerSidecar.livenessProbe.initialDelaySeconds }}
