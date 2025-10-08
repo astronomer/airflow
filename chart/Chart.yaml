@@ -19,7 +19,7 @@
 ---
 apiVersion: v2
 name: airflow
-version: 1.17.0
+version: 1.17.1
 appVersion: 3.0.0
 description: The official Helm chart to deploy Apache Airflow, a platform to
   programmatically author, schedule, and monitor workflows
