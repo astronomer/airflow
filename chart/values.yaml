@@ -3063,6 +3063,11 @@ dags:
     #   - secretRef:
     #       name: 'proxy-config'
 
+    # Add a record to /etc/passwd for the current UID/GID. This is
+    # needed to use SSH with an arbitrary UID. This assumes that
+    # /etc/passwd is writable by the current UID.
+    addUser: true
+
     containerName: git-sync
     uid: 65533
 
