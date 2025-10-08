@@ -142,6 +142,9 @@ spec:
         - name: {{ template "registry_secret" . }}
       {{- end }}
       initContainers:
+        {{- if .Values.workers.preAirflowExtraInitContainers }}
+          {{- tpl (toYaml .Values.workers.preAirflowExtraInitContainers) . | nindent 8 }}
+        {{- end }}
         {{- if and $persistence .Values.workers.persistence.fixPermissions }}
         - name: volume-permissions
           resources: {{- toYaml .Values.workers.resources | nindent 12 }}

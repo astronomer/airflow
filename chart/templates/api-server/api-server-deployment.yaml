@@ -127,6 +127,9 @@ spec:
         - name: {{ template "registry_secret" . }}
       {{- end }}
       initContainers:
+        {{- if .Values.apiServer.preAirflowExtraInitContainers }}
+          {{- tpl (toYaml .Values.apiServer.preAirflowExtraInitContainers) . | nindent 8 }}
+        {{- end }}
         {{- if .Values.apiServer.waitForMigrations.enabled }}
         - name: wait-for-airflow-migrations
           resources: {{- toYaml .Values.apiServer.resources | nindent 12 }}

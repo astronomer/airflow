@@ -2243,6 +2243,14 @@
                         "$ref": "#/definitions/io.k8s.api.core.v1.Container"
                     }
                 },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into Airflow Celery workers and pods created with pod-template-file (templated) that run before any airflow init containers.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
                 "extraPorts": {
                     "description": "Expose additional ports of Airflow Celery worker container.",
                     "type": "array",
@@ -2915,6 +2923,14 @@
                         "$ref": "#/definitions/io.k8s.api.core.v1.Container"
                     }
                 },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into scheduler (templated) that run before any airflow init containers.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
                 "extraVolumes": {
                     "description": "Mount additional volumes into scheduler.",
                     "type": "array",
@@ -3478,6 +3494,14 @@
                 },
                 "extraInitContainers": {
                     "description": "Add additional init containers into triggerer (templated).",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into triggerer (templated) that run before any airflow init containers.",
                     "type": "array",
                     "default": [],
                     "items": {
@@ -4059,6 +4083,14 @@
                         "$ref": "#/definitions/io.k8s.api.core.v1.Container"
                     }
                 },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into dag processor (templated) that run before any airflow init containers.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
                 "extraVolumes": {
                     "description": "Mount additional volumes into dag processor.",
                     "type": "array",
@@ -4454,6 +4486,14 @@
                     "type": "array",
                     "default": []
                 },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into create user job pod (templated) that run before any airflow init containers.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
                 "extraVolumes": {
                     "description": "Mount additional volumes into create user job",
                     "type": "array",
@@ -4804,6 +4844,14 @@
                     "type": "array",
                     "default": []
                 },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into migrate database job (templated) that run before any airflow init containers.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
                 "extraContainers": {
                     "description": "Launch additional containers for the migrate database job pod",
                     "type": "array",
@@ -4982,7 +5030,7 @@
                     "default": {},
                     "additionalProperties": false,
                     "properties": {
-                        
+
                         "exec": {
                             "description": "Exec specifies the action to take to determine container liveness",
                             "type": "object",
@@ -5512,6 +5560,14 @@
                 },
                 "extraInitContainers": {
                     "description": "Add additional init containers into API server.",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into API server (templated) that run before any airflow init containers.",
                     "type": "array",
                     "default": [],
                     "items": {
@@ -6326,6 +6382,14 @@
                 },
                 "extraInitContainers": {
                     "description": "Add additional init containers into webserver (templated).",
+                    "type": "array",
+                    "default": [],
+                    "items": {
+                        "$ref": "#/definitions/io.k8s.api.core.v1.Container"
+                    }
+                },
+                "preAirflowExtraInitContainers": {
+                    "description": "Add additional init containers into Airflow webserver (templated) that run before any airflow init containers.",
                     "type": "array",
                     "default": [],
                     "items": {

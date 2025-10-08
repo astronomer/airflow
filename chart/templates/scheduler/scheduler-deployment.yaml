@@ -146,6 +146,9 @@ spec:
       hostAliases: {{- toYaml .Values.scheduler.hostAliases | nindent 8 }}
       {{- end }}
       initContainers:
+        {{- if .Values.scheduler.preAirflowExtraInitContainers }}
+          {{- tpl (toYaml .Values.scheduler.preAirflowExtraInitContainers) . | nindent 8 }}
+        {{- end }}
         {{- if .Values.scheduler.waitForMigrations.enabled }}
         - name: wait-for-airflow-migrations
           resources: {{- toYaml .Values.scheduler.resources | nindent 12 }}
