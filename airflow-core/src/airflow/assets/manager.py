@@ -318,15 +318,25 @@ class AssetManager(LoggingMixin):
 
             serdag = SerializedDagModel.get(dag_id=target_dag.dag_id, session=session)
             timetable = serdag.dag.timetable
+
             if TYPE_CHECKING:
                 assert isinstance(timetable, PartitionedAssetTimetable)
             target_key = timetable.partition_mapper.map(partition_key)
+
+            log.debug(
+                "queuing partition dag",
+                target_key=target_key,
+                source_key=partition_key,
+                timetable_class=timetable.__class__.__name__,
+                mapper_class=timetable.partition_mapper.__class__.__name__,
+            )
 
             apdr = cls._get_or_create_apdr(
                 target_key=target_key,
                 target_dag=target_dag,
                 session=session,
             )
+
             log_record = PartitionedAssetKeyLog(
                 asset_id=asset_id,
                 asset_event_id=event.id,
