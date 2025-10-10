@@ -1584,6 +1584,7 @@ repos:
           ^airflow-core/src/airflow/datasets/metadata\.py$|
           ^airflow-core/src/airflow/exceptions\.py$|
           ^airflow-core/src/airflow/executors/local_executor\.py$|
+          ^airflow-core/src/airflow/jobs/scheduler_job_runner\.py$|
           ^airflow-core/src/airflow/jobs/triggerer_job_runner\.py$|
           ^airflow-core/src/airflow/lineage/hook\.py$|
           ^airflow-core/src/airflow/listeners/spec/asset\.py$|

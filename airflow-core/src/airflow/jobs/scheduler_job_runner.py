@@ -1522,7 +1522,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             if not dag:
                 self.log.error("DAG '%s' not found in serialized_dag table", apdr.target_dag_id)
                 continue
-            timetable: PartitionedAssetTimetable = dag.timetable
+            timetable = dag.timetable
+            if TYPE_CHECKING:
+                assert isinstance(timetable, PartitionedAssetTimetable)
             partition_mapper = timetable.partition_mapper
             expected_keys = set(partition_mapper.inverse_map(apdr.partition_key))
             self.log.info(
@@ -1539,9 +1541,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             asset_key_presence = defaultdict(set)
             for k in key_logs:
                 asset_key_presence[k.asset_id].add(k.source_partition_key)
-            assets = session.scalars(
-                select(AssetModel).where(AssetModel.id.in_(asset_key_presence.keys()))
-            )
+            assets = session.scalars(select(AssetModel).where(AssetModel.id.in_(asset_key_presence.keys())))
 
             def _eval_asset(asset_id):
                 # todo: AIP-76 right now we assume every asset has same mapping
