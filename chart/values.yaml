@@ -853,8 +853,12 @@ workers:
 
   # Additional volumes and volume mounts attached to the
   # Airflow Celery workers and pods created with pod-template-file
-  extraVolumes: []
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    - mountPath: /usr/local/airflow/logs
+      name: logs
+  extraVolumes:
+    - emptyDir: {}
+      name: logs
   # Mount additional volumes into workers pods. It can be templated like in the following example:
   #   extraVolumes:
   #     - name: my-templated-extra-volume
@@ -1098,8 +1102,12 @@ scheduler:
   #     - name: my-templated-extra-volume
   #       mountPath: "{{ .Values.my_custom_path }}"
   #       readOnly: true
-  extraVolumes: []
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    - mountPath: /usr/local/airflow/logs
+      name: logs
+  extraVolumes:
+    - emptyDir: {}
+      name: logs
 
   # Select certain nodes for airflow scheduler pods.
   nodeSelector: {}
@@ -1477,8 +1485,12 @@ apiServer:
   #     - name: my-templated-extra-volume
   #       mountPath: "{{ .Values.my_custom_path }}"
   #       readOnly: true
-  extraVolumes: []
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    - mountPath: /usr/local/airflow/logs
+      name: logs
+  extraVolumes:
+    - emptyDir: {}
+      name: logs
 
   # Select certain nodes for Airflow API server pods.
   nodeSelector: {}
@@ -2127,8 +2139,12 @@ dagProcessor:
   #     - name: my-templated-extra-volume
   #       mountPath: "{{ .Values.my_custom_path }}"
   #       readOnly: true
-  extraVolumes: []
-  extraVolumeMounts: []
+  extraVolumeMounts:
+    - mountPath: /usr/local/airflow/logs
+      name: logs
+  extraVolumes:
+    - emptyDir: {}
+      name: logs
 
   # Select certain nodes for airflow dag processor pods.
   nodeSelector: {}
