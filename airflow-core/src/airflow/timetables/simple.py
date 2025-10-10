@@ -16,8 +16,8 @@
 # under the License.
 from __future__ import annotations
 
-import datetime
 from collections.abc import Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import pendulum
@@ -220,12 +220,20 @@ class AssetTriggeredTimetable(_TrivialTimetable):
 
 
 class PartitionMapper:
+    """
+    Base partition mapper class.
+
+    Maps keys from asset events to target dag run partitions.
+    """
+
     def map(self, key): ...
 
     def inverse_map(self, key): ...
 
 
 class IdentityMapper(PartitionMapper):
+    "Partition mapper that does not change the key."
+
     def map(self, key):
         return key
 
@@ -234,8 +242,10 @@ class IdentityMapper(PartitionMapper):
 
 
 class DayToWeekMapper(PartitionMapper):
+    """Partition mapper that maps week of partitions to start of week."""
+
     def map(self, key):
-        dt = datetime.datetime.strptime(key, "%Y-%m-%d")
+        dt = datetime.strptime(key, "%Y-%m-%d")
         dt_p = pendulum.instance(dt)
         return dt_p.start_of("week").to_date_string()
 
@@ -246,12 +256,15 @@ class DayToWeekMapper(PartitionMapper):
 
 
 class FiveMinuteMapper(PartitionMapper):
+    """Partition mapper that bins minutely keys to a five-minutely key."""
+
     def _bin(self, key) -> datetime:
         dt_p = pendulum.parse(key)
+        if TYPE_CHECKING:
+            assert isinstance(dt_p, datetime)
         minutes = dt_p.minute
         minutes = int(minutes / 5) * 5
         dt_p = dt_p.replace(minute=minutes, second=0, microsecond=0, tzinfo=None)
-        print(dt_p)
         return dt_p
 
     def map(self, key):
@@ -265,12 +278,10 @@ class FiveMinuteMapper(PartitionMapper):
             out = dt.add(minutes=num)
             yield out.strftime("%Y-%m-%d %H:%M")
 
-mm = FiveMinuteMapper()
-mm.map('2025-03-04 15:04')
-list(mm.map('2025-03-04 15:04'))
-
 
 class PartitionedAssetTimetable(AssetTriggeredTimetable):
+    """Timetable for scheduling on partitioned assets."""
+
     @property
     def summary(self) -> str:
         return "Partitioned Asset"
