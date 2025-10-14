@@ -2153,21 +2153,91 @@ def make_group_other_inaccessible(file_path: str):
         )
 
 
-def ensure_secrets_loaded(
-    default_backends: list[str] = DEFAULT_SECRETS_SEARCH_PATH,
+def ensure_secrets_backends(
+    role: "SecretsRole | None" = None,
+    default_backends: list[str] | None = None,
 ) -> list[BaseSecretsBackend]:
     """
-    Ensure that all secrets backends are loaded.
+    Ensure secrets backends are loaded with caching.
 
-    If the secrets_backend_list contains only 2 default backends, reload it.
+    Args:
+        role: Explicit role to use. If None, uses auto-detection (backward compat).
+        default_backends: Explicit backend list (legacy). If provided, role is ignored.
+
+    Returns:
+        List of instantiated secrets backends.
+
+    Behavior:
+    - If default_backends provided: legacy path, instantiate from strings
+    - If role provided: use ROLE_TO_SECRETS_CHAIN[role]
+    - If neither: auto-detect role via _detect_secrets_role()
+
+    Caching: Reloads if secrets_backend_list has only default backends or worker mode.
     """
-    # Check if the secrets_backend_list contains only 2 default backends.
+    from airflow.secrets import DEFAULT_SECRETS_SEARCH_PATH
 
-    # Check if we are loading the backends for worker too by checking if the default_backends is equal
-    # to DEFAULT_SECRETS_SEARCH_PATH.
-    if len(secrets_backend_list) == 2 or default_backends != DEFAULT_SECRETS_SEARCH_PATH:
-        return initialize_secrets_backends(default_backends=default_backends)
+    # Check if secrets_backend_list is initialized
+    global secrets_backend_list
+    
+    try:
+        backend_list_exists = secrets_backend_list is not None
+    except NameError:
+        backend_list_exists = False
+
+    # Legacy path: default_backends explicitly provided
+    if default_backends is not None:
+        if not backend_list_exists or len(secrets_backend_list) == 2 or default_backends != DEFAULT_SECRETS_SEARCH_PATH:
+            return _initialize_secrets_backends_from_strings(default_backends)
+        return secrets_backend_list
+
+    # Role-based path
+    if role is None:
+        # Auto-detect role
+        try:
+            from airflow.sdk.execution_time.supervisor import _detect_secrets_role
+
+            role = _detect_secrets_role()
+        except ImportError:
+            # Task SDK not installed - assume server context (core-only deployment)
+            from airflow.secrets.roles import SecretsRole
+
+            role = SecretsRole.API_SERVER
+
+    from airflow.secrets.roles import ROLE_TO_SECRETS_CHAIN
+
+    chain = ROLE_TO_SECRETS_CHAIN[role]
+
+    # Check cache
+    if not backend_list_exists or len(secrets_backend_list) == 2 or chain != DEFAULT_SECRETS_SEARCH_PATH:
+        return _initialize_secrets_backends_from_strings(chain)
+
     return secrets_backend_list
+
+
+def _initialize_secrets_backends_from_strings(
+    backend_strings: list[str],
+) -> list[BaseSecretsBackend]:
+    """
+    Initialize secrets backends from string paths.
+
+    Internal function extracted from initialize_secrets_backends for clarity.
+    """
+    from airflow.secrets import DEFAULT_SECRETS_SEARCH_PATH
+
+    backend_list = []
+    worker_mode = backend_strings != DEFAULT_SECRETS_SEARCH_PATH
+
+    # Add custom backend from config if defined
+    custom_secret_backend = get_custom_secret_backend(worker_mode)
+    if custom_secret_backend is not None:
+        backend_list.append(custom_secret_backend)
+
+    # Instantiate backends from string paths
+    for class_name in backend_strings:
+        secrets_backend_cls = import_string(class_name)
+        backend_list.append(secrets_backend_cls())
+
+    return backend_list
 
 
 def get_custom_secret_backend(worker_mode: bool = False) -> BaseSecretsBackend | None:
@@ -2210,30 +2280,33 @@ def get_custom_secret_backend(worker_mode: bool = False) -> BaseSecretsBackend |
     return secrets_backend_cls(**backend_kwargs)
 
 
+# Deprecated aliases for backward compatibility
+def ensure_secrets_loaded(
+    default_backends: list[str] = DEFAULT_SECRETS_SEARCH_PATH,
+) -> list[BaseSecretsBackend]:
+    """Deprecated: Use ensure_secrets_backends instead."""
+    import warnings
+
+    warnings.warn(
+        "ensure_secrets_loaded is deprecated, use ensure_secrets_backends",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return ensure_secrets_backends(default_backends=default_backends)
+
+
 def initialize_secrets_backends(
     default_backends: list[str] = DEFAULT_SECRETS_SEARCH_PATH,
 ) -> list[BaseSecretsBackend]:
-    """
-    Initialize secrets backend.
+    """Deprecated: Use ensure_secrets_backends instead."""
+    import warnings
 
-    * import secrets backend classes
-    * instantiate them and return them in a list
-    """
-    backend_list = []
-    worker_mode = False
-    if default_backends != DEFAULT_SECRETS_SEARCH_PATH:
-        worker_mode = True
-
-    custom_secret_backend = get_custom_secret_backend(worker_mode)
-
-    if custom_secret_backend is not None:
-        backend_list.append(custom_secret_backend)
-
-    for class_name in default_backends:
-        secrets_backend_cls = import_string(class_name)
-        backend_list.append(secrets_backend_cls())
-
-    return backend_list
+    warnings.warn(
+        "initialize_secrets_backends is deprecated, use ensure_secrets_backends",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return _initialize_secrets_backends_from_strings(default_backends)
 
 
 def initialize_auth_manager() -> BaseAuthManager:
@@ -2282,5 +2355,5 @@ FERNET_KEY = ""  # Set only if needed when generating a new file
 JWT_SECRET_KEY = ""
 
 conf: AirflowConfigParser = initialize_config()
-secrets_backend_list = initialize_secrets_backends()
+secrets_backend_list = ensure_secrets_backends(default_backends=DEFAULT_SECRETS_SEARCH_PATH)
 conf.validate()

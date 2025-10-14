@@ -177,8 +177,13 @@ def _get_connection(conn_id: str) -> Connection:
     #   will make that module depend on Task SDK, which is not ideal because we intend to
     #   keep Task SDK as a separate package than execution time mods.
     #   Also applies to _async_get_connection.
-    from airflow.sdk.execution_time.comms import GetConnection
-    from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+    try:
+        from airflow.sdk.execution_time.comms import GetConnection
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+    except ImportError as exc:  # pragma: no cover - defensive
+        from airflow.exceptions import AirflowNotFoundException
+
+        raise AirflowNotFoundException(f"The conn_id `{conn_id}` isn't defined") from exc
 
     msg = SUPERVISOR_COMMS.send(GetConnection(conn_id=conn_id))
 

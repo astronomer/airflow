@@ -1015,6 +1015,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             span.add_event(name="airflow.task.ended", timestamp=datetime_to_nano(ti.end_date))
 
     def _execute(self) -> int | None:
+        # Mark this as a server context for secrets backend detection
+        os.environ["_AIRFLOW_PROCESS_CONTEXT"] = "server"
+        
         self.log.info("Starting the scheduler")
 
         reset_signals = self.register_signals()

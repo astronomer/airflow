@@ -14,17 +14,32 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Secrets role definitions for backend chain selection."""
 
 from __future__ import annotations
 
-import os
+from enum import Enum
 
-# Mark server context before importing Airflow modules so plugins get the correct chain
-os.environ.setdefault("_AIRFLOW_PROCESS_CONTEXT", "server")
+__all__ = ["SecretsRole", "ROLE_TO_SECRETS_CHAIN"]
 
-from airflow.api_fastapi.app import cached_app
 
-# There is no way to pass the apps to this file from Airflow CLI
-# because fastapi dev command does not accept any additional arguments
-# so environment variable is being used to pass it
-app = cached_app(apps=os.environ.get("AIRFLOW_API_APPS", "all"))
+class SecretsRole(Enum):
+    """Execution contexts for secrets backend selection."""
+
+    # Worker-side contexts
+    WORKER_TASK_RUNNER = "task_runner"  # Child process with SUPERVISOR_COMMS
+    WORKER_SUPERVISOR = "supervisor"  # Parent process before SUPERVISOR_COMMS exists
+
+    # Server-side contexts with direct database access
+    API_SERVER = "api_server"
+    SCHEDULER = "scheduler"
+
+    # Hybrid contexts that behave like servers via InProcessExecutionAPI
+    DAG_PROCESSOR = "dag_processor"
+    TRIGGERER = "triggerer"
+
+
+# Populated by airflow.secrets.__init__ to avoid circular imports
+ROLE_TO_SECRETS_CHAIN: dict[SecretsRole, list[str]] = {}
+
+

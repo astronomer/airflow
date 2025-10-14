@@ -1,0 +1,36 @@
+Fix connection access with role-based secrets backend chains
+
+Hooks running in API server contexts (plugins, middlewares, log handlers)
+previously failed when importing ``SUPERVISOR_COMMS``. We now define explicit
+role-based secrets backend chains and automatically detect which chain to use:
+
+- **Server chain** (API server, scheduler, DAG processor, triggerer)
+  uses EnvironmentVariablesBackend → MetastoreBackend for direct database
+  access.
+- **Client task runner chain** (worker child process) uses
+  EnvironmentVariablesBackend → ExecutionAPISecretsBackend to route through
+  the Execution API.
+- **Client supervisor chain** (worker parent process before task runner)
+  uses EnvironmentVariablesBackend only, falling back to the API client for
+  remote logging.
+
+Roles are detected automatically using SUPERVISOR_COMMS and the
+``_AIRFLOW_PROCESS_CONTEXT`` marker. This keeps worker isolation intact while
+restoring server-side behaviour.
+
+**New Backend for Supervisor Context:**
+
+Added ``SupervisorAPIClientSecretsBackend`` for worker supervisor processes that
+need to fetch connections for remote logging before SUPERVISOR_COMMS is
+available. This backend calls the Execution API client directly.
+
+**Consolidated Backend Initialization:**
+
+The three separate backend initialization functions (``ensure_secrets_loaded``,
+``ensure_secrets_backend_loaded``, ``initialize_secrets_backends``) have been
+consolidated into ``ensure_secrets_backends()`` which supports explicit role
+passing or auto-detection for backward compatibility. Old functions remain
+as deprecated aliases.
+
+Fixes #56120, #56583, #51816
+

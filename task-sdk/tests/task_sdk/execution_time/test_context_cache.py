@@ -217,7 +217,8 @@ class TestVariableCacheIntegration:
         SecretCache.save_variable(key, old_value)
 
         _set_variable(key, new_value)
-        mock_supervisor_comms.send.assert_called_once()
+        calls = mock_supervisor_comms.send.call_args_list
+        assert any("PutVariable" in repr(call) for call in calls)
         with pytest.raises(SecretCache.NotPresentException):
             SecretCache.get_variable(key)
 

@@ -14,17 +14,13 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""Execution time secrets backends."""
 
 from __future__ import annotations
 
-import os
+from airflow.sdk.execution_time.secrets.execution_api import ExecutionAPISecretsBackend
+from airflow.sdk.execution_time.secrets.supervisor_api import SupervisorAPIClientSecretsBackend
 
-# Mark server context before importing Airflow modules so plugins get the correct chain
-os.environ.setdefault("_AIRFLOW_PROCESS_CONTEXT", "server")
+__all__ = ["ExecutionAPISecretsBackend", "SupervisorAPIClientSecretsBackend"]
 
-from airflow.api_fastapi.app import cached_app
 
-# There is no way to pass the apps to this file from Airflow CLI
-# because fastapi dev command does not accept any additional arguments
-# so environment variable is being used to pass it
-app = cached_app(apps=os.environ.get("AIRFLOW_API_APPS", "all"))

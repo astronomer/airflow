@@ -250,6 +250,9 @@ class DagFileProcessorManager(LoggingMixin):
         By processing them in separate processes, we can get parallelism and isolation
         from potentially harmful user code.
         """
+        # Mark this as a server context for secrets backend detection
+        os.environ["_AIRFLOW_PROCESS_CONTEXT"] = "server"
+        
         self.register_exit_signals()
 
         self.log.info("Processing files using up to %s processes at a time ", self._parallelism)

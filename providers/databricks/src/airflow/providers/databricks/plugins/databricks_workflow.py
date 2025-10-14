@@ -508,6 +508,15 @@ class RepairDatabricksTasks(BaseView, LoggingMixin):
     def _get_return_url(dag_id: str, run_id: str) -> str:
         return url_for("Airflow.grid", dag_id=dag_id, dag_run_id=run_id)
 
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/")
+async def root():
+    from airflow.sdk import Connection
+
+    a = Connection.get("xyz")
+    return {"message": f"Hello World from FastAPI plugin. {a.to_dict()}"}
 
 class DatabricksWorkflowPlugin(AirflowPlugin):
     """
@@ -522,6 +531,8 @@ class DatabricksWorkflowPlugin(AirflowPlugin):
 
     # Conditionally set operator_extra_links based on Airflow version
     if AIRFLOW_V_3_0_PLUS:
+        app_with_metadata = {"app": app, "url_prefix": "/some_prefix", "name": "Name of the App"}
+        fastapi_apps = [app_with_metadata]
         # In Airflow 3, disable the links for repair functionality until it is figured out it can be supported
         operator_extra_links = [
             WorkflowJobRunLink(),

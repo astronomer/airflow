@@ -1384,7 +1384,8 @@ class TestRuntimeTaskInstance:
         # Access the variable from the context
         var_from_context = context["var"][accessor_type].test_key
 
-        mock_supervisor_comms.send.assert_called_once_with(GetVariable(key="test_key"))
+        first_call = mock_supervisor_comms.send.call_args_list[0]
+        assert first_call == ((GetVariable(key="test_key"),), {})
 
         assert var_from_context == expected_value
 

@@ -29,9 +29,17 @@ from __future__ import annotations
 
 from airflow.utils.deprecation_tools import add_deprecated_classes
 
-__all__ = ["BaseSecretsBackend", "DEFAULT_SECRETS_SEARCH_PATH", "DEFAULT_SECRETS_SEARCH_PATH_WORKERS"]
-
 from airflow.secrets.base_secrets import BaseSecretsBackend
+from airflow.secrets.roles import ROLE_TO_SECRETS_CHAIN, SecretsRole
+
+__all__ = [
+    "BaseSecretsBackend",
+    "DEFAULT_SECRETS_SEARCH_PATH",
+    "DEFAULT_SECRETS_SEARCH_PATH_WORKERS",
+    "SERVER_SECRETS_SEARCH_PATH",
+    "CLIENT_TASK_RUNNER_SECRETS_SEARCH_PATH",
+    "CLIENT_SUPERVISOR_SECRETS_SEARCH_PATH",
+]
 
 DEFAULT_SECRETS_SEARCH_PATH = [
     "airflow.secrets.environment_variables.EnvironmentVariablesBackend",
@@ -40,7 +48,27 @@ DEFAULT_SECRETS_SEARCH_PATH = [
 
 DEFAULT_SECRETS_SEARCH_PATH_WORKERS = [
     "airflow.secrets.environment_variables.EnvironmentVariablesBackend",
+    "airflow.sdk.execution_time.secrets.execution_api.ExecutionAPISecretsBackend",
 ]
+
+SERVER_SECRETS_SEARCH_PATH = DEFAULT_SECRETS_SEARCH_PATH
+
+CLIENT_TASK_RUNNER_SECRETS_SEARCH_PATH = DEFAULT_SECRETS_SEARCH_PATH_WORKERS
+
+CLIENT_SUPERVISOR_SECRETS_SEARCH_PATH = [
+    "airflow.secrets.environment_variables.EnvironmentVariablesBackend",
+]
+
+ROLE_TO_SECRETS_CHAIN.update(
+    {
+        SecretsRole.WORKER_TASK_RUNNER: CLIENT_TASK_RUNNER_SECRETS_SEARCH_PATH,
+        SecretsRole.WORKER_SUPERVISOR: CLIENT_SUPERVISOR_SECRETS_SEARCH_PATH,
+        SecretsRole.DAG_PROCESSOR: SERVER_SECRETS_SEARCH_PATH,
+        SecretsRole.TRIGGERER: SERVER_SECRETS_SEARCH_PATH,
+        SecretsRole.API_SERVER: SERVER_SECRETS_SEARCH_PATH,
+        SecretsRole.SCHEDULER: SERVER_SECRETS_SEARCH_PATH,
+    }
+)
 
 
 __deprecated_classes = {

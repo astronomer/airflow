@@ -832,6 +832,8 @@ def _get_remote_logging_conn(conn_id: str, client: Client) -> Connection | None:
     """
     Fetch and cache connection for remote logging.
 
+    Uses SupervisorAPIClientSecretsBackend to fetch from Execution API.
+
     Args:
         conn_id: Connection ID to fetch
         client: API client for making requests
@@ -839,12 +841,16 @@ def _get_remote_logging_conn(conn_id: str, client: Client) -> Connection | None:
     Returns:
         Connection object or None if not found
     """
-    # Since we need to use the API Client directly, we can't use Connection.get as that would try to use
-    # SUPERVISOR_COMMS
+    from airflow.sdk.execution_time.secrets.supervisor_api import SupervisorAPIClientSecretsBackend
 
     # TODO: Store in the SecretsCache if its enabled - see #48858
 
+    # Try backends in order: env vars, then API client
     backends = ensure_secrets_backend_loaded()
+
+    # Append supervisor-specific backend that uses client directly
+    backends.append(SupervisorAPIClientSecretsBackend(client))
+
     for secrets_backend in backends:
         try:
             conn = secrets_backend.get_connection(conn_id=conn_id)
@@ -852,17 +858,24 @@ def _get_remote_logging_conn(conn_id: str, client: Client) -> Connection | None:
                 return conn
         except Exception:
             log.exception(
-                "Unable to retrieve connection from secrets backend (%s). "
-                "Checking subsequent secrets backend.",
+                "Unable to retrieve connection from secrets backend (%s). Checking subsequent backends.",
                 type(secrets_backend).__name__,
             )
 
-    conn = client.connections.get(conn_id)
-    if isinstance(conn, ConnectionResponse):
-        conn_result = ConnectionResult.from_conn_response(conn)
+    # Final fallback: try API client directly (shouldn't reach here)
+    try:
+        from airflow.sdk.api.datamodels._generated import ConnectionResponse
         from airflow.sdk.definitions.connection import Connection
+        from airflow.sdk.execution_time.comms import ConnectionResult
 
-        return Connection(**conn_result.model_dump(exclude={"type"}, by_alias=True))
+        conn = client.connections.get(conn_id)
+        if isinstance(conn, ConnectionResponse):
+            conn_result = ConnectionResult.from_conn_response(conn)
+            # Convert ConnectionResult to SDK Connection
+            return Connection(**conn_result.model_dump(exclude={"type"}, by_alias=True))
+    except Exception:
+        log.exception("Unable to retrieve connection from API client")
+
     return None
 
 
@@ -1765,13 +1778,31 @@ def forward_to_log(
 
 
 def ensure_secrets_backend_loaded() -> list[BaseSecretsBackend]:
-    """Initialize the secrets backend on workers."""
-    from airflow.configuration import ensure_secrets_loaded
-    from airflow.secrets import DEFAULT_SECRETS_SEARCH_PATH_WORKERS
+    """Initialize secrets backend with auto-detected role."""
+    from airflow.configuration import ensure_secrets_backends
 
-    backends = ensure_secrets_loaded(default_backends=DEFAULT_SECRETS_SEARCH_PATH_WORKERS)
+    # Auto-detection happens in ensure_secrets_backends
+    return ensure_secrets_backends()
 
-    return backends
+
+def _detect_secrets_role() -> "SecretsRole":
+    """Auto-detect secrets role based on execution context markers."""
+    import os
+
+    from airflow.secrets.roles import SecretsRole
+
+    try:
+        from airflow.sdk.execution_time import task_runner
+
+        if hasattr(task_runner, "SUPERVISOR_COMMS") and task_runner.SUPERVISOR_COMMS is not None:
+            return SecretsRole.WORKER_TASK_RUNNER
+    except (ImportError, AttributeError):
+        pass
+
+    if os.environ.get("_AIRFLOW_PROCESS_CONTEXT") == "server":
+        return SecretsRole.API_SERVER
+
+    return SecretsRole.WORKER_SUPERVISOR
 
 
 def _configure_logging(log_path: str, client: Client) -> tuple[FilteringBoundLogger, BinaryIO | TextIO]:
