@@ -785,6 +785,8 @@ class AssetEvent(Base):
     source_map_index: Mapped[int | None] = mapped_column(Integer, nullable=True, server_default=text("-1"))
     timestamp: Mapped[datetime] = mapped_column(UtcDateTime, default=timezone.utcnow, nullable=False)
 
+    partition_key = Column(StringID())
+
     __tablename__ = "asset_event"
     __table_args__ = (
         Index("idx_asset_id_timestamp", asset_id, timestamp),
