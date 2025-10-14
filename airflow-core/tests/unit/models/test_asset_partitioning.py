@@ -48,3 +48,36 @@ def test_user_can_override_the_asset_event_somehow():
 
 def test_when_dag_run_has_partition_key_its_accessible_in_context():
     """For now we can just access via dag run object."""
+
+
+def test_partition_mapping():
+    """
+    The scheduling behavior.
+
+    We need a clear interface for specifying when dag runs should be created in response to asset events.
+
+    When a dag is listening to a partitioned asset, it's complicated
+
+    Right now we have the queue table.
+
+    What if we add partition key to that.
+
+    What if we create a distinct partition queue table.
+
+    From the partition mapping definition, we would know which target partitions would be created from
+    a source asset event.
+
+    So when firing the source asset event, we need to look at the downstream dags
+        - for each listening dag:
+            - evaluate the partition mapping to determine target partition
+            - create a queue record
+                - source asset
+                - source key
+                - target key
+                - target dag
+        - Then what does the dag scheduling evaluation process look like:
+            - look in this partition mapping queue table
+                - loop over all (dag_id, partition_key) combinations
+                    * for each one, evaluate whether the conditions for running are met
+    Evaluation of partition-driven dags and non-partition-driven dags can be done entirely separately
+    """
