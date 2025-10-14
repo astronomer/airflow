@@ -2310,6 +2310,7 @@ def _create_orm_dagrun(
     backfill_id: NonNegativeInt | None,
     triggered_by: DagRunTriggeredByType,
     triggering_user_name: str | None = None,
+    partition_key: str | None = None,
     session: Session = NEW_SESSION,
 ) -> DagRun:
     bundle_version = None
@@ -2336,6 +2337,7 @@ def _create_orm_dagrun(
         triggering_user_name=triggering_user_name,
         backfill_id=backfill_id,
         bundle_version=bundle_version,
+        partition_key=partition_key,
     )
     # Load defaults into the following two fields to ensure result can be serialized detached
     run.log_template_id = int(session.scalar(select(func.max(LogTemplate.__table__.c.id))))
@@ -3200,6 +3202,7 @@ class SerializedDAG(BaseSerialization):
         start_date: datetime.datetime | None = None,
         creating_job_id: int | None = None,
         backfill_id: NonNegativeInt | None = None,
+        partition_key: str | None = None,
         session: Session = NEW_SESSION,
     ) -> DagRun:
         """
@@ -3276,6 +3279,7 @@ class SerializedDAG(BaseSerialization):
             backfill_id=backfill_id,
             triggered_by=triggered_by,
             triggering_user_name=triggering_user_name,
+            partition_key=partition_key,
             session=session,
         )
 
