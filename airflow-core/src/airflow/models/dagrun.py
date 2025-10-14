@@ -222,7 +222,7 @@ class DagRun(Base, LoggingMixin):
     :meta private:
     """
 
-    partition_key = Column(StringID())
+    partition_key: Mapped[str | None] = mapped_column(StringID(), nullable=True)
 
     # Remove this `if` after upgrading Sphinx-AutoAPI
     if not TYPE_CHECKING and "BUILDING_AIRFLOW_DOCS" in os.environ:
