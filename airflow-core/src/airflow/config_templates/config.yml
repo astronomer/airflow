@@ -1595,6 +1595,15 @@ workers:
       type: float
       example: ~
       default: "60.0"
+    execution_api_timeout:
+      description: |
+        The timeout (in seconds) for HTTP requests from workers to the Execution API server.
+        This controls how long a worker will wait for a response from the API server before
+        timing out. Increase this value if you experience timeout errors under high load.
+      version_added: 3.1.2
+      type: float
+      example: ~
+      default: "5.0"
 api_auth:
   description: Settings relating to authentication on the Airflow APIs
   options:
