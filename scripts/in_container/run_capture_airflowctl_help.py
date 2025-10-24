@@ -67,11 +67,15 @@ def get_airflowctl_command_hash_dict(commands):
     for command in commands:
         console.print(f"[bright_blue]Getting hash for command: {command}[/]")
         run_command = command if command != "main" else ""
+        cmd = [sys.executable, f"{AIRFLOW_CTL_SOURCES_PATH}/airflowctl/__main__.py"]
+        if run_command:
+            cmd.extend(run_command.split())
+        cmd.append("-h")
         output = subprocess.check_output(
-            [f"python {AIRFLOW_CTL_SOURCES_PATH}/airflowctl/__main__.py {run_command} -h"],
-            shell=True,
+            cmd,
             text=True,
             env=env,
+            stderr=subprocess.STDOUT,
         )
         help_text = output.strip()
         hash_dict[command if command != "" else "main"] = hashlib.md5(help_text.encode("utf-8")).hexdigest()
@@ -120,7 +124,11 @@ def regenerate_help_images_for_all_airflowctl_commands(commands: list[str], skip
     for command in changed_commands:
         path = (AIRFLOWCTL_IMAGES_PATH / f"output_{command.replace(' ', '_')}.svg").as_posix()
         run_command = command if command != "main" else ""
-        subprocess.run(f"airflowctl {run_command} --preview {path}", shell=True, env=env, check=True)
+        cmd = ["airflowctl"]
+        if run_command:
+            cmd.extend(run_command.split())
+        cmd.extend(["--preview", path])
+        subprocess.run(cmd, env=env, check=True)
         console.print(f"[bright_blue]Generated SVG for command: {command}")
 
     # Write new hashes

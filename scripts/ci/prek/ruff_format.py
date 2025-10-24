@@ -26,8 +26,26 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 
-ruff_format_cmd = "ruff format --force-exclude 2>&1 | grep -v '`ISC001`. To avoid unexpected behavior'"
 envcopy = os.environ.copy()
 envcopy["CLICOLOR_FORCE"] = "1"
-subprocess.run(ruff_format_cmd, shell=True, check=True, env=envcopy)
+
+# Run ruff directly, capture combined stdout/stderr, and filter noisy line in Python.
+proc = subprocess.run(
+    ["ruff", "format", "--force-exclude"],
+    env=envcopy,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.STDOUT,
+    text=True,
+)
+
+filtered_output = "\n".join(
+    line for line in proc.stdout.splitlines()
+    if "`ISC001`. To avoid unexpected behavior" not in line
+)
+
+if filtered_output:
+    print(filtered_output)
+
+sys.exit(proc.returncode)
