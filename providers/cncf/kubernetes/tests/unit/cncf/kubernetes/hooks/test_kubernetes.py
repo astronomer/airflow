@@ -971,8 +971,6 @@ class TestAsyncKubernetesHook:
             assert not incluster_config.called
             kube_config_loader.assert_called_once()
             kube_config_merger.assert_called_once()
-        except:
-            raise
         finally:
             clear_test_connections()
 

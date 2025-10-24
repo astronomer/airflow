@@ -749,7 +749,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
     @staticmethod
     def _process_task_event_logs(log_records: deque[Log], session: Session):
-        objects = (log_records.popleft() for _ in range(len(log_records)))
+        objects = list(log_records)
+        log_records.clear()
         session.bulk_save_objects(objects=objects, preserve_order=False)
 
     @staticmethod

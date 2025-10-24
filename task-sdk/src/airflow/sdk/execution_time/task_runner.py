@@ -346,8 +346,8 @@ class RuntimeTaskInstance(TaskInstance):
         if run_id is None:
             run_id = self.run_id
 
-        single_task_requested = isinstance(task_ids, (str, type(None)))
-        single_map_index_requested = isinstance(map_indexes, (int, type(None)))
+        single_task_requested = task_ids is None or isinstance(task_ids, str)
+        single_map_index_requested = map_indexes is None or isinstance(map_indexes, int)
 
         if task_ids is None:
             # default to the current task if not provided
