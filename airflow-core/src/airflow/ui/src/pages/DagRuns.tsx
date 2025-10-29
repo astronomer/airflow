@@ -207,7 +207,7 @@ export const DagRuns = () => {
   const durationLte = searchParams.get(DURATION_LTE_PARAM);
   const confContains = searchParams.get(CONF_CONTAINS_PARAM);
 
-  const refetchInterval = useAutoRefresh({});
+  const refetchInterval = useAutoRefresh({ checkPendingRuns: true, dagId });
 
   const { data, error, isLoading } = useDagRunServiceGetDagRuns(
     {
@@ -232,8 +232,7 @@ export const DagRuns = () => {
     },
     undefined,
     {
-      refetchInterval: (query) =>
-        query.state.data?.dag_runs.some((run) => isStatePending(run.state)) ? refetchInterval : false,
+      refetchInterval,
     },
   );
 
