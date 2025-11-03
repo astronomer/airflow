@@ -17,15 +17,10 @@
  * under the License.
  */
 
-import { Box, Button, Card, Heading, HStack, Icon, Link, Tabs, Text, VStack } from "@chakra-ui/react";
-import { LuMoon, LuSun } from "react-icons/lu";
+import { Box, Card, Heading, HStack, Link, Tabs, Text, VStack } from "@chakra-ui/react";
+import { HeliosButton } from "@helios/shared";
 
-import { useColorMode } from "src/context/colorMode";
-
-export const HomePage = () => {
-  const { colorMode, setColorMode } = useColorMode();
-
-  return (
+export const HomePage = () => (
     <>
     <Heading size="2xl" color="fg"  mt={4}>Astro Environment Manager</Heading>
     <Tabs.Root variant="enclosed" mt={4}>
@@ -47,14 +42,8 @@ export const HomePage = () => {
             custom UI integrations with beautiful components and seamless integration.
           </Text>
           <HStack gap={4} mt={4}>
-            <Button
-              colorPalette="blue"
-              size="lg"
-              onClick={() => setColorMode(colorMode === "dark" ? "light" : "dark")}
-            >
-              <Icon>{colorMode === "dark" ? <LuSun /> : <LuMoon />}</Icon>
-              Toggle {colorMode === "dark" ? "Light" : "Dark"} Mode
-            </Button>
+            <HeliosButton variant="colorModeToggle" size="lg" />
+            <HeliosButton variant="primary">Shared Button Example</HeliosButton>
           </HStack>
         </VStack>
 
@@ -196,4 +185,3 @@ export const HomePage = () => {
     </Box>
     </>
   );
-};

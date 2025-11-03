@@ -37,12 +37,20 @@ mimetypes.add_type("application/javascript", ".cjs")
 # Create FastAPI app to serve static files
 app = FastAPI()
 
-# Mount the React app's dist folder
-helios_directory = Path(__file__).parent / "dist"
+# Mount the environment-manager React app's dist folder
+environment_manager_directory = Path(__file__).parent / "environment-manager" / "dist"
 app.mount(
-    "/helios",
-    StaticFiles(directory=helios_directory, html=True),
-    name="helios_static",
+    "/environment-manager",
+    StaticFiles(directory=environment_manager_directory, html=True),
+    name="environment_manager_static",
+)
+
+# Mount the alerts React app's dist folder
+alerts_directory = Path(__file__).parent / "alerts" / "dist"
+app.mount(
+    "/alerts",
+    StaticFiles(directory=alerts_directory, html=True),
+    name="alerts_static",
 )
 
 
@@ -60,12 +68,18 @@ class HeliosPlugin(AirflowPlugin):
         }
     ]
 
-    # Register React application
+    # Register React applications
     react_apps = [
         {
-            "name": "Helios",
-            "url_route": "helios",
-            "bundle_url": "http://localhost:28080/helios-plugin/helios/main.umd.cjs",
+            "name": "Environment Manager",
+            "url_route": "environment-manager",
+            "bundle_url": "http://localhost:28080/helios-plugin/environment-manager/main.umd.cjs",
             "destination": "nav",
-        }
+        },
+        {
+            "name": "Alerts",
+            "url_route": "alerts",
+            "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
+            "destination": "nav",
+        },
     ]

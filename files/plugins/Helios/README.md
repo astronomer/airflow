@@ -15,146 +15,234 @@
  KIND, either express or implied.  See the License for the
  specific language governing permissions and limitations
  under the License.
- -->
+-->
 
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+# Helios Plugin - React Monorepo
 
-- [Helios](#project_name)
-  - [Development](#development)
-  - [Best Practices](#best-practices)
-  - [Troubleshooting](#troubleshooting)
+This directory contains a **pnpm workspace** with multiple React applications that are registered as Airflow plugins. It demonstrates how to build modular, reusable UI components shared across multiple apps.
 
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+## 📁 Project Structure
 
-# Helios
-
-A modern React plugin for Apache Airflow v3.1+ that demonstrates how to create custom UI integrations.
-
-## What is Helios?
-
-Helios is a React-based plugin built specifically for Apache Airflow. It provides a starting point for creating custom dashboards, tools, and interfaces that integrate seamlessly with the Airflow web UI.
-
-### Features
-
-- 🚀 Built with React 19 and TypeScript
-- 🎨 Chakra UI 3 for beautiful, accessible components
-- 🌓 Dark/Light mode support
-- ⚡ Vite for lightning-fast builds
-- 📦 UMD bundle format for Airflow compatibility
-- 🔥 Hot module replacement for rapid development
-
-## Quick Start
-
-See [INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md) for detailed instructions on integrating with Airflow.
-
-## Development
-
-This template is configured to build your React component as a library that can be consumed by other applications.
-
-### Available Scripts
-
-- `pnpm dev` - Start development server with hot reload
-- `pnpm build` - Build the library for production
-- `pnpm build:types` - Generate TypeScript declaration files only
-- `pnpm build:lib` - Build the JavaScript library only
-- `pnpm test` - Run tests
-- `pnpm lint` - Check code quality
-- `pnpm format` - Format code
-
-### Library Output
-
-When you run `pnpm build`, the template generates:
-
-- `dist/main.js` - ES module JavaScript library
-- `dist/main.d.ts` - TypeScript declaration file
-- Source maps for debugging
-
-### Usage as a Library
-
-After building, other applications can import your component:
-
-```typescript
-import { PluginComponent } from 'your-plugin-name';
-
-// Use in your React app
-<PluginComponent />
+```
+plugins/Helios/
+├── pnpm-workspace.yaml          # Workspace configuration
+├── package.json                 # Root workspace package
+├── helios_plugin.py             # Python plugin registration
+├── environment-manager/         # React app #1
+│   ├── src/
+│   ├── dist/                    # Build output
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig*.json
+├── alerts/                      # React app #2
+│   ├── src/
+│   ├── dist/                    # Build output
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig*.json
+└── shared/                      # Shared component library
+    ├── src/
+    │   ├── components/
+    │   │   └── HeliosButton.tsx
+    │   └── index.ts
+    └── package.json
 ```
 
-### Development Mode
+## 🚀 Getting Started
 
-For development and testing, use `pnpm dev` which will:
+### Prerequisites
 
-- Start a development server on port 5173
-- Load the component using `src/dev.tsx` entry point
-- Enable hot module replacement
+- **Node.js**: >=22
+- **pnpm**: Install with `npm install -g pnpm` or `corepack enable`
 
-### Library Configuration
+### Installation
 
-The template is configured with:
+```bash
+# Install all dependencies for all projects in the workspace
+pnpm install
+```
 
-- **Vite** for fast building and development
-- **TypeScript** with declaration file generation
-- **CSS injection** - styles are automatically injected into the JavaScript bundle
-- **External dependencies** - React and other common libraries are marked as external to reduce bundle size
+## 🛠️ Development
 
-### Upgrading dependencies
+### Build All Apps
 
-Be mindful when upgrading dependencies that are marked as external in `vite.config.ts`, those are shared dependencies with the host application
-(Airflow UI) and should remain in a compatible version range to avoid issues.
+```bash
+# Build all apps in the workspace
+pnpm build
 
-### Customization
+# Or build individually
+pnpm build:env        # Build environment-manager
+pnpm build:alerts     # Build alerts
+```
 
-1. **Component Props**: Update the `PluginComponentProps` interface in `src/main.tsx`
-2. **External Dependencies**: Modify the `external` array in `vite.config.ts`
-3. **Build Output**: Adjust library configuration in `vite.config.ts`
+### Development Server
 
-### Package Configuration
+```bash
+# Run dev server for environment-manager (port 5173)
+pnpm dev:env
 
-The `package.json` is configured with:
+# Run dev server for alerts (port 5174)
+pnpm dev:alerts
+```
 
-- `main` and `module` pointing to the built library
-- `types` pointing to generated declaration files
-- `exports` for modern import/export support
-- `files` array specifying what gets published
+### Linting and Formatting
 
-This ensures your plugin can be consumed as both a CommonJS and ES module with full TypeScript support.
+```bash
+# Lint all projects
+pnpm lint
 
-## Best Practices
+# Format all projects
+pnpm format
+```
 
-1. **Keep React External**: Always mark React ecosystem as external to avoid conflicts
-2. **Global Naming**: Use standardized global name (`AirflowPlugin`) for consistency
-3. **Error Handling**: Implement proper error boundaries and fallbacks
-4. **TypeScript**: Use proper typing for plugin props and exports
-5. **Bundle Size**: Monitor bundle size and externalize large dependencies if needed
+## 📦 Workspace Packages
 
-## Troubleshooting
+### `@helios/shared`
 
-### Common Issues
+Shared component library used by both apps. Currently includes:
 
-**"Failed to resolve module specifier 'react'"**
+- **`HeliosButton`**: A customizable button with `primary`, `secondary`, `danger`, and `colorModeToggle` variants
+- **`ColorModeProvider`**: Shared color mode context provider using next-themes
+- **`useColorMode`**: Hook for accessing and controlling color mode across all apps
 
-- Ensure React is marked as external in `vite.config.ts`
-- Verify host application exposes React globally
+#### Using Shared Components
 
-**"Cannot read properties of null (reading 'useState')"**
+```tsx
+import { ColorModeProvider, HeliosButton, useColorMode } from "@helios/shared";
 
-- React instance mismatch - check external configuration
-- Verify global React is properly set in host application
+// Wrap your app with ColorModeProvider
+const App = () => (
+  <ColorModeProvider>
+    <MyComponent />
+  </ColorModeProvider>
+);
 
-**"Objects are not valid as a React child"**
+// Use the shared button and color mode
+const MyComponent = () => {
+  const { colorMode } = useColorMode();
+  
+  return (
+    <>
+      <p>Current mode: {colorMode}</p>
+      {/* Color mode toggle button */}
+      <HeliosButton variant="colorModeToggle" />
+      {/* Other variants */}
+      <HeliosButton variant="primary">Primary</HeliosButton>
+      <HeliosButton variant="secondary">Secondary</HeliosButton>
+      <HeliosButton variant="danger">Danger</HeliosButton>
+    </>
+  );
+};
+```
 
-- Ensure you're returning component functions, not JSX elements
-- Check that lazy loading returns proper component structure
+### `environment-manager`
 
-**MIME type issues**
+The environment manager React application. Provides UI for managing Airflow connections, variables, and environment settings.
 
-- Ensure `.js` and `.cjs` files are served with correct MIME type
+- **Route**: `/environment-manager`
+- **Dev Port**: 5173
 
-For more help, check the main project documentation.
+### `alerts`
 
-### Deployment to Airflow Plugins
+The alerts React application. Provides UI for monitoring and managing Airflow alerts.
 
-Once the development is complete, you can build the library using `pnpm build` and then host the content of the `dist` folder. You can do that on your own infrastructure or within airflow
-by adding static file serving to your api server via registering a plugin `fastapi_apps`. You can take a look at the [Airflow documentation](https://airflow.apache.org/docs/apache-airflow/stable/plugins.html) for more information on how to do that.
+- **Route**: `/alerts`
+- **Dev Port**: 5174
+
+## 🔌 Airflow Plugin Registration
+
+Both React apps are registered in `helios_plugin.py` as Airflow plugins:
+
+```python
+react_apps = [
+    {
+        "name": "Environment Manager",
+        "url_route": "environment-manager",
+        "bundle_url": "http://localhost:28080/helios-plugin/environment-manager/main.umd.cjs",
+        "destination": "nav",
+    },
+    {
+        "name": "Alerts",
+        "url_route": "alerts",
+        "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
+        "destination": "nav",
+    },
+]
+```
+
+## 🎨 Technology Stack
+
+- **React 19**: Latest React with modern features
+- **TypeScript**: Type-safe development
+- **Chakra UI 3**: Component library with theming and dark mode
+- **Vite**: Fast build tool and dev server
+- **pnpm**: Fast, disk-efficient package manager
+- **Vitest**: Fast unit testing framework
+- **ESLint + Prettier**: Code quality and formatting
+
+## 📝 Adding New Shared Components
+
+1. Create your component in `shared/src/components/`:
+
+```tsx
+// shared/src/components/MyComponent.tsx
+export const MyComponent = () => {
+  return <div>Hello from shared!</div>;
+};
+```
+
+2. Export it from `shared/src/index.ts`:
+
+```typescript
+export { MyComponent } from "./components/MyComponent";
+```
+
+3. Use it in any app:
+
+```tsx
+import { MyComponent } from "@helios/shared";
+```
+
+## 🔄 Workflow
+
+1. **Make changes** to shared components or individual apps
+2. **Build** the apps using `pnpm build`
+3. **Restart Airflow webserver** to see changes
+4. For development, use `pnpm dev:env` or `pnpm dev:alerts` for hot reloading
+
+## 🧪 Testing
+
+```bash
+# Run tests (environment-manager includes Vitest)
+cd environment-manager
+pnpm test
+
+# With coverage
+pnpm coverage
+```
+
+## 🎨 Shared Features
+
+### Color Mode
+
+Both apps share the same color mode (light/dark theme) state:
+
+- Color mode preference persists across page reloads (localStorage)
+- Toggling in one app affects both apps (shared state via next-themes)
+- Use `<HeliosButton variant="colorModeToggle" />` for an automatic toggle button
+- Or use `useColorMode()` hook for programmatic control
+
+See [`SHARED_COLORMODE.md`](./SHARED_COLORMODE.md) for detailed documentation.
+
+## 🤝 Contributing
+
+When adding new features:
+
+1. Consider if the component should be shared
+2. Follow the TypeScript and ESLint rules
+3. Test your changes locally
+4. Build and verify the UMD bundle loads correctly
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file for details.

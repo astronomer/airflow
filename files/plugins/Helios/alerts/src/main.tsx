@@ -16,31 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
+import { ColorModeProvider } from "@helios/shared";
 
-import { ChakraProvider } from "@chakra-ui/react";
-import { FC } from "react";
+import { AlertsPage } from "./pages/AlertsPage";
 
-import { ColorModeProvider } from "src/context/colorMode";
-import { HomePage } from "src/pages/HomePage";
+export const AlertsPlugin = () => (
+  <ChakraProvider value={defaultSystem}>
+    <ColorModeProvider>
+      <AlertsPage />
+    </ColorModeProvider>
+  </ChakraProvider>
+);
 
-import { system } from "./theme";
+// Register as global for Airflow plugin system
+globalThis.AirflowPlugin = AlertsPlugin;
 
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface PluginComponentProps {
-  // Add any props your plugin component needs
-}
+export default AlertsPlugin;
 
-/**
- * Main plugin component
- */
-const PluginComponent: FC<PluginComponentProps> = () => {
-  return (
-    <ChakraProvider value={system}>
-      <ColorModeProvider>
-          <HomePage />
-      </ColorModeProvider>
-    </ChakraProvider>
-  );
-};
-
-export default PluginComponent;
