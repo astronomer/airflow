@@ -206,6 +206,14 @@ dmypy.json
 /tmp
 # /files
 
+!files/
+
+files/*
+!files/plugins/
+
+files/plugins/*
+!files/plugins/Helios
+
 /hive_scratch_dir/
 /.bash_aliases
 /.bash_history
