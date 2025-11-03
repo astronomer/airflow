@@ -77,9 +77,9 @@ class HeliosPlugin(AirflowPlugin):
             "destination": "nav",
         },
         {
-            "name": "Alerts",
+            "name": "Alerts Dashboard",
             "url_route": "alerts",
             "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
-            "destination": "nav",
+            "destination": "dashboard",
         },
     ]
