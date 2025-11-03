@@ -1,0 +1,49 @@
+# Helios React Plugin - Development Guidelines
+
+## Build & Deploy Workflow
+
+1. **Development**: `pnpm dev` for hot reload at localhost:5173
+2. **Lint**: `pnpm lint` before committing
+3. **Build**: `pnpm build` to create production bundle
+4. **Deploy**: Restart Airflow webserver after build
+
+## Code Style
+
+- Use TypeScript for all new files
+- Follow ESLint rules (runs with `pnpm lint`)
+- Format with Prettier (`pnpm format`)
+- Use Chakra UI components for consistency
+
+## Component Guidelines
+
+- Place new pages in `src/pages/`
+- Use functional components with hooks
+- Import from `src/` using path alias
+- Export components for reusability
+
+## Airflow Integration
+
+- Bundle URL: `/helios-plugin/helios/main.umd.cjs`
+- Entry point: `src/main.tsx` (PluginComponent)
+- Plugin file: `helios_plugin.py`
+- Build output: `dist/main.umd.cjs`
+
+## External Dependencies
+
+These are provided by Airflow (don't bundle):
+- react
+- react-dom
+- react-router-dom
+- react/jsx-runtime
+
+All other dependencies are bundled.
+
+## Testing Changes
+
+1. Make changes in `src/`
+2. Run `pnpm lint`
+3. Run `pnpm build`
+4. Copy to `$AIRFLOW_HOME/plugins/Helios/`
+5. Restart Airflow webserver
+6. Clear browser cache if needed
+7. Check browser console for errors

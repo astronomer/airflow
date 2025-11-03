@@ -204,7 +204,7 @@ dmypy.json
 # Needed for CI Dockerfile.ci build system
 .build
 /tmp
-/files
+# /files
 
 /hive_scratch_dir/
 /.bash_aliases
