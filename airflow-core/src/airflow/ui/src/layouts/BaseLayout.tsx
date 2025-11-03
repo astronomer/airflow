@@ -23,6 +23,7 @@ import { Outlet } from "react-router-dom";
 
 import { useConfig } from "src/queries/useConfig";
 
+import { AstroBar } from "./AstroBar/AstroBar";
 import { Nav } from "./Nav";
 
 export const BaseLayout = ({ children }: PropsWithChildren) => {
@@ -54,6 +55,11 @@ export const BaseLayout = ({ children }: PropsWithChildren) => {
     <LocaleProvider locale={i18n.language || "en"}>
       <Nav />
       <Box _ltr={{ ml: 20 }} _rtl={{ mr: 20 }} display="flex" flexDirection="column" h="100vh" p={3}>
+        <Box>
+          {/* Begin Pluggable Area */}
+          <AstroBar />
+          {/* End Pluggable Area */}
+        </Box>
         {children ?? <Outlet />}
       </Box>
     </LocaleProvider>

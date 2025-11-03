@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Box, Button, Card, Heading, HStack, Icon, Link, Text, VStack } from "@chakra-ui/react";
+import { Box, Button, Card, Heading, HStack, Icon, Link, Tabs, Text, VStack } from "@chakra-ui/react";
 import { LuMoon, LuSun } from "react-icons/lu";
 
 import { useColorMode } from "src/context/colorMode";
@@ -26,6 +26,15 @@ export const HomePage = () => {
   const { colorMode, setColorMode } = useColorMode();
 
   return (
+    <>
+    <Heading size="2xl" color="fg"  mt={4}>Astro Environment Manager</Heading>
+    <Tabs.Root variant="enclosed" mt={4}>
+      <Tabs.List>
+        <Tabs.Trigger value="environments">Connections</Tabs.Trigger>
+        <Tabs.Trigger value="resources">Airflow Variables</Tabs.Trigger>
+        <Tabs.Trigger value="users">Environment Variables</Tabs.Trigger>
+      </Tabs.List>
+    </Tabs.Root>
     <Box p={8} bg="bg" height="100%" overflow="auto">
       <VStack gap={8} maxW="1200px" mx="auto">
         {/* Hero Section */}
@@ -185,5 +194,6 @@ export const HomePage = () => {
         </Box>
       </VStack>
     </Box>
+    </>
   );
 };
