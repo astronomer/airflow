@@ -16,24 +16,29 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { ChakraProvider, defaultSystem } from "@chakra-ui/react";
-import { ColorModeProvider } from "@helios/shared";
 import '@fontsource/inter/400.css';
 import '@fontsource/inter/500.css';
 import '@fontsource/inter/600.css';
+import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 
 import { AlertsPage } from "./pages/AlertsPage";
 
-export const AlertsPlugin = () => (
-  <ChakraProvider value={defaultSystem}>
-    <ColorModeProvider>
+type AlertsPluginProps = {
+  readonly customConfig?: Record<string, unknown>;
+};
+
+export const AlertsPlugin = ({ customConfig }: AlertsPluginProps) => {
+  // Use Airflow's customConfig if provided, otherwise fall back to default
+  const system = customConfig ? createSystem(defaultConfig, customConfig) : createSystem(defaultConfig);
+
+  return (
+    <ChakraProvider value={system}>
       <AlertsPage />
-    </ColorModeProvider>
-  </ChakraProvider>
-);
+    </ChakraProvider>
+  );
+};
 
 // Register as global for Airflow plugin system
-globalThis.AirflowPlugin = AlertsPlugin;
+(globalThis as Record<string, unknown>).AirflowPlugin = AlertsPlugin;
 
 export default AlertsPlugin;
-

@@ -21,10 +21,12 @@ import { type FC, lazy, Suspense } from "react";
 import { useParams } from "react-router-dom";
 
 import type { ReactAppResponse } from "openapi/requests/types.gen";
+import { customConfig } from "src/theme";
 
 import { ErrorPage } from "./Error";
 
 type PluginComponentType = FC<{
+  customConfig?: typeof customConfig;
   dagId?: string;
   mapIndex?: string;
   runId?: string;
@@ -67,7 +69,7 @@ export const ReactPlugin = ({ reactApp }: { readonly reactApp: ReactAppResponse 
 
   return (
     <Suspense fallback={<Spinner />}>
-      <Plugin dagId={dagId} mapIndex={mapIndex} runId={runId} taskId={taskId} />
+      <Plugin customConfig={customConfig} dagId={dagId} mapIndex={mapIndex} runId={runId} taskId={taskId} />
     </Suspense>
   );
 };

@@ -16,31 +16,28 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { ChakraProvider } from "@chakra-ui/react";
+import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
-import { ColorModeProvider } from "@helios/shared";
 import { FC } from "react";
 
 import { HomePage } from "src/pages/HomePage";
 
-import { system } from "./theme";
-
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface PluginComponentProps {
-  // Add any props your plugin component needs
+  readonly customConfig?: Record<string, unknown>;
 }
 
 /**
  * Main plugin component
  */
-const PluginComponent: FC<PluginComponentProps> = () => {
+const PluginComponent: FC<PluginComponentProps> = ({ customConfig }) => {
+  // Use Airflow's customConfig if provided, otherwise fall back to default
+  const system = customConfig ? createSystem(defaultConfig, customConfig) : createSystem(defaultConfig);
+
   return (
     <ChakraProvider value={system}>
-      <ColorModeProvider>
-        <HomePage />
-      </ColorModeProvider>
+      <HomePage />
     </ChakraProvider>
   );
 };

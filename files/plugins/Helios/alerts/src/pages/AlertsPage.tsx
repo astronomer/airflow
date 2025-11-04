@@ -83,11 +83,11 @@ export const AlertsPage = () => (
     <Table.Root size="sm" variant="outline" boxShadow="none" borderLeftWidth={1} borderRightWidth={1}>
       <Table.Header>
         <Table.Row>
-        <Table.ColumnHeader>Sent</Table.ColumnHeader>
-          <Table.ColumnHeader>Severity</Table.ColumnHeader>
-          <Table.ColumnHeader>Name</Table.ColumnHeader>
-          <Table.ColumnHeader>Type</Table.ColumnHeader>
-          <Table.ColumnHeader>Channel</Table.ColumnHeader>
+        <Table.ColumnHeader bg="bg.emphasized">Sent</Table.ColumnHeader>
+          <Table.ColumnHeader bg="bg.emphasized">Severity</Table.ColumnHeader>
+          <Table.ColumnHeader bg="bg.emphasized">Name</Table.ColumnHeader>
+          <Table.ColumnHeader bg="bg.emphasized">Type</Table.ColumnHeader>
+          <Table.ColumnHeader bg="bg.emphasized">Channel</Table.ColumnHeader>
         </Table.Row>
       </Table.Header>
       <Table.Body>
