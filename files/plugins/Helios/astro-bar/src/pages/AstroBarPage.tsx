@@ -17,11 +17,12 @@
  * under the License.
  */
 
-import { Avatar, Badge, Box, Button, IconButton, Image, Link, Menu, Text, VStack } from "@chakra-ui/react";
+import { Avatar, Badge, Box, Button, IconButton, Link, Menu, Text, VStack } from "@chakra-ui/react";
 import { LuChevronDown } from "react-icons/lu";
 
 import { AstroALogo } from "../components/AstroALogo";
 import { FiMoreHorizontal } from "react-icons/fi";
+import { LogSummaries } from "src/components/LogSummaries";
 
 export const AstroBarPage = () => {
   const instanceName = "Alerting_E2E_Test_azure_DND";
@@ -81,7 +82,7 @@ export const AstroBarPage = () => {
           </Box>
         </Box>
         <Box alignItems="center" display="flex" gap={2}>
-          <Badge colorPalette="info">Scheduled to hibernate in 1 hour</Badge>
+          <Badge colorPalette="info">Scheduled to hibernate in 1 hour <Link href="https://localhost:8000/instance/1/manage" textDecoration="underline" color="fg.muted">manage</Link></Badge>
           <Box borderLeftWidth="1px">
             <Menu.Root size="sm">
               <Menu.Trigger asChild>
@@ -105,10 +106,12 @@ export const AstroBarPage = () => {
         </Box>
       </Box>
 
-      <Image
+      <LogSummaries />
+
+      {/* <Image
         alt="Deployment Analytics"
         src="https://p199.p4.n0.cdn.zight.com/items/OAuem5vA/129bb81d-7861-4e14-a650-d0f6264dbace.jpg?v=21d6d1deb8c9e83f3c6fafadfbc7b17c"
-      />
+      /> */}
     </VStack>
   );
 };
