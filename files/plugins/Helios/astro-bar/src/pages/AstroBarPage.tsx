@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Avatar, Badge, Box, Button, IconButton, Link, Menu, Text, VStack } from "@chakra-ui/react";
+import { Avatar, Badge, Box, Button, Heading, IconButton, Link, Menu, Text, VStack } from "@chakra-ui/react";
 import { LuChevronDown } from "react-icons/lu";
 
 import { AstroALogo } from "../components/AstroALogo";
@@ -32,44 +32,44 @@ export const AstroBarPage = () => {
       <Box
         alignItems="stretch"
         borderRadius="md"
-        borderWidth="1px"
+        bg="#3f2971"
+        color="white"
         display="flex"
         fontFamily="Inter"
         fontSize="sm"
         justifyContent="space-between"
       >
         <Box alignItems="center" display="flex">
-          <Menu.Root size="sm">
+          <Menu.Root size="md">
             <Menu.Trigger asChild>
-              <Button px={2} variant="plain">
-                <AstroALogo boxSize={6} />
+              <Button px={2} variant="plain" color="white" w="280px">
+                <AstroALogo boxSize={6} contextBg="dark" />
                 {instanceName}
                 <LuChevronDown color="fg.muted" />
               </Button>
             </Menu.Trigger>
             <Menu.Positioner>
-              <Menu.Content>
-                <Menu.Item value="deploy-history">Deploy History</Menu.Item>
-                <Menu.Item value="analytics">Analytics</Menu.Item>
-                <Menu.Item value="logs">Logs</Menu.Item>
-                <Menu.Item value="access">Access</Menu.Item>
-                <Menu.Item value="alerts">Alerts</Menu.Item>
-                <Menu.Item value="incident-history">Incident History</Menu.Item>
-                <Menu.Item value="deployment-details">Deployment Details</Menu.Item>
+              <Menu.Content w="280px">
+                <Heading fontSize="2xs" mx={2} color="white" fontWeight="normal" textTransform="uppercase">Workspace Deployments</Heading>
+                <Menu.Item value="deploy-history">DQ_MUTATOR_E2E_DND</Menu.Item>
+                <Menu.Item value="analytics">Alerting_E2E_Test_azure_DND</Menu.Item>
+                <Menu.Item value="logs">e2e_cost_DND</Menu.Item>
+                <Menu.Item value="access">Alert_E2E_CRUD_DND</Menu.Item>
               </Menu.Content>
             </Menu.Positioner>
           </Menu.Root>
-          <Box alignItems="center" borderLeftWidth="1px" display="flex" gap={2} px={4}>
+          <Box alignItems="center" borderLeftWidth="1px" borderColor="rgba(255, 255, 255, 0.16)" display="flex" gap={2} px={4}>
             <Avatar.Root size="2xs">
               <Avatar.Fallback name="Ryan Hamilton" />
               <Avatar.Image src="https://avatars.githubusercontent.com/u/3267?v=4" />
             </Avatar.Root>
-            <Text color="fg.muted">
+            <Text color="#c2aef0">
               <Link
                 href="http://localhost:5000/clx9g3xak000w01ksr29jl6f2/deployments/cmbh39k15000j01mk2092ez9f"
                 title="View deploy history"
+                color="white"
               >
-                <Box as="span" color="fg" fontWeight="bold">
+                <Box as="span" color="white" fontWeight="bold">
                   Ryan Hamilton
                 </Box>{" "}
                 Refactor task dependency
@@ -82,12 +82,12 @@ export const AstroBarPage = () => {
           </Box>
         </Box>
         <Box alignItems="center" display="flex" gap={2}>
-          <Badge colorPalette="info">Scheduled to hibernate in 1 hour <Link href="https://localhost:8000/instance/1/manage" textDecoration="underline" color="fg.muted">manage</Link></Badge>
-          <Box borderLeftWidth="1px">
-            <Menu.Root size="sm">
+          <Badge colorPalette="info" bg="#1a0d36" color="white">Scheduled to hibernate in 1 hour <Link href="https://localhost:8000/instance/1/manage" color="#c2aef0" textDecoration="underline">manage</Link></Badge>
+          <Box borderLeftWidth="1px" borderColor="rgba(255, 255, 255, 0.16)">
+            <Menu.Root size="md">
               <Menu.Trigger asChild>
                 <IconButton variant="plain">
-                  <FiMoreHorizontal color="fg.muted" />
+                  <FiMoreHorizontal color="#c2aef0" />
                 </IconButton>
               </Menu.Trigger>
               <Menu.Positioner>

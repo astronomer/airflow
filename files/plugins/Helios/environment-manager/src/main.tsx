@@ -28,7 +28,7 @@ type Props = {
   readonly customConfig?: Record<string, unknown>;
 };
 
-export const PluginComponent = ({ customConfig }: Props) => {
+const PluginComponent = ({ customConfig }: Props) => {
   // Use Airflow's customConfig if provided, otherwise fall back to default
   const system = customConfig ? createSystem(defaultConfig, customConfig) : createSystem(defaultConfig);
 
@@ -38,3 +38,5 @@ export const PluginComponent = ({ customConfig }: Props) => {
     </ChakraProvider>
   );
 };
+
+export default PluginComponent;

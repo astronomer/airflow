@@ -80,9 +80,9 @@ export const DagCard = ({ dagSummary }: Props) => {
         {selectedRunSummary && (
             <>
               <Box bg="bg.muted" borderColor="border.muted" display="inline-block" px={2} py={1} borderRadius="md" fontSize="sm">
-                {selectedRunSummary}
+                {selectedRunSummary}{" "}
+              <Link href={`/dags/${dagSummary.dagId}/runs/${selectedRun}`} color="fg.info">View run</Link>
               </Box>
-              <Button variant="ghost" ml={1} size="xs">View run<BiChevronRight /></Button>
             </>
         )}
       </Box>
