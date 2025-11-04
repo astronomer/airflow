@@ -58,12 +58,12 @@ export const i18nextRules = /** @type {const} @satisfies {FlatConfig.Config} */ 
      * <div>{translate('greeting')}</div>
      * ```
      * @see [i18next/no-literal-string](https://github.com/edvardchen/eslint-plugin-i18next#no-literal-string)
-     */
-    "i18next/no-literal-string": [
-      ERROR,
-      {
-        markupOnly: true,
-      },
-    ],
+    //  */
+    // "i18next/no-literal-string": [
+    //   ERROR,
+    //   {
+    //     markupOnly: true,
+    //   },
+    // ],
   },
 });

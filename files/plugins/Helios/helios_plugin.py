@@ -53,6 +53,14 @@ app.mount(
     name="alerts_static",
 )
 
+# Mount the astro-bar React app's dist folder
+astro_bar_directory = Path(__file__).parent / "astro-bar" / "dist"
+app.mount(
+    "/astro-bar",
+    StaticFiles(directory=astro_bar_directory, html=True),
+    name="astro_bar_static",
+)
+
 
 class HeliosPlugin(AirflowPlugin):
     """Helios Airflow Plugin"""
@@ -70,6 +78,12 @@ class HeliosPlugin(AirflowPlugin):
 
     # Register React applications
     react_apps = [
+        {
+            "name": "Astro Bar",
+            "url_route": "astro-bar",
+            "bundle_url": "http://localhost:28080/helios-plugin/astro-bar/main.umd.cjs",
+            "destination": "dashboard",
+        },
         {
             "name": "Environment Manager",
             "url_route": "environment-manager",

@@ -18,4 +18,5 @@
 packages:
   - 'environment-manager'
   - 'alerts'
+  - 'astro-bar'
   - 'shared'
