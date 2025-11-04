@@ -16,92 +16,110 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Heading, VStack, Text, HStack, Badge } from "@chakra-ui/react";
-import { FiBell, FiAlertCircle, FiCheckCircle } from "react-icons/fi";
-import { HeliosButton } from "@helios/shared";
+import { Box, Text, HStack, Link, Icon, Table } from "@chakra-ui/react";
+import { FiExternalLink } from "react-icons/fi";
+import { MegaphoneIcon } from "../MegaphoneIcon";
+import { AlertFilledIcon } from "src/AlertFilledIcon";
+import { InfoIcon } from "src/InfoIcon";
+import { AlertCircleFilledIcon } from "src/AlertCircleFilledIcon";
 
-type Alert = {
-  id: string;
-  level: "info" | "warning" | "critical";
-  message: string;
-  timestamp: string;
-};
 
-const mockAlerts: Array<Alert> = [
+const alerts = [
   {
-    id: "1",
-    level: "critical",
-    message: "DAG run failed: data_pipeline_v2",
-    timestamp: "2025-11-03 14:30:00",
+    channel: "email",
+    count: 57,
+    name: "DAG Failure",
+    severity: "CRITICAL",
+    type: "Dag Failure",
   },
   {
-    id: "2",
-    level: "warning",
-    message: "High memory usage detected on worker-01",
-    timestamp: "2025-11-03 14:15:00",
+    channel: "email",
+    count: 9,
+    name: "DAG Successes",
+    severity: "INFO",
+    type: "Dag Success",
   },
   {
-    id: "3",
-    level: "info",
-    message: "Scheduled maintenance completed successfully",
-    timestamp: "2025-11-03 13:00:00",
+    channel: "slack",
+    count: 14,
+    name: "Proactive SLA Alerts",
+    severity: "INFO",
+    type: "Data Product Proactive SLA",
   },
+  {
+    channel: "slack",
+    count: 8,
+    name: "Proactive SLA Alerts",
+    severity: "INFO",
+    type: "Data Product Proactive SLA",
+  },
+  {
+    channel: "slack",
+    count: 12,
+    name: "Dag Duration Alert",
+    severity: "WARNING",
+    type: "Dag Duration",
+  }
 ];
 
-const getLevelColor = (level: Alert["level"]) => {
-  const colors = {
-    critical: "red",
-    info: "blue",
-    warning: "yellow",
-  };
-
-  return colors[level];
+const severityIconMap: Record<string, { color: string; icon: typeof AlertCircleFilledIcon }> = {
+  CRITICAL: { color: "red.500", icon: AlertCircleFilledIcon },
+  INFO: { color: "blue.500", icon: InfoIcon },
+  WARNING: { color: "yellow.500", icon: AlertFilledIcon },
 };
 
 export const AlertsPage = () => (
-  <Box p={6}>
-    <VStack align="stretch" gap={6}>
-      <HStack justify="space-between">
-        <HStack>
-          <FiBell size={24} />
-          <Heading size="lg">Airflow Alerts</Heading>
-        </HStack>
-        <HeliosButton variant="colorModeToggle" />
-      </HStack>
-
-      <Text color="gray.600">
-        Monitor and manage alerts from your Airflow environment
+  <Box maxWidth="50vw" minWidth="300px" order={3} fontSize="sm">
+    <HStack bg="purple.800" p={2} borderTopRadius="md" color="white" borderColor="purple.800" borderWidth={1} justify="space-between">
+      <Text>
+      <MegaphoneIcon mr={2} />
+      100 Alerts sent in the last 24 hours
       </Text>
+      <Link color="white"href="https://cloud.astronomer-dev.io/alerts/notification-history?filter.period=86400&filter.endDate=2025-11-04T16%3A50%3A23.700Z" target="_blank" rel="noopener noreferrer">
+        <Icon as={FiExternalLink} boxSize={4}/> View all
+      </Link>
+    </HStack>
 
-      <VStack align="stretch" gap={3} width="100%">
-        {mockAlerts.map((alert) => (
-          <Box
-            key={alert.id}
-            p={4}
-            borderWidth="1px"
-            borderRadius="md"
-            _hover={{ bg: "bg.subtle" }}
-          >
-            <HStack justify="space-between">
-              <HStack>
-                {alert.level === "critical" ? (
-                  <FiAlertCircle color="red" size={20} />
-                ) : (
-                  <FiCheckCircle color="green" size={20} />
-                )}
-                <Text fontWeight="medium">{alert.message}</Text>
-              </HStack>
-              <Badge colorPalette={getLevelColor(alert.level)}>
-                {alert.level.toUpperCase()}
-              </Badge>
-            </HStack>
-            <Text fontSize="sm" color="gray.500" mt={2}>
-              {alert.timestamp}
-            </Text>
-          </Box>
-        ))}
-      </VStack>
-    </VStack>
+    <Table.Root size="sm" variant="outline" boxShadow="none" borderLeftWidth={1} borderRightWidth={1}>
+      <Table.Header>
+        <Table.Row>
+        <Table.ColumnHeader>Sent</Table.ColumnHeader>
+          <Table.ColumnHeader>Severity</Table.ColumnHeader>
+          <Table.ColumnHeader>Name</Table.ColumnHeader>
+          <Table.ColumnHeader>Type</Table.ColumnHeader>
+          <Table.ColumnHeader>Channel</Table.ColumnHeader>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {alerts.map((alert, index) => {
+          const config = severityIconMap[alert.severity];
+          return(
+          <Table.Row key={`${alert.name}-${alert.type}-${index}`} _hover={{ bg: "bg.muted" }} cursor="pointer">
+            <Table.Cell>{alert.count}</Table.Cell>
+            <Table.Cell display="flex" alignItems="center" gap={2}>
+                {config ? ( 
+                  <Icon
+                    as={config.icon}
+                    boxSize={6}
+                    color={config.color}
+                    mr={2}
+                  />) : undefined}
+                <Text>{alert.severity}</Text>
+            </Table.Cell>
+            <Table.Cell>{alert.name}</Table.Cell>
+            <Table.Cell>{alert.type}</Table.Cell>
+            <Table.Cell>{alert.channel}</Table.Cell>
+
+          </Table.Row>
+        ) })}
+      </Table.Body>
+    </Table.Root>
+
+    <HStack justify="space-between" color="fg.muted" p={2} borderBottomRadius="md" borderWidth={1}>
+      <Text>6 Alerts configured on this deployment</Text>
+      <Link href="https://cloud.astronomer-dev.io/clx9g3xak000w01ksr29jl6f2/deployments/clyz2mshy00e501p1vchz64yx/alerts" target="_blank" rel="noopener noreferrer">
+        <Icon as={FiExternalLink} boxSize={4}/> View alert configuration
+      </Link>
+    </HStack>
   </Box>
 );
-
