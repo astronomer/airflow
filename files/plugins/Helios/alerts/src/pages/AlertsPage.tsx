@@ -59,32 +59,28 @@ const getLevelColor = (level: Alert["level"]) => {
 };
 
 export const AlertsPage = () => (
-  <Box p={8}>
-    <VStack align="start" gap={6}>
-      <HStack>
-        <FiBell size={32} />
-        <Heading>Airflow Alerts</Heading>
+  <Box p={6}>
+    <VStack align="stretch" gap={6}>
+      <HStack justify="space-between">
+        <HStack>
+          <FiBell size={24} />
+          <Heading size="lg">Airflow Alerts</Heading>
+        </HStack>
+        <HeliosButton variant="colorModeToggle" />
       </HStack>
 
       <Text color="gray.600">
         Monitor and manage alerts from your Airflow environment
       </Text>
 
-      <HStack gap={4}>
-        <HeliosButton variant="colorModeToggle" />
-        <HeliosButton variant="primary">Mark All as Read</HeliosButton>
-        <HeliosButton variant="secondary">Filter Alerts</HeliosButton>
-        <HeliosButton variant="danger">Clear All</HeliosButton>
-      </HStack>
-
-      <VStack align="stretch" gap={4} width="100%">
+      <VStack align="stretch" gap={3} width="100%">
         {mockAlerts.map((alert) => (
           <Box
             key={alert.id}
             p={4}
             borderWidth="1px"
             borderRadius="md"
-            _hover={{ bg: "gray.50" }}
+            _hover={{ bg: "bg.subtle" }}
           >
             <HStack justify="space-between">
               <HStack>

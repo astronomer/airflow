@@ -37,29 +37,65 @@ mimetypes.add_type("application/javascript", ".cjs")
 # Create FastAPI app to serve static files
 app = FastAPI()
 
-# Mount the environment-manager React app's dist folder
-environment_manager_directory = Path(__file__).parent / "environment-manager" / "dist"
-app.mount(
-    "/environment-manager",
-    StaticFiles(directory=environment_manager_directory, html=True),
-    name="environment_manager_static",
-)
+# Get the plugin base directory
+plugin_dir = Path(__file__).parent
 
-# Mount the alerts React app's dist folder
-alerts_directory = Path(__file__).parent / "alerts" / "dist"
-app.mount(
-    "/alerts",
-    StaticFiles(directory=alerts_directory, html=True),
-    name="alerts_static",
-)
+# Conditionally mount React app dist folders (only if they exist)
+# This allows the plugin to load even if some apps haven't been built yet
 
-# Mount the astro-bar React app's dist folder
-astro_bar_directory = Path(__file__).parent / "astro-bar" / "dist"
-app.mount(
-    "/astro-bar",
-    StaticFiles(directory=astro_bar_directory, html=True),
-    name="astro_bar_static",
-)
+environment_manager_directory = plugin_dir / "environment-manager" / "dist"
+if environment_manager_directory.exists():
+    app.mount(
+        "/environment-manager",
+        StaticFiles(directory=environment_manager_directory, html=True),
+        name="environment_manager_static",
+    )
+
+alerts_directory = plugin_dir / "alerts" / "dist"
+if alerts_directory.exists():
+    app.mount(
+        "/alerts",
+        StaticFiles(directory=alerts_directory, html=True),
+        name="alerts_static",
+    )
+
+astro_bar_directory = plugin_dir / "astro-bar" / "dist"
+if astro_bar_directory.exists():
+    app.mount(
+        "/astro-bar",
+        StaticFiles(directory=astro_bar_directory, html=True),
+        name="astro_bar_static",
+    )
+
+# Build the list of React applications (only include apps that are built)
+_react_apps = []
+
+# Astro Bar - Dashboard Toolbar
+if astro_bar_directory.exists():
+    _react_apps.append({
+        "name": "Astro Bar",
+        "url_route": "astro-bar",
+        "bundle_url": "http://localhost:28080/helios-plugin/astro-bar/main.umd.cjs",
+        "destination": "dashboard",
+    })
+
+# Environment Manager - Navigation Item
+if environment_manager_directory.exists():
+    _react_apps.append({
+        "name": "Environment Manager",
+        "url_route": "environment-manager",
+        "bundle_url": "http://localhost:28080/helios-plugin/environment-manager/main.umd.cjs",
+        "destination": "nav",
+    })
+
+# Alerts - Dashboard Widget
+if alerts_directory.exists():
+    _react_apps.append({
+        "name": "Alerts Dashboard",
+        "url_route": "alerts",
+        "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
+        "destination": "dashboard",
+    })
 
 
 class HeliosPlugin(AirflowPlugin):
@@ -76,24 +112,5 @@ class HeliosPlugin(AirflowPlugin):
         }
     ]
 
-    # Register React applications
-    react_apps = [
-        {
-            "name": "Astro Bar",
-            "url_route": "astro-bar",
-            "bundle_url": "http://localhost:28080/helios-plugin/astro-bar/main.umd.cjs",
-            "destination": "dashboard",
-        },
-        {
-            "name": "Environment Manager",
-            "url_route": "environment-manager",
-            "bundle_url": "http://localhost:28080/helios-plugin/environment-manager/main.umd.cjs",
-            "destination": "nav",
-        },
-        {
-            "name": "Alerts",
-            "url_route": "alerts",
-            "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
-            "destination": "nav",
-        },
-    ]
+    # Register React applications (only if their dist folders exist)
+    react_apps = _react_apps

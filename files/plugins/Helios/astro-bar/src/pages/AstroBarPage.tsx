@@ -17,88 +17,98 @@
  * under the License.
  */
 
-import { Avatar, Box, Collapsible, CollapsibleRoot, Image, Link, Text } from "@chakra-ui/react";
+import { Avatar, Badge, Box, Button, IconButton, Image, Link, Menu, Text, VStack } from "@chakra-ui/react";
 import { LuChevronDown } from "react-icons/lu";
 
 import { AstroALogo } from "../components/AstroALogo";
+import { FiMoreHorizontal } from "react-icons/fi";
 
 export const AstroBarPage = () => {
   const instanceName = "Alerting_E2E_Test_azure_DND";
 
   return (
-    <CollapsibleRoot>
-      <Box borderRadius="md" borderWidth="1px" mb={2}>
-        <Box
-          alignItems="stretch"
-          borderBottomRadius="md"
-          borderBottomWidth="1px"
-          display="flex"
-          fontFamily="Inter"
-          fontSize="sm"
-          justifyContent="space-between"
-          overflow="hidden"
-        >
-          <Box alignItems="center" display="flex">
-            <Box
-              _hover={{ bg: "#7352ba" }}
-              alignItems="center"
-              as="button"
-              borderLeftRadius="md"
-              cursor="pointer"
-              display="flex"
-              fontWeight="bold"
-              pr={4}
-              transition="background-color 0.2s ease-in-out"
-            >
-              <AstroALogo boxSize="30px" m={2} />
-              {instanceName}
-            </Box>
-            <Box alignItems="center" borderLeftWidth="1px" display="flex" gap={2} px={4}>
-              <Avatar.Root size="2xs">
-                <Avatar.Fallback name="Ryan Hamilton" />
-                <Avatar.Image src="https://avatars.githubusercontent.com/u/3267?v=4" />
-              </Avatar.Root>
-              <Text color="fg.muted">
-                <Link
-                  href="http://localhost:5000/clx9g3xak000w01ksr29jl6f2/deployments/cmbh39k15000j01mk2092ez9f"
-                  title="View deploy history"
-                >
-                  <Box as="span" color="fg" fontWeight="bold">
-                    Ryan Hamilton
-                  </Box>{" "}
-                  Refactor task dependency
-                </Link>
-                {" · "}
-                <datetime datetime="2025-11-03T10:00:00Z" title="last deployed">
-                  18 minutes ago
-                </datetime>
-              </Text>
-            </Box>
-          </Box>
-          <Collapsible.Trigger asChild>
-            <Box px={2}>
-              <Box
-                alignItems="center"
-                as="button"
-                borderLeftWidth="1px"
-                display="flex"
-                fontWeight="bold"
-                p={2}
+    <VStack alignItems="stretch" gap={2} mb={2}>
+      <Box
+        alignItems="stretch"
+        borderRadius="md"
+        borderWidth="1px"
+        display="flex"
+        fontFamily="Inter"
+        fontSize="sm"
+        justifyContent="space-between"
+      >
+        <Box alignItems="center" display="flex">
+          <Menu.Root size="sm">
+            <Menu.Trigger asChild>
+              <Button px={2} variant="plain">
+                <AstroALogo boxSize={6} />
+                {instanceName}
+                <LuChevronDown color="fg.muted" />
+              </Button>
+            </Menu.Trigger>
+            <Menu.Positioner>
+              <Menu.Content>
+                <Menu.Item value="deploy-history">Deploy History</Menu.Item>
+                <Menu.Item value="analytics">Analytics</Menu.Item>
+                <Menu.Item value="logs">Logs</Menu.Item>
+                <Menu.Item value="access">Access</Menu.Item>
+                <Menu.Item value="alerts">Alerts</Menu.Item>
+                <Menu.Item value="incident-history">Incident History</Menu.Item>
+                <Menu.Item value="deployment-details">Deployment Details</Menu.Item>
+              </Menu.Content>
+            </Menu.Positioner>
+          </Menu.Root>
+          <Box alignItems="center" borderLeftWidth="1px" display="flex" gap={2} px={4}>
+            <Avatar.Root size="2xs">
+              <Avatar.Fallback name="Ryan Hamilton" />
+              <Avatar.Image src="https://avatars.githubusercontent.com/u/3267?v=4" />
+            </Avatar.Root>
+            <Text color="fg.muted">
+              <Link
+                href="http://localhost:5000/clx9g3xak000w01ksr29jl6f2/deployments/cmbh39k15000j01mk2092ez9f"
+                title="View deploy history"
               >
-                Deployment Analytics <LuChevronDown />
-              </Box>
-            </Box>
-          </Collapsible.Trigger>
-        </Box>
-        <Collapsible.Content>
-          <Box p={2}>
-            <Image
-              alt="Deployment Analytics"
-              src="https://p199.p4.n0.cdn.zight.com/items/OAuem5vA/129bb81d-7861-4e14-a650-d0f6264dbace.jpg?v=21d6d1deb8c9e83f3c6fafadfbc7b17c"
-            />
+                <Box as="span" color="fg" fontWeight="bold">
+                  Ryan Hamilton
+                </Box>{" "}
+                Refactor task dependency
+              </Link>
+              {" · "}
+              <time dateTime="2025-11-03T10:00:00Z" title="last deployed">
+                18 minutes ago
+              </time>
+            </Text>
           </Box>
-        </Collapsible.Content>
+        </Box>
+        <Box alignItems="center" display="flex" gap={2}>
+          <Badge colorPalette="info">Scheduled to hibernate in 1 hour</Badge>
+          <Box borderLeftWidth="1px">
+            <Menu.Root size="sm">
+              <Menu.Trigger asChild>
+                <IconButton variant="plain">
+                  <FiMoreHorizontal color="fg.muted" />
+                </IconButton>
+              </Menu.Trigger>
+              <Menu.Positioner>
+                <Menu.Content>
+                  <Menu.Item value="deploy-history">Deploy History</Menu.Item>
+                  <Menu.Item value="analytics">Analytics</Menu.Item>
+                  <Menu.Item value="logs">Logs</Menu.Item>
+                  <Menu.Item value="access">Access</Menu.Item>
+                  <Menu.Item value="alerts">Alerts</Menu.Item>
+                  <Menu.Item value="incident-history">Incident History</Menu.Item>
+                  <Menu.Item value="deployment-details">Deployment Details</Menu.Item>
+                </Menu.Content>
+              </Menu.Positioner>
+            </Menu.Root>
+          </Box>
+        </Box>
       </Box>
-    </CollapsibleRoot>
+
+      <Image
+        alt="Deployment Analytics"
+        src="https://p199.p4.n0.cdn.zight.com/items/OAuem5vA/129bb81d-7861-4e14-a650-d0f6264dbace.jpg?v=21d6d1deb8c9e83f3c6fafadfbc7b17c"
+      />
+    </VStack>
   );
 };

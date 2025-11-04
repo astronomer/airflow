@@ -203,7 +203,8 @@ def _find_path_from_directory(
         # explicit loop for infinite recursion detection since we are following symlinks in this walk
         for sd in dirs:
             dirpath = (Path(root) / sd).resolve()
-            if dirpath in patterns_by_dir:
+
+            if dirpath in patterns_by_dir and 'plugins' not in str(dirpath):
                 raise RuntimeError(
                     "Detected recursive loop when walking DAG directory "
                     f"{base_dir_path}: {dirpath} has appeared more than once."
