@@ -12,7 +12,14 @@
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"
   },
-  "keywords": ["airflow", "plugin", "react"],
+  "keywords": [
+    "airflow",
+    "plugin",
+    "react"
+  ],
   "author": "Apache Airflow",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@fontsource/inter": "^5.2.8"
+  }
 }

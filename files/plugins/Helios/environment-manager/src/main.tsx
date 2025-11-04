@@ -16,8 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 import { ChakraProvider } from "@chakra-ui/react";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
 import { ColorModeProvider } from "@helios/shared";
 import { FC } from "react";
 
@@ -37,7 +39,7 @@ const PluginComponent: FC<PluginComponentProps> = () => {
   return (
     <ChakraProvider value={system}>
       <ColorModeProvider>
-          <HomePage />
+        <HomePage />
       </ColorModeProvider>
     </ChakraProvider>
   );
