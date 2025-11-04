@@ -97,8 +97,8 @@ export const DashboardPage = () => {
           </Card.Header>
           <Card.Body>
             <Text color="fg.muted">
-              This is where you can display recent DAG runs, task executions, or any other
-              Airflow metrics you want to track.
+              This is where you can display recent DAG runs, task executions, or any other Airflow metrics you
+              want to track.
             </Text>
             <Text color="fg.muted" mt={4}>
               Connect to Airflow's REST API to fetch real-time data and display it here.

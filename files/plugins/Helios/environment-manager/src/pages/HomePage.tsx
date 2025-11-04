@@ -21,8 +21,10 @@ import { Box, Card, Heading, HStack, Link, Tabs, Text, VStack } from "@chakra-ui
 import { HeliosButton } from "@helios/shared";
 
 export const HomePage = () => (
-    <>
-    <Heading size="2xl" color="fg"  mt={4}>Astro Environment Manager</Heading>
+  <>
+    <Heading size="2xl" color="fg" mt={4}>
+      Astro Environment Manager
+    </Heading>
     <Tabs.Root variant="enclosed" mt={4}>
       <Tabs.List>
         <Tabs.Trigger value="environments">Connections</Tabs.Trigger>
@@ -38,8 +40,8 @@ export const HomePage = () => (
             Welcome to Helios
           </Heading>
           <Text fontSize="xl" color="fg.muted" maxW="2xl">
-            A modern React plugin for Apache Airflow v3.1+ that demonstrates how to create
-            custom UI integrations with beautiful components and seamless integration.
+            A modern React plugin for Apache Airflow v3.1+ that demonstrates how to create custom UI
+            integrations with beautiful components and seamless integration.
           </Text>
           <HStack gap={4} mt={4}>
             <HeliosButton variant="colorModeToggle" size="lg" />
@@ -61,8 +63,8 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Built with React 19, TypeScript, and the latest web technologies for a fast and
-                  reliable experience.
+                  Built with React 19, TypeScript, and the latest web technologies for a fast and reliable
+                  experience.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -75,8 +77,7 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Beautiful, accessible components out of the box with full theming support and
-                  dark mode.
+                  Beautiful, accessible components out of the box with full theming support and dark mode.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -89,8 +90,7 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Powered by Vite for instant hot module replacement and optimized production
-                  builds.
+                  Powered by Vite for instant hot module replacement and optimized production builds.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -103,8 +103,7 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Seamlessly integrates with Airflow v3.1+ using the React plugin system and
-                  FastAPI.
+                  Seamlessly integrates with Airflow v3.1+ using the React plugin system and FastAPI.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -117,8 +116,7 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Builds as a UMD module that shares React with the host application to minimize
-                  bundle size.
+                  Builds as a UMD module that shares React with the host application to minimize bundle size.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -131,8 +129,7 @@ export const HomePage = () => (
               </Card.Header>
               <Card.Body>
                 <Text color="fg.muted">
-                  Includes ESLint, Prettier, TypeScript, and testing setup for a great developer
-                  experience.
+                  Includes ESLint, Prettier, TypeScript, and testing setup for a great developer experience.
                 </Text>
               </Card.Body>
             </Card.Root>
@@ -160,10 +157,7 @@ export const HomePage = () => (
                 fontSize="sm"
                 fontFamily="mono"
               >
-                <code>
-                  pnpm build{"\n"}
-                  # Then restart Airflow webserver
-                </code>
+                <code>pnpm build{"\n"}# Then restart Airflow webserver</code>
               </Box>
               <Text color="fg.muted">
                 For detailed integration instructions, see <code>INTEGRATION_GUIDE.md</code>
@@ -183,5 +177,5 @@ export const HomePage = () => (
         </Box>
       </VStack>
     </Box>
-    </>
-  );
+  </>
+);

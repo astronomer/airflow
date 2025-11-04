@@ -40,5 +40,3 @@ export const AstroBarPlugin = ({ customConfig }: AstroBarPluginProps) => {
 
 // Register as global for Airflow plugin system
 (globalThis as Record<string, unknown>).AirflowPlugin = AstroBarPlugin;
-
-export default AstroBarPlugin;

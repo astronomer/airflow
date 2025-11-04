@@ -16,22 +16,19 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 import { ChakraProvider, createSystem, defaultConfig } from "@chakra-ui/react";
 import "@fontsource/inter/400.css";
 import "@fontsource/inter/500.css";
 import "@fontsource/inter/600.css";
-import { FC } from "react";
 
 import { HomePage } from "src/pages/HomePage";
 
-export interface PluginComponentProps {
+type Props = {
   readonly customConfig?: Record<string, unknown>;
-}
+};
 
-/**
- * Main plugin component
- */
-const PluginComponent: FC<PluginComponentProps> = ({ customConfig }) => {
+export const PluginComponent = ({ customConfig }: Props) => {
   // Use Airflow's customConfig if provided, otherwise fall back to default
   const system = customConfig ? createSystem(defaultConfig, customConfig) : createSystem(defaultConfig);
 
@@ -41,5 +38,3 @@ const PluginComponent: FC<PluginComponentProps> = ({ customConfig }) => {
     </ChakraProvider>
   );
 };
-
-export default PluginComponent;
