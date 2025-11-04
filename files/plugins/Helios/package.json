@@ -7,8 +7,12 @@
     "build": "pnpm -r build",
     "build:env": "pnpm --filter environment-manager build",
     "build:alerts": "pnpm --filter alerts build",
+    "build:alerts-tab": "pnpm --filter alerts-tab build",
+    "build:astro-bar": "pnpm --filter astro-bar build",
     "dev:env": "pnpm --filter environment-manager dev",
     "dev:alerts": "pnpm --filter alerts dev",
+    "dev:alerts-tab": "pnpm --filter alerts-tab dev",
+    "dev:astro-bar": "pnpm --filter astro-bar dev",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format"
   },
