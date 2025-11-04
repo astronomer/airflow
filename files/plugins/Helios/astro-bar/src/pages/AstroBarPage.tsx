@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { Avatar, Badge, Box, Button, Heading, IconButton, Link, Menu, Text, VStack } from "@chakra-ui/react";
+import { Avatar, Badge, Box, Button, Heading, Image, IconButton, Link, Menu, Text, VStack } from "@chakra-ui/react";
 import { LuChevronDown } from "react-icons/lu";
 
 import { AstroALogo } from "../components/AstroALogo";
@@ -28,7 +28,7 @@ export const AstroBarPage = () => {
   const instanceName = "Alerting_E2E_Test_azure_DND";
 
   return (
-    <VStack alignItems="stretch" gap={2} mb={2}>
+    <VStack flex={1} alignItems="stretch" gap={2} mb={2}>
       <Box
         alignItems="stretch"
         borderRadius="md"
@@ -106,12 +106,16 @@ export const AstroBarPage = () => {
         </Box>
       </Box>
 
-      <LogSummaries />
+      <Box >
+        <Image
+          alt="Deployment Analytics"
+          maxWidth="900px"
+          src="https://p199.p4.n0.cdn.zight.com/items/5zulerQ5/89136ded-9afc-46ed-84a8-6754f036a8d3.jpg?v=2b726901b1534634e35e264bc3599b17"
+        />
+      </Box>
 
-      {/* <Image
-        alt="Deployment Analytics"
-        src="https://p199.p4.n0.cdn.zight.com/items/OAuem5vA/129bb81d-7861-4e14-a650-d0f6264dbace.jpg?v=21d6d1deb8c9e83f3c6fafadfbc7b17c"
-      /> */}
+       <LogSummaries />
+       
     </VStack>
   );
 };

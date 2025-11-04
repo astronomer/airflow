@@ -69,14 +69,14 @@ const severityIconMap: Record<string, { color: string; icon: typeof AlertCircleF
 };
 
 export const AlertsPage = () => (
-  <Box maxWidth="50vw" minWidth="300px" order={3} fontSize="sm">
-    <HStack bg="purple.800" p={2} borderTopRadius="md" color="white" borderColor="purple.800" borderWidth={1} justify="space-between">
+  <Box w="100%" order={3} fontSize="sm">
+    <HStack  p={2} borderTopRadius="md" color="white"  borderWidth={1} justify="space-between">
       <Text>
       <MegaphoneIcon mr={2} />
-      100 Alerts sent in the last 24 hours
+      100 Astro Alerts sent in the last 24 hours
       </Text>
       <Link color="white"href="https://cloud.astronomer-dev.io/alerts/notification-history?filter.period=86400&filter.endDate=2025-11-04T16%3A50%3A23.700Z" target="_blank" rel="noopener noreferrer">
-        <Icon as={FiExternalLink} boxSize={4}/> View all
+         View all<Icon as={FiExternalLink} boxSize={4}/>
       </Link>
     </HStack>
 

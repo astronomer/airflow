@@ -16,166 +16,52 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+import { Heading, Table, Tabs, Text } from "@chakra-ui/react";
 
-import { Box, Card, Heading, HStack, Link, Tabs, Text, VStack } from "@chakra-ui/react";
-import { HeliosButton } from "@helios/shared";
+import { connectionsData } from "./connectionsData";
 
 export const HomePage = () => (
   <>
     <Heading size="2xl" color="fg" mt={4}>
       Astro Environment Manager
     </Heading>
-    <Tabs.Root variant="enclosed" mt={4}>
+    <Text color="fg.muted" mt={2}>
+      Astro Environment Manager enables shared access to connections, airflow variables, and environment
+      variables for your deployment.
+    </Text>
+    <Tabs.Root variant="enclosed" defaultValue="connections" mt={4}>
       <Tabs.List>
-        <Tabs.Trigger value="environments">Connections</Tabs.Trigger>
+        <Tabs.Trigger value="connections">Connections</Tabs.Trigger>
         <Tabs.Trigger value="resources">Airflow Variables</Tabs.Trigger>
         <Tabs.Trigger value="users">Environment Variables</Tabs.Trigger>
+        {/* <Tabs.Trigger value="migration" asChild>
+            <Button variant="ghost">Migration Tool</Button>
+          </Tabs.Trigger> */}
       </Tabs.List>
+      <Tabs.Content value="connections">
+        <Table.Root size="sm" variant="outline" boxShadow="none" borderLeftWidth={1} borderRightWidth={1}>
+          <Table.Header>
+            <Table.Row>
+              <Table.ColumnHeader bg="bg.emphasized">Connection ID</Table.ColumnHeader>
+              <Table.ColumnHeader bg="bg.emphasized">Type</Table.ColumnHeader>
+              <Table.ColumnHeader bg="bg.emphasized">Scope</Table.ColumnHeader>
+              <Table.ColumnHeader bg="bg.emphasized" />
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {connectionsData.environmentObjects.map((object) => (
+              <Table.Row key={object.id}>
+                <Table.Cell>{object.connection.connectionAuthType.name}</Table.Cell>
+                <Table.Cell>{object.connection.type}</Table.Cell>
+                <Table.Cell>{object.scope === "WORKSPACE" ? "Workspace" : "This Deployment"}</Table.Cell>
+                <Table.Cell textAlign="right">Manage connection</Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table.Root>
+      </Tabs.Content>
+      <Tabs.Content value="resources"></Tabs.Content>
+      <Tabs.Content value="users"></Tabs.Content>
     </Tabs.Root>
-    <Box p={8} bg="bg" height="100%" overflow="auto">
-      <VStack gap={8} maxW="1200px" mx="auto">
-        {/* Hero Section */}
-        <VStack gap={4} py={12} align="center" textAlign="center">
-          <Heading size="4xl" color="fg" fontWeight="bold">
-            Welcome to Helios
-          </Heading>
-          <Text fontSize="xl" color="fg.muted" maxW="2xl">
-            A modern React plugin for Apache Airflow v3.1+ that demonstrates how to create custom UI
-            integrations with beautiful components and seamless integration.
-          </Text>
-          <HStack gap={4} mt={4}>
-            <HeliosButton variant="colorModeToggle" size="lg" />
-            <HeliosButton variant="primary">Shared Button Example</HeliosButton>
-          </HStack>
-        </VStack>
-
-        {/* Features Grid */}
-        <VStack gap={6} align="stretch" w="100%">
-          <Heading size="xl" color="fg">
-            Features
-          </Heading>
-          <Box display="grid" gridTemplateColumns="repeat(auto-fit, minmax(300px, 1fr))" gap={6}>
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  🚀 Modern React
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Built with React 19, TypeScript, and the latest web technologies for a fast and reliable
-                  experience.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  🎨 Chakra UI 3
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Beautiful, accessible components out of the box with full theming support and dark mode.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  ⚡ Lightning Fast
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Powered by Vite for instant hot module replacement and optimized production builds.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  🔌 Airflow Integration
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Seamlessly integrates with Airflow v3.1+ using the React plugin system and FastAPI.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  📦 UMD Bundle
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Builds as a UMD module that shares React with the host application to minimize bundle size.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-
-            <Card.Root bg="bg.subtle" borderRadius="lg">
-              <Card.Header>
-                <Heading size="md" color="fg">
-                  🛠️ Developer Friendly
-                </Heading>
-              </Card.Header>
-              <Card.Body>
-                <Text color="fg.muted">
-                  Includes ESLint, Prettier, TypeScript, and testing setup for a great developer experience.
-                </Text>
-              </Card.Body>
-            </Card.Root>
-          </Box>
-        </VStack>
-
-        {/* Getting Started */}
-        <Card.Root bg="bg.subtle" borderRadius="lg" w="100%">
-          <Card.Header>
-            <Heading size="lg" color="fg">
-              Getting Started
-            </Heading>
-          </Card.Header>
-          <Card.Body>
-            <VStack align="stretch" gap={4}>
-              <Text color="fg">
-                To customize this plugin, edit the components in <code>src/pages/</code> and rebuild:
-              </Text>
-              <Box
-                as="pre"
-                bg="bg.emphasized"
-                p={4}
-                borderRadius="md"
-                overflowX="auto"
-                fontSize="sm"
-                fontFamily="mono"
-              >
-                <code>pnpm build{"\n"}# Then restart Airflow webserver</code>
-              </Box>
-              <Text color="fg.muted">
-                For detailed integration instructions, see <code>INTEGRATION_GUIDE.md</code>
-              </Text>
-            </VStack>
-          </Card.Body>
-        </Card.Root>
-
-        {/* Footer */}
-        <Box py={8} textAlign="center">
-          <Text color="fg.muted">
-            Built with ❤️ for Apache Airflow • See{" "}
-            <Link href="https://airflow.apache.org" color="blue.solid" target="_blank">
-              airflow.apache.org
-            </Link>
-          </Text>
-        </Box>
-      </VStack>
-    </Box>
   </>
 );

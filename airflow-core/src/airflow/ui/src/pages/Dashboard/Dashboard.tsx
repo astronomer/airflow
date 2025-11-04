@@ -70,11 +70,11 @@ export const Dashboard = () => {
             </Accordion.Item>
           </Accordion.Root>
         ) : undefined}
-        <Heading order={2} size="2xl">
+        {/* <Heading order={2} size="2xl">
           {typeof instanceName === "string" && instanceName !== "" && instanceName !== "Airflow"
             ? instanceName
             : translate("welcome")}
-        </Heading>
+        </Heading> */}
         <Box order={3}>
           <Stats />
         </Box>

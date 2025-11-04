@@ -31,7 +31,7 @@ export const DagCard = ({ dagSummary }: Props) => {
 
   return (
     <Box borderRadius="md" borderWidth="1px" p={2} px={4} display="flex" alignItems="center" gap={2}>
-      <Box w="300px">
+      <Box w="250px">
         <Heading size="sm">
         <Link href={`/dags/${dagSummary.dagId}/runs/${selectedRun}`}>
           {dagSummary.dagId}</Link></Heading>
