@@ -36,16 +36,16 @@ export const DagFailureAlert = ({ alertCount, failedRuns }: DagFailureAlertProps
   <Box bg="bg.muted" borderColor="border" borderRadius="md" borderWidth={1} p={4}>
     <VStack alignItems="flex-start" gap={3}>
       <HStack gap={2} width="full">
-        <Icon asChild boxSize={5} color="red.500">
+        <Icon asChild boxSize={5} color="danger.solid">
           <AlertCircleFilledIcon />
         </Icon>
         <Text flex={1} fontSize="md" fontWeight="semibold">
           DAG Failure
         </Text>
         <Box
-          bg={alertCount > 0 ? "red.500" : "bg.subtle"}
+          bg={alertCount > 0 ? "danger.solid" : "bg.subtle"}
           borderRadius="full"
-          color={alertCount > 0 ? "white" : "fg.muted"}
+          color={alertCount > 0 ? "danger.contrast" : "fg.muted"}
           fontSize="sm"
           fontWeight="bold"
           minW={8}
@@ -56,7 +56,7 @@ export const DagFailureAlert = ({ alertCount, failedRuns }: DagFailureAlertProps
           {alertCount}
         </Box>
       </HStack>
-      
+
       <Text color="fg.muted" fontSize="sm">
         Sends notifications when a DAG run fails or encounters an error
       </Text>
@@ -70,8 +70,8 @@ export const DagFailureAlert = ({ alertCount, failedRuns }: DagFailureAlertProps
             {failedRuns.map((run) => (
               <Box
                 key={run.runId}
-                bg="red.950"
-                borderColor="red.800"
+                bg="danger.subtle"
+                borderColor="danger.emphasized"
                 borderRadius="sm"
                 borderWidth={1}
                 fontSize="xs"
@@ -79,13 +79,13 @@ export const DagFailureAlert = ({ alertCount, failedRuns }: DagFailureAlertProps
                 width="full"
               >
                 <HStack justify="space-between">
-                  <Text color="red.200" fontWeight="medium">
+                  <Text color="danger.fg" fontWeight="medium">
                     {run.runId}
                   </Text>
-                  <Text color="red.300">{run.duration}</Text>
+                  <Text color="danger.fg">{run.duration}</Text>
                 </HStack>
-                <Text color="red.300">{run.startDate}</Text>
-                <Text color="red.400" fontSize="xs" mt={1}>
+                <Text color="danger.fg">{run.startDate}</Text>
+                <Text color="danger.muted" fontSize="xs" mt={1}>
                   {run.error}
                 </Text>
               </Box>

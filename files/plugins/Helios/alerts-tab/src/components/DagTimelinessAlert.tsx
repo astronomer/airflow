@@ -42,16 +42,16 @@ export const DagTimelinessAlert = ({ alertCount, missedDeadlines, upcomingDeadli
   <Box bg="bg.muted" borderColor="border" borderRadius="md" borderWidth={1} p={4}>
     <VStack alignItems="flex-start" gap={3}>
       <HStack gap={2} width="full">
-        <Icon asChild boxSize={5} color="yellow.500">
+        <Icon asChild boxSize={5} color="warning.solid">
           <AlertFilledIcon />
         </Icon>
         <Text flex={1} fontSize="md" fontWeight="semibold">
           DAG Timeliness
         </Text>
         <Box
-          bg={alertCount > 0 ? "yellow.500" : "bg.subtle"}
+          bg={alertCount > 0 ? "warning.solid" : "bg.subtle"}
           borderRadius="full"
-          color={alertCount > 0 ? "black" : "fg.muted"}
+          color={alertCount > 0 ? "warning.contrast" : "fg.muted"}
           fontSize="sm"
           fontWeight="bold"
           minW={8}
@@ -62,7 +62,7 @@ export const DagTimelinessAlert = ({ alertCount, missedDeadlines, upcomingDeadli
           {alertCount}
         </Box>
       </HStack>
-      
+
       <Text color="fg.muted" fontSize="sm">
         Sends notifications when a DAG run doesn't complete by a specified deadline
       </Text>
@@ -71,8 +71,8 @@ export const DagTimelinessAlert = ({ alertCount, missedDeadlines, upcomingDeadli
         <Text color="fg" fontSize="sm" fontWeight="medium" mb={2}>
           Upcoming deadline:
         </Text>
-        <Box bg="blue.950" borderColor="blue.800" borderRadius="sm" borderWidth={1} fontSize="sm" p={2}>
-          <Text color="blue.200" fontWeight="medium">
+        <Box bg="info.subtle" borderColor="info.emphasized" borderRadius="sm" borderWidth={1} fontSize="sm" p={2}>
+          <Text color="info.fg" fontWeight="medium">
             {upcomingDeadline}
           </Text>
         </Box>
@@ -87,8 +87,8 @@ export const DagTimelinessAlert = ({ alertCount, missedDeadlines, upcomingDeadli
             {missedDeadlines.map((deadline, index) => (
               <Box
                 key={index}
-                bg={deadline.missed ? "yellow.950" : "green.950"}
-                borderColor={deadline.missed ? "yellow.800" : "green.800"}
+                bg={deadline.missed ? "warning.subtle" : "success.subtle"}
+                borderColor={deadline.missed ? "warning.emphasized" : "success.emphasized"}
                 borderRadius="sm"
                 borderWidth={1}
                 fontSize="xs"
@@ -96,10 +96,10 @@ export const DagTimelinessAlert = ({ alertCount, missedDeadlines, upcomingDeadli
                 width="full"
               >
                 <HStack justify="space-between" mb={1}>
-                  <Text color={deadline.missed ? "yellow.200" : "green.200"} fontWeight="medium">
+                  <Text color={deadline.missed ? "warning.fg" : "success.fg"} fontWeight="medium">
                     {deadline.missed ? "⚠️ Missed" : "✓ Met"}
                   </Text>
-                  <Text color={deadline.missed ? "yellow.300" : "green.300"}>
+                  <Text color={deadline.missed ? "warning.fg" : "success.fg"}>
                     Deadline: {deadline.deadline}
                   </Text>
                 </HStack>

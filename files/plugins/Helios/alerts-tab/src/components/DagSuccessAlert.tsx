@@ -36,14 +36,14 @@ export const DagSuccessAlert = ({ alertCount, successfulRuns }: DagSuccessAlertP
   <Box bg="bg.muted" borderColor="border" borderRadius="md" borderWidth={1} p={4}>
     <VStack alignItems="flex-start" gap={3}>
       <HStack gap={2} width="full">
-        <Icon asChild boxSize={5} color="blue.500">
+        <Icon asChild boxSize={5} color="info.solid">
           <InfoIcon />
         </Icon>
         <Text flex={1} fontSize="md" fontWeight="semibold">
           DAG Success
         </Text>
         <Box
-          bg={alertCount > 0 ? "blue.500" : "bg.subtle"}
+          bg={alertCount > 0 ? "info.solid" : "bg.subtle"}
           borderRadius="full"
           color={alertCount > 0 ? "white" : "fg.muted"}
           fontSize="sm"
@@ -56,7 +56,7 @@ export const DagSuccessAlert = ({ alertCount, successfulRuns }: DagSuccessAlertP
           {alertCount}
         </Box>
       </HStack>
-      
+
       <Text color="fg.muted" fontSize="sm">
         Sends notifications when a DAG run completes successfully
       </Text>

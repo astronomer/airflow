@@ -31,24 +31,24 @@ export const HeliosButton = ({ variant = "primary", children, onClick, ...props 
 
   const variantStyles = {
     colorModeToggle: {
-      bg: "blue.500",
-      color: "white",
-      _hover: { bg: "blue.600" },
+      bg: "purple.solid",
+      color: "purple.contrast",
+      _hover: { bg: "purple.emphasized" },
     },
     danger: {
-      bg: "red.500",
-      color: "white",
-      _hover: { bg: "red.600" },
+      bg: "danger.solid",
+      color: "danger.contrast",
+      _hover: { bg: "danger.emphasized" },
     },
     primary: {
-      bg: "blue.500",
-      color: "white",
-      _hover: { bg: "blue.600" },
+      bg: "purple.solid",
+      color: "purple.contrast",
+      _hover: { bg: "purple.emphasized" },
     },
     secondary: {
-      bg: "gray.200",
-      color: "gray.800",
-      _hover: { bg: "gray.300" },
+      bg: "bg.muted",
+      color: "fg",
+      _hover: { bg: "bg.subtle" },
     },
   };
 
@@ -75,4 +75,3 @@ export const HeliosButton = ({ variant = "primary", children, onClick, ...props 
     </Button>
   );
 };
-

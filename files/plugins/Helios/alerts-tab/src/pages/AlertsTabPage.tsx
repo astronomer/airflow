@@ -17,13 +17,12 @@
  * under the License.
  */
 import { Box, Grid, HStack, Text, VStack } from "@chakra-ui/react";
+import { AlertBanner, MegaphoneIcon } from "@helios/shared";
 
-import { AlertBanner } from "../components/AlertBanner";
 import { DagDurationAlert } from "../components/DagDurationAlert";
 import { DagFailureAlert } from "../components/DagFailureAlert";
 import { DagSuccessAlert } from "../components/DagSuccessAlert";
 import { DagTimelinessAlert } from "../components/DagTimelinessAlert";
-import { MegaphoneIcon } from "../MegaphoneIcon";
 
 type AlertsTabPageProps = {
   readonly dagId?: string;
@@ -186,7 +185,7 @@ export const AlertsTabPage = ({ dagId, taskId }: AlertsTabPageProps) => {
       <Box p={4}>
         <VStack alignItems="flex-start" gap={4}>
           <HStack gap={2}>
-            <MegaphoneIcon color="purple.500" />
+            <MegaphoneIcon color="purple.solid" />
             <Text fontSize="xl" fontWeight="bold">
               Task Alerts
             </Text>

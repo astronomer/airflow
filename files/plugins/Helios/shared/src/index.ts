@@ -16,7 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+export { AlertBanner } from "./components/AlertBanner";
 export { HeliosButton } from "./components/HeliosButton";
+export { MegaphoneIcon } from "./components/MegaphoneIcon";
 export { ColorModeProvider } from "./context/ColorModeProvider";
 export { useColorMode } from "./context/useColorMode";
-
