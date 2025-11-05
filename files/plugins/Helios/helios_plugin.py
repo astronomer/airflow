@@ -67,6 +67,14 @@ if astro_bar_directory.exists():
         name="astro_bar_static",
     )
 
+alerts_tab_directory = plugin_dir / "alerts-tab" / "dist"
+if alerts_tab_directory.exists():
+    app.mount(
+        "/alerts-tab",
+        StaticFiles(directory=alerts_tab_directory, html=True),
+        name="alerts_tab_static",
+    )
+
 # Build the list of React applications (only include apps that are built)
 _react_apps = []
 
@@ -95,6 +103,25 @@ if alerts_directory.exists():
         "url_route": "alerts",
         "bundle_url": "http://localhost:28080/helios-plugin/alerts/main.umd.cjs",
         "destination": "dashboard",
+        "icon": "🔔",
+    })
+
+# Alerts Tab - DAG Tab
+if alerts_tab_directory.exists():
+    _react_apps.append({
+        "name": "Alerts",
+        "url_route": "alerts-tab-dag",
+        "bundle_url": "http://localhost:28080/helios-plugin/alerts-tab/main.umd.cjs",
+        "destination": "dag",
+    })
+
+# Alerts Tab - Task Tab
+if alerts_tab_directory.exists():
+    _react_apps.append({
+        "name": "Alerts",
+        "url_route": "alerts-tab-task",
+        "bundle_url": "http://localhost:28080/helios-plugin/alerts-tab/main.umd.cjs",
+        "destination": "task",
     })
 
 
