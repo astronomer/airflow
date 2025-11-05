@@ -1,6 +1,5 @@
-import { Box, Button, Heading, Link, Text } from "@chakra-ui/react";
+import { Box, Heading, Link, Text } from "@chakra-ui/react";
 import { useEffect, useState } from "react";
-import { BiChevronRight } from "react-icons/bi";
 
 export type DagSummary = {
   dagId: string;

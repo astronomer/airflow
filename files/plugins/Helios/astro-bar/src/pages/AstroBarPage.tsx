@@ -106,10 +106,10 @@ export const AstroBarPage = () => {
         </Box>
       </Box>
 
-      <Box >
+      <Box mt={2}>
         <Image
           alt="Deployment Analytics"
-          maxWidth="900px"
+          maxWidth="940px"
           src="https://p199.p4.n0.cdn.zight.com/items/5zulerQ5/89136ded-9afc-46ed-84a8-6754f036a8d3.jpg?v=2b726901b1534634e35e264bc3599b17"
         />
       </Box>
