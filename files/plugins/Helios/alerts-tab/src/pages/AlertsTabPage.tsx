@@ -41,26 +41,31 @@ const getMockDagData = (_dagId: string) => {
           duration: 25,
           runId: "scheduled__2025-11-04T12:00:00+00:00",
           startDate: "Nov 4, 2025 12:00 PM",
+          status: "success" as const,
         },
         {
           duration: 35,
           runId: "scheduled__2025-11-04T11:00:00+00:00",
           startDate: "Nov 4, 2025 11:00 AM",
+          status: "success" as const,
         },
         {
           duration: 28,
           runId: "scheduled__2025-11-04T10:00:00+00:00",
           startDate: "Nov 4, 2025 10:00 AM",
+          status: "success" as const,
         },
         {
           duration: 42,
           runId: "scheduled__2025-11-04T09:00:00+00:00",
           startDate: "Nov 4, 2025 9:00 AM",
+          status: "failed" as const,
         },
         {
           duration: 22,
           runId: "scheduled__2025-11-04T08:00:00+00:00",
           startDate: "Nov 4, 2025 8:00 AM",
+          status: "success" as const,
         },
       ],
     },
@@ -68,16 +73,20 @@ const getMockDagData = (_dagId: string) => {
       alertCount: 12,
       failedRuns: [
         {
-          duration: "15m 32s",
-          error: "Task 'extract_data' failed: Connection timeout",
+          duration: 932, // 15m 32s in seconds
+          endDate: "2025-11-04T13:15:00Z",
+          errorMessage: "Task 'extract_data' failed: Connection timeout",
           runId: "scheduled__2025-11-04T13:00:00+00:00",
-          startDate: "Nov 4, 2025 1:00 PM",
+          startDate: "2025-11-04T13:00:00Z",
+          status: "failed" as const,
         },
         {
-          duration: "8m 12s",
-          error: "Task 'transform_data' failed: Memory limit exceeded",
+          duration: 492, // 8m 12s in seconds
+          endDate: "2025-11-04T07:08:00Z",
+          errorMessage: "Task 'transform_data' failed: Memory limit exceeded",
           runId: "scheduled__2025-11-04T07:00:00+00:00",
-          startDate: "Nov 4, 2025 7:00 AM",
+          startDate: "2025-11-04T07:00:00Z",
+          status: "failed" as const,
         },
       ],
     },
@@ -85,22 +94,25 @@ const getMockDagData = (_dagId: string) => {
       alertCount: 45,
       successfulRuns: [
         {
-          duration: "22m 15s",
-          endDate: "Nov 4, 2025 2:45 PM",
+          duration: 1335, // 22m 15s in seconds
+          endDate: "2025-11-04T14:45:00Z",
           runId: "scheduled__2025-11-04T14:30:00+00:00",
-          startDate: "Nov 4, 2025 2:23 PM",
+          startDate: "2025-11-04T14:23:00Z",
+          status: "success" as const,
         },
         {
-          duration: "18m 42s",
-          endDate: "Nov 4, 2025 1:42 PM",
+          duration: 1122, // 18m 42s in seconds
+          endDate: "2025-11-04T13:42:00Z",
           runId: "scheduled__2025-11-04T13:23:00+00:00",
-          startDate: "Nov 4, 2025 1:23 PM",
+          startDate: "2025-11-04T13:23:00Z",
+          status: "success" as const,
         },
         {
-          duration: "25m 08s",
-          endDate: "Nov 4, 2025 12:48 PM",
+          duration: 1508, // 25m 08s in seconds
+          endDate: "2025-11-04T12:48:00Z",
           runId: "scheduled__2025-11-04T12:23:00+00:00",
-          startDate: "Nov 4, 2025 12:23 PM",
+          startDate: "2025-11-04T12:23:00Z",
+          status: "success" as const,
         },
       ],
     },
@@ -155,7 +167,11 @@ export const AlertsTabPage = ({ dagId, taskId }: AlertsTabPageProps) => {
     return (
       <Box p={4}>
         <VStack alignItems="flex-start" gap={4}>
-          <AlertBanner cumulativeCount={mockData.cumulativeCount} totalAlerts={mockData.totalAlerts} />
+          <AlertBanner
+            cumulativeCount={mockData.cumulativeCount}
+            totalAlerts={mockData.totalAlerts}
+            viewAllUrl="https://cloud.astronomer-dev.io/alerts/notification-history?filter.period=86400&filter.endDate=2025-11-04T16%3A50%3A23.700Z"
+          />
 
           <Grid columnGap={4} columns={{ base: 1, lg: 2 }} rowGap={4} width="full">
             <DagSuccessAlert

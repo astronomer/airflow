@@ -25,7 +25,7 @@ type AlertBannerProps = {
   readonly cumulativeCount: number;
   readonly title?: string;
   readonly totalAlerts: number;
-  readonly viewAllUrl?: string;
+  readonly viewAllUrl: string;
 };
 
 export const AlertBanner = ({
@@ -33,39 +33,26 @@ export const AlertBanner = ({
   totalAlerts,
   viewAllUrl,
 }: AlertBannerProps) => (
-  <Box bg="purple.emphasized" borderRadius="md" borderTopRadius="md" borderWidth={1} color="white" p={3}>
+  <Box bg="brand.subtle" borderRadius="md" borderTopRadius="md" borderWidth={1} color="brand.contrast" p={2}>
     <HStack gap={4} justify="space-between">
       <HStack gap={2}>
         <MegaphoneIcon boxSize={5} />
         <Text fontSize="md" fontWeight="bold">
-          {cumulativeCount} Alerts sent in the last 24 hours
+          {cumulativeCount} Astro Alerts sent in the last 24 hours
         </Text>
+          <Link color="white" href={viewAllUrl} rel="noopener noreferrer" target="_blank">
+            <Text fontSize="sm" fontWeight="medium">
+              View All
+            </Text>
+            <Icon asChild boxSize={4}>
+              <FiExternalLink />
+            </Icon>
+        </Link>
       </HStack>
       <HStack divideColor="whiteAlpha/40" divideX="1px" gap={3}>
-        <HStack gap={4}>
-          <Box>
-            <Text fontSize="xs" fontWeight="medium" opacity={0.9}>
-              Configured
-            </Text>
-            <Text fontSize="xl" fontWeight="bold">
-              {totalAlerts}
-            </Text>
-          </Box>
-        </HStack>
-        {viewAllUrl ? (
-          <Box pl={3}>
-            <Link color="white" href={viewAllUrl} rel="noopener noreferrer" target="_blank">
-              <HStack gap={1}>
-                <Text fontSize="sm" fontWeight="medium">
-                  View All
-                </Text>
-                <Icon asChild boxSize={4}>
-                  <FiExternalLink />
-                </Icon>
-              </HStack>
-            </Link>
-          </Box>
-        ) : undefined}
+        <Text fontSize="sm" fontWeight="medium" opacity={0.9}>
+          {totalAlerts} Alerts Configured
+        </Text>
       </HStack>
     </HStack>
   </Box>

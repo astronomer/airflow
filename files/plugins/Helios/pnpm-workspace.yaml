@@ -20,4 +20,5 @@ packages:
   - 'alerts'
   - 'alerts-tab'
   - 'astro-bar'
+  - 'data-products'
   - 'shared'

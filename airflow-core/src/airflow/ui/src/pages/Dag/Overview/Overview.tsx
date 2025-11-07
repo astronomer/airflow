@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, HStack, Skeleton } from "@chakra-ui/react";
+import { Box, HStack, Skeleton, VStack } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import { lazy, useState, Suspense } from "react";
 import { useTranslation } from "react-i18next";
@@ -26,8 +26,10 @@ import { useLocalStorage } from "usehooks-ts";
 import {
   useAssetServiceGetAssetEvents,
   useDagRunServiceGetDagRuns,
+  usePluginServiceGetPlugins,
   useTaskInstanceServiceGetTaskInstances,
 } from "openapi/queries";
+import type { ReactAppResponse } from "openapi/requests/types.gen";
 import { AssetEvents } from "src/components/Assets/AssetEvents";
 import { DurationChart } from "src/components/DurationChart";
 import { NeedsReviewButton } from "src/components/NeedsReviewButton";
@@ -35,6 +37,8 @@ import TimeRangeSelector from "src/components/TimeRangeSelector";
 import { TrendCountButton } from "src/components/TrendCountButton";
 import { SearchParamsKeys } from "src/constants/searchParams";
 import { useGridRuns } from "src/queries/useGridRuns.ts";
+
+import { ReactPlugin } from "../../ReactPlugin";
 
 const FailedLogs = lazy(() => import("./FailedLogs"));
 
@@ -48,6 +52,13 @@ export const Overview = () => {
   const [startDate, setStartDate] = useState(now.subtract(Number(defaultHour), "hour").toISOString());
   const [endDate, setEndDate] = useState(now.toISOString());
   const [assetSortBy, setAssetSortBy] = useState("-timestamp");
+
+  const { data: pluginData } = usePluginServiceGetPlugins();
+
+  const dagOverviewReactPlugins =
+    pluginData?.plugins
+      .flatMap((plugin) => plugin.react_apps)
+      .filter((reactAppPlugin: ReactAppResponse) => reactAppPlugin.destination === "dag-overview") ?? [];
 
   const { data: failedTasks, isLoading } = useTaskInstanceServiceGetTaskInstances({
     dagId: dagId ?? "",
@@ -76,17 +87,21 @@ export const Overview = () => {
   });
 
   return (
-    <Box m={4} spaceY={4}>
-      <NeedsReviewButton dagId={dagId} />
-      <Box my={2}>
-        <TimeRangeSelector
-          defaultValue={defaultHour}
-          endDate={endDate}
-          setEndDate={setEndDate}
-          setStartDate={setStartDate}
-          startDate={startDate}
-        />
-      </Box>
+    <Box m={4}>
+      <VStack alignItems="stretch" gap={4}>
+        {dagOverviewReactPlugins.map((plugin) => (
+          <ReactPlugin dagId={dagId} key={plugin.name} reactApp={plugin} />
+        ))}
+        <NeedsReviewButton dagId={dagId} />
+        <Box my={2}>
+          <TimeRangeSelector
+            defaultValue={defaultHour}
+            endDate={endDate}
+            setEndDate={setEndDate}
+            setStartDate={setStartDate}
+            startDate={startDate}
+          />
+        </Box>
       <HStack flexWrap="wrap">
         <TrendCountButton
           colorPalette={(failedTasks?.total_entries ?? 0) === 0 ? "green" : "failed"}
@@ -137,9 +152,10 @@ export const Overview = () => {
           />
         ) : undefined}
       </HStack>
-      <Suspense fallback={<Skeleton height="100px" width="full" />}>
-        <FailedLogs failedTasks={failedTasks} />
-      </Suspense>
+        <Suspense fallback={<Skeleton height="100px" width="full" />}>
+          <FailedLogs failedTasks={failedTasks} />
+        </Suspense>
+      </VStack>
     </Box>
   );
 };

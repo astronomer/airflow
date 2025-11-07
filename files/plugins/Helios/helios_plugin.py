@@ -75,6 +75,14 @@ if alerts_tab_directory.exists():
         name="alerts_tab_static",
     )
 
+data_products_directory = plugin_dir / "data-products" / "dist"
+if data_products_directory.exists():
+    app.mount(
+        "/data-products",
+        StaticFiles(directory=data_products_directory, html=True),
+        name="data_products_static",
+    )
+
 # Build the list of React applications (only include apps that are built)
 _react_apps = []
 
@@ -121,6 +129,24 @@ if alerts_tab_directory.exists():
         "name": "Alerts",
         "url_route": "alerts-tab-task",
         "bundle_url": "http://localhost:28080/helios-plugin/alerts-tab/main.umd.cjs",
+        "destination": "task",
+    })
+
+# Data Products - DAG Tab
+if data_products_directory.exists():
+    _react_apps.append({
+        "name": "Data Products",
+        "url_route": "data-products-dag",
+        "bundle_url": "http://localhost:28080/helios-plugin/data-products/main.umd.cjs",
+        "destination": "dag",
+    })
+
+# Data Products - Task Tab
+if data_products_directory.exists():
+    _react_apps.append({
+        "name": "Data Products",
+        "url_route": "data-products-task",
+        "bundle_url": "http://localhost:28080/helios-plugin/data-products/main.umd.cjs",
         "destination": "task",
     })
 

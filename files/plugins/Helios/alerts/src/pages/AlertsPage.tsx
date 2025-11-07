@@ -68,7 +68,7 @@ const severityIconMap: Record<string, { color: string; icon: typeof AlertCircleF
 };
 
 export const AlertsPage = () => (
-  <Box fontSize="sm" maxWidth="50vw" minWidth="300px" order={5}>
+  <Box w="100%" order={3} fontSize="sm">
     <AlertBanner
       cumulativeCount={100}
       totalAlerts={6}

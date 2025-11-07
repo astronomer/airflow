@@ -16,7 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, HStack, Icon, Text, VStack } from "@chakra-ui/react";
+import { Box, Flex, HStack, Icon, Text, VStack } from "@chakra-ui/react";
+import { FiCheckCircle, FiXCircle } from "react-icons/fi";
 
 import { AlertFilledIcon } from "../icons/AlertFilledIcon";
 
@@ -24,6 +25,7 @@ type DagRun = {
   duration: number; // in minutes
   runId: string;
   startDate: string;
+  status: "success" | "failed";
 };
 
 type DagDurationAlertProps = {
@@ -32,6 +34,8 @@ type DagDurationAlertProps = {
   readonly recentRuns: DagRun[];
 };
 
+const BAR_HEIGHT = 65;
+
 export const DagDurationAlert = ({ alertCount, durationThreshold, recentRuns }: DagDurationAlertProps) => {
   const maxDuration = Math.max(...recentRuns.map((run) => run.duration), durationThreshold);
 
@@ -39,16 +43,16 @@ export const DagDurationAlert = ({ alertCount, durationThreshold, recentRuns }: 
     <Box bg="bg.muted" borderColor="border" borderRadius="md" borderWidth={1} p={4}>
       <VStack alignItems="flex-start" gap={3}>
         <HStack gap={2} width="full">
-          <Icon asChild boxSize={5} color="yellow.500">
+          <Icon asChild boxSize={5} color="warning.solid">
             <AlertFilledIcon />
           </Icon>
           <Text flex={1} fontSize="md" fontWeight="semibold">
             DAG Duration
           </Text>
           <Box
-            bg={alertCount > 0 ? "yellow.500" : "bg.subtle"}
+            bg={alertCount > 0 ? "warning.solid" : "bg.subtle"}
             borderRadius="full"
-            color={alertCount > 0 ? "black" : "fg.muted"}
+            color={alertCount > 0 ? "warning.contrast" : "fg.muted"}
             fontSize="sm"
             fontWeight="bold"
             minW={8}
@@ -59,7 +63,7 @@ export const DagDurationAlert = ({ alertCount, durationThreshold, recentRuns }: 
             {alertCount}
           </Box>
         </HStack>
-        
+
         <Text color="fg.muted" fontSize="sm">
           Sends notifications when a DAG run exceeds {durationThreshold} minutes
         </Text>
@@ -68,54 +72,60 @@ export const DagDurationAlert = ({ alertCount, durationThreshold, recentRuns }: 
           <Text color="fg" fontSize="sm" fontWeight="medium" mb={2}>
             Recent DAG run durations:
           </Text>
-          <VStack alignItems="flex-start" gap={2} width="full">
-            {recentRuns.map((run) => {
-              const widthPercent = (run.duration / maxDuration) * 100;
-              const thresholdPercent = (durationThreshold / maxDuration) * 100;
-              const exceededThreshold = run.duration > durationThreshold;
+          <Box position="relative" width="full">
+            {/* Bar chart similar to RecentRuns */}
+            <Flex alignItems="flex-end" flexDirection="row-reverse" gap={1} height={`${BAR_HEIGHT}px`} pb={1}>
+              {recentRuns.map((run) => {
+                const state = run.duration > durationThreshold ? "warning" : run.status;
+                const height = Math.max((run.duration / maxDuration) * BAR_HEIGHT, 12);
 
-              return (
-                <Box key={run.runId} width="full">
-                  <HStack fontSize="xs" justify="space-between" mb={1}>
-                    <Text color="fg.muted">{run.runId}</Text>
-                    <Text color={exceededThreshold ? "yellow.400" : "fg"} fontWeight="medium">
-                      {run.duration}m
-                    </Text>
-                  </HStack>
-                  <Box height="24px" position="relative" width="full">
-                    <Box
-                      bg={exceededThreshold ? "yellow.600" : "blue.600"}
-                      borderRadius="sm"
-                      height="full"
-                      width={`${widthPercent}%`}
-                    />
-                    <Box
-                      bg="red.500"
-                      height="full"
-                      left={`${thresholdPercent}%`}
-                      position="absolute"
-                      top={0}
-                      width="2px"
-                    />
-                  </Box>
-                </Box>
-              );
-            })}
-            <HStack fontSize="xs" gap={4} mt={1}>
-              <HStack gap={1}>
-                <Box bg="blue.600" borderRadius="sm" height="12px" width="12px" />
-                <Text color="fg.muted">Within threshold</Text>
-              </HStack>
-              <HStack gap={1}>
-                <Box bg="yellow.600" borderRadius="sm" height="12px" width="12px" />
-                <Text color="fg.muted">Exceeded threshold</Text>
-              </HStack>
-              <HStack gap={1}>
-                <Box bg="red.500" height="12px" width="2px" />
-                <Text color="fg.muted">Threshold line ({durationThreshold}m)</Text>
-              </HStack>
+                return (
+                  <Flex
+                    key={run.runId}
+                    alignItems="center"
+                    bg={`${state}.solid`}
+                    borderRadius="4px"
+                    flexDir="column"
+                    fontSize="12px"
+                    height={`${height}px`}
+                    justifyContent="flex-end"
+                    minHeight="12px"
+                    width="12px"
+                  >
+                    <Icon asChild color="white">
+                      {run.status === "success" ? <FiCheckCircle /> : <FiXCircle />}
+                    </Icon>
+                  </Flex>
+                );
+              })}
+            </Flex>
+
+            {/* Threshold line */}
+            <Box
+              bg="danger.solid"
+              bottom={`${(durationThreshold / maxDuration) * BAR_HEIGHT + 4}px`}
+              height="2px"
+              left={0}
+              position="absolute"
+              right={0}
+            />
+          </Box>
+
+          {/* Legend */}
+          <HStack fontSize="xs" gap={4} mt={3}>
+            <HStack gap={1}>
+              <Box bg="success.solid" borderRadius="sm" height="12px" width="12px" />
+              <Text color="fg.muted">Within threshold</Text>
             </HStack>
-          </VStack>
+            <HStack gap={1}>
+              <Box bg="warning.solid" borderRadius="sm" height="12px" width="12px" />
+              <Text color="fg.muted">Exceeded threshold</Text>
+            </HStack>
+            <HStack gap={1}>
+              <Box bg="danger.solid" height="2px" width="12px" />
+              <Text color="fg.muted">Threshold ({durationThreshold}m)</Text>
+            </HStack>
+          </HStack>
         </Box>
       </VStack>
     </Box>
