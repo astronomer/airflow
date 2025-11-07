@@ -363,6 +363,7 @@ class TestOutletEventAccessor:
                     AssetAliasEvent(
                         source_alias_name="test_alias",
                         dest_asset_key=AssetUniqueKey(name="name", uri="uri"),
+                        dest_asset_extra={},
                         extra={},
                     )
                 ],
@@ -394,6 +395,7 @@ class TestOutletEventAccessor:
                     AssetAliasEvent(
                         source_alias_name="test_alias",
                         dest_asset_key=AssetUniqueKey(name="name", uri="uri"),
+                        dest_asset_extra={},
                         extra={},
                     )
                 ],
