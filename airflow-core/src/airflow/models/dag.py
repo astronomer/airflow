@@ -131,7 +131,9 @@ def get_run_data_interval(timetable: Timetable, run: DagRun) -> DataInterval:
 
     :meta private:
     """
-    data_interval = _get_model_data_interval(run, "data_interval_start", "data_interval_end")
+    data_interval = _get_model_data_interval(
+        run, "data_interval_start", "data_interval_end"
+    ) or timetable.infer_manual_data_interval(run_after=run.logical_date)
     if data_interval is not None:
         return data_interval
     # Compatibility: runs created before AIP-39 implementation don't have an
