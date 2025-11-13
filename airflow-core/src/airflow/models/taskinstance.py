@@ -1425,7 +1425,7 @@ class TaskInstance(Base, LoggingMixin):
                 )
                 if event is None:
                     ti.log.info("Dynamically creating AssetModel %s", asset_key)
-                    session.add(AssetModel(name=asset_key.name, uri=asset_key.uri))
+                    session.add(AssetModel.from_public(asset))
                     session.flush()  # So event can set up its asset fk.
                     asset_manager.register_asset_change(
                         task_instance=ti,
