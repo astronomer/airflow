@@ -21,13 +21,31 @@
 
 from __future__ import annotations
 
+import os
 from http import HTTPStatus
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
     from airflow.models import DagRun
 
-from airflow.sdk.exceptions import AirflowException, AirflowNotFoundException
+# When _AIRFLOW__AS_LIBRARY is set, airflow.sdk may not be installed
+# In that case, we define fallback exception classes
+if os.environ.get("_AIRFLOW__AS_LIBRARY"):
+    try:
+        from airflow.sdk.exceptions import AirflowException, AirflowNotFoundException
+    except ImportError:
+        # Fallback exception classes when airflow.sdk is not installed
+        class AirflowException(RuntimeError):
+            """Base exception for Airflow errors."""
+
+            pass
+
+        class AirflowNotFoundException(AirflowException):
+            """Raise when a requested object is not found."""
+
+            pass
+else:
+    from airflow.sdk.exceptions import AirflowException, AirflowNotFoundException
 
 
 class TaskNotFound(AirflowException):
