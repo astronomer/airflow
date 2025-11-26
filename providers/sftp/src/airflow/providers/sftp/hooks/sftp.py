@@ -35,11 +35,8 @@ from typing import IO, TYPE_CHECKING, Any, cast
 import asyncssh
 from asgiref.sync import sync_to_async
 
-from airflow.exceptions import (
-    AirflowException,
-    AirflowProviderDeprecationWarning,
-)
-from airflow.providers.common.compat.sdk import BaseHook, Connection
+from airflow.exceptions import AirflowProviderDeprecationWarning
+from airflow.providers.common.compat.sdk import AirflowException, BaseHook, Connection
 from airflow.providers.sftp.exceptions import ConnectionNotOpenedException
 from airflow.providers.ssh.hooks.ssh import SSHHook
 
