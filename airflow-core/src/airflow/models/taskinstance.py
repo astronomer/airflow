@@ -438,9 +438,7 @@ class TaskInstance(Base, LoggingMixin):
     # The method to call next, and any extra arguments to pass to it.
     # Usually used when resuming from DEFERRED.
     next_method: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    next_kwargs: Mapped[dict | str | None] = mapped_column(
-        MutableDict.as_mutable(ExtendedJSON), nullable=True
-    )
+    next_kwargs: Mapped[dict | None] = mapped_column(MutableDict.as_mutable(ExtendedJSON), nullable=True)
 
     _task_display_property_value: Mapped[str | None] = mapped_column(
         "task_display_name", String(2000), nullable=True
@@ -1317,6 +1315,9 @@ class TaskInstance(Base, LoggingMixin):
     ) -> None:
         from airflow.sdk.definitions.asset import Asset, AssetAlias, AssetNameRef, AssetUniqueKey, AssetUriRef
 
+        # TODO: AIP-76 should we provide an interface to override this, so that the task can
+        #  tell the truth if for some reason it touches a different partition?
+        partition_key = ti.dag_run.partition_key
         asset_keys = {
             AssetUniqueKey(o.name, o.uri)
             for o in task_outlets
@@ -1364,6 +1365,7 @@ class TaskInstance(Base, LoggingMixin):
                 task_instance=ti,
                 asset=am,
                 extra=asset_event_extras.get(key),
+                partition_key=partition_key,
                 session=session,
             )
 
@@ -1383,6 +1385,7 @@ class TaskInstance(Base, LoggingMixin):
                     task_instance=ti,
                     asset=am,
                     extra=asset_event_extras_by_name.get(nref.name),
+                    partition_key=partition_key,
                     session=session,
                 )
         if asset_uri_refs:
@@ -1401,6 +1404,7 @@ class TaskInstance(Base, LoggingMixin):
                     task_instance=ti,
                     asset=am,
                     extra=asset_event_extras_by_uri.get(uref.uri),
+                    partition_key=partition_key,
                     session=session,
                 )
 
@@ -1435,6 +1439,7 @@ class TaskInstance(Base, LoggingMixin):
                     asset=asset,
                     source_alias_names=event_aliase_names,
                     extra=asset_event_extra,
+                    partition_key=partition_key,
                     session=session,
                 )
                 if event is None:
@@ -1446,6 +1451,7 @@ class TaskInstance(Base, LoggingMixin):
                         asset=asset,
                         source_alias_names=event_aliase_names,
                         extra=asset_event_extra,
+                        partition_key=partition_key,
                         session=session,
                     )
 
