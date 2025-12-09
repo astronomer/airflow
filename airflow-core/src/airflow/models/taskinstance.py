@@ -82,8 +82,8 @@ from airflow.models.taskinstancekey import TaskInstanceKey
 from airflow.models.taskmap import TaskMap
 from airflow.models.taskreschedule import TaskReschedule
 from airflow.models.xcom import XCOM_RETURN_KEY, LazyXComSelectSequence, XComModel
+from airflow.observability.stats import Stats
 from airflow.settings import task_instance_mutation_hook
-from airflow.stats import Stats
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.dependencies_deps import REQUEUEABLE_DEPS, RUNNING_DEPS
 from airflow.utils.helpers import prune_dict
@@ -304,6 +304,7 @@ def clear_task_instances(
                     dr.last_scheduling_decision = None
                     dr.start_date = None
                     dr.clear_number += 1
+                    dr.queued_at = timezone.utcnow()
     session.flush()
 
 
@@ -1317,6 +1318,7 @@ class TaskInstance(Base, LoggingMixin):
 
         # TODO: AIP-76 should we provide an interface to override this, so that the task can
         #  tell the truth if for some reason it touches a different partition?
+        #  https://github.com/apache/airflow/issues/58474
         partition_key = ti.dag_run.partition_key
         asset_keys = {
             AssetUniqueKey(o.name, o.uri)
@@ -2316,9 +2318,17 @@ def find_relevant_relatives(
         visited.update(partial_dag.task_dict)
 
     def _visit_relevant_relatives_for_mapped(mapped_tasks: Iterable[tuple[str, int]]) -> None:
+        from airflow.exceptions import NotMapped
+
         for task_id, map_index in mapped_tasks:
             task = dag.get_task(task_id)
-            ti_count = get_mapped_ti_count(task, run_id, session=session)
+            try:
+                ti_count = get_mapped_ti_count(task, run_id, session=session)
+            except NotMapped:
+                # Task is not actually mapped (not a MappedOperator and not inside a mapped task group).
+                # Treat it as a normal task instead.
+                _visit_relevant_relatives_for_normal([task_id])
+                continue
             # TODO (GH-52141): This should return scheduler operator types, but
             # currently get_flat_relatives is inherited from SDK DAGNode.
             relatives = cast("Iterable[Operator]", task.get_flat_relatives(upstream=direction == "upstream"))
