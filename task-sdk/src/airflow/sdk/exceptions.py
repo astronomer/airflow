@@ -50,10 +50,15 @@ class AirflowNotFoundException(AirflowException):
     status_code = HTTPStatus.NOT_FOUND
 
 
-class AirflowRequestException(AirflowException):
-    """Raise when the caller made an invalid request."""
+class AirflowRequeueException(AirflowException):
+    """
+    Raise to indicate the task should be re-queued and attempted again.
 
-    status_code = HTTPStatus.BAD_REQUEST
+    This is intended for transient, infrastructure-level issues (e.g. the worker has not yet
+    received the DAG bundle) where failing the task would be misleading.
+    """
+
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
 
 class AirflowDagCycleException(AirflowException):

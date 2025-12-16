@@ -73,6 +73,7 @@ from airflow.sdk.api.datamodels._generated import (
     DagRunStateResponse,
     HITLDetailRequest,
     InactiveAssetsResponse,
+    IntermediateTIState,
     PrevSuccessfulDagRunResponse,
     TaskBreadcrumbsResponse,
     TaskInstance,
@@ -725,6 +726,15 @@ class RetryTask(TIRetryStatePayload):
     type: Literal["RetryTask"] = "RetryTask"
 
 
+class RequeueTask(BaseModel):
+    """Request that the task instance be re-queued by moving it back to a schedulable state."""
+
+    # Default to SCHEDULED so the scheduler will enqueue it again.
+    state: IntermediateTIState = IntermediateTIState.SCHEDULED
+    reason: str | None = None
+    type: Literal["RequeueTask"] = "RequeueTask"
+
+
 class RescheduleTask(TIRescheduleStatePayload):
     """Update a task instance state to reschedule/up_for_reschedule."""
 
@@ -995,6 +1005,7 @@ ToSupervisor = Annotated[
     | GetXComSequenceSlice
     | PutVariable
     | RescheduleTask
+    | RequeueTask
     | RetryTask
     | SetRenderedFields
     | SetRenderedMapIndex

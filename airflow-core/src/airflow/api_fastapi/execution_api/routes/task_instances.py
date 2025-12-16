@@ -56,6 +56,7 @@ from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
     TISkippedDownstreamTasksStatePayload,
     TIStateUpdate,
     TISuccessStatePayload,
+    TITargetStatePayload,
     TITerminalStatePayload,
 )
 from airflow.api_fastapi.execution_api.deps import JWTBearerTIPathDep
@@ -409,6 +410,9 @@ def ti_update_state(
             dag_id=dag_id,
             dag_bag=dag_bag,
         )
+    except HTTPException:
+        # Let the API return the intended HTTP error instead of failing the task.
+        raise
     except Exception:
         # Set a task to failed in case any unexpected exception happened during task state update
         log.exception(
@@ -571,6 +575,33 @@ def _create_ti_state_update_query_and_update_state(
         # clear the next_method and next_kwargs so that none of the retries pick them up
         updated_state = TaskInstanceState.UP_FOR_RESCHEDULE
         query = query.values(state=updated_state, next_method=None, next_kwargs=None)
+    elif isinstance(ti_patch_payload, TITargetStatePayload):
+        # Generic target state transitions (non-terminal, non-running).
+        # Used for cases where a running task should be put back to a schedulable state (re-queued).
+        updated_state = TaskInstanceState(ti_patch_payload.state.value)
+        now = timezone.utcnow()
+        values: dict[str, object] = {
+            "state": updated_state,
+            # Clear runtime-specific fields so another worker can start it cleanly.
+            "hostname": None,
+            "unixname": None,
+            "pid": None,
+            "last_heartbeat_at": None,
+            "end_date": None,
+            "start_date": None,
+            "external_executor_id": None,
+        }
+        if updated_state == TaskInstanceState.SCHEDULED:
+            values.update(
+                {
+                    "scheduled_dttm": now,
+                    "queued_dttm": None,
+                    "queued_by_job_id": None,
+                }
+            )
+        elif updated_state == TaskInstanceState.QUEUED:
+            values.update({"queued_dttm": now})
+        query = query.values(values)
     else:
         raise ValueError(f"Unexpected Payload Type {type(ti_patch_payload)}")
 

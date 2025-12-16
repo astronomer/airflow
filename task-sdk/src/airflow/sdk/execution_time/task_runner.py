@@ -60,7 +60,7 @@ from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowInactiveAssetInInletOrOutletException,
-    AirflowRequestException,
+    AirflowRequeueException,
     AirflowRuntimeError,
     AirflowTaskTimeout,
     ErrorType,
@@ -83,6 +83,7 @@ from airflow.sdk.execution_time.comms import (
     GetTICount,
     InactiveAssetsResult,
     PreviousDagRunResult,
+    RequeueTask,
     RescheduleTask,
     ResendLoggingFD,
     RetryTask,
@@ -659,7 +660,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        raise AirflowRequestException(f"Dag {what.ti.dag_id!r} not found during start up") from None
+        raise AirflowRequeueException(f"Dag {what.ti.dag_id!r} not found during start up") from None
 
     # install_loader()
 
@@ -673,7 +674,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        raise AirflowRequestException(
+        raise AirflowRequeueException(
             f"Task {what.ti.task_id!r} not found in Dag {dag.dag_id!r} during start up"
         ) from None
 
@@ -1501,6 +1502,13 @@ def main():
             state, _, error = run(ti, context, log)
             context["exception"] = error
             finalize(ti, state, context, log, error)
+    except AirflowRequeueException as e:
+        # Transient startup issue (e.g. DAG bundle not yet available on this worker).
+        # Ask supervisor to re-queue instead of failing the task.
+        log.warning("Re-queuing task due to startup error", reason=str(e))
+        with suppress(Exception):
+            SUPERVISOR_COMMS.send(msg=RequeueTask(reason=str(e)))
+        exit(0)
     except KeyboardInterrupt:
         log.exception("Ctrl-c hit")
         exit(2)

@@ -103,6 +103,7 @@ from airflow.sdk.execution_time.comms import (
     MaskSecret,
     PrevSuccessfulDagRunResult,
     PutVariable,
+    RequeueTask,
     RescheduleTask,
     ResendLoggingFD,
     RetryTask,
@@ -164,6 +165,8 @@ SERVER_TERMINATED = "SERVER_TERMINATED"
 # "Directly" here means that the PATCH API calls to transition into these states are
 # made from _handle_request() itself and don't have to come all the way to wait().
 STATES_SENT_DIRECTLY = [
+    TaskInstanceState.SCHEDULED,
+    TaskInstanceState.QUEUED,
     TaskInstanceState.DEFERRED,
     TaskInstanceState.UP_FOR_RESCHEDULE,
     TaskInstanceState.UP_FOR_RETRY,
@@ -1248,6 +1251,11 @@ class ActivitySubprocess(WatchedSubprocess):
                 end_date=msg.end_date,
                 rendered_map_index=self._rendered_map_index,
             )
+        elif isinstance(msg, RequeueTask):
+            # Move the TI back to a schedulable state (default: scheduled) so it can be re-enqueued.
+            self._terminal_state = TaskInstanceState(msg.state.value)
+            self._task_end_time_monotonic = time.monotonic()
+            self.client.task_instances.set_target_state(id=self.id, state=msg.state)
         elif isinstance(msg, GetConnection):
             conn = self.client.connections.get(msg.conn_id)
             if isinstance(conn, ConnectionResponse):

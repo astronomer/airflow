@@ -52,6 +52,7 @@ from airflow.sdk.api.datamodels._generated import (
     HITLDetailResponse,
     HITLUser,
     InactiveAssetsResponse,
+    IntermediateTIState,
     PrevSuccessfulDagRunResponse,
     TaskBreadcrumbsResponse,
     TaskInstanceState,
@@ -65,6 +66,7 @@ from airflow.sdk.api.datamodels._generated import (
     TIRunContext,
     TISkippedDownstreamTasksStatePayload,
     TISuccessStatePayload,
+    TITargetStatePayload,
     TITerminalStatePayload,
     TriggerDAGRunPayload,
     ValidationError as RemoteValidationError,
@@ -254,6 +256,11 @@ class TaskInstanceOperations:
         body = TIRescheduleStatePayload(**msg.model_dump(exclude_unset=True, exclude={"type"}))
 
         # Create a reschedule state payload from msg
+        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+
+    def set_target_state(self, id: uuid.UUID, state: IntermediateTIState) -> None:
+        """Tell the API server to move this TI to a target (non-running, non-terminal) state."""
+        body = TITargetStatePayload(state=state)
         self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
 
     def heartbeat(self, id: uuid.UUID, pid: int):
