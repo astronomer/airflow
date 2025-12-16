@@ -50,6 +50,12 @@ class AirflowNotFoundException(AirflowException):
     status_code = HTTPStatus.NOT_FOUND
 
 
+class AirflowRequestException(AirflowException):
+    """Raise when the caller made an invalid request."""
+
+    status_code = HTTPStatus.BAD_REQUEST
+
+
 class AirflowDagCycleException(AirflowException):
     """Raise when there is a cycle in Dag definition."""
 

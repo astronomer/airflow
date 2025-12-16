@@ -60,6 +60,7 @@ from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowInactiveAssetInInletOrOutletException,
+    AirflowRequestException,
     AirflowRuntimeError,
     AirflowTaskTimeout,
     ErrorType,
@@ -658,7 +659,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        sys.exit(1)
+        raise AirflowRequestException(f"Dag {what.ti.dag_id!r} not found during start up") from None
 
     # install_loader()
 
@@ -672,7 +673,9 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        sys.exit(1)
+        raise AirflowRequestException(
+            f"Task {what.ti.task_id!r} not found in Dag {dag.dag_id!r} during start up"
+        ) from None
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
