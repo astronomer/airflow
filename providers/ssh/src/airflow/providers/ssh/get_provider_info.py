@@ -37,11 +37,20 @@ def get_provider_info():
         "operators": [
             {
                 "integration-name": "Secure Shell (SSH)",
-                "python-modules": ["airflow.providers.ssh.operators.ssh"],
+                "python-modules": [
+                    "airflow.providers.ssh.operators.ssh",
+                    "airflow.providers.ssh.operators.ssh_remote_job",
+                ],
             }
         ],
         "hooks": [
             {"integration-name": "Secure Shell (SSH)", "python-modules": ["airflow.providers.ssh.hooks.ssh"]}
+        ],
+        "triggers": [
+            {
+                "integration-name": "Secure Shell (SSH)",
+                "python-modules": ["airflow.providers.ssh.triggers.ssh_remote_job"],
+            }
         ],
         "connection-types": [
             {"hook-class-name": "airflow.providers.ssh.hooks.ssh.SSHHook", "connection-type": "ssh"}
