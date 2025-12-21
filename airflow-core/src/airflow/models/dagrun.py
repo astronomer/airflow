@@ -51,7 +51,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.ext.mutable import MutableDict
-from sqlalchemy.orm import Mapped, declared_attr, joinedload, relationship, synonym, validates
+from sqlalchemy.orm import Mapped, declared_attr, joinedload, relationship, selectinload, synonym, validates
 from sqlalchemy.sql.expression import false, select
 from sqlalchemy.sql.functions import coalesce
 from sqlalchemy_utils import UUIDType
@@ -588,6 +588,7 @@ class DagRun(Base, LoggingMixin):
 
         :meta private:
         """
+        from airflow.models.asset import AssetEvent
         from airflow.models.backfill import BackfillDagRun
         from airflow.models.dag import DagModel
 
@@ -602,13 +603,20 @@ class DagRun(Base, LoggingMixin):
                 DagModel.is_stale == false(),
             )
             .options(joinedload(cls.task_instances))
-            .order_by(
-                nulls_first(cast("ColumnElement[Any]", BackfillDagRun.sort_ordinal), session=session),
-                nulls_first(cast("ColumnElement[Any]", cls.last_scheduling_decision), session=session),
-                cls.run_after,
-            )
-            .limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
         )
+
+        # Eager-load consumed_asset_events to prevent DetachedInstanceError when building
+        # DagCallbackRequest in timeout path. Uses same pattern as task callback paths.
+        # DagRun → consumed_asset_events → asset/source_aliases
+        base = selectinload(cls.consumed_asset_events)
+        query = query.options(base.selectinload(AssetEvent.asset))
+        query = query.options(base.selectinload(AssetEvent.source_aliases))
+
+        query = query.order_by(
+            nulls_first(cast("ColumnElement[Any]", BackfillDagRun.sort_ordinal), session=session),
+            nulls_first(cast("ColumnElement[Any]", cls.last_scheduling_decision), session=session),
+            cls.run_after,
+        ).limit(cls.DEFAULT_DAGRUNS_TO_EXAMINE)
 
         query = query.where(DagRun.run_after <= func.now())
 

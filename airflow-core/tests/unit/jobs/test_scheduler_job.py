@@ -7229,6 +7229,86 @@ class TestSchedulerJob:
             last_ti=dag_run.get_task_instance(task_id="test_task"),
         )
 
+    def test_dag_timeout_with_consumed_asset_events(self, dag_maker, session):
+        """
+        Test that DagRun timeout handling works with consumed_asset_events.
+
+        Regression test for DetachedInstanceError when building DagCallbackRequest
+        for timed-out DagRun with asset events. This occurs because
+        get_running_dag_runs_to_examine() doesn't eager-load consumed_asset_events,
+        but the timeout callback path tries to serialize them via DagRunContext.
+        """
+        from airflow.callbacks.callback_requests import DagCallbackRequest
+        from airflow.models.asset import AssetEvent, AssetModel
+        from airflow.sdk.definitions.asset import Asset
+
+        # Create an asset
+        asset1 = Asset(uri="test://asset_timeout", name="test_asset_timeout", group="test_group")
+        asset_model = AssetModel(name=asset1.name, uri=asset1.uri, group=asset1.group)
+        session.add(asset_model)
+        session.flush()
+
+        # Create a DAG scheduled by the asset with a timeout
+        with dag_maker(
+            dag_id="test_timeout_with_assets",
+            schedule=[asset1],
+            dagrun_timeout=timedelta(seconds=60),  # 1 minute timeout
+        ):
+            EmptyOperator(task_id="test_task")
+
+        dag_run = dag_maker.create_dagrun(run_id="test_run", state=DagRunState.RUNNING)
+
+        # Create and link asset event
+        asset_event = AssetEvent(
+            asset_id=asset_model.id,
+            source_task_id="upstream_task",
+            source_dag_id="upstream_dag",
+            source_run_id="upstream_run",
+            source_map_index=-1,
+        )
+        session.add(asset_event)
+        session.flush()
+        dag_run.consumed_asset_events.append(asset_event)
+        session.flush()
+
+        # Make it appear timed out
+        dag_run.start_date = timezone.utcnow() - timedelta(seconds=120)  # 2 minutes ago
+        session.merge(dag_run)
+        session.commit()
+
+        # Simulate the real scheduler flow: use get_running_dag_runs_to_examine
+        # which doesn't eager-load consumed_asset_events
+        from airflow.models.dagrun import DagRun
+
+        mock_executor = mock.MagicMock()
+        scheduler_job = Job(executor=mock_executor)
+        self.job_runner = SchedulerJobRunner(scheduler_job)
+
+        # Get DagRuns the same way the scheduler does
+        dag_runs = list(DagRun.get_running_dag_runs_to_examine(session=session))
+        assert len(dag_runs) == 1
+        detached_dag_run = dag_runs[0]
+
+        # The bug occurs when consumed_asset_events isn't eager-loaded and the DagRun
+        # is used after session operations. This can reproduce intermittently depending
+        # on SQLAlchemy's caching behavior. The fix ensures it's always eager-loaded.
+        
+        mock_executor = mock.MagicMock()
+        scheduler_job = Job(executor=mock_executor)
+        self.job_runner = SchedulerJobRunner(scheduler_job)
+
+        # This should work without DetachedInstanceError after the fix
+        callback_req = self.job_runner._schedule_dag_run(detached_dag_run, session)
+
+        # Verify it worked
+        assert isinstance(callback_req, DagCallbackRequest)
+        assert callback_req.is_failure_callback
+        assert callback_req.msg == "timed_out"
+        assert callback_req.context_from_server is not None
+        # Verify asset event data is accessible (this would fail without eager loading)
+        assert len(callback_req.context_from_server.dag_run.consumed_asset_events) == 1
+        assert callback_req.context_from_server.dag_run.consumed_asset_events[0].asset.uri == asset1.uri
+
     @mock.patch("airflow.models.dagrun.get_listener_manager")
     def test_dag_start_notifies_with_started_msg(self, mock_get_listener_manager, dag_maker, session):
         """Test that notify_dagrun_state_changed is called with msg='started' when DAG starts."""

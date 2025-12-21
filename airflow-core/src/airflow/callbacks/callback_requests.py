@@ -16,15 +16,18 @@
 # under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Literal
+import structlog
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from airflow.api_fastapi.execution_api.datamodels import taskinstance as ti_datamodel  # noqa: TC001
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
     from airflow.typing_compat import Self
+
+log = structlog.get_logger(__name__)
 
 
 class BaseCallbackRequest(BaseModel):
@@ -94,6 +97,71 @@ class DagRunContext(BaseModel):
 
     dag_run: ti_datamodel.DagRun | None = None
     last_ti: ti_datamodel.TaskInstance | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _handle_orm_dagrun(cls, data: Any) -> Any:
+        """
+        Handle ORM DagRun objects and protect against DetachedInstanceError.
+
+        When converting ORM DagRun to Pydantic datamodel, if consumed_asset_events
+        is not eager-loaded and the session is detached, accessing it raises
+        DetachedInstanceError. This validator catches that and converts to datamodel
+        with empty consumed_asset_events.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        dag_run = data.get("dag_run")
+        if dag_run is None:
+            return data
+
+        # Check if it's an ORM object (has __tablename__ attribute)
+        if not hasattr(dag_run, "__tablename__"):
+            return data
+
+        # Try to convert ORM object to dict, catching DetachedInstanceError
+        try:
+            # This will trigger lazy loading of consumed_asset_events if not eager-loaded
+            # Pydantic will handle the conversion, but we need to ensure it doesn't crash
+            _ = dag_run.consumed_asset_events
+        except Exception as e:
+            # If we get DetachedInstanceError, manually build the dict with empty list
+            error_type = type(e).__name__
+            if "DetachedInstanceError" in error_type or "DetachedInstance" in str(e):
+                log.warning(
+                    "DetachedInstanceError accessing consumed_asset_events for DagRun. "
+                    "This indicates a bug - the relationship should have been eager-loaded. "
+                    "Defaulting to empty list to prevent scheduler crash.",
+                    dag_id=getattr(dag_run, "dag_id", None),
+                    run_id=getattr(dag_run, "run_id", "unknown"),
+                    exc_info=True,
+                )
+                # Build a minimal dict from the ORM object without consumed_asset_events
+                # Pydantic will use this and won't try to access the detached relationship
+                safe_dag_run_dict = {
+                    "dag_id": dag_run.dag_id,
+                    "run_id": dag_run.run_id,
+                    "logical_date": dag_run.logical_date,
+                    "data_interval_start": dag_run.data_interval_start,
+                    "data_interval_end": dag_run.data_interval_end,
+                    "run_after": dag_run.run_after,
+                    "start_date": dag_run.start_date,
+                    "end_date": dag_run.end_date,
+                    "clear_number": getattr(dag_run, "clear_number", 0),
+                    "run_type": dag_run.run_type,
+                    "state": dag_run.state,
+                    "conf": dag_run.conf,
+                    "triggering_user_name": getattr(dag_run, "triggering_user_name", None),
+                    "consumed_asset_events": [],  # Safe default
+                    "partition_key": getattr(dag_run, "partition_key", None),
+                }
+                data["dag_run"] = safe_dag_run_dict
+            else:
+                # Re-raise if it's not a DetachedInstanceError
+                raise
+
+        return data
 
 
 class DagCallbackRequest(BaseCallbackRequest):
