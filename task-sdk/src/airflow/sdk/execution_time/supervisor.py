@@ -2054,6 +2054,66 @@ def supervise(
     reset_secrets_masker()
 
     try:
+        # Preflight: if the Dag bundle/file isn't available on this worker yet, don't even start the
+        # subprocess. Instead, reschedule the TaskInstance using the existing UP_FOR_RESCHEDULE path.
+        #
+        # This avoids fragile child->supervisor IPC during early-startup failures (which can manifest as
+        # "Request socket closed before length" in the task process).
+        if not dry_run:
+            from datetime import timedelta
+            from pathlib import Path
+
+            try:
+                from airflow.dag_processing.bundles.manager import DagBundlesManager
+
+                bundle_instance = DagBundlesManager().get_bundle(
+                    name=bundle_info.name,
+                    version=bundle_info.version,
+                )
+                bundle_instance.initialize()
+
+                bundle_root = Path(bundle_instance.path)
+                dag_path = bundle_root / os.fspath(dag_rel_path)
+
+                if not dag_path.exists():
+                    delay_seconds = conf.getfloat(
+                        "workers", "dag_not_ready_reschedule_delay", fallback=5.0
+                    )
+                    now = datetime.now(tz=timezone.utc)
+                    reschedule_date = now + timedelta(seconds=delay_seconds)
+                    log.warning(
+                        "Dag file not available on worker; rescheduling without starting subprocess",
+                        dag_rel_path=os.fspath(dag_rel_path),
+                        dag_path=str(dag_path),
+                        bundle_name=bundle_info.name,
+                        bundle_version=bundle_info.version,
+                        delay_seconds=delay_seconds,
+                    )
+                    client.task_instances.reschedule(
+                        ti.id,
+                        RescheduleTask(reschedule_date=reschedule_date, end_date=now),
+                    )
+                    return 0
+            except Exception as e:
+                # Any bundle init error is treated as transient/unavailable; reschedule instead of failing
+                # the task process.
+                delay_seconds = conf.getfloat("workers", "dag_not_ready_reschedule_delay", fallback=5.0)
+                now = datetime.now(tz=timezone.utc)
+                reschedule_date = now + timedelta(seconds=delay_seconds)
+                log.warning(
+                    "Dag bundle not available on worker; rescheduling without starting subprocess",
+                    dag_rel_path=os.fspath(dag_rel_path),
+                    bundle_name=bundle_info.name,
+                    bundle_version=bundle_info.version,
+                    delay_seconds=delay_seconds,
+                    exc_info=e,
+                )
+                client.task_instances.reschedule(
+                    ti.id,
+                    RescheduleTask(reschedule_date=reschedule_date, end_date=now),
+                )
+                return 0
+
         process = ActivitySubprocess.start(
             dag_rel_path=dag_rel_path,
             what=ti,
