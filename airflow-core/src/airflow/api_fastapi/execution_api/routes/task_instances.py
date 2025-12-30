@@ -406,17 +406,21 @@ def ti_update_state(
             dag_bag=dag_bag,
         )
     except Exception:
-        # Set a task to failed in case any unexpected exception happened during task state update
+        # If we cannot apply the requested state transition due to an unexpected server-side error,
+        # do not silently flip the task instance to FAILED. Doing so can mask the real problem and
+        # lead to confusing executor behavior (e.g. a worker attempting to reschedule, but the server
+        # ends up marking it failed, causing subsequent /run calls to be rejected as invalid_state).
         log.exception(
-            "Error updating Task Instance state. Setting the task to failed.",
+            "Error updating Task Instance state.",
             payload=ti_patch_payload,
         )
-        ti = session.get(TI, ti_id_str, with_for_update=True)
-        if session.bind is not None:
-            query = TI.duration_expression_update(timezone.utcnow(), query, session.bind)
-        query = query.values(state=(updated_state := TaskInstanceState.FAILED))
-        if ti is not None:
-            _handle_fail_fast_for_dag(ti=ti, dag_id=dag_id, session=session, dag_bag=dag_bag)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "reason": "state_update_failed",
+                "message": "Failed to update task instance state due to an internal server error",
+            },
+        )
 
     # TODO: Replace this with FastAPI's Custom Exception handling:
     # https://fastapi.tiangolo.com/tutorial/handling-errors/#install-custom-exception-handlers
