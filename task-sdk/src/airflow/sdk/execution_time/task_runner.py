@@ -61,6 +61,7 @@ from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowInactiveAssetInInletOrOutletException,
+    AirflowRescheduleException,
     AirflowRuntimeError,
     AirflowTaskTimeout,
     ErrorType,
@@ -701,7 +702,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        sys.exit(1)
+        raise AirflowRescheduleException(reschedule_date=datetime.now(tz=timezone.utc))
 
     # install_loader()
 
@@ -715,7 +716,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        sys.exit(1)
+        raise AirflowRescheduleException(reschedule_date=datetime.now(tz=timezone.utc))
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
@@ -1611,6 +1612,12 @@ def main():
             state, _, error = run(ti, context, log)
             context["exception"] = error
             finalize(ti, state, context, log, error)
+    except AirflowRescheduleException as reschedule:
+        log.info("Rescheduling task, marking task as UP_FOR_RESCHEDULE")
+        msg = RescheduleTask(
+            reschedule_date=reschedule.reschedule_date, end_date=datetime.now(tz=timezone.utc)
+        )
+        SUPERVISOR_COMMS.send(msg=msg)
     except KeyboardInterrupt:
         log.exception("Ctrl-c hit")
         exit(2)
