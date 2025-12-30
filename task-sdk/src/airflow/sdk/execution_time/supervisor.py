@@ -1007,6 +1007,41 @@ class ActivitySubprocess(WatchedSubprocess):
             ti_context = self.client.task_instances.start(ti.id, self.pid, start_date)
             self._should_retry = ti_context.should_retry
             self._last_successful_heartbeat = time.monotonic()
+        except ServerResponseError as e:
+            # If the server rejects the "start" transition, it means this TI should not run anymore
+            # (e.g. it got rescheduled, cleared, marked failed elsewhere, etc.). This can happen due to
+            # executor races where a worker still has a stale workload assignment.
+            #
+            # Treat this as a graceful termination to avoid:
+            # - marking the TI as FAILED from the supervisor side
+            # - having the executor re-queue the workload purely due to a 409 conflict
+            if e.response is not None and e.response.status_code == HTTPStatus.CONFLICT:
+                log.warning(
+                    "Server rejected task start; terminating subprocess without failure",
+                    status_code=e.response.status_code,
+                    detail=e.detail,
+                    ti_id=str(ti.id),
+                )
+                self.process_log.warning(
+                    "Server rejected task start; terminating subprocess without failure",
+                    detail=e.detail,
+                )
+                self._terminal_state = SERVER_TERMINATED
+                self._task_end_time_monotonic = time.monotonic()
+
+                # The child is currently blocked waiting for the StartupDetails message. Kill and reap it.
+                with suppress(Exception):
+                    self._process.send_signal(signal.SIGKILL)
+                with suppress(Exception):
+                    self._process.wait(timeout=5)
+
+                # Report a clean exit to the executor so it doesn't attempt to rerun this workload.
+                self._exit_code = 0
+                return
+
+            # On any other server response error, kill that subprocess and re-raise.
+            self.kill(signal.SIGKILL)
+            raise
         except Exception:
             # On any error kill that subprocess!
             self.kill(signal.SIGKILL)
