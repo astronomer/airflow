@@ -65,7 +65,6 @@ from airflow.sdk.definitions.param import DagParam
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowFailException,
-    AirflowRequeueException,
     AirflowSensorTimeout,
     AirflowSkipException,
     AirflowTaskTerminated,
@@ -296,7 +295,7 @@ def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, 
                 ),
             },
         ),
-        pytest.raises(AirflowRequeueException),
+        pytest.raises(SystemExit),
     ):
         parse(what, log)
 
