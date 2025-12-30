@@ -100,15 +100,26 @@ def _run_worker(
             raise TypeError(f"Don't know how to get ti key from {type(workload).__name__}")
 
         try:
-            _execute_work(log, workload, team_conf)
+            final_state = _execute_work(log, workload, team_conf)
 
-            output.put((key, TaskInstanceState.SUCCESS, None))
+            # Task SDK can intentionally exit 0 for states like deferred/rescheduled.
+            # Do not report SUCCESS in that case, otherwise the scheduler can treat this as a
+            # "killed externally" mismatch once the TI has been re-queued.
+            if final_state in {TaskInstanceState.DEFERRED, TaskInstanceState.UP_FOR_RESCHEDULE}:
+                output.put((key, TaskInstanceState.QUEUED, None))
+            elif final_state == TaskInstanceState.UP_FOR_RETRY:
+                # Scheduler will determine retry eligibility from DB state/try_number.
+                output.put((key, TaskInstanceState.FAILED, None))
+            elif final_state == TaskInstanceState.SUCCESS:
+                output.put((key, TaskInstanceState.SUCCESS, None))
+            else:
+                output.put((key, TaskInstanceState.FAILED, None))
         except Exception as e:
             log.exception("uhoh")
             output.put((key, TaskInstanceState.FAILED, e))
 
 
-def _execute_work(log: Logger, workload: workloads.ExecuteTask, team_conf) -> None:
+def _execute_work(log: Logger, workload: workloads.ExecuteTask, team_conf) -> TaskInstanceState:
     """
     Execute command received and stores result state in queue.
 
@@ -130,7 +141,7 @@ def _execute_work(log: Logger, workload: workloads.ExecuteTask, team_conf) -> No
 
     # This will return the exit code of the task process, but we don't care about that, just if the
     # _supervisor_ had an error reporting the state back (which will result in an exception.)
-    supervise(
+    final_state = supervise(
         # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
         ti=workload.ti,  # type: ignore[arg-type]
         dag_rel_path=workload.dag_rel_path,
@@ -138,7 +149,22 @@ def _execute_work(log: Logger, workload: workloads.ExecuteTask, team_conf) -> No
         token=workload.token,
         server=team_conf.get("core", "execution_api_server_url", fallback=default_execution_api_server),
         log_path=workload.log_path,
+        return_final_state=True,
     )
+    # Task SDK returns its own TaskInstanceState enum type (str-based). Convert by value.
+    state_value: str
+    if isinstance(final_state, str):
+        state_value = final_state
+    elif hasattr(final_state, "value"):
+        state_value = final_state.value  # type: ignore[attr-defined]
+    else:
+        state_value = TaskInstanceState.FAILED
+
+    try:
+        return TaskInstanceState(state_value)
+    except Exception:
+        # "SERVER_TERMINATED" or any other unexpected value -> fail.
+        return TaskInstanceState.FAILED
 
 
 class LocalExecutor(BaseExecutor):

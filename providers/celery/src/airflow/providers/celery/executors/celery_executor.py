@@ -443,7 +443,19 @@ class CeleryExecutor(BaseExecutor):
         """Update state of a single task."""
         try:
             if state == celery_states.SUCCESS:
-                self.success(key, info)
+                # In the Task SDK path, tasks can intentionally DEFER/RESCHEDULE and exit cleanly.
+                # Celery will still mark the Celery task SUCCESS, but we must not report Airflow SUCCESS
+                # in that case, otherwise the scheduler can treat the subsequent re-queue as a mismatch
+                # and fail the TI ("killed externally").
+                if isinstance(info, dict) and (final := info.get("task_sdk_final_state")) in {
+                    TaskInstanceState.DEFERRED,
+                    TaskInstanceState.UP_FOR_RESCHEDULE,
+                }:
+                    # Report a non-terminal state so the scheduler doesn't treat this as a finished TI.
+                    # The authoritative state has already been updated in the DB by the Task SDK.
+                    self.change_state(key, TaskInstanceState.QUEUED, info=None)
+                else:
+                    self.success(key, info)
             elif state in (celery_states.FAILURE, celery_states.REVOKED):
                 self.fail(key, info)
             elif state in (celery_states.STARTED, celery_states.PENDING, celery_states.RETRY):

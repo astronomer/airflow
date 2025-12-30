@@ -1987,7 +1987,9 @@ def supervise(
     subprocess_logs_to_stdout: bool = False,
     client: Client | None = None,
     sentry_integration: str = "",
-) -> int:
+    *,
+    return_final_state: bool = False,
+) -> int | str | TaskInstanceState:
     """
     Run a single task execution to completion.
 
@@ -2002,7 +2004,10 @@ def supervise(
     :param client: Optional preconfigured client for communication with the server (Mostly for tests).
     :param sentry_integration: If the executor has a Sentry integration, import
         path to a callable to initialize it (empty means no integration).
-    :return: Exit code of the process.
+    :param return_final_state: If True, return the final TaskInstance state derived by the supervisor
+        instead of the subprocess exit code. This is useful for executors to avoid reporting SUCCESS
+        for tasks that DEFER/RESCHEDULE (which intentionally exit 0).
+    :return: Exit code of the process (default), or final state if ``return_final_state=True``.
     :raises ValueError: If server URL is empty or invalid.
     """
     # One or the other
@@ -2087,6 +2092,10 @@ def supervise(
             duration=end - start,
             final_state=process.final_state,
         )
+        if return_final_state:
+            # This is intentionally "lossy" (it may return a string for SERVER_TERMINATED).
+            # Callers should treat unknown values as failure.
+            return process.final_state  # type: ignore[return-value]
         return exit_code
     finally:
         if log_path and log_file_descriptor:

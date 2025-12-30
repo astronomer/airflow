@@ -136,7 +136,7 @@ def on_celery_import_modules(*args, **kwargs):
 # Once Celery 5.5 is out of beta, we can pass `pydantic=True` to the decorator and it will handle the validation
 # and deserialization for us
 @app.task(name="execute_workload")
-def execute_workload(input: str) -> None:
+def execute_workload(input: str) -> dict[str, str] | None:
     from pydantic import TypeAdapter
 
     from airflow.configuration import conf
@@ -159,7 +159,7 @@ def execute_workload(input: str) -> None:
         base_url = f"http://localhost:8080{base_url}"
     default_execution_api_server = f"{base_url.rstrip('/')}/execution/"
 
-    supervise(
+    final_state = supervise(
         # This is the "wrong" ti type, but it duck types the same. TODO: Create a protocol for this.
         ti=workload.ti,  # type: ignore[arg-type]
         dag_rel_path=workload.dag_rel_path,
@@ -167,7 +167,16 @@ def execute_workload(input: str) -> None:
         token=workload.token,
         server=conf.get("core", "execution_api_server_url", fallback=default_execution_api_server),
         log_path=workload.log_path,
+        return_final_state=True,
     )
+    # Celery will mark this task SUCCESS if we return normally. We attach the task-sdk final state
+    # so the scheduler-side CeleryExecutor can avoid reporting Airflow SUCCESS for DEFER/RESCHEDULE.
+    if hasattr(final_state, "value"):
+        # Task SDK TaskInstanceState is a `str, Enum` where `.value` is the actual string state.
+        return {"task_sdk_final_state": final_state.value}  # type: ignore[attr-defined]
+    if isinstance(final_state, str):
+        return {"task_sdk_final_state": final_state}
+    return None
 
 
 if not AIRFLOW_V_3_0_PLUS:
