@@ -27,7 +27,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -60,7 +60,9 @@ from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
+    AirflowFailException,
     AirflowInactiveAssetInInletOrOutletException,
+    AirflowRescheduleException,
     AirflowRuntimeError,
     AirflowTaskTimeout,
     ErrorType,
@@ -701,7 +703,25 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        sys.exit(1)
+        # This can happen transiently if a worker cannot access the Dag bundle (e.g. volume/permissions
+        # issues) even though other workers can. In such cases we prefer to reschedule/requeue the task
+        # rather than consume a retry.
+        #
+        # To avoid an infinite reschedule loop (e.g. all workers are unable to access the bundle), cap the
+        # number of reschedules. The count comes from the server via `task_reschedule_count`.
+        max_reschedules = conf.getint("workers", "startup_dagbag_reschedule_max_attempts", fallback=3)
+        reschedule_delay = conf.getint("workers", "startup_dagbag_reschedule_delay", fallback=60)
+        reschedule_count = int(getattr(what.ti_context, "task_reschedule_count", 0) or 0)
+
+        if max_reschedules > 0 and reschedule_count < max_reschedules:
+            raise AirflowRescheduleException(
+                datetime.now(tz=timezone.utc) + timedelta(seconds=reschedule_delay)
+            )
+
+        raise AirflowFailException(
+            f"Dag {what.ti.dag_id!r} was not found during startup after {reschedule_count} reschedules. "
+            "Giving up to avoid an infinite reschedule loop."
+        )
 
     # install_loader()
 
@@ -715,7 +735,10 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        sys.exit(1)
+        # Not a transient error in the general case; fail without consuming retries.
+        raise AirflowFailException(
+            f"Task {what.ti.task_id!r} was not found in Dag {dag.dag_id!r} during startup."
+        )
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
@@ -1611,6 +1634,25 @@ def main():
             state, _, error = run(ti, context, log)
             context["exception"] = error
             finalize(ti, state, context, log, error)
+    except AirflowRescheduleException as reschedule:
+        # Rescheduling can happen during startup (e.g. Dag not found because the worker cannot access the
+        # dag bundle). In that case we must exit with 0, otherwise the supervisor will overwrite the
+        # UP_FOR_RESCHEDULE state by marking the TI as FAILED.
+        log.info("Rescheduling task during startup, marking task as UP_FOR_RESCHEDULE")
+        SUPERVISOR_COMMS.send(
+            msg=RescheduleTask(
+                reschedule_date=reschedule.reschedule_date,
+                end_date=datetime.now(tz=timezone.utc),
+            )
+        )
+        exit(0)
+    except AirflowFailException:
+        # If startup fails in a non-transient way, fail the task without consuming retries.
+        log.exception("Task failed during startup")
+        SUPERVISOR_COMMS.send(
+            msg=TaskState(state=TaskInstanceState.FAILED, end_date=datetime.now(tz=timezone.utc))
+        )
+        exit(0)
     except KeyboardInterrupt:
         log.exception("Ctrl-c hit")
         exit(2)

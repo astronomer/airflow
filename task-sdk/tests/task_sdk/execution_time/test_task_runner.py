@@ -65,6 +65,7 @@ from airflow.sdk.definitions.param import DagParam
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowFailException,
+    AirflowRescheduleException,
     AirflowSensorTimeout,
     AirflowSkipException,
     AirflowTaskTerminated,
@@ -244,24 +245,26 @@ def test_parse_dag_bag(mock_dagbag, test_dags_dir: Path, make_ti_context):
 
 
 @pytest.mark.parametrize(
-    ("dag_id", "task_id", "expected_error"),
+    ("dag_id", "task_id", "expected_error", "expected_exception"),
     (
         pytest.param(
             "madeup_dag_id",
             "a",
             mock.call(mock.ANY, dag_id="madeup_dag_id", path="super_basic.py"),
+            AirflowRescheduleException,
             id="dag-not-found",
         ),
         pytest.param(
             "super_basic",
             "no-such-task",
             mock.call(mock.ANY, task_id="no-such-task", dag_id="super_basic", path="super_basic.py"),
+            AirflowFailException,
             id="task-not-found",
         ),
     ),
 )
-def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, expected_error):
-    """Check for nice error messages on dag not found."""
+def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, expected_error, expected_exception):
+    """Check for nice error messages on dag/task not found."""
     what = StartupDetails(
         ti=TaskInstance(
             id=uuid7(),
@@ -295,13 +298,56 @@ def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, 
                 ),
             },
         ),
-        pytest.raises(SystemExit),
+        pytest.raises(expected_exception),
     ):
         parse(what, log)
 
     expected_error.kwargs["bundle"] = what.bundle_info
     log.error.assert_has_calls([expected_error])
 
+
+def test_parse_dag_not_found_gives_up_after_max_reschedules(test_dags_dir: Path, make_ti_context):
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="a",
+            dag_id="madeup_dag_id",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="super_basic.py",
+        bundle_info=BundleInfo(name="my-bundle", version=None),
+        ti_context=make_ti_context(task_reschedule_count=2),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+
+    log = mock.Mock()
+
+    with (
+        conf_vars({("workers", "startup_dagbag_reschedule_max_attempts"): "2"}),
+        patch.dict(
+            os.environ,
+            {
+                "AIRFLOW__DAG_PROCESSOR__DAG_BUNDLE_CONFIG_LIST": json.dumps(
+                    [
+                        {
+                            "name": "my-bundle",
+                            "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
+                            "kwargs": {"path": str(test_dags_dir), "refresh_interval": 1},
+                        }
+                    ]
+                ),
+            },
+        ),
+        pytest.raises(AirflowFailException),
+    ):
+        parse(what, log)
+
+    log.error.assert_called_with(
+        "Dag not found during start up", dag_id="madeup_dag_id", bundle=what.bundle_info, path="super_basic.py"
+    )
 
 def test_parse_module_in_bundle_root(tmp_path: Path, make_ti_context):
     """Check that the bundle path is added to sys.path, so Dags can import shared modules."""
