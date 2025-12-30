@@ -60,7 +60,6 @@ from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
-    AirflowFailException,
     AirflowInactiveAssetInInletOrOutletException,
     AirflowRescheduleException,
     AirflowRuntimeError,
@@ -718,10 +717,8 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
                 datetime.now(tz=timezone.utc) + timedelta(seconds=reschedule_delay)
             )
 
-        raise AirflowFailException(
-            f"Dag {what.ti.dag_id!r} was not found during startup after {reschedule_count} reschedules. "
-            "Giving up to avoid an infinite reschedule loop."
-        )
+        # Give up after max reschedules; let the supervisor decide if it should retry.
+        sys.exit(1)
 
     # install_loader()
 
@@ -735,10 +732,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        # Not a transient error in the general case; fail without consuming retries.
-        raise AirflowFailException(
-            f"Task {what.ti.task_id!r} was not found in Dag {dag.dag_id!r} during startup."
-        )
+        sys.exit(1)
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
@@ -1644,13 +1638,6 @@ def main():
                 reschedule_date=reschedule.reschedule_date,
                 end_date=datetime.now(tz=timezone.utc),
             )
-        )
-        exit(0)
-    except AirflowFailException:
-        # If startup fails in a non-transient way, fail the task without consuming retries.
-        log.exception("Task failed during startup")
-        SUPERVISOR_COMMS.send(
-            msg=TaskState(state=TaskInstanceState.FAILED, end_date=datetime.now(tz=timezone.utc))
         )
         exit(0)
     except KeyboardInterrupt:

@@ -258,7 +258,7 @@ def test_parse_dag_bag(mock_dagbag, test_dags_dir: Path, make_ti_context):
             "super_basic",
             "no-such-task",
             mock.call(mock.ANY, task_id="no-such-task", dag_id="super_basic", path="super_basic.py"),
-            AirflowFailException,
+            SystemExit,
             id="task-not-found",
         ),
     ),
@@ -341,7 +341,7 @@ def test_parse_dag_not_found_gives_up_after_max_reschedules(test_dags_dir: Path,
                 ),
             },
         ),
-        pytest.raises(AirflowFailException),
+        pytest.raises(SystemExit),
     ):
         parse(what, log)
 
