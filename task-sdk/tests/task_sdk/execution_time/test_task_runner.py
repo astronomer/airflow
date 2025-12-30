@@ -326,7 +326,7 @@ def test_parse_dag_not_found_gives_up_after_max_reschedules(test_dags_dir: Path,
     log = mock.Mock()
 
     with (
-        conf_vars({("workers", "startup_dagbag_reschedule_max_attempts"): "2"}),
+        patch.dict(os.environ, {"_AIRFLOW_TASK_SDK_STARTUP_DAGBAG_RESCHEDULE_MAX_ATTEMPTS": "2"}),
         patch.dict(
             os.environ,
             {

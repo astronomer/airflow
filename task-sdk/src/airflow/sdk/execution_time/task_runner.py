@@ -680,10 +680,23 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         If we've already rescheduled too many times, exit non-zero to let the supervisor/server decide what to do
         (retry/failed) based on configured retries.
         """
+        def _get_int_env(name: str, default: int) -> int:
+            raw = os.environ.get(name)
+            if raw is None or raw == "":
+                return default
+            try:
+                return int(raw)
+            except ValueError:
+                log.warning("Invalid int env var; using default", env_var=name, value=raw, default=default)
+                return default
+
         # To avoid an infinite reschedule loop (e.g. all workers are unable to access the bundle), cap the
         # number of reschedules. The count comes from the server via `task_reschedule_count`.
-        max_reschedules = conf.getint("workers", "startup_dagbag_reschedule_max_attempts", fallback=3)
-        reschedule_delay = conf.getint("workers", "startup_dagbag_reschedule_delay", fallback=60)
+        #
+        # IMPORTANT: These are plain env vars (not Airflow config options) to avoid config-schema validation
+        # errors for unknown keys during task startup.
+        max_reschedules = _get_int_env("_AIRFLOW_TASK_SDK_STARTUP_DAGBAG_RESCHEDULE_MAX_ATTEMPTS", 3)
+        reschedule_delay = _get_int_env("_AIRFLOW_TASK_SDK_STARTUP_DAGBAG_RESCHEDULE_DELAY_SECONDS", 60)
         reschedule_count = int(getattr(what.ti_context, "task_reschedule_count", 0) or 0)
 
         log.warning(
