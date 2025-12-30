@@ -1665,12 +1665,17 @@ def main():
         # dag bundle). In that case we must exit with 0, otherwise the supervisor will overwrite the
         # UP_FOR_RESCHEDULE state by marking the TI as FAILED.
         log.info("Rescheduling task during startup, marking task as UP_FOR_RESCHEDULE")
-        SUPERVISOR_COMMS.send(
+        resp = SUPERVISOR_COMMS.send(
             msg=RescheduleTask(
                 reschedule_date=reschedule.reschedule_date,
                 end_date=datetime.now(tz=timezone.utc),
             )
         )
+        # If the supervisor couldn't apply the state update (e.g. API server rejected it), don't pretend
+        # this was a clean reschedule; exit non-zero so the executor can treat this as a failure/retry.
+        if isinstance(resp, ErrorResponse) and resp.error == ErrorType.API_SERVER_ERROR:
+            log.error("Failed to reschedule task during startup", detail=resp.detail)
+            exit(1)
         exit(0)
     except KeyboardInterrupt:
         log.exception("Ctrl-c hit")
