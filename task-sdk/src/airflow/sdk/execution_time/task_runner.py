@@ -673,12 +673,44 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
     # Using DagBag here is about 98% wrong, but it'll do for now
     from airflow.dag_processing.dagbag import DagBag
 
+    def _maybe_reschedule_startup(*, reason: str, exc: BaseException | None = None) -> None:
+        """
+        Reschedule on transient startup failures (e.g. DAG bundle not accessible).
+
+        If we've already rescheduled too many times, exit non-zero to let the supervisor/server decide what to do
+        (retry/failed) based on configured retries.
+        """
+        # To avoid an infinite reschedule loop (e.g. all workers are unable to access the bundle), cap the
+        # number of reschedules. The count comes from the server via `task_reschedule_count`.
+        max_reschedules = conf.getint("workers", "startup_dagbag_reschedule_max_attempts", fallback=3)
+        reschedule_delay = conf.getint("workers", "startup_dagbag_reschedule_delay", fallback=60)
+        reschedule_count = int(getattr(what.ti_context, "task_reschedule_count", 0) or 0)
+
+        log.warning(
+            "Startup error; deciding whether to reschedule",
+            reason=reason,
+            reschedule_count=reschedule_count,
+            max_reschedules=max_reschedules,
+            reschedule_delay_seconds=reschedule_delay,
+            exc_info=exc,
+        )
+
+        if max_reschedules > 0 and reschedule_count < max_reschedules:
+            raise AirflowRescheduleException(
+                datetime.now(tz=timezone.utc) + timedelta(seconds=reschedule_delay)
+            )
+
+        sys.exit(1)
+
     bundle_info = what.bundle_info
     bundle_instance = DagBundlesManager().get_bundle(
         name=bundle_info.name,
         version=bundle_info.version,
     )
-    bundle_instance.initialize()
+    try:
+        bundle_instance.initialize()
+    except Exception as e:
+        _maybe_reschedule_startup(reason="bundle_initialize_failed", exc=e)
 
     # Put bundle root on sys.path if needed. This allows the dag bundle to add
     # code in util modules to be shared between files within the same bundle.
@@ -686,13 +718,16 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         sys.path.append(bundle_root)
 
     dag_absolute_path = os.fspath(Path(bundle_instance.path, what.dag_rel_path))
-    bag = DagBag(
-        dag_folder=dag_absolute_path,
-        include_examples=False,
-        safe_mode=False,
-        load_op_links=False,
-        bundle_name=bundle_info.name,
-    )
+    try:
+        bag = DagBag(
+            dag_folder=dag_absolute_path,
+            include_examples=False,
+            safe_mode=False,
+            load_op_links=False,
+            bundle_name=bundle_info.name,
+        )
+    except Exception as e:
+        _maybe_reschedule_startup(reason="dagbag_initialization_failed", exc=e)
     if TYPE_CHECKING:
         assert what.ti.dag_id
 
@@ -702,23 +737,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        # This can happen transiently if a worker cannot access the Dag bundle (e.g. volume/permissions
-        # issues) even though other workers can. In such cases we prefer to reschedule/requeue the task
-        # rather than consume a retry.
-        #
-        # To avoid an infinite reschedule loop (e.g. all workers are unable to access the bundle), cap the
-        # number of reschedules. The count comes from the server via `task_reschedule_count`.
-        max_reschedules = conf.getint("workers", "startup_dagbag_reschedule_max_attempts", fallback=3)
-        reschedule_delay = conf.getint("workers", "startup_dagbag_reschedule_delay", fallback=60)
-        reschedule_count = int(getattr(what.ti_context, "task_reschedule_count", 0) or 0)
-
-        if max_reschedules > 0 and reschedule_count < max_reschedules:
-            raise AirflowRescheduleException(
-                datetime.now(tz=timezone.utc) + timedelta(seconds=reschedule_delay)
-            )
-
-        # Give up after max reschedules; let the supervisor decide if it should retry.
-        sys.exit(1)
+        _maybe_reschedule_startup(reason="dag_not_found")
 
     # install_loader()
 
