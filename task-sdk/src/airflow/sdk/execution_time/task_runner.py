@@ -27,7 +27,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -134,6 +134,66 @@ if TYPE_CHECKING:
 
 class TaskRunnerMarker:
     """Marker for listener hooks, to properly detect from which component they are called."""
+
+
+class DagNotFoundDuringStartupError(AirflowException):
+    """Raised when the DAG cannot be found/loaded during task process startup."""
+
+
+class TaskNotFoundDuringStartupError(AirflowException):
+    """Raised when the task cannot be found in a DAG during task process startup."""
+
+
+def _reschedule_or_fail_startup(
+    *,
+    what: StartupDetails,
+    log: Logger,
+    reason: str,
+    error: BaseException | None = None,
+) -> None:
+    """
+    Handle failures during startup (e.g. DagBag access issues) by rescheduling.
+
+    Important: We must exit with code 0 after sending the RescheduleTask message.
+    Otherwise the supervisor will derive a FAILED final state from the non-zero exit
+    code and can overwrite the rescheduled state, causing the TI to end up FAILED.
+    """
+    reschedule_count = what.ti_context.task_reschedule_count or 0
+
+    max_attempts = conf.getint("workers", "startup_dagbag_reschedule_max_attempts", fallback=10)
+    base_delay = conf.getint("workers", "startup_dagbag_reschedule_delay", fallback=5)
+    max_delay = conf.getint("workers", "startup_dagbag_reschedule_backoff_max", fallback=300)
+
+    now = datetime.now(tz=timezone.utc)
+
+    if reschedule_count >= max_attempts:
+        log.error(
+            "Startup failed too many times; marking task as FAILED",
+            reason=reason,
+            reschedule_count=reschedule_count,
+            max_attempts=max_attempts,
+            exc_info=error,
+        )
+        SUPERVISOR_COMMS.send(msg=TaskState(state=TaskInstanceState.FAILED, end_date=now))
+        raise SystemExit(0)
+
+    # Exponential backoff based on historical reschedules. This prevents hot-looping if
+    # *all* available workers cannot access the DagBag / DAG bundle.
+    delay_seconds = min(max_delay, base_delay * (2**reschedule_count))
+    reschedule_date = now + timedelta(seconds=delay_seconds)
+
+    log.warning(
+        "Startup failed; rescheduling task",
+        reason=reason,
+        reschedule_count=reschedule_count,
+        max_attempts=max_attempts,
+        reschedule_date=reschedule_date,
+        delay_seconds=delay_seconds,
+        exc_info=error,
+    )
+
+    SUPERVISOR_COMMS.send(msg=RescheduleTask(reschedule_date=reschedule_date, end_date=now))
+    raise SystemExit(0)
 
 
 # TODO: Move this entire class into a separate file:
@@ -701,7 +761,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        sys.exit(1)
+        raise DagNotFoundDuringStartupError(f"DAG {what.ti.dag_id!r} not found during startup") from None
 
     # install_loader()
 
@@ -715,7 +775,9 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        sys.exit(1)
+        raise TaskNotFoundDuringStartupError(
+            f"Task {what.ti.task_id!r} not found in DAG {dag.dag_id!r} during startup"
+        ) from None
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
@@ -793,7 +855,12 @@ def startup() -> tuple[RuntimeTaskInstance, Context, Logger]:
         log.exception("error calling listener")
 
     with _airflow_parsing_context_manager(dag_id=msg.ti.dag_id, task_id=msg.ti.task_id):
-        ti = parse(msg, log)
+        try:
+            ti = parse(msg, log)
+        except DagNotFoundDuringStartupError as e:
+            _reschedule_or_fail_startup(what=msg, log=log, reason="dag_not_found", error=e)
+        except TaskNotFoundDuringStartupError as e:
+            _reschedule_or_fail_startup(what=msg, log=log, reason="task_not_found", error=e)
     log.debug("Dag file parsed", file=msg.dag_rel_path)
 
     run_as_user = getattr(ti.task, "run_as_user", None) or conf.get(

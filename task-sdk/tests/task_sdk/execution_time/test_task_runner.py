@@ -96,6 +96,7 @@ from airflow.sdk.execution_time.comms import (
     PreviousDagRunResult,
     PreviousTIResult,
     PrevSuccessfulDagRunResult,
+    RescheduleTask,
     SetRenderedFields,
     SetXCom,
     SkipDownstreamTasks,
@@ -119,8 +120,10 @@ from airflow.sdk.execution_time.context import (
     VariableAccessor,
 )
 from airflow.sdk.execution_time.task_runner import (
+    DagNotFoundDuringStartupError,
     RuntimeTaskInstance,
     TaskRunnerMarker,
+    TaskNotFoundDuringStartupError,
     _execute_task,
     _push_xcom_if_needed,
     _xcom_push,
@@ -295,7 +298,7 @@ def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, 
                 ),
             },
         ),
-        pytest.raises(SystemExit),
+        pytest.raises((DagNotFoundDuringStartupError, TaskNotFoundDuringStartupError)),
     ):
         parse(what, log)
 
@@ -738,6 +741,82 @@ def test_startup_and_run_dag_with_rtif(
         ),
     ]
     mock_supervisor_comms.assert_has_calls(expected_calls)
+
+
+def test_startup_reschedules_when_parse_cannot_find_dag(make_ti_context, time_machine, mock_supervisor_comms):
+    instant = timezone.datetime(2024, 12, 3, 10, 0)
+    time_machine.move_to(instant, tick=False)
+
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="any_task",
+            dag_id="missing_dag",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="",
+        bundle_info=FAKE_BUNDLE,
+        ti_context=make_ti_context(task_reschedule_count=0),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+    mock_supervisor_comms._get_response.return_value = what
+
+    with conf_vars(
+        {
+            ("workers", "startup_dagbag_reschedule_delay"): "1",
+            ("workers", "startup_dagbag_reschedule_backoff_max"): "1",
+            ("workers", "startup_dagbag_reschedule_max_attempts"): "10",
+        }
+    ):
+        with patch(
+            "airflow.sdk.execution_time.task_runner.parse",
+            side_effect=DagNotFoundDuringStartupError("boom"),
+        ):
+            with pytest.raises(SystemExit) as e:
+                startup()
+            assert e.value.code == 0
+
+    mock_supervisor_comms.send.assert_called_once_with(
+        msg=RescheduleTask(reschedule_date=instant + timedelta(seconds=1), end_date=instant)
+    )
+
+
+def test_startup_fails_after_too_many_reschedules(make_ti_context, time_machine, mock_supervisor_comms):
+    instant = timezone.datetime(2024, 12, 3, 10, 0)
+    time_machine.move_to(instant, tick=False)
+
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="any_task",
+            dag_id="missing_dag",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="",
+        bundle_info=FAKE_BUNDLE,
+        ti_context=make_ti_context(task_reschedule_count=10),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+    mock_supervisor_comms._get_response.return_value = what
+
+    with conf_vars({("workers", "startup_dagbag_reschedule_max_attempts"): "10"}):
+        with patch(
+            "airflow.sdk.execution_time.task_runner.parse",
+            side_effect=DagNotFoundDuringStartupError("boom"),
+        ):
+            with pytest.raises(SystemExit) as e:
+                startup()
+            assert e.value.code == 0
+
+    mock_supervisor_comms.send.assert_called_once_with(
+        msg=TaskState(state=TaskInstanceState.FAILED, end_date=instant)
+    )
 
 
 @patch("os.execvp")
