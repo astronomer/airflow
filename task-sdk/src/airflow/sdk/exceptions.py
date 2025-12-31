@@ -150,6 +150,22 @@ class AirflowRescheduleException(AirflowException):
         return f"{cls.__module__}.{cls.__name__}", (), {"reschedule_date": self.reschedule_date}
 
 
+class AirflowRequeueException(AirflowException):
+    """
+    Raise when the task should be re-queued.
+
+    :param reschedule_date: The date when the task should be rescheduled
+    """
+
+    def __init__(self, reschedule_date):
+        super().__init__()
+        self.reschedule_date = reschedule_date
+
+    def serialize(self):
+        cls = self.__class__
+        return f"{cls.__module__}.{cls.__name__}", (), {"reschedule_date": self.reschedule_date}
+
+
 class AirflowSensorTimeout(AirflowException):
     """Raise when there is a timeout on sensor polling."""
 

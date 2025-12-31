@@ -42,14 +42,6 @@ class ReadyToRescheduleDep(BaseTIDep):
         This dependency fails if the latest reschedule request's reschedule date is still
         in the future.
         """
-        if (
-            # Mapped sensors don't have the reschedule property (it can only be calculated after unmapping),
-            # so we don't check them here. They are handled below by checking TaskReschedule instead.
-            ti.map_index < 0 and not getattr(ti.task, "reschedule", False)
-        ):
-            yield self._passing_status(reason="Task is not in reschedule mode.")
-            return
-
         if dep_context.ignore_in_reschedule_period:
             yield self._passing_status(
                 reason="The context specified that being in a reschedule period was permitted."

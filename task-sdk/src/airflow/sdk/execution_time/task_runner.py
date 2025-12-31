@@ -27,7 +27,7 @@ import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -61,6 +61,7 @@ from airflow.sdk.definitions.param import process_params
 from airflow.sdk.exceptions import (
     AirflowException,
     AirflowInactiveAssetInInletOrOutletException,
+    AirflowRequeueException,
     AirflowRuntimeError,
     AirflowTaskTimeout,
     ErrorType,
@@ -701,7 +702,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         log.error(
             "Dag not found during start up", dag_id=what.ti.dag_id, bundle=bundle_info, path=what.dag_rel_path
         )
-        sys.exit(1)
+        raise AirflowRequeueException(reschedule_date=datetime.now(tz=timezone.utc) + timedelta(seconds=10))
 
     # install_loader()
 
@@ -715,7 +716,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             bundle=bundle_info,
             path=what.dag_rel_path,
         )
-        sys.exit(1)
+        raise AirflowRequeueException(reschedule_date=datetime.now(tz=timezone.utc) + timedelta(seconds=10))
 
     if not isinstance(task, (BaseOperator, MappedOperator)):
         raise TypeError(
@@ -1633,6 +1634,12 @@ def main():
     except KeyboardInterrupt:
         log.exception("Ctrl-c hit")
         exit(2)
+    except AirflowRequeueException as e:
+        log.info("Requeuing task", reschedule_date=e.reschedule_date)
+        SUPERVISOR_COMMS.send(
+            msg=RescheduleTask(reschedule_date=e.reschedule_date, end_date=datetime.now(tz=timezone.utc))
+        )
+        exit(0)
     except Exception:
         log.exception("Top level error")
         exit(1)

@@ -303,6 +303,53 @@ def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, 
     log.error.assert_has_calls([expected_error])
 
 
+def test_parse_dag_not_found_requeue(test_dags_dir: Path, make_ti_context):
+    """Check that AirflowRequeueException is raised when DAG is not found."""
+    from airflow.sdk.exceptions import AirflowRequeueException
+    from airflow.sdk.execution_time.task_runner import parse
+
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="a",
+            dag_id="madeup_dag_id",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="super_basic.py",
+        bundle_info=BundleInfo(name="my-bundle", version=None),
+        ti_context=make_ti_context(),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+
+    log = mock.Mock()
+
+    with (
+        patch.dict(
+            os.environ,
+            {
+                "AIRFLOW__DAG_PROCESSOR__DAG_BUNDLE_CONFIG_LIST": json.dumps(
+                    [
+                        {
+                            "name": "my-bundle",
+                            "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
+                            "kwargs": {"path": str(test_dags_dir), "refresh_interval": 1},
+                        }
+                    ]
+                ),
+            },
+        ),
+        pytest.raises(AirflowRequeueException) as excinfo,
+    ):
+        parse(what, log)
+
+    # Verify reschedule_date is set (approx 10s future)
+    # Allow some buffer for execution time
+    assert excinfo.value.reschedule_date > timezone.utcnow()
+
+
 def test_parse_module_in_bundle_root(tmp_path: Path, make_ti_context):
     """Check that the bundle path is added to sys.path, so Dags can import shared modules."""
     tmp_path.joinpath("util.py").write_text("NAME = 'dag_name'")
