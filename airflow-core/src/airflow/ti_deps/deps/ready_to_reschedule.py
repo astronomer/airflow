@@ -42,10 +42,19 @@ class ReadyToRescheduleDep(BaseTIDep):
         This dependency fails if the latest reschedule request's reschedule date is still
         in the future.
         """
+        # Only reschedule-mode sensors (and mapped task edge cases) should be blocked by reschedule_date
+        # when the task instance is in NONE state.
+        #
+        # If the task instance is explicitly UP_FOR_RESCHEDULE, we *always* honor TaskReschedule.reschedule_date
+        # regardless of operator type. This allows non-sensor tasks to use UP_FOR_RESCHEDULE as a backoff
+        # mechanism (e.g. transient startup/Dag parsing issues in distributed workers).
         if (
+            ti.state is None
+            and
             # Mapped sensors don't have the reschedule property (it can only be calculated after unmapping),
             # so we don't check them here. They are handled below by checking TaskReschedule instead.
-            ti.map_index < 0 and not getattr(ti.task, "reschedule", False)
+            ti.map_index < 0
+            and not getattr(ti.task, "reschedule", False)
         ):
             yield self._passing_status(reason="Task is not in reschedule mode.")
             return
