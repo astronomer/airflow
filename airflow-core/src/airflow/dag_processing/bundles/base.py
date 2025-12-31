@@ -27,6 +27,7 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import timedelta
+from enum import Enum
 from fcntl import LOCK_SH, LOCK_UN, flock
 from operator import attrgetter
 from pathlib import Path
@@ -40,9 +41,36 @@ from airflow.configuration import conf
 if TYPE_CHECKING:
     from pendulum import DateTime
 
+    from airflow.dag_processing.importers.base import AbstractDagImporter
     from airflow.typing_compat import Self
 
+
+class ParsingMode(str, Enum):
+    """
+    Parsing mode for a DAG bundle.
+
+    Determines how the DAG processor handles files in this bundle.
+    """
+
+    CONTINUOUS = "continuous"
+    """Default mode. Files are parsed continuously at the configured interval."""
+
+    ON_CHANGE = "on_change"
+    """Files are only re-parsed when their content changes (hash comparison)."""
+
+    API_ONLY = "api_only"
+    """Files are only parsed when explicitly requested via API."""
+
+
 log = logging.getLogger(__name__)
+
+
+class ParsingMode(str, Enum):
+    """Parsing mode for a DAG bundle."""
+
+    CONTINUOUS = "continuous"  # Default: continuous parsing loop
+    ON_CHANGE = "on_change"  # Parse only when files change (requires file watching)
+    API_ONLY = "api_only"  # Parse only via explicit API calls
 
 
 def get_bundle_storage_root_path():
@@ -248,6 +276,8 @@ class BaseDagBundle(ABC):
     :param refresh_interval: How often the bundle should be refreshed from the source in seconds
         (Optional - defaults to [dag_processor] refresh_interval)
     :param version: Version of the DAG bundle (Optional)
+    :param parsing_mode: How the DAG processor should parse files in this bundle
+        (Optional - defaults to 'continuous')
     """
 
     supports_versioning: bool = False
@@ -261,11 +291,18 @@ class BaseDagBundle(ABC):
         refresh_interval: int = conf.getint("dag_processor", "refresh_interval"),
         version: str | None = None,
         view_url_template: str | None = None,
+        parsing_mode: str | ParsingMode = ParsingMode.CONTINUOUS,
     ) -> None:
         self.name = name
         self.version = version
         self.refresh_interval = refresh_interval
         self.is_initialized: bool = False
+
+        # Normalize parsing_mode to enum
+        if isinstance(parsing_mode, str):
+            self.parsing_mode = ParsingMode(parsing_mode)
+        else:
+            self.parsing_mode = parsing_mode
 
         self.base_dir = get_bundle_base_folder(bundle_name=self.name)
         """Base directory for all bundle files for this bundle."""
@@ -274,6 +311,9 @@ class BaseDagBundle(ABC):
         """Where bundle versions are stored locally for this bundle."""
 
         self._view_url_template = view_url_template
+
+        # Cache for file content hashes (used by on_change mode)
+        self._file_hashes: dict[str, str] = {}
 
     def initialize(self) -> None:
         """
@@ -391,6 +431,80 @@ class BaseDagBundle(ABC):
 
     def __repr__(self):
         return f"{self.__class__.__name__}(name={self.name})"
+
+    def get_importers(self) -> list[AbstractDagImporter]:
+        """
+        Get the list of DAG importers for this bundle.
+
+        Returns importers that handle different file formats. By default,
+        returns the PythonDagImporter and YamlDagImporter.
+
+        Override this method to customize which importers are available for a bundle.
+
+        :return: List of AbstractDagImporter instances.
+        """
+        from airflow.dag_processing.importers import PythonDagImporter, YamlDagImporter
+
+        return [PythonDagImporter(), YamlDagImporter()]
+
+    def get_importer_for_file(self, file_path: str | Path) -> AbstractDagImporter | None:
+        """
+        Get the appropriate importer for a given file.
+
+        :param file_path: Path to the file.
+        :return: The importer that can handle this file, or None if no importer matches.
+        """
+        for importer in self.get_importers():
+            if importer.can_handle(file_path):
+                return importer
+        return None
+
+    def has_file_changed(self, file_path: str | Path) -> bool:
+        """
+        Check if a file's content has changed since the last check.
+
+        Used by the on_change parsing mode to skip re-parsing unchanged files.
+
+        :param file_path: Path to the file to check.
+        :return: True if the file has changed or is new, False otherwise.
+        """
+        import hashlib
+
+        file_path = str(file_path)
+
+        try:
+            with open(file_path, "rb") as f:
+                current_hash = hashlib.md5(f.read()).hexdigest()
+        except OSError:
+            return True
+
+        previous_hash = self._file_hashes.get(file_path)
+        if previous_hash is None or previous_hash != current_hash:
+            self._file_hashes[file_path] = current_hash
+            return True
+
+        return False
+
+    def list_dag_files(self) -> list[Path]:
+        """
+        List all DAG files in this bundle.
+
+        Returns files that can be handled by one of the bundle's importers.
+
+        :return: List of file paths.
+        """
+        if not self.is_initialized:
+            self.initialize()
+
+        dag_files: list[Path] = []
+        supported_extensions = set()
+        for importer in self.get_importers():
+            supported_extensions.update(importer.supported_extensions())
+
+        for ext in supported_extensions:
+            dag_files.extend(self.path.rglob(f"*{ext}"))
+
+        return dag_files
 
 
 class BundleVersionLock:
