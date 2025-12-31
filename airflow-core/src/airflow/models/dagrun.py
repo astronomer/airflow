@@ -74,6 +74,7 @@ from airflow.sdk.definitions.deadline import DeadlineReference
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
 from airflow.ti_deps.dep_context import DepContext
 from airflow.ti_deps.dependencies_states import SCHEDULEABLE_STATES
+from airflow.ti_deps.deps.ready_to_reschedule import ReadyToRescheduleDep
 from airflow.utils.dates import datetime_to_nano
 from airflow.utils.helpers import chunks, is_container, prune_dict
 from airflow.utils.log.logging_mixin import LoggingMixin
@@ -1515,6 +1516,23 @@ class DagRun(Base, LoggingMixin):
             finished_tis=finished_tis,
         )
 
+        # This DepContext is used when a task instance is in UP_FOR_RESCHEDULE state.
+        #
+        # Tasks can be put into UP_FOR_RESCHEDULE by the task runner itself (e.g. when
+        # the worker cannot load the Dag or task). In this case,
+        # the scheduler must respect the task instance's reschedule_date before scheduling
+        # it again.
+        #
+        # ReadyToRescheduleDep is the only dependency that enforces this time-based gating.
+        # We therefore extend the normal scheduling dependency set with it, instead of
+        # modifying the global scheduler dependencies.
+        dep_context_with_reschedule = DepContext(
+            deps=dep_context.deps | {ReadyToRescheduleDep()},
+            flag_upstream_failed=True,
+            ignore_unmapped_tasks=True,
+            finished_tis=finished_tis,
+        )
+
         def _expand_mapped_task_if_needed(ti: TI) -> Iterable[TI] | None:
             """
             Try to expand the ti, if needed.
@@ -1556,7 +1574,14 @@ class DagRun(Base, LoggingMixin):
             if TYPE_CHECKING:
                 assert isinstance(schedulable.task, Operator)
             old_state = schedulable.state
-            if not schedulable.are_dependencies_met(session=session, dep_context=dep_context):
+            if not schedulable.are_dependencies_met(
+                session=session,
+                dep_context=(
+                    dep_context
+                    if old_state != TaskInstanceState.UP_FOR_RESCHEDULE
+                    else dep_context_with_reschedule
+                ),
+            ):
                 old_states[schedulable.key] = old_state
                 continue
             # If schedulable is not yet expanded, try doing it now. This is
