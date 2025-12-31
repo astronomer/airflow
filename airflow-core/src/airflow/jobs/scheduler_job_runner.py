@@ -1049,6 +1049,31 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             )
 
             if ti_queued and not ti_requeued:
+                # Task SDK can intentionally reschedule a task (UP_FOR_RESCHEDULE) and exit cleanly.
+                # Depending on scheduler timing/executor reporting, we might receive an executor SUCCESS event
+                # after the TI has already been re-queued. In that case, the default "killed externally"
+                # handling below is incorrect and would fail the task.
+                #
+                # As a narrow safeguard: if the executor reported SUCCESS but we have a future reschedule_date
+                # recorded for this TI, treat this as a legitimate reschedule/requeue and do not fail it here.
+                if state == TaskInstanceState.SUCCESS:
+                    from airflow.models.taskreschedule import TaskReschedule
+
+                    next_reschedule_date = session.scalar(
+                        select(TaskReschedule.reschedule_date)
+                        .where(TaskReschedule.ti_id == ti.id)
+                        .order_by(TaskReschedule.id.desc())
+                        .limit(1)
+                    )
+                    if next_reschedule_date and timezone.utcnow() < next_reschedule_date:
+                        cls.logger().info(
+                            "Ignoring executor success event for rescheduled task instance",
+                            ti=ti,
+                            reschedule_date=next_reschedule_date,
+                            executor=executor,
+                        )
+                        continue
+
                 Stats.incr(
                     "scheduler.tasks.killed_externally",
                     tags={"dag_id": ti.dag_id, "task_id": ti.task_id},
