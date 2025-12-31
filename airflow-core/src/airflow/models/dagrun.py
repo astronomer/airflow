@@ -73,6 +73,7 @@ from airflow.observability.trace import Trace
 from airflow.sdk.definitions.deadline import DeadlineReference
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
 from airflow.ti_deps.dep_context import DepContext
+from airflow.ti_deps.deps.ready_to_reschedule import ReadyToRescheduleDep
 from airflow.ti_deps.dependencies_states import SCHEDULEABLE_STATES
 from airflow.utils.dates import datetime_to_nano
 from airflow.utils.helpers import chunks, is_container, prune_dict
@@ -1514,6 +1515,18 @@ class DagRun(Base, LoggingMixin):
             ignore_unmapped_tasks=True,  # Ignore this Dep, as we will expand it if we can.
             finished_tis=finished_tis,
         )
+        # Tasks in UP_FOR_RESCHEDULE state (including those rescheduled by the Task SDK for transient
+        # worker-side issues) should not be considered schedulable until their reschedule_date is due.
+        #
+        # Historically, reschedule gating was injected only for sensors (via SerializedDAG/_is_sensor),
+        # but Task SDK can legitimately put non-sensor tasks into UP_FOR_RESCHEDULE.
+        dep_context_with_reschedule = DepContext(
+            deps={ReadyToRescheduleDep()},
+            flag_upstream_failed=True,
+            ignore_unmapped_tasks=True,
+            finished_tis=finished_tis,
+            description="ready_to_reschedule gating",
+        )
 
         def _expand_mapped_task_if_needed(ti: TI) -> Iterable[TI] | None:
             """
@@ -1556,7 +1569,12 @@ class DagRun(Base, LoggingMixin):
             if TYPE_CHECKING:
                 assert isinstance(schedulable.task, Operator)
             old_state = schedulable.state
-            if not schedulable.are_dependencies_met(session=session, dep_context=dep_context):
+            context_to_use = (
+                dep_context_with_reschedule
+                if schedulable.state == TaskInstanceState.UP_FOR_RESCHEDULE
+                else dep_context
+            )
+            if not schedulable.are_dependencies_met(session=session, dep_context=context_to_use):
                 old_states[schedulable.key] = old_state
                 continue
             # If schedulable is not yet expanded, try doing it now. This is
