@@ -954,14 +954,20 @@ class DagFileProcessorManager(LoggingMixin):
             Stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
     def _add_new_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
+        """
+        Add new files to the front of the queue.
+
+        A "new" file is a file that has not been processed yet and is not currently being processed.
+        """
         new_files = []
         for files in known_files.values():
             for file in files:
-                if file not in self._file_stats:  # todo: store stats by bundle also?
+                # todo: store stats by bundle also?
+                if file not in self._file_stats and file not in self._processors:
                     new_files.append(file)
 
         if new_files:
-            self.log.info("Adding %d new files to parsing queue", len(new_files))
+            self.log.info("Adding %d new files to the front of the queue", len(new_files))
             self._add_files_to_queue(new_files, True)
 
     def _sort_by_mtime(self, files: Iterable[DagFileInfo]):
