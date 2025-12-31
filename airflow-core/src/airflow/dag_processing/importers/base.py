@@ -201,6 +201,7 @@ class DagImporterRegistry:
 
     Currently supports:
     - Python files (.py)
+    - YAML files (.yaml, .yml)
 
     Additional importers can be registered via:
 
@@ -230,8 +231,10 @@ class DagImporterRegistry:
         """Register the built-in importers."""
         # Import here to avoid circular imports
         from airflow.dag_processing.importers.python_importer import PythonDagImporter
+        from airflow.dag_processing.importers.yaml_importer import YamlDagImporter
 
         self.register(PythonDagImporter())
+        self.register(YamlDagImporter())
 
     def register(self, importer: AbstractDagImporter) -> None:
         """

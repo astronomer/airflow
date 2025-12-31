@@ -23,6 +23,7 @@ from pathlib import Path
 from airflow.dag_processing.importers import (
     DagImporterRegistry,
     PythonDagImporter,
+    YamlDagImporter,
     get_importer_registry,
 )
 
@@ -45,11 +46,13 @@ class TestDagImporterRegistry:
         assert registry1 is registry2
 
     def test_default_importers_registered(self):
-        """Registry should have Python importer by default."""
+        """Registry should have Python and YAML importers by default."""
         registry = get_importer_registry()
         extensions = registry.supported_extensions()
 
         assert ".py" in extensions
+        assert ".yaml" in extensions
+        assert ".yml" in extensions
 
     def test_get_importer_for_python(self):
         """Should return PythonDagImporter for .py files."""
@@ -58,6 +61,22 @@ class TestDagImporterRegistry:
 
         assert importer is not None
         assert isinstance(importer, PythonDagImporter)
+
+    def test_get_importer_for_yaml(self):
+        """Should return YamlDagImporter for .yaml files."""
+        registry = get_importer_registry()
+        importer = registry.get_importer("test.yaml")
+
+        assert importer is not None
+        assert isinstance(importer, YamlDagImporter)
+
+    def test_get_importer_for_yml(self):
+        """Should return YamlDagImporter for .yml files."""
+        registry = get_importer_registry()
+        importer = registry.get_importer("test.yml")
+
+        assert importer is not None
+        assert isinstance(importer, YamlDagImporter)
 
     def test_get_importer_for_unknown(self):
         """Should return None for unknown file types."""
@@ -71,7 +90,10 @@ class TestDagImporterRegistry:
         registry = get_importer_registry()
 
         assert registry.can_handle("dag.py")
+        assert registry.can_handle("dag.yaml")
+        assert registry.can_handle("dag.yml")
         assert registry.can_handle(Path("subdir/dag.py"))
+        assert registry.can_handle(Path("/absolute/path/dag.yaml"))
 
     def test_can_handle_unsupported_files(self):
         """can_handle should return False for unsupported file types."""
@@ -88,6 +110,8 @@ class TestDagImporterRegistry:
         # All these should be handled
         assert registry.can_handle("dag.PY")
         assert registry.can_handle("dag.Py")
+        assert registry.can_handle("dag.YAML")
+        assert registry.can_handle("dag.YML")
 
     def test_reset_clears_singleton(self):
         """reset() should clear the singleton instance."""
