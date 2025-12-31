@@ -24,7 +24,7 @@ import os
 import textwrap
 import time
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest import mock
@@ -35,6 +35,7 @@ import pytest
 from task_sdk import FAKE_BUNDLE
 from uuid6 import uuid7
 
+from airflow.exceptions import AirflowRescheduleException
 from airflow.listeners import hookimpl
 from airflow.listeners.listener import get_listener_manager
 from airflow.providers.standard.operators.python import PythonOperator
@@ -96,6 +97,7 @@ from airflow.sdk.execution_time.comms import (
     PreviousDagRunResult,
     PreviousTIResult,
     PrevSuccessfulDagRunResult,
+    RescheduleTask,
     SetRenderedFields,
     SetXCom,
     SkipDownstreamTasks,
@@ -295,12 +297,109 @@ def test_parse_not_found(test_dags_dir: Path, make_ti_context, dag_id, task_id, 
                 ),
             },
         ),
-        pytest.raises(SystemExit),
+        pytest.raises(AirflowRescheduleException),
     ):
         parse(what, log)
 
     expected_error.kwargs["bundle"] = what.bundle_info
     log.error.assert_has_calls([expected_error])
+
+
+def test_parse_not_found_does_not_reschedule_when_max_attempts_reached(test_dags_dir: Path, make_ti_context):
+    """
+    If the startup reschedule attempt limit is reached, parsing failures should not be rescheduled
+    and should surface as a hard failure (SystemExit in the task runner process).
+    """
+    what = StartupDetails(
+        ti=TaskInstance(
+            id=uuid7(),
+            task_id="a",
+            dag_id="madeup_dag_id",
+            run_id="c",
+            try_number=1,
+            dag_version_id=uuid7(),
+        ),
+        dag_rel_path="super_basic.py",
+        bundle_info=BundleInfo(name="my-bundle", version=None),
+        ti_context=make_ti_context(task_reschedule_count=3),
+        start_date=timezone.utcnow(),
+        sentry_integration="",
+    )
+
+    log = mock.Mock()
+
+    with (
+        conf_vars(
+            {
+                ("workers", "startup_dagbag_reschedule_max_attempts"): "3",
+                ("workers", "startup_dagbag_reschedule_delay"): "60",
+            }
+        ),
+        patch.dict(
+            os.environ,
+            {
+                "AIRFLOW__DAG_PROCESSOR__DAG_BUNDLE_CONFIG_LIST": json.dumps(
+                    [
+                        {
+                            "name": "my-bundle",
+                            "classpath": "airflow.dag_processing.bundles.local.LocalDagBundle",
+                            "kwargs": {"path": str(test_dags_dir), "refresh_interval": 1},
+                        }
+                    ]
+                ),
+            },
+        ),
+        pytest.raises(SystemExit),
+    ):
+        parse(what, log)
+
+
+def test_main_sends_reschedule_task_when_startup_reschedules(time_machine, monkeypatch):
+    """
+    If startup raises AirflowRescheduleException, the task runner should report a RescheduleTask
+    message to the supervisor and exit cleanly (code 0).
+    """
+    import builtins
+
+    from airflow.sdk.execution_time import task_runner
+
+    fixed_now = datetime(2025, 1, 1, tzinfo=dt_timezone.utc)
+    reschedule_date = fixed_now + timedelta(seconds=60)
+
+    mock_comms = mock.Mock()
+    mock_comms.socket = None
+
+    class FakeCommsDecoder:
+        """A minimal replacement that supports `CommsDecoder[...](...)`."""
+
+        def __class_getitem__(cls, _item):
+            return cls
+
+        def __new__(cls, *args, **kwargs):
+            return mock_comms
+
+    monkeypatch.setattr(task_runner, "CommsDecoder", FakeCommsDecoder)
+    monkeypatch.setattr(
+        task_runner,
+        "startup",
+        mock.Mock(side_effect=AirflowRescheduleException(reschedule_date=reschedule_date)),
+    )
+    monkeypatch.setattr(
+        builtins,
+        "exit",
+        lambda code: (_ for _ in ()).throw(SystemExit(code)),
+        raising=False,
+    )
+
+    time_machine.move_to(fixed_now, tick=False)
+    with pytest.raises(SystemExit) as exc:
+        task_runner.main()
+
+    assert exc.value.code == 0
+    sent_msg = mock_comms.send.call_args.kwargs["msg"]
+    assert isinstance(sent_msg, RescheduleTask)
+    assert sent_msg.reschedule_date == reschedule_date
+    assert sent_msg.end_date == fixed_now
 
 
 def test_parse_module_in_bundle_root(tmp_path: Path, make_ti_context):

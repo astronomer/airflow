@@ -103,9 +103,28 @@ class TestNotInReschedulePeriodDep:
         dep_context = DepContext(ignore_in_reschedule_period=True)
         assert ReadyToRescheduleDep().is_met(ti=ti, dep_context=dep_context)
 
-    def test_should_pass_if_not_reschedule_mode(self, not_expected_tr_db_call):
+    def test_should_pass_if_not_reschedule_mode_in_none_state(self, not_expected_tr_db_call):
+        """Non-reschedule tasks in NONE state should not be gated by TaskReschedule."""
+        ti = self._get_task_instance(State.NONE)
+        del ti.task.reschedule
+        assert ReadyToRescheduleDep().is_met(ti=ti)
+
+    def test_should_fail_before_reschedule_date_even_if_task_is_not_reschedule_mode(self):
+        """
+        When a task is in UP_FOR_RESCHEDULE state but the operator itself is not in reschedule mode
+        (i.e. reschedule was triggered by infrastructure/startup failure), we still must respect the
+        TaskReschedule.reschedule_date.
+        """
         ti = self._get_task_instance(State.UP_FOR_RESCHEDULE)
         del ti.task.reschedule
+        self._create_task_reschedule(ti, 1)
+        assert not ReadyToRescheduleDep().is_met(ti=ti)
+
+    def test_should_pass_after_reschedule_date_even_if_task_is_not_reschedule_mode(self):
+        """Same as above, but once reschedule_date is in the past, the dep should pass."""
+        ti = self._get_task_instance(State.UP_FOR_RESCHEDULE)
+        del ti.task.reschedule
+        self._create_task_reschedule(ti, -1)
         assert ReadyToRescheduleDep().is_met(ti=ti)
 
     def test_should_pass_if_not_in_none_state(self, not_expected_tr_db_call):
