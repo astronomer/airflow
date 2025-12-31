@@ -108,6 +108,18 @@ class TestNotInReschedulePeriodDep:
         del ti.task.reschedule
         assert ReadyToRescheduleDep().is_met(ti=ti)
 
+    def test_should_fail_before_reschedule_date_if_not_reschedule_mode(self):
+        """
+        Non-sensor tasks can be put in UP_FOR_RESCHEDULE (e.g. worker startup reschedule).
+
+        In that case, readiness must be gated by TaskReschedule rows even if the task is not in
+        "reschedule mode" (i.e. doesn't have ``task.reschedule`` set).
+        """
+        ti = self._get_task_instance(State.UP_FOR_RESCHEDULE)
+        del ti.task.reschedule
+        self._create_task_reschedule(ti, 1)
+        assert not ReadyToRescheduleDep().is_met(ti=ti)
+
     def test_should_pass_if_not_in_none_state(self, not_expected_tr_db_call):
         ti = self._get_task_instance(State.UP_FOR_RETRY)
         assert ReadyToRescheduleDep().is_met(ti=ti)
