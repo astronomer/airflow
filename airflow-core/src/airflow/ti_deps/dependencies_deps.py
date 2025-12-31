@@ -26,6 +26,7 @@ from airflow.ti_deps.deps.dagrun_exists_dep import DagrunRunningDep
 from airflow.ti_deps.deps.exec_date_after_start_date_dep import ExecDateAfterStartDateDep
 from airflow.ti_deps.deps.pool_slots_available_dep import PoolSlotsAvailableDep
 from airflow.ti_deps.deps.runnable_exec_date_dep import RunnableExecDateDep
+from airflow.ti_deps.deps.ready_to_reschedule import ReadyToRescheduleDep
 from airflow.ti_deps.deps.task_concurrency_dep import TaskConcurrencyDep
 from airflow.ti_deps.deps.task_not_running_dep import TaskNotRunningDep
 from airflow.ti_deps.deps.valid_state_dep import ValidStateDep
@@ -41,6 +42,7 @@ REQUEUEABLE_DEPS = {
 RUNNING_DEPS = {
     RunnableExecDateDep(),
     ValidStateDep(RUNNABLE_STATES),
+    ReadyToRescheduleDep(),
     DagTISlotsAvailableDep(),
     TaskConcurrencyDep(),
     PoolSlotsAvailableDep(),
@@ -64,6 +66,7 @@ RUNNING_DEPS = {
 SCHEDULER_QUEUED_DEPS = {
     RunnableExecDateDep(),
     ValidStateDep(QUEUEABLE_STATES),
+    ReadyToRescheduleDep(),
     DagTISlotsAvailableDep(),
     TaskConcurrencyDep(),
     PoolSlotsAvailableDep(),
