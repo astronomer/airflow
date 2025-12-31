@@ -23,6 +23,7 @@ from pathlib import Path
 from airflow.dag_processing.importers import (
     DagImporterRegistry,
     PythonDagImporter,
+    YamlDagImporter,
     get_importer_registry,
 )
 
@@ -46,6 +47,8 @@ class TestDagImporterRegistry:
         extensions = registry.supported_extensions()
         assert ".py" in extensions
         assert ".zip" in extensions
+        assert ".yaml" in extensions
+        assert ".yml" in extensions
 
     def test_get_importer_for_python(self):
         registry = get_importer_registry()
@@ -59,16 +62,31 @@ class TestDagImporterRegistry:
         assert importer is not None
         assert isinstance(importer, PythonDagImporter)
 
-    def test_get_importer_for_unknown(self):
+    def test_get_importer_for_yaml(self):
         registry = get_importer_registry()
         importer = registry.get_importer("test.yaml")
+        assert importer is not None
+        assert isinstance(importer, YamlDagImporter)
+
+    def test_get_importer_for_yml(self):
+        registry = get_importer_registry()
+        importer = registry.get_importer("test.yml")
+        assert importer is not None
+        assert isinstance(importer, YamlDagImporter)
+
+    def test_get_importer_for_unknown(self):
+        registry = get_importer_registry()
+        importer = registry.get_importer("test.txt")
         assert importer is None
 
     def test_can_handle_supported_files(self):
         registry = get_importer_registry()
         assert registry.can_handle("dag.py")
         assert registry.can_handle("dag.zip")
+        assert registry.can_handle("dag.yaml")
+        assert registry.can_handle("dag.yml")
         assert registry.can_handle(Path("subdir/dag.py"))
+        assert registry.can_handle(Path("/absolute/path/dag.yaml"))
 
     def test_can_handle_unsupported_files(self):
         registry = get_importer_registry()
@@ -80,6 +98,8 @@ class TestDagImporterRegistry:
         assert registry.can_handle("dag.PY")
         assert registry.can_handle("dag.Py")
         assert registry.can_handle("dag.ZIP")
+        assert registry.can_handle("dag.YAML")
+        assert registry.can_handle("dag.YML")
 
     def test_reset_clears_singleton(self):
         registry1 = get_importer_registry()

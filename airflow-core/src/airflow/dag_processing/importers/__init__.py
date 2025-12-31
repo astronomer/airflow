@@ -27,6 +27,7 @@ from airflow.dag_processing.importers.base import (
     get_importer_registry,
 )
 from airflow.dag_processing.importers.python_importer import PythonDagImporter
+from airflow.dag_processing.importers.yaml_importer import YamlDagImporter
 
 __all__ = [
     "AbstractDagImporter",
@@ -35,5 +36,6 @@ __all__ = [
     "DagImportResult",
     "DagImportWarning",
     "PythonDagImporter",
+    "YamlDagImporter",
     "get_importer_registry",
 ]

@@ -139,8 +139,10 @@ class DagImporterRegistry:
 
     def _register_default_importers(self) -> None:
         from airflow.dag_processing.importers.python_importer import PythonDagImporter
+        from airflow.dag_processing.importers.yaml_importer import YamlDagImporter
 
         self.register(PythonDagImporter())
+        self.register(YamlDagImporter())
 
     def register(self, importer: AbstractDagImporter) -> None:
         """Register an importer for its supported extensions."""
