@@ -342,7 +342,7 @@ class TestDagFileProcessorManager:
         manager.prepare_file_queue(
             known_files={"any": set((*dag_files, *_get_file_infos(["file_4-ss=1.0.py"])))}
         )
-        # manager.add_files_to_queue()
+        # manager._add_new_files_to_queue()
         ordered_files = _get_file_infos(
             [
                 "file_3-ss=4.0.py",
@@ -352,6 +352,19 @@ class TestDagFileProcessorManager:
             ]
         )
         assert manager._file_queue == deque(ordered_files)
+
+    def test_add_new_files_to_queue_adds_to_front(self):
+        """Check that _add_new_files_to_queue adds new files to the front of the queue."""
+        manager = DagFileProcessorManager(max_runs=1)
+        file_1 = DagFileInfo(bundle_name="testing", rel_path=Path("file_1.py"), bundle_path=TEST_DAGS_FOLDER)
+        file_2 = DagFileInfo(bundle_name="testing", rel_path=Path("file_2.py"), bundle_path=TEST_DAGS_FOLDER)
+
+        manager._file_queue = deque([file_1])
+
+        known_files = {"testing": {file_1, file_2}}  # file_2 is new, file_1 is existing
+        manager._add_new_files_to_queue(known_files)
+
+        assert list(manager._file_queue) == [file_2, file_1]
 
     @conf_vars({("dag_processor", "file_parsing_sort_mode"): "modified_time"})
     @mock.patch("airflow.utils.file.os.path.getmtime")

@@ -362,7 +362,7 @@ class DagFileProcessorManager(LoggingMixin):
                 self.emit_metrics()
             else:
                 # if new files found in dag dir, add them
-                self.add_files_to_queue(known_files=known_files)
+                self._add_new_files_to_queue(known_files=known_files)
 
             self._start_new_processes()
 
@@ -953,13 +953,16 @@ class DagFileProcessorManager(LoggingMixin):
             self._processors[file] = processor
             Stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
-    def add_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
+    def _add_new_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
+        new_files = []
         for files in known_files.values():
             for file in files:
                 if file not in self._file_stats:  # todo: store stats by bundle also?
-                    # We found new file after refreshing dir. add to parsing queue at start
-                    self.log.info("Adding new file %s to parsing queue", file)
-                    self._file_queue.appendleft(file)
+                    new_files.append(file)
+
+        if new_files:
+            self.log.info("Adding %d new files to parsing queue", len(new_files))
+            self._add_files_to_queue(new_files, True)
 
     def _sort_by_mtime(self, files: Iterable[DagFileInfo]):
         files_with_mtime: dict[DagFileInfo, float] = {}
