@@ -315,19 +315,16 @@ class DagBag(LoggingMixin):
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
-        """Given a path to a python module or zip file, import the module and look for dag objects within."""
-        from airflow.sdk.definitions._internal.contextmanager import DagContext
+        """
+        Process a DAG file and return found DAGs.
 
-        # if the source file no longer exists in the DB or in the filesystem,
-        # return an empty list
-        # todo: raise exception?
-
+        Delegates to the appropriate importer from the registry based on file type.
+        This unified approach removes duplication between DagBag and importers.
+        """
         if filepath is None or not os.path.isfile(filepath):
             return []
 
         try:
-            # This failed before in what may have been a git sync
-            # race condition
             file_last_changed_on_disk = datetime.fromtimestamp(os.path.getmtime(filepath))
             if (
                 only_if_updated
@@ -339,29 +336,48 @@ class DagBag(LoggingMixin):
             self.log.exception(e)
             return []
 
-        # Ensure we don't pick up anything else we didn't mean to
-        DagContext.autoregistered_dags.clear()
-
         self.captured_warnings.pop(filepath, None)
-        with _capture_with_reraise() as captured_warnings:
-            if filepath.endswith(".py") or not zipfile.is_zipfile(filepath):
-                mods = self._load_modules_from_file(filepath, safe_mode)
-            else:
-                mods = self._load_modules_from_zip(filepath, safe_mode)
 
-        if captured_warnings:
-            formatted_warnings = []
-            for msg in captured_warnings:
-                category = msg.category.__name__
-                if (module := msg.category.__module__) != "builtins":
-                    category = f"{module}.{category}"
-                formatted_warnings.append(f"{msg.filename}:{msg.lineno}: {category}: {msg.message}")
+        # Use the importer registry to handle ALL file types (Python, YAML, etc.)
+        from airflow.dag_processing.importers import get_importer_registry
+
+        registry = get_importer_registry()
+        importer = registry.get_importer(filepath)
+
+        if importer is None:
+            self.log.debug("No importer found for file: %s", filepath)
+            return []
+
+        # Delegate to the importer
+        result = importer.import_file(
+            file_path=filepath,
+            bundle_path=Path(self.dag_folder) if self.dag_folder else None,
+            bundle_name=self.bundle_name,
+            safe_mode=safe_mode,
+        )
+
+        # Handle errors from the import
+        if result.errors:
+            for error in result.errors:
+                self.import_errors[filepath] = error.message
+                self.log.error("Error loading DAG from %s: %s", filepath, error.message)
+
+        # Handle warnings from the import
+        if result.warnings:
+            formatted_warnings = [w.message for w in result.warnings]
             self.captured_warnings[filepath] = tuple(formatted_warnings)
 
-        found_dags = self._process_modules(filepath, mods, file_last_changed_on_disk)
+        # Bag each DAG found
+        for dag in result.dags:
+            try:
+                dag.fileloc = filepath
+                self.bag_dag(dag=dag)
+            except Exception as e:
+                self.log.exception("Error bagging DAG from %s", filepath)
+                self.import_errors[filepath] = str(e)
 
         self.file_last_changed[filepath] = file_last_changed_on_disk
-        return found_dags
+        return result.dags
 
     @property
     def dag_warnings(self) -> set[DagWarning]:
@@ -609,6 +625,72 @@ class DagBag(LoggingMixin):
             self.log.exception("Exception bagging dag: %s", dag.dag_id)
             raise
 
+    def _list_additional_file_paths(self, dag_folder: str) -> list[str]:
+        """
+        List all non-Python DAG files in the given folder that have registered importers.
+
+        Uses the importer registry to discover files with supported extensions.
+
+        :param dag_folder: The folder to search for files.
+        :return: A list of file paths to non-Python DAG files.
+        """
+        from airflow.dag_processing.importers import get_importer_registry
+
+        registry = get_importer_registry()
+        additional_files = []
+        dag_folder_path = Path(dag_folder)
+
+        if dag_folder_path.is_dir():
+            # Get all non-Python extensions from the registry
+            for ext in registry.supported_extensions():
+                if ext != ".py":  # Python files are already handled by list_py_file_paths
+                    additional_files.extend(str(p) for p in dag_folder_path.rglob(f"*{ext}"))
+
+        return additional_files
+
+    def _process_with_importer(self, filepath: str) -> list[DAG]:
+        """
+        Process a DAG file using the appropriate importer from the registry.
+
+        :param filepath: The path to the file.
+        :return: A list of DAGs found in the file.
+        """
+        from airflow.dag_processing.importers import get_importer_registry
+
+        registry = get_importer_registry()
+        importer = registry.get_importer(filepath)
+
+        if importer is None:
+            self.log.warning("No importer found for file: %s", filepath)
+            return []
+
+        result = importer.import_file(
+            file_path=filepath,
+            bundle_path=Path(self.dag_folder) if self.dag_folder else None,
+            bundle_name=self.bundle_name,
+        )
+
+        if result.errors:
+            for error in result.errors:
+                self.import_errors[filepath] = error.message
+                self.log.error("Error loading DAG from %s: %s", filepath, error.message)
+
+        if result.warnings:
+            formatted_warnings = [w.message for w in result.warnings]
+            self.captured_warnings[filepath] = tuple(formatted_warnings)
+
+        # Bag each DAG found
+        for dag in result.dags:
+            try:
+                dag.fileloc = filepath
+                self.bag_dag(dag=dag)
+            except Exception as e:
+                self.log.exception("Error bagging DAG from %s", filepath)
+                self.import_errors[filepath] = str(e)
+
+        self.file_last_changed[filepath] = datetime.fromtimestamp(os.path.getmtime(filepath))
+        return result.dags
+
     def collect_dags(
         self,
         dag_folder: str | Path | None = None,
@@ -637,6 +719,9 @@ class DagBag(LoggingMixin):
         dag_folder = correct_maybe_zipped(str(dag_folder))
 
         files_to_parse = list_py_file_paths(dag_folder, safe_mode=safe_mode)
+
+        # Also include files for other registered importers (YAML, etc.)
+        files_to_parse.extend(self._list_additional_file_paths(dag_folder))
 
         if include_examples:
             from airflow import example_dags
