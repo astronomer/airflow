@@ -47,6 +47,7 @@ from uuid6 import uuid7
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.execution_api.app import InProcessExecutionAPI
 from airflow.configuration import conf
+from airflow.dag_processing.bundles.base import ParsingMode
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.collection import update_dag_parsing_results_in_db
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
@@ -62,7 +63,7 @@ from airflow.observability.stats import Stats
 from airflow.observability.trace import DebugTrace
 from airflow.sdk import SecretCache
 from airflow.sdk.log import init_log_file, logging_processors
-from airflow.utils.file import list_py_file_paths, might_contain_dag
+from airflow.utils.file import might_contain_dag
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.net import get_hostname
 from airflow.utils.process_utils import (
@@ -301,16 +302,31 @@ class DagFileProcessorManager(LoggingMixin):
         last_parsed: dict[DagFileInfo, datetime | None],
         session: Session = NEW_SESSION,
     ):
-        """Detect and deactivate DAGs which are no longer present in files."""
+        """
+        Detect and deactivate DAGs which are no longer present in files.
+
+        Note: This only applies to bundles with CONTINUOUS or ON_CHANGE parsing mode.
+        API_ONLY bundles are skipped since they aren't continuously parsed - stale
+        DAGs in those bundles must be deactivated explicitly via the API.
+        """
         to_deactivate = set()
-        bundle_names = {b.name for b in self._dag_bundles}
+
+        # Skip API_ONLY bundles - they require explicit deactivation via API
+        bundle_configs = {b.name: b for b in self._dag_bundles}
+        active_bundle_names = {
+            name for name, bundle in bundle_configs.items() if bundle.parsing_mode != ParsingMode.API_ONLY
+        }
+
+        if not active_bundle_names:
+            return
+
         query = select(
             DagModel.dag_id,
             DagModel.bundle_name,
             DagModel.fileloc,
             DagModel.last_parsed_time,
             DagModel.relative_fileloc,
-        ).where(~DagModel.is_stale, DagModel.bundle_name.in_(bundle_names))
+        ).where(~DagModel.is_stale, DagModel.bundle_name.in_(active_bundle_names))
         dags_parsed = session.execute(query)
 
         for dag in dags_parsed:
@@ -606,15 +622,33 @@ class DagFileProcessorManager(LoggingMixin):
 
     def _find_files_in_bundle(self, bundle: BaseDagBundle) -> list[Path]:
         """Get relative paths for dag files from bundle dir."""
-        # Build up a list of Python files that could contain DAGs
-        self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
-        rel_paths = [Path(x).relative_to(bundle.path) for x in list_py_file_paths(bundle.path)]
-        self.log.info("Found %s files for bundle %s", len(rel_paths), bundle.name)
+        from airflow.dag_processing.importers import get_importer_registry
 
+        # Build up a list of files that can be handled by registered importers
+        self.log.info("Searching for files in %s at %s", bundle.name, bundle.path)
+        registry = get_importer_registry()
+
+        rel_paths: list[Path] = []
+        for ext in registry.supported_extensions():
+            # Find all files with this extension
+            for abs_path in bundle.path.rglob(f"*{ext}"):
+                if abs_path.is_file():
+                    rel_paths.append(abs_path.relative_to(bundle.path))
+
+        self.log.info("Found %s files for bundle %s", len(rel_paths), bundle.name)
         return rel_paths
 
     def deactivate_deleted_dags(self, bundle_name: str, present: set[DagFileInfo]) -> None:
-        """Deactivate DAGs that come from files that are no longer present in bundle."""
+        """
+        Deactivate DAGs that come from files that are no longer present in bundle.
+
+        Note: This is skipped for API_ONLY bundles where deletion must be explicit.
+        """
+        # Skip for API_ONLY bundles
+        bundle_configs = {b.name: b for b in self._dag_bundles}
+        bundle = bundle_configs.get(bundle_name)
+        if bundle and bundle.parsing_mode == ParsingMode.API_ONLY:
+            return
 
         def find_zipped_dags(abs_path: os.PathLike) -> Iterator[str]:
             """
@@ -622,7 +656,6 @@ class DagFileProcessorManager(LoggingMixin):
 
             We return the abs "paths" formed by joining the relative path inside the zip
             with the path to the zip.
-
             """
             try:
                 with zipfile.ZipFile(abs_path) as z:
@@ -632,10 +665,14 @@ class DagFileProcessorManager(LoggingMixin):
             except zipfile.BadZipFile:
                 self.log.exception("There was an error accessing ZIP file %s", abs_path)
 
+        from airflow.dag_processing.importers import get_importer_registry
+
+        registry = get_importer_registry()
         rel_filelocs: list[str] = []
         for info in present:
             abs_path = str(info.absolute_path)
-            if abs_path.endswith(".py") or not zipfile.is_zipfile(abs_path):
+            # Check if any registered importer can handle this file, or if it's a non-zip file
+            if registry.can_handle(abs_path) or not zipfile.is_zipfile(abs_path):
                 rel_filelocs.append(str(info.rel_path))
             else:
                 if TYPE_CHECKING:
@@ -954,9 +991,21 @@ class DagFileProcessorManager(LoggingMixin):
             Stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
     def add_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
+        """Add new files to the parsing queue, respecting bundle parsing modes."""
+        # Get bundle configs for parsing mode filtering
+        bundle_configs = {b.name: b for b in self._dag_bundles}
+
         for files in known_files.values():
             for file in files:
                 if file not in self._file_stats:  # todo: store stats by bundle also?
+                    bundle = bundle_configs.get(file.bundle_name)
+                    if bundle is None:
+                        continue
+
+                    # Skip files from API_ONLY bundles
+                    if bundle.parsing_mode == ParsingMode.API_ONLY:
+                        continue
+
                     # We found new file after refreshing dir. add to parsing queue at start
                     self.log.info("Adding new file %s to parsing queue", file)
                     self._file_queue.appendleft(file)
@@ -994,7 +1043,11 @@ class DagFileProcessorManager(LoggingMixin):
         """
         Scan dags dir to generate more file paths to process.
 
-        Note this method is only called when the file path queue is empty
+        Note this method is only called when the file path queue is empty.
+        Respects the parsing_mode configured for each bundle:
+        - CONTINUOUS: Always add to queue
+        - ON_CHANGE: Only add if content has changed (hash comparison)
+        - API_ONLY: Skip entirely (only parsed via API)
         """
         self._parsing_start_time = time.perf_counter()
         # If the file path is already being processed, or if a file was
@@ -1007,8 +1060,24 @@ class DagFileProcessorManager(LoggingMixin):
         recently_processed = set()
         files = []
 
+        # Get bundle configs for parsing mode filtering
+        bundle_configs = {b.name: b for b in self._dag_bundles}
+
         for bundle_files in known_files.values():
             for file in bundle_files:
+                bundle = bundle_configs.get(file.bundle_name)
+                if bundle is None:
+                    continue
+
+                # Skip files from API_ONLY bundles
+                if bundle.parsing_mode == ParsingMode.API_ONLY:
+                    continue
+
+                # For ON_CHANGE mode, check if file content has changed
+                if bundle.parsing_mode == ParsingMode.ON_CHANGE:
+                    if file.absolute_path and not bundle.has_file_changed(str(file.absolute_path)):
+                        continue
+
                 files.append(file)
                 if self.processed_recently(now, file):
                     recently_processed.add(file)

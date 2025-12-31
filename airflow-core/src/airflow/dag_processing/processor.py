@@ -76,6 +76,7 @@ if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger
 
     from airflow.api_fastapi.execution_api.app import InProcessExecutionAPI
+    from airflow.dag_processing.importers.base import AbstractDagImporter
     from airflow.sdk.api.client import Client
     from airflow.sdk.bases.operator import BaseOperator
     from airflow.sdk.definitions.context import Context
@@ -209,8 +210,27 @@ def _parse_file_entrypoint():
 
 
 def _parse_file(msg: DagFileParseRequest, log: FilteringBoundLogger) -> DagFileParsingResult | None:
-    # TODO: Set known_pool names on DagBag!
+    # Use the importer registry to handle non-Python files
+    from airflow.dag_processing.importers import get_importer_registry
 
+    file_path = msg.file
+    registry = get_importer_registry()
+
+    # Check if there's a non-Python importer for this file
+    if not file_path.endswith(".py"):
+        importer = registry.get_importer(file_path)
+        if importer is not None:
+            return _parse_with_importer(msg, importer, log)
+        # Unknown file type - return empty result
+        return DagFileParsingResult(
+            fileloc=msg.file,
+            serialized_dags=[],
+            import_errors={},
+            warnings=[],
+        )
+
+    # For Python files, use DagBag as before
+    # TODO: Set known_pool names on DagBag!
     bag = DagBag(
         dag_folder=msg.file,
         bundle_path=msg.bundle_path,
@@ -233,6 +253,43 @@ def _parse_file(msg: DagFileParseRequest, log: FilteringBoundLogger) -> DagFileP
         warnings=[],
     )
     return result
+
+
+def _parse_with_importer(
+    msg: DagFileParseRequest,
+    importer: AbstractDagImporter,
+    log: FilteringBoundLogger,
+) -> DagFileParsingResult:
+    """Parse a DAG file using the provided importer."""
+    result = importer.import_file(
+        msg.file,
+        bundle_path=msg.bundle_path,
+        bundle_name=msg.bundle_name,
+        safe_mode=False,
+    )
+
+    # Convert import result to DagFileParsingResult
+    serialized_dags = []
+    import_errors: dict[str, str] = {}
+
+    for dag in result.dags:
+        try:
+            data = DagSerialization.to_dict(dag)
+            serialized_dags.append(LazyDeserializedDAG(data=data, last_loaded=dag.last_loaded))
+        except Exception:
+            log.exception("Failed to serialize DAG from %s: %s", msg.file, dag.dag_id)
+            import_errors[result.file_path] = f"Serialization Error: {dag.dag_id}"
+
+    # Convert importer errors to import_errors dict
+    for err in result.errors:
+        import_errors[err.file_path] = err.format_message()
+
+    return DagFileParsingResult(
+        fileloc=msg.file,
+        serialized_dags=serialized_dags,
+        import_errors=import_errors,
+        warnings=[],
+    )
 
 
 def _serialize_dags(
