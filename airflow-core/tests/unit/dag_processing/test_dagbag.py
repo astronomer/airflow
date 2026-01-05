@@ -515,7 +515,7 @@ class TestDagBag:
         assert sys.path == syspath_before  # sys.path doesn't change
         assert not dagbag.import_errors
 
-    @patch("airflow.dag_processing.dagbag.timeout")
+    @patch("airflow.dag_processing.importers.python_importer._timeout")
     @patch("airflow.dag_processing.dagbag.settings.get_dagbag_import_timeout")
     def test_process_dag_file_without_timeout(
         self, mocked_get_dagbag_import_timeout, mocked_timeout, tmp_path
@@ -534,7 +534,7 @@ class TestDagBag:
         dagbag.process_file(os.path.join(TEST_DAGS_FOLDER, "test_sensor.py"))
         mocked_timeout.assert_not_called()
 
-    @patch("airflow.dag_processing.dagbag.timeout")
+    @patch("airflow.dag_processing.importers.python_importer._timeout")
     @patch("airflow.dag_processing.dagbag.settings.get_dagbag_import_timeout")
     def test_process_dag_file_with_non_default_timeout(
         self, mocked_get_dagbag_import_timeout, mocked_timeout, tmp_path
@@ -553,7 +553,7 @@ class TestDagBag:
 
         mocked_timeout.assert_called_once_with(timeout_value, error_message=mock.ANY)
 
-    @patch("airflow.dag_processing.dagbag.settings.get_dagbag_import_timeout")
+    @patch("airflow.dag_processing.importers.python_importer.settings.get_dagbag_import_timeout")
     def test_check_value_type_from_get_dagbag_import_timeout(
         self, mocked_get_dagbag_import_timeout, tmp_path
     ):

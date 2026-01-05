@@ -315,19 +315,11 @@ class DagBag(LoggingMixin):
         return self.dags.get(dag_id)
 
     def process_file(self, filepath, only_if_updated=True, safe_mode=True):
-        """Given a path to a python module or zip file, import the module and look for dag objects within."""
-        from airflow.sdk.definitions._internal.contextmanager import DagContext
-
-        # if the source file no longer exists in the DB or in the filesystem,
-        # return an empty list
-        # todo: raise exception?
-
+        """Process a DAG file and return found DAGs."""
         if filepath is None or not os.path.isfile(filepath):
             return []
 
         try:
-            # This failed before in what may have been a git sync
-            # race condition
             file_last_changed_on_disk = datetime.fromtimestamp(os.path.getmtime(filepath))
             if (
                 only_if_updated
@@ -339,29 +331,62 @@ class DagBag(LoggingMixin):
             self.log.exception(e)
             return []
 
-        # Ensure we don't pick up anything else we didn't mean to
-        DagContext.autoregistered_dags.clear()
-
         self.captured_warnings.pop(filepath, None)
-        with _capture_with_reraise() as captured_warnings:
-            if filepath.endswith(".py") or not zipfile.is_zipfile(filepath):
-                mods = self._load_modules_from_file(filepath, safe_mode)
-            else:
-                mods = self._load_modules_from_zip(filepath, safe_mode)
 
-        if captured_warnings:
-            formatted_warnings = []
-            for msg in captured_warnings:
-                category = msg.category.__name__
-                if (module := msg.category.__module__) != "builtins":
-                    category = f"{module}.{category}"
-                formatted_warnings.append(f"{msg.filename}:{msg.lineno}: {category}: {msg.message}")
+        from airflow.dag_processing.importers import get_importer_registry
+
+        registry = get_importer_registry()
+        importer = registry.get_importer(filepath)
+
+        if importer is None:
+            self.log.debug("No importer found for file: %s", filepath)
+            return []
+
+        result = importer.import_file(
+            file_path=filepath,
+            bundle_path=Path(self.dag_folder) if self.dag_folder else None,
+            bundle_name=self.bundle_name,
+            safe_mode=safe_mode,
+        )
+
+        if result.skipped_files:
+            for skipped in result.skipped_files:
+                if not self.has_logged:
+                    self.has_logged = True
+                    self.log.info("File %s assumed to contain no DAGs. Skipping.", skipped)
+
+        if result.errors:
+            for error in result.errors:
+                # Use the file path from error for ZIP files (contains zip/file.py format)
+                # For regular files, use the original filepath
+                if zipfile.is_zipfile(filepath):
+                    error_path = error.file_path if error.file_path else filepath
+                else:
+                    error_path = filepath
+                error_msg = error.stacktrace if error.stacktrace else error.message
+                self.import_errors[error_path] = error_msg
+                self.log.error("Error loading DAG from %s: %s", error_path, error.message)
+
+        if result.warnings:
+            formatted_warnings = [
+                f"{w.file_path}:{w.line_number}: {w.warning_type}: {w.message}" for w in result.warnings
+            ]
             self.captured_warnings[filepath] = tuple(formatted_warnings)
 
-        found_dags = self._process_modules(filepath, mods, file_last_changed_on_disk)
+        bagged_dags = []
+        for dag in result.dags:
+            try:
+                # Only set fileloc if not already set by importer (ZIP files have path inside archive)
+                if not dag.fileloc:
+                    dag.fileloc = filepath
+                self.bag_dag(dag=dag)
+                bagged_dags.append(dag)
+            except Exception as e:
+                self.log.exception("Error bagging DAG from %s", filepath)
+                self.import_errors[filepath] = f"{type(e).__name__}: {e}"
 
         self.file_last_changed[filepath] = file_last_changed_on_disk
-        return found_dags
+        return bagged_dags
 
     @property
     def dag_warnings(self) -> set[DagWarning]:
