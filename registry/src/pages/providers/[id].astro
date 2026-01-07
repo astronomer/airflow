@@ -1,0 +1,759 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ModuleCard from '../../components/ModuleCard.astro';
+import { formatDownloads, MODULE_TYPE_ICONS } from '../../types';
+import type { ModuleType } from '../../types';
+import providersData from '../../data/providers.json';
+import modulesData from '../../data/modules.json';
+
+// Use Astro's base URL for all internal links
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// Transform snake_case keys to camelCase for the frontend
+const transformProvider = (p: any) => ({
+  ...p,
+  packageName: p.package_name,
+  airflowVersions: p.airflow_versions,
+  qualityScore: p.quality_score,
+  pypiDownloads: p.pypi_downloads,
+  moduleCounts: p.module_counts,
+  relatedProviders: p.related_providers,
+  connectionTypes: p.connection_types || [],
+  requiresPython: p.requires_python || "",
+  dependencies: p.dependencies || [],
+  optionalExtras: p.optional_extras || {},
+  docsUrl: p.docs_url,
+  sourceUrl: p.source_url,
+  pypiUrl: p.pypi_url,
+  lastUpdated: p.last_updated,
+});
+
+const transformModule = (m: any) => ({
+  ...m,
+  importPath: m.import_path,
+  shortDescription: m.short_description,
+  docsUrl: m.docs_url,
+  sourceUrl: m.source_url,
+  providerId: m.provider_id,
+  providerName: m.provider_name,
+});
+
+const allProviders = providersData.providers.map(transformProvider);
+const allModules = modulesData.modules.map(transformModule);
+
+export function getStaticPaths() {
+  return providersData.providers.map((provider: any) => ({
+    params: { id: provider.id },
+  }));
+}
+
+const { id } = Astro.params;
+const provider = allProviders.find((p: any) => p.id === id);
+const modules = allModules.filter((m: any) => m.providerId === id);
+
+if (!provider) {
+  return Astro.redirect('/404');
+}
+
+const tierColors: Record<string, string> = {
+  official: 'badge-official',
+  community: 'badge-community',
+};
+
+const typeLabels: Record<ModuleType, string> = {
+  operator: 'Operators',
+  hook: 'Hooks',
+  sensor: 'Sensors',
+  trigger: 'Triggers',
+  transfer: 'Transfers',
+  notifier: 'Notifiers',
+  secret: 'Secrets Backend',
+  logging: 'Log Handlers',
+  executor: 'Executors',
+  decorator: 'Decorators',
+};
+
+const totalModules = Object.values(provider.moduleCounts as Record<string, number>).reduce((a: number, b: number) => a + b, 0);
+
+// Pre-compute entity counts for display
+const entityCounts = {
+  operator: provider.moduleCounts?.operator || 0,
+  hook: provider.moduleCounts?.hook || 0,
+  sensor: provider.moduleCounts?.sensor || 0,
+  trigger: provider.moduleCounts?.trigger || 0,
+  transfer: provider.moduleCounts?.transfer || 0,
+  notifier: provider.moduleCounts?.notifier || 0,
+  secret: provider.moduleCounts?.secret || 0,
+  logging: provider.moduleCounts?.logging || 0,
+  executor: provider.moduleCounts?.executor || 0,
+  decorator: provider.moduleCounts?.decorator || 0,
+};
+---
+
+<BaseLayout title={provider.name} description={provider.description}>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <!-- Breadcrumb -->
+    <nav class="flex items-center gap-2 text-sm mb-6">
+      <a href={`${base}/`} class="text-gray-500 hover:text-gray-300 transition-colors">Home</a>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+      </svg>
+      <a href={`${base}/providers`} class="text-gray-500 hover:text-gray-300 transition-colors">Providers</a>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+      </svg>
+      <span class="text-gray-300">{provider.name}</span>
+    </nav>
+
+    <!-- Provider Header -->
+    <div class="card p-6 mb-8">
+      <!-- Top row: Logo, title, description -->
+      <div class="flex items-start gap-4 mb-6">
+        <div class="w-16 h-16 rounded-xl bg-navy-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
+          {provider.logo ? (
+            <img
+              src={`${base}${provider.logo}`}
+              alt={`${provider.name} logo`}
+              class="w-14 h-14 object-contain"
+              loading="lazy"
+            />
+          ) : (
+            <span class="text-2xl font-bold text-cyan-400">{provider.name.charAt(0)}</span>
+          )}
+        </div>
+        <div class="flex-1">
+          <div class="flex items-center gap-3 mb-2">
+            <h1 class="text-2xl font-bold text-gray-100">{provider.name}</h1>
+            <span class={`px-2.5 py-1 text-sm font-medium rounded-full ${tierColors[provider.tier]}`}>
+              {provider.tier}
+            </span>
+          </div>
+          <p class="text-sm text-gray-500 font-mono mb-2">{provider.packageName}</p>
+          <p class="text-gray-400 max-w-3xl">{provider.description}</p>
+
+          <!-- Airflow version badges -->
+          <div class="flex items-center gap-2 mt-3">
+            <span class="text-sm text-gray-500">Works with:</span>
+            {provider.airflowVersions.map((version: string) => (
+              <span class="px-2 py-0.5 text-xs font-medium bg-green-500/20 text-green-400 rounded border border-green-500/30">
+                Airflow {version}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Grid - Full width, cleaner layout -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+        {entityCounts.operator > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-green-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-green-500/20 text-green-400 flex items-center justify-center text-xs font-bold">O</span>
+              <span class="text-xl font-bold text-green-400">{entityCounts.operator}</span>
+            </div>
+            <span class="text-xs text-gray-400">Operators</span>
+          </div>
+        )}
+        {entityCounts.hook > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-blue-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">H</span>
+              <span class="text-xl font-bold text-blue-400">{entityCounts.hook}</span>
+            </div>
+            <span class="text-xs text-gray-400">Hooks</span>
+          </div>
+        )}
+        {entityCounts.sensor > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-amber-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs font-bold">S</span>
+              <span class="text-xl font-bold text-amber-400">{entityCounts.sensor}</span>
+            </div>
+            <span class="text-xs text-gray-400">Sensors</span>
+          </div>
+        )}
+        {entityCounts.trigger > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-purple-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">T</span>
+              <span class="text-xl font-bold text-purple-400">{entityCounts.trigger}</span>
+            </div>
+            <span class="text-xs text-gray-400">Triggers</span>
+          </div>
+        )}
+        {entityCounts.transfer > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-pink-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-pink-500/20 text-pink-400 flex items-center justify-center text-xs font-bold">X</span>
+              <span class="text-xl font-bold text-pink-400">{entityCounts.transfer}</span>
+            </div>
+            <span class="text-xs text-gray-400">Transfers</span>
+          </div>
+        )}
+        <!-- Total -->
+        <div class="bg-navy-700/50 rounded-lg p-3 border border-cyan-500/20">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xs font-bold">Σ</span>
+            <span class="text-xl font-bold text-cyan-400">{totalModules}</span>
+          </div>
+          <span class="text-xs text-gray-400">Total Modules</span>
+        </div>
+      </div>
+
+      <!-- Bottom row: Stats and actions -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-4 border-t border-navy-700">
+
+        <!-- Downloads -->
+        <div class="flex items-center gap-6">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-gray-100">{formatDownloads(provider.pypiDownloads.monthly)}</div>
+            <div class="text-xs text-gray-500">Monthly Downloads</div>
+          </div>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex items-center gap-3">
+          <a href={provider.docsUrl} target="_blank" rel="noopener" class="btn-primary flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            View Docs
+          </a>
+          <a href={provider.sourceUrl} target="_blank" rel="noopener" class="btn-secondary flex items-center gap-2">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            Source
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Install command with version and extras dropdown -->
+    <div class="card p-4 mb-6">
+      <div class="flex flex-col gap-4">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <span class="text-sm text-gray-500 flex-shrink-0">Install:</span>
+          <div class="flex items-center gap-2 flex-1 bg-navy-900 rounded-lg px-4 py-2 min-w-0">
+            <code id="install-command" class="text-sm font-mono text-gray-300 truncate">pip install {provider.packageName}=={provider.version}</code>
+            <button id="copy-btn" class="ml-auto p-1.5 rounded hover:bg-navy-700 transition-colors flex-shrink-0" title="Copy to clipboard">
+              <svg class="w-4 h-4 text-gray-500 hover:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0 flex-wrap">
+            {Object.keys(provider.optionalExtras).length > 0 && (
+              <div class="flex items-center gap-2">
+                <label for="extras-select" class="text-sm text-gray-500">Extras:</label>
+                <select
+                  id="extras-select"
+                  class="bg-navy-800 border border-amber-600/50 rounded-lg px-3 py-1.5 text-sm text-amber-300 focus:outline-none focus:border-amber-500 cursor-pointer"
+                >
+                  <option value="">None</option>
+                  {Object.keys(provider.optionalExtras).map((extraName: string) => (
+                    <option value={extraName}>[{extraName}]</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div class="flex items-center gap-2">
+              <label for="version-select" class="text-sm text-gray-500">Version:</label>
+              <select
+                id="version-select"
+                class="bg-navy-800 border border-cyan-600/50 rounded-lg px-3 py-1.5 text-sm text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer font-medium"
+              >
+                {provider.versions.map((v: string, i: number) => (
+                  <option value={v} selected={i === 0}>{v}{i === 0 ? ' (latest)' : ''}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        <!-- Extra dependencies info (shown when extra is selected) -->
+        <div id="extra-deps-info" class="hidden bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+          <div class="flex items-start gap-2">
+            <svg class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <span class="text-sm text-amber-300 font-medium">Additional dependencies with this extra:</span>
+              <p id="extra-deps-list" class="text-sm text-gray-400 mt-1"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Store extras data for JavaScript -->
+    <script id="extras-data" type="application/json" set:html={JSON.stringify(provider.optionalExtras)}></script>
+
+    <!-- Technical Details: Requirements, Connections, Dependencies -->
+    <div class="card p-5 mb-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Python Requirements -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M14.25.18l.9.2.73.26.59.3.45.32.34.34.25.34.16.33.1.3.04.26.02.2-.01.13V8.5l-.05.63-.13.55-.21.46-.26.38-.3.31-.33.25-.35.19-.35.14-.33.1-.3.07-.26.04-.21.02H8.77l-.69.05-.59.14-.5.22-.41.27-.33.32-.27.35-.2.36-.15.37-.1.35-.07.32-.04.27-.02.21v3.06H3.17l-.21-.03-.28-.07-.32-.12-.35-.18-.36-.26-.36-.36-.35-.46-.32-.59-.28-.73-.21-.88-.14-1.05L0 11.97l.06-1.22.16-1.04.24-.87.32-.71.36-.57.4-.44.42-.33.42-.24.4-.16.36-.1.32-.05.24-.01h.16l.06.01h8.16v-.83H6.18l-.01-2.75-.02-.37.05-.34.11-.31.17-.28.25-.26.31-.23.38-.2.44-.18.51-.15.58-.12.64-.1.71-.06.77-.04.84-.02 1.27.05 1.07.13zm-6.3 1.98l-.23.33-.08.41.08.41.23.34.33.22.41.09.41-.09.33-.22.23-.34.08-.41-.08-.41-.23-.33-.33-.22-.41-.09-.41.09-.33.22zM21.1 6.11l.28.06.32.12.35.18.36.27.36.35.35.47.32.59.28.73.21.88.14 1.04.05 1.23-.06 1.23-.16 1.04-.24.86-.32.71-.36.57-.4.45-.42.33-.42.24-.4.16-.36.09-.32.05-.24.02-.16-.01h-8.22v.82h5.84l.01 2.76.02.36-.05.34-.11.31-.17.29-.25.25-.31.24-.38.2-.44.17-.51.15-.58.13-.64.09-.71.07-.77.04-.84.01-1.27-.04-1.07-.14-.9-.2-.73-.25-.59-.3-.45-.33-.34-.34-.25-.34-.16-.33-.1-.3-.04-.25-.02-.2.01-.13v-5.34l.05-.64.13-.54.21-.46.26-.38.3-.32.33-.24.35-.2.35-.14.33-.1.3-.06.26-.04.21-.02.13-.01h5.84l.69-.05.59-.14.5-.21.41-.28.33-.32.27-.35.2-.36.15-.36.1-.35.07-.32.04-.28.02-.21V6.07h2.09l.14.01.21.03zm-6.47 14.25l-.23.33-.08.41.08.41.23.33.33.23.41.08.41-.08.33-.23.23-.33.08-.41-.08-.41-.23-.33-.33-.23-.41-.08-.41.08-.33.23z"/>
+            </svg>
+            Python
+          </h3>
+          {provider.requiresPython ? (
+            <code class="text-sm text-cyan-400 font-mono bg-navy-800 px-2 py-1 rounded">{provider.requiresPython}</code>
+          ) : (
+            <span class="text-sm text-gray-500">Not specified</span>
+          )}
+        </div>
+
+        <!-- Connection Types -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Connections ({provider.connectionTypes.length})
+          </h3>
+          {provider.connectionTypes.length > 0 ? (
+            <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+              {provider.connectionTypes.map((conn: { conn_type: string; docs_url: string }) => (
+                <a
+                  href={conn.docs_url}
+                  target="_blank"
+                  rel="noopener"
+                  class="text-xs font-mono px-2 py-1 rounded bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-colors border border-green-500/20"
+                  title={`View ${conn.conn_type} connection docs`}
+                >
+                  {conn.conn_type}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <span class="text-sm text-gray-500">No connections</span>
+          )}
+        </div>
+
+        <!-- Dependencies -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
+            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+            Dependencies ({provider.dependencies.length})
+          </h3>
+          {provider.dependencies.length > 0 ? (
+            <details class="group">
+              <summary class="cursor-pointer text-xs text-gray-400 hover:text-cyan-400 transition-colors list-none flex items-center gap-1">
+                <svg class="w-3 h-3 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+                <span class="group-open:hidden">Show all</span>
+                <span class="hidden group-open:inline">Hide</span>
+              </summary>
+              <div class="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                {provider.dependencies.map((dep: string) => (
+                  <div class="text-xs font-mono text-purple-400 bg-purple-500/10 px-2 py-1 rounded">
+                    {dep}
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : (
+            <span class="text-sm text-gray-500">No dependencies</span>
+          )}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Module Type Tabs -->
+    <div class="mb-6">
+      <div class="flex flex-wrap items-center gap-2">
+        <button
+          class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+          data-type="all"
+        >
+          All ({totalModules})
+        </button>
+        {entityCounts.operator > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-green-500/10 hover:text-green-400 hover:border-green-500/30"
+            data-type="operator"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-green-500/20 flex items-center justify-center text-xs font-bold text-green-400">O</span>
+              Operators ({entityCounts.operator})
+            </span>
+          </button>
+        )}
+        {entityCounts.hook > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-blue-500/10 hover:text-blue-400 hover:border-blue-500/30"
+            data-type="hook"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-blue-500/20 flex items-center justify-center text-xs font-bold text-blue-400">H</span>
+              Hooks ({entityCounts.hook})
+            </span>
+          </button>
+        )}
+        {entityCounts.sensor > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-amber-500/10 hover:text-amber-400 hover:border-amber-500/30"
+            data-type="sensor"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-amber-500/20 flex items-center justify-center text-xs font-bold text-amber-400">S</span>
+              Sensors ({entityCounts.sensor})
+            </span>
+          </button>
+        )}
+        {entityCounts.trigger > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-purple-500/10 hover:text-purple-400 hover:border-purple-500/30"
+            data-type="trigger"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-purple-500/20 flex items-center justify-center text-xs font-bold text-purple-400">T</span>
+              Triggers ({entityCounts.trigger})
+            </span>
+          </button>
+        )}
+        {entityCounts.transfer > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-pink-500/10 hover:text-pink-400 hover:border-pink-500/30"
+            data-type="transfer"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-pink-500/20 flex items-center justify-center text-xs font-bold text-pink-400">X</span>
+              Transfers ({entityCounts.transfer})
+            </span>
+          </button>
+        )}
+        {entityCounts.notifier > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-indigo-500/10 hover:text-indigo-400 hover:border-indigo-500/30"
+            data-type="notifier"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-indigo-500/20 flex items-center justify-center text-xs font-bold text-indigo-400">N</span>
+              Notifiers ({entityCounts.notifier})
+            </span>
+          </button>
+        )}
+        {entityCounts.secret > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-rose-500/10 hover:text-rose-400 hover:border-rose-500/30"
+            data-type="secret"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-rose-500/20 flex items-center justify-center text-xs font-bold text-rose-400">K</span>
+              Secrets Backend ({entityCounts.secret})
+            </span>
+          </button>
+        )}
+        {entityCounts.logging > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-teal-500/10 hover:text-teal-400 hover:border-teal-500/30"
+            data-type="logging"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-teal-500/20 flex items-center justify-center text-xs font-bold text-teal-400">L</span>
+              Log Handlers ({entityCounts.logging})
+            </span>
+          </button>
+        )}
+        {entityCounts.executor > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-orange-500/10 hover:text-orange-400 hover:border-orange-500/30"
+            data-type="executor"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-orange-500/20 flex items-center justify-center text-xs font-bold text-orange-400">E</span>
+              Executors ({entityCounts.executor})
+            </span>
+          </button>
+        )}
+        {entityCounts.decorator > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-fuchsia-500/10 hover:text-fuchsia-400 hover:border-fuchsia-500/30"
+            data-type="decorator"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-fuchsia-500/20 flex items-center justify-center text-xs font-bold text-fuchsia-400">@</span>
+              Decorators ({entityCounts.decorator})
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+
+    <!-- Main content with sidebar -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <!-- Sidebar -->
+      <aside class="lg:col-span-1">
+        <!-- Categories -->
+        <div class="card p-4 mb-4">
+          <h3 class="text-sm font-semibold text-gray-300 mb-3">Categories</h3>
+          <nav class="space-y-1">
+            <button class="category-btn w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              <span>All</span>
+              <span class="text-xs">{totalModules}</span>
+            </button>
+            {provider.categories.map((cat: { id: string; name: string; module_count: number }) => (
+              <button class="category-btn w-full text-left px-3 py-2 text-sm rounded-lg text-gray-400 hover:bg-navy-700 transition-colors" data-category={cat.id}>
+                {cat.name}
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <!-- Module Types section removed - redundant with tabs above that provide both counts and filtering -->
+
+        <!-- Related providers -->
+        {provider.relatedProviders.length > 0 && (
+          <div class="card p-4">
+            <h3 class="text-sm font-semibold text-gray-300 mb-3">Related Providers</h3>
+            <div class="space-y-2">
+              {provider.relatedProviders.map((relatedId: string) => {
+                const related = allProviders.find((p: any) => p.id === relatedId);
+                return related && (
+                  <a href={`${base}/providers/${related.id}`} class="block px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-navy-700 rounded-lg transition-colors">
+                    {related.name}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </aside>
+
+      <!-- Module list -->
+      <div class="lg:col-span-3">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-xl font-bold text-gray-100">Modules</h2>
+          <div class="relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              id="module-search"
+              placeholder="Search modules..."
+              class="search-input pl-10 py-2 w-64"
+            />
+          </div>
+        </div>
+
+        <div id="module-grid" class="grid grid-cols-1 gap-3">
+          {modules.map((module) => (
+            <div class="module-item" data-name={module.name.toLowerCase()} data-category={module.category} data-type={module.type}>
+              <ModuleCard module={module} showProvider={false} />
+            </div>
+          ))}
+        </div>
+
+        {modules.length === 0 && (
+          <div class="text-center py-12 text-gray-500">
+            <p>No modules found for this provider in sample data.</p>
+            <a href={provider.docsUrl} target="_blank" rel="noopener" class="text-cyan-400 hover:underline mt-2 inline-block">
+              View full documentation →
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</BaseLayout>
+
+<script>
+  const moduleSearch = document.getElementById('module-search') as HTMLInputElement;
+  const categoryButtons = document.querySelectorAll('.category-btn');
+  const moduleTypeTabs = document.querySelectorAll('.module-type-tab');
+  const moduleItems = document.querySelectorAll('.module-item') as NodeListOf<HTMLElement>;
+  const versionSelect = document.getElementById('version-select') as HTMLSelectElement;
+  const installCommand = document.getElementById('install-command') as HTMLElement;
+  const copyBtn = document.getElementById('copy-btn');
+  const packageName = installCommand?.textContent?.split('==')[0]?.replace('pip install ', '') || '';
+
+  let currentCategory = '';
+  let currentSearch = '';
+  let currentType = 'all';
+
+  function filterModules() {
+    moduleItems.forEach((item) => {
+      const name = item.dataset.name || '';
+      const category = item.dataset.category || '';
+      const type = item.dataset.type || '';
+
+      const matchesCategory = !currentCategory || category === currentCategory;
+      const matchesSearch = name.includes(currentSearch.toLowerCase());
+      const matchesType = currentType === 'all' || type === currentType;
+
+      item.style.display = matchesCategory && matchesSearch && matchesType ? 'block' : 'none';
+    });
+  }
+
+  // Search input handler
+  moduleSearch?.addEventListener('input', (e) => {
+    currentSearch = (e.target as HTMLInputElement).value;
+    filterModules();
+  });
+
+  // Category button handlers
+  categoryButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      categoryButtons.forEach((b) => {
+        b.classList.remove('bg-cyan-500/10', 'text-cyan-400', 'border', 'border-cyan-500/30');
+        b.classList.add('text-gray-400');
+      });
+      btn.classList.add('bg-cyan-500/10', 'text-cyan-400', 'border', 'border-cyan-500/30');
+      btn.classList.remove('text-gray-400');
+
+      currentCategory = (btn as HTMLElement).dataset.category || '';
+      filterModules();
+    });
+  });
+
+  // Module type tab handlers
+  const typeColors: Record<string, { bg: string; text: string; border: string }> = {
+    all: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', border: 'border-cyan-500/30' },
+    operator: { bg: 'bg-green-500/20', text: 'text-green-400', border: 'border-green-500/30' },
+    hook: { bg: 'bg-blue-500/20', text: 'text-blue-400', border: 'border-blue-500/30' },
+    sensor: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
+    trigger: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
+    transfer: { bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30' },
+    notifier: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30' },
+    secret: { bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30' },
+    logging: { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30' },
+    executor: { bg: 'bg-orange-500/20', text: 'text-orange-400', border: 'border-orange-500/30' },
+    decorator: { bg: 'bg-fuchsia-500/20', text: 'text-fuchsia-400', border: 'border-fuchsia-500/30' },
+  };
+
+  moduleTypeTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      // Reset all tabs
+      moduleTypeTabs.forEach((t) => {
+        t.classList.remove('bg-cyan-500/20', 'text-cyan-400', 'border-cyan-500/30',
+          'bg-green-500/20', 'text-green-400', 'border-green-500/30',
+          'bg-blue-500/20', 'text-blue-400', 'border-blue-500/30',
+          'bg-amber-500/20', 'text-amber-400', 'border-amber-500/30',
+          'bg-purple-500/20', 'text-purple-400', 'border-purple-500/30',
+          'bg-pink-500/20', 'text-pink-400', 'border-pink-500/30');
+        t.classList.add('bg-navy-800', 'text-gray-400', 'border-navy-600');
+      });
+
+      // Activate clicked tab
+      const type = (tab as HTMLElement).dataset.type || 'all';
+      const colors = typeColors[type] || typeColors.all;
+      tab.classList.remove('bg-navy-800', 'text-gray-400', 'border-navy-600');
+      tab.classList.add(colors.bg, colors.text, colors.border);
+
+      currentType = type;
+      filterModules();
+    });
+  });
+
+  // Extras dropdown elements
+  const extrasSelect = document.getElementById('extras-select') as HTMLSelectElement;
+  const extraDepsInfo = document.getElementById('extra-deps-info');
+  const extraDepsList = document.getElementById('extra-deps-list');
+  const extrasDataEl = document.getElementById('extras-data');
+  const extrasData: Record<string, string[]> = extrasDataEl ? JSON.parse(extrasDataEl.textContent || '{}') : {};
+
+  let currentExtra = '';
+
+  // Function to update install command
+  function updateInstallCommand() {
+    const selectedVersion = versionSelect?.value || '';
+    const extraPart = currentExtra ? `[${currentExtra}]` : '';
+    if (installCommand) {
+      installCommand.textContent = `pip install ${packageName}${extraPart}==${selectedVersion}`;
+    }
+  }
+
+  // Version dropdown handler
+  versionSelect?.addEventListener('change', () => {
+    updateInstallCommand();
+  });
+
+  // Extras dropdown handler
+  extrasSelect?.addEventListener('change', () => {
+    currentExtra = extrasSelect.value;
+    updateInstallCommand();
+
+    // Show/hide extra dependencies info
+    if (currentExtra && extrasData[currentExtra]) {
+      const deps = extrasData[currentExtra];
+      if (extraDepsList) {
+        extraDepsList.textContent = deps.join(', ');
+      }
+      extraDepsInfo?.classList.remove('hidden');
+    } else {
+      extraDepsInfo?.classList.add('hidden');
+    }
+  });
+
+  // Copy button handler
+  copyBtn?.addEventListener('click', async () => {
+    const command = installCommand?.textContent || '';
+    try {
+      await navigator.clipboard.writeText(command);
+      // Show feedback
+      const originalHTML = copyBtn.innerHTML;
+      copyBtn.innerHTML = '<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+      setTimeout(() => {
+        copyBtn.innerHTML = originalHTML;
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  });
+
+  // Handle module highlighting from search navigation
+  function highlightModule() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const highlight = urlParams.get('highlight');
+    const hash = window.location.hash?.slice(1);
+    const targetModule = highlight || (hash ? decodeURIComponent(hash) : null);
+
+    if (targetModule) {
+      // Find the module card by name
+      const moduleCards = document.querySelectorAll('.module-item') as NodeListOf<HTMLElement>;
+      let found = false;
+
+      moduleCards.forEach((card) => {
+        const moduleName = card.dataset.name || '';
+        const displayName = card.querySelector('h4')?.textContent || '';
+
+        if (moduleName.toLowerCase().includes(targetModule.toLowerCase()) ||
+            displayName.toLowerCase().includes(targetModule.toLowerCase()) ||
+            targetModule.toLowerCase().includes(moduleName.toLowerCase())) {
+          // Highlight the card
+          card.classList.add('ring-2', 'ring-cyan-400', 'ring-offset-2', 'ring-offset-navy-900');
+          card.id = targetModule;
+
+          // Scroll to it after a small delay to ensure layout is complete
+          setTimeout(() => {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 300);
+
+          // Remove highlight after 5 seconds
+          setTimeout(() => {
+            card.classList.remove('ring-2', 'ring-cyan-400', 'ring-offset-2', 'ring-offset-navy-900');
+          }, 5000);
+
+          found = true;
+        }
+      });
+
+      // If not found, show a message
+      if (!found && targetModule) {
+        console.log(`Module "${targetModule}" not found on this page`);
+      }
+    }
+  }
+
+  // Run highlight on page load
+  highlightModule();
+</script>

@@ -1,0 +1,341 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ProviderCard from '../components/ProviderCard.astro';
+import ModuleCard from '../components/ModuleCard.astro';
+import providersData from '../data/providers.json';
+import modulesData from '../data/modules.json';
+
+// Use Astro's base URL for all internal links
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+// Transform snake_case keys to camelCase for the frontend
+const transformProvider = (p: any) => ({
+  ...p,
+  packageName: p.package_name,
+  airflowVersions: p.airflow_versions,
+  qualityScore: p.quality_score,
+  pypiDownloads: p.pypi_downloads,
+  moduleCounts: p.module_counts,
+  relatedProviders: p.related_providers,
+  docsUrl: p.docs_url,
+  sourceUrl: p.source_url,
+  pypiUrl: p.pypi_url,
+  lastUpdated: p.last_updated,
+});
+
+const transformModule = (m: any) => ({
+  ...m,
+  importPath: m.import_path,
+  shortDescription: m.short_description,
+  docsUrl: m.docs_url,
+  sourceUrl: m.source_url,
+  providerId: m.provider_id,
+  providerName: m.provider_name,
+});
+
+const providers = providersData.providers.map(transformProvider);
+const modules = modulesData.modules.map(transformModule);
+
+// Get featured providers (top by downloads)
+const featuredProviders = providers.slice(0, 4);
+
+// Get newly added modules - pick from providers with higher version numbers (more recent releases)
+// Sort providers by version (higher versions = more recently updated)
+const recentProviders = [...providers]
+  .filter(p => p.version)
+  .sort((a, b) => {
+    const vA = a.version.split('.').map(Number);
+    const vB = b.version.split('.').map(Number);
+    for (let i = 0; i < Math.max(vA.length, vB.length); i++) {
+      const diff = (vB[i] || 0) - (vA[i] || 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  })
+  .slice(0, 20);  // Top 20 recently updated providers
+
+// Get one module from each of the recently updated providers for variety
+const newlyAddedModules: typeof modules = [];
+const usedProviders = new Set<string>();
+for (const provider of recentProviders) {
+  if (newlyAddedModules.length >= 4) break;
+  const providerModule = modules.find(m => m.providerId === provider.id);
+  if (providerModule && !usedProviders.has(provider.id)) {
+    newlyAddedModules.push(providerModule);
+    usedProviders.add(provider.id);
+  }
+}
+
+// Stats
+const totalProviders = providers.length;
+const totalModules = modules.length;
+const totalDownloads = providers.reduce((sum, p) => sum + (p.pypiDownloads?.monthly || 0), 0);
+const totalIntegrations = providers.reduce((sum, p) => sum + (p.categories?.length || 0), 0);
+
+// Format large numbers
+const formatLargeNumber = (num: number): string => {
+  if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`;
+  if (num >= 1_000_000) return `${Math.round(num / 1_000_000)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+  return num.toString();
+};
+---
+
+<BaseLayout title="Home">
+  <!-- Hero Section -->
+  <section class="hero-section relative py-20 overflow-hidden">
+    <!-- Background gradient -->
+    <div class="absolute inset-0 bg-gradient-to-b from-navy-800/50 to-transparent pointer-events-none"></div>
+
+    <!-- Animated background particles (subtle) -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+      <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl animate-pulse-slow"></div>
+      <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1.5s;"></div>
+    </div>
+
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto">
+        <!-- Badge -->
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-navy-800 border border-navy-700 rounded-full text-sm text-gray-400 mb-6">
+          <span class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></span>
+          <span>Discover {totalProviders}+ providers and {totalModules}+ modules</span>
+        </div>
+
+        <!-- Main heading -->
+        <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-100 mb-6 leading-tight">
+          Find the perfect
+          <span class="bg-gradient-to-r from-cyan-400 to-cyan-600 bg-clip-text text-transparent">
+            Airflow components
+          </span>
+          for your data pipelines
+        </h1>
+
+        <!-- Subheading -->
+        <p class="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
+          Browse operators, hooks, sensors, and more from the official Apache Airflow provider ecosystem.
+        </p>
+
+        <!-- Search box -->
+        <div class="max-w-xl mx-auto mb-8">
+          <button
+            id="hero-search"
+            class="w-full flex items-center gap-3 px-5 py-4 bg-navy-800 border border-navy-600 rounded-xl text-gray-400 hover:border-cyan-500/50 transition-all group"
+          >
+            <svg class="w-5 h-5 text-gray-500 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <span class="flex-1 text-left">Search for operators, hooks, sensors...</span>
+            <span class="flex items-center gap-1">
+              <span class="kbd">⌘</span>
+              <span class="kbd">K</span>
+            </span>
+          </button>
+        </div>
+
+        <!-- Quick filter buttons -->
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <span class="text-sm text-gray-500">Popular:</span>
+          <a href={`${base}/providers/amazon`} class="btn-secondary text-sm">Amazon</a>
+          <a href={`${base}/providers/google`} class="btn-secondary text-sm">Google</a>
+          <a href={`${base}/providers/snowflake`} class="btn-secondary text-sm">Snowflake</a>
+          <a href={`${base}/providers/databricks`} class="btn-secondary text-sm">Databricks</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Section -->
+  <section class="stats-section py-12 border-y border-navy-700 bg-navy-800/30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div class="text-center">
+          <div class="text-3xl font-bold text-cyan-400 mb-1">{totalProviders}+</div>
+          <div class="text-sm text-gray-400">Providers</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-cyan-400 mb-1">{totalModules.toLocaleString()}+</div>
+          <div class="text-sm text-gray-400">Modules</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-cyan-400 mb-1">{formatLargeNumber(totalDownloads)}+</div>
+          <div class="text-sm text-gray-400">Monthly Downloads</div>
+        </div>
+        <div class="text-center">
+          <div class="text-3xl font-bold text-cyan-400 mb-1">{totalIntegrations}+</div>
+          <div class="text-sm text-gray-400">Integrations</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Featured Providers -->
+  <section class="py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-100 mb-2">Featured Providers</h2>
+          <p class="text-gray-400">Most popular providers in the ecosystem</p>
+        </div>
+        <a href={`${base}/providers`} class="btn-secondary flex items-center gap-2">
+          View all
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </a>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {featuredProviders.map((provider) => (
+          <ProviderCard provider={provider} />
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Newly Added Modules -->
+  <section class="py-16 bg-navy-800/30 newly-added-section">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h2 class="text-2xl font-bold text-gray-100 mb-2">Newly Added</h2>
+          <p class="text-gray-400">Recent operators, hooks, and sensors from updated providers</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {newlyAddedModules.map((module) => (
+          <ModuleCard module={module} />
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Browse by Category -->
+  <section class="py-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-12">
+        <h2 class="text-2xl font-bold text-gray-100 mb-2">Browse by Use Case</h2>
+        <p class="text-gray-400">Find components for your specific data pipeline needs</p>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <a href={`${base}/providers?category=databases`} class="card-interactive p-6 text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-blue-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+          </div>
+          <h3 class="font-semibold text-gray-100 mb-1">Databases</h3>
+          <p class="text-sm text-gray-500">PostgreSQL, MySQL, MongoDB...</p>
+        </a>
+
+        <a href={`${base}/providers?category=cloud`} class="card-interactive p-6 text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            </svg>
+          </div>
+          <h3 class="font-semibold text-gray-100 mb-1">Cloud Platforms</h3>
+          <p class="text-sm text-gray-500">AWS, GCP, Azure...</p>
+        </a>
+
+        <a href={`${base}/providers?category=ml`} class="card-interactive p-6 text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-purple-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <h3 class="font-semibold text-gray-100 mb-1">AI & ML</h3>
+          <p class="text-sm text-gray-500">Bedrock, Vertex AI, SageMaker...</p>
+        </a>
+
+        <a href={`${base}/providers?category=data-processing`} class="card-interactive p-6 text-center">
+          <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-green-500/20 flex items-center justify-center">
+            <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h3 class="font-semibold text-gray-100 mb-1">Data Processing</h3>
+          <p class="text-sm text-gray-500">Spark, Dataflow, Flink...</p>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Install CTA -->
+  <section class="py-16 bg-gradient-to-r from-cyan-500/10 to-indigo-500/10 border-t border-navy-700">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <h2 class="text-2xl font-bold text-gray-100 mb-4">Ready to get started?</h2>
+      <p class="text-gray-400 mb-8">Install any provider with a single command</p>
+
+      <div id="install-widget" class="bg-navy-800 border border-navy-600 rounded-xl p-4 max-w-lg mx-auto">
+        <div class="flex items-center gap-2 mb-3">
+          <button data-tool="pip" class="install-tab px-3 py-1 text-sm bg-navy-700 text-cyan-400 rounded-lg">pip</button>
+          <button data-tool="uv" class="install-tab px-3 py-1 text-sm text-gray-500 hover:text-gray-300 transition-colors rounded-lg">uv</button>
+          <button data-tool="requirements" class="install-tab px-3 py-1 text-sm text-gray-500 hover:text-gray-300 transition-colors rounded-lg">requirements.txt</button>
+        </div>
+        <div class="flex items-center gap-2 bg-navy-900 rounded-lg p-3">
+          <code id="install-command" class="flex-1 text-sm font-mono text-gray-300">pip install apache-airflow-providers-amazon</code>
+          <button id="copy-install" class="p-1.5 rounded hover:bg-navy-700 transition-colors" title="Copy">
+            <svg class="w-4 h-4 text-gray-500 hover:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  document.getElementById('hero-search')?.addEventListener('click', () => {
+    const event = new CustomEvent('open-command-palette');
+    document.dispatchEvent(event);
+  });
+
+  // Install command tab switching
+  const installTabs = document.querySelectorAll('.install-tab');
+  const installCommand = document.getElementById('install-command');
+  const copyInstallBtn = document.getElementById('copy-install');
+
+  const commands: Record<string, string> = {
+    pip: 'pip install apache-airflow-providers-amazon',
+    uv: 'uv pip install apache-airflow-providers-amazon',
+    requirements: 'apache-airflow-providers-amazon',
+  };
+
+  installTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const tool = (tab as HTMLElement).dataset.tool || 'pip';
+
+      // Update active tab styles
+      installTabs.forEach(t => {
+        t.classList.remove('bg-navy-700', 'text-cyan-400');
+        t.classList.add('text-gray-500');
+      });
+      tab.classList.add('bg-navy-700', 'text-cyan-400');
+      tab.classList.remove('text-gray-500');
+
+      // Update command
+      if (installCommand) {
+        installCommand.textContent = commands[tool] || commands.pip;
+      }
+    });
+  });
+
+  // Copy button
+  copyInstallBtn?.addEventListener('click', async () => {
+    const command = installCommand?.textContent || '';
+    try {
+      await navigator.clipboard.writeText(command);
+      if (copyInstallBtn) {
+        copyInstallBtn.innerHTML = '<svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+        setTimeout(() => {
+          copyInstallBtn.innerHTML = '<svg class="w-4 h-4 text-gray-500 hover:text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>';
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  });
+</script>
