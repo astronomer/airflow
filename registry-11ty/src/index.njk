@@ -1,0 +1,241 @@
+---
+layout: base.njk
+title: Home
+---
+
+{% set totalProviders = providers.providers.length %}
+{% set totalModules = modules.modules.length %}
+
+<section id="hero">
+  <div class="gradient"></div>
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="container">
+    <div class="badge">
+      <span class="dot"></span>
+      <span>Discover {{ totalProviders }}+ providers and {{ totalModules }}+ modules</span>
+    </div>
+
+    <h1>
+      Find the perfect
+      <span class="highlight">Airflow components</span>
+      for your data pipelines
+    </h1>
+
+    <p class="subtitle">
+      Browse operators, hooks, sensors, and more from the official Apache Airflow provider ecosystem.
+    </p>
+
+    <button id="hero-search" class="search">
+      <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+      <span>Search for operators, hooks, sensors...</span>
+      <span class="shortcuts">
+        <span class="kbd">⌘</span>
+        <span class="kbd">K</span>
+      </span>
+    </button>
+
+    <nav class="popular-providers">
+      <span class="label">Popular:</span>
+      <a href="/providers/amazon">Amazon</a>
+      <a href="/providers/google">Google</a>
+      <a href="/providers/snowflake">Snowflake</a>
+      <a href="/providers/databricks">Databricks</a>
+    </nav>
+  </div>
+</section>
+
+<section id="stats">
+  <div class="container">
+    <dl>
+      <div>
+        <dt>{{ totalProviders }}+</dt>
+        <dd>Providers</dd>
+      </div>
+      <div>
+        <dt>{{ totalModules | formatLargeNumber }}+</dt>
+        <dd>Modules</dd>
+      </div>
+      <div>
+        <dt>293M+</dt>
+        <dd>Monthly Downloads</dd>
+      </div>
+      <div>
+        <dt>229+</dt>
+        <dd>Integrations</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<section id="featured-providers">
+  <div class="container">
+    <header>
+      <div>
+        <h2>Featured Providers</h2>
+        <p>Most popular providers in the ecosystem</p>
+      </div>
+      <a href="/providers" class="view-all">
+        View all
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </a>
+    </header>
+
+    <ul class="providers">
+      {% for provider in providers.providers | slice(0, 4) %}
+      <li class="provider">
+        <div class="logo">
+          {% if provider.logo %}
+          <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+          {% else %}
+          <span class="initial">{{ provider.name[0] }}</span>
+          {% endif %}
+        </div>
+
+        <div class="details">
+          <div class="title-row">
+            <h3>{{ provider.name }}</h3>
+            <span class="badge tier-{{ provider.tier }}">{{ provider.tier }}</span>
+          </div>
+
+          <p class="package">{{ provider.package_name }}</p>
+          <p class="description">{{ provider.description }}</p>
+
+          <div class="modules">
+            {% set counts = provider.module_counts or {} %}
+            {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
+            <span class="count">{{ totalMods }} modules</span>
+            <div class="breakdown">
+              {% if counts.operator %}
+              <div class="operator" style="width:{{ (counts.operator / totalMods * 100) }}%"></div>
+              {% endif %}
+              {% if counts.hook %}
+              <div class="hook" style="width:{{ (counts.hook / totalMods * 100) }}%"></div>
+              {% endif %}
+              {% if counts.sensor %}
+              <div class="sensor" style="width:{{ (counts.sensor / totalMods * 100) }}%"></div>
+              {% endif %}
+              {% if counts.trigger %}
+              <div class="trigger" style="width:{{ (counts.trigger / totalMods * 100) }}%"></div>
+              {% endif %}
+              {% if counts.transfer %}
+              <div class="transfer" style="width:{{ (counts.transfer / totalMods * 100) }}%"></div>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="meta">
+            <div class="downloads">
+              <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span>{{ provider.pypi_downloads.monthly | formatDownloads }}/mo</span>
+            </div>
+
+            {% if provider.airflow_versions %}
+            <div class="versions">
+              {% for version in provider.airflow_versions | slice(0, 2) %}
+              <span class="version">{{ version }}</span>
+              {% endfor %}
+              {% if provider.airflow_versions.length > 2 %}
+              <span class="more">+{{ provider.airflow_versions.length - 2 }}</span>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+
+<section id="categories">
+  <div class="container">
+    <header>
+      <h2>Browse by Use Case</h2>
+      <p>Find components for your specific data pipeline needs</p>
+    </header>
+
+    <ul>
+      <li>
+        <a href="/providers?category=databases" class="category databases">
+          <div class="icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+            </svg>
+          </div>
+          <h3>Databases</h3>
+          <p>PostgreSQL, MySQL, MongoDB...</p>
+        </a>
+      </li>
+
+      <li>
+        <a href="/providers?category=cloud" class="category cloud">
+          <div class="icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            </svg>
+          </div>
+          <h3>Cloud Platforms</h3>
+          <p>AWS, GCP, Azure...</p>
+        </a>
+      </li>
+
+      <li>
+        <a href="/providers?category=ml" class="category ml">
+          <div class="icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <h3>AI & ML</h3>
+          <p>Bedrock, Vertex AI, SageMaker...</p>
+        </a>
+      </li>
+
+      <li>
+        <a href="/providers?category=data-processing" class="category data-processing">
+          <div class="icon">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h3>Data Processing</h3>
+          <p>Spark, Dataflow, Flink...</p>
+        </a>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section id="install">
+  <div class="container">
+    <header>
+      <h2>Ready to get started?</h2>
+      <p>Install any provider with a single command</p>
+    </header>
+
+    <div class="widget">
+      <div class="tabs">
+        <button class="tab active" data-tool="pip">pip</button>
+        <button class="tab" data-tool="uv">uv</button>
+        <button class="tab" data-tool="requirements">requirements.txt</button>
+      </div>
+      <div class="command-box" data-copy-target="install-command">
+        <code id="install-command">pip install apache-airflow-providers-amazon</code>
+      </div>
+    </div>
+  </div>
+</section>

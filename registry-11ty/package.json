@@ -1,0 +1,16 @@
+{
+  "name": "airflow-registry-11ty",
+  "version": "1.0.0",
+  "description": "Apache Airflow Provider Registry - 11ty version",
+  "scripts": {
+    "dev": "eleventy --serve --port=8080",
+    "build": "eleventy",
+    "postbuild": "pagefind --site _site"
+  },
+  "dependencies": {
+    "@11ty/eleventy": "^3.0.0"
+  },
+  "devDependencies": {
+    "pagefind": "^1.1.0"
+  }
+}
