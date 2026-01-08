@@ -155,14 +155,6 @@
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 
-  /* Z-Index Scale */
-  --z-0: 0;
-  --z-10: 10;
-  --z-20: 20;
-  --z-30: 30;
-  --z-40: 40;
-  --z-50: 50;
-
   /* Breakpoints (for reference in media queries) */
   --screen-sm: 640px;
   --screen-md: 768px;
@@ -170,37 +162,103 @@
   --screen-xl: 1280px;
   --screen-2xl: 1536px;
 
-  /* Theme Variables (Dark Mode Default) */
-  --bg-primary: var(--color-navy-900);
-  --bg-secondary: var(--color-navy-800);
-  --bg-tertiary: var(--color-navy-700);
+  /* Light Theme Variables */
+  --bg-primary-light: #ffffff;
+  --bg-secondary-light: #f8fafc;
+  --bg-tertiary-light: var(--color-gray-100);
 
-  --text-primary: var(--color-gray-100);
-  --text-secondary: var(--color-gray-400);
-  --text-muted: var(--color-gray-500);
+  --text-primary-light: var(--color-gray-900);
+  --text-secondary-light: var(--color-gray-600);
+  --text-muted-light: var(--color-gray-500);
 
-  --border-primary: var(--color-navy-700);
-  --border-secondary: var(--color-navy-600);
-  --border-hover: var(--color-cyan-500);
+  --border-primary-light: var(--color-gray-200);
+  --border-secondary-light: var(--color-gray-300);
+  --border-hover-light: var(--color-cyan-600);
 
-  --accent-primary: var(--color-cyan-400);
-  --accent-secondary: var(--color-cyan-500);
-}
+  --accent-primary-light: var(--color-cyan-600);
+  --accent-secondary-light: var(--color-cyan-700);
 
-/* Light Theme */
-html.light {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8fafc;
-  --bg-tertiary: #f1f5f9;
+  /* Dark Theme Variables */
+  --bg-primary-dark: var(--color-navy-900);
+  --bg-secondary-dark: var(--color-navy-800);
+  --bg-tertiary-dark: var(--color-navy-700);
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
+  --text-primary-dark: var(--color-gray-100);
+  --text-secondary-dark: var(--color-gray-400);
+  --text-muted-dark: var(--color-gray-500);
 
-  --border-primary: #e2e8f0;
-  --border-secondary: #cbd5e1;
-  --border-hover: var(--color-cyan-600);
+  --border-primary-dark: var(--color-navy-700);
+  --border-secondary-dark: var(--color-navy-600);
+  --border-hover-dark: var(--color-cyan-500);
 
-  --accent-primary: var(--color-cyan-600);
-  --accent-secondary: var(--color-cyan-700);
+  --accent-primary-dark: var(--color-cyan-400);
+  --accent-secondary-dark: var(--color-cyan-500);
+
+  /* Computed Theme Variables (using light-dark())
+   *
+   * These variables use the CSS light-dark() function which automatically
+   * switches between light and dark values based on the color-scheme property.
+   *
+   * Progressive enhancement: We declare each variable twice:
+   * 1. First with the light value as fallback for browsers without light-dark() support
+   * 2. Then with light-dark() which overrides in supporting browsers
+   */
+  --bg-primary: var(--bg-primary-light);
+  --bg-primary: light-dark(var(--bg-primary-light), var(--bg-primary-dark));
+  --bg-secondary: var(--bg-secondary-light);
+  --bg-secondary: light-dark(var(--bg-secondary-light), var(--bg-secondary-dark));
+  --bg-tertiary: var(--bg-tertiary-light);
+  --bg-tertiary: light-dark(var(--bg-tertiary-light), var(--bg-tertiary-dark));
+
+  --text-primary: var(--text-primary-light);
+  --text-primary: light-dark(var(--text-primary-light), var(--text-primary-dark));
+  --text-secondary: var(--text-secondary-light);
+  --text-secondary: light-dark(var(--text-secondary-light), var(--text-secondary-dark));
+  --text-muted: var(--text-muted-light);
+  --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+
+  --border-primary: var(--border-primary-light);
+  --border-primary: light-dark(var(--border-primary-light), var(--border-primary-dark));
+  --border-secondary: var(--border-secondary-light);
+  --border-secondary: light-dark(var(--border-secondary-light), var(--border-secondary-dark));
+  --border-hover: var(--border-hover-light);
+  --border-hover: light-dark(var(--border-hover-light), var(--border-hover-dark));
+
+  --accent-primary: var(--accent-primary-light);
+  --accent-primary: light-dark(var(--accent-primary-light), var(--accent-primary-dark));
+  --accent-secondary: var(--accent-secondary-light);
+  --accent-secondary: light-dark(var(--accent-secondary-light), var(--accent-secondary-dark));
+
+  /* Component-specific color variables */
+  --color-card-bg: #ffffff;
+  --color-card-bg: light-dark(#ffffff, rgba(15, 23, 42, 0.5));
+  --color-card-bg-hover: var(--bg-tertiary-light);
+  --color-card-bg-hover: light-dark(var(--bg-tertiary-light), rgba(15, 23, 42, 0.8));
+  --color-card-border-hover: rgba(6, 182, 212, 0.4);
+  --color-card-border-hover: light-dark(rgba(6, 182, 212, 0.4), rgba(6, 182, 212, 0.5));
+
+  --color-scrollbar-track: var(--bg-tertiary-light);
+  --color-scrollbar-track: light-dark(var(--bg-tertiary-light), var(--color-navy-800));
+  --color-scrollbar-thumb: var(--color-gray-300);
+  --color-scrollbar-thumb: light-dark(var(--color-gray-300), var(--color-navy-600));
+  --color-scrollbar-thumb-hover: var(--color-gray-400);
+  --color-scrollbar-thumb-hover: light-dark(var(--color-gray-400), var(--color-navy-500));
+
+  --color-input-bg: var(--bg-tertiary-light);
+  --color-input-bg: light-dark(var(--bg-tertiary-light), var(--bg-tertiary-dark));
+  --color-input-border: var(--color-gray-200);
+  --color-input-border: light-dark(var(--color-gray-200), var(--color-gray-700));
+
+  --color-header-bg: rgba(255, 255, 255, 0.95);
+  --color-header-bg: light-dark(rgba(255, 255, 255, 0.95), rgba(10, 15, 26, 0.95));
+  --color-header-border: var(--color-gray-200);
+  --color-header-border: light-dark(var(--color-gray-200), var(--border-primary-dark));
+
+  --color-widget-bg: #ffffff;
+  --color-widget-bg: light-dark(#ffffff, var(--color-navy-800));
+
+  --color-nav-link: var(--color-gray-700);
+  --color-nav-link: light-dark(var(--color-gray-700), var(--color-gray-300));
+  --color-border-focus: var(--color-cyan-600);
+  --color-border-focus: light-dark(var(--color-cyan-600), rgba(6, 182, 212, 0.5));
 }

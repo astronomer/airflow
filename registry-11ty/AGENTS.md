@@ -79,11 +79,7 @@ Each major section follows this pattern:
 /* Section container */
 .section-name {
   padding: var(--space-20) 0;
-  background: /* dark mode background */;
-}
-
-html.light .section-name {
-  background: /* light mode background */;
+  background: var(--bg-primary);
 }
 
 /* Nested elements using cascade */
@@ -97,10 +93,6 @@ html.light .section-name {
 
 .section-name .some-element {
   /* Element styles */
-}
-
-html.light .section-name .some-element {
-  /* Light mode overrides */
 }
 ```
 
@@ -117,24 +109,56 @@ Use CSS custom properties defined in `tokens.css`:
 - ✅ Good: `border: 1px solid var(--color-gray-700);`
 - ❌ Bad: `border: 1px solid #334155;`
 
-Exceptions: Light mode overrides may use hardcoded colors when they don't have a corresponding token.
+#### When to Use Semantic vs Direct Color Variables
+
+When defining new variables in `tokens.css`, follow this hierarchy:
+
+1. **Prefer semantic variables** (with -light/-dark suffixes) over direct color variables:
+   - ✅ Good: `--color-input-bg: light-dark(var(--bg-tertiary-light), var(--bg-tertiary-dark));`
+   - ❌ Bad: `--color-input-bg: light-dark(var(--color-gray-100), var(--color-navy-700));`
+
+2. **Only use direct color variables** when:
+   - Defining the base semantic variables themselves (e.g., `--bg-tertiary-light: var(--color-gray-100);`)
+   - No appropriate semantic variable exists for your use case
+   - The color combination is intentionally different from existing semantic patterns
+
+3. **In component CSS** (main.css):
+   - Use computed semantic variables: `background: var(--bg-primary);`
+   - Or use inline `light-dark()` with semantic variables for contextual colors
+
+This creates a clear hierarchy: base colors → semantic variables → computed variables → usage
 
 ### Light/Dark Mode
 
+The theme system uses the CSS `color-scheme` property and `light-dark()` function:
+
 - Default theme is dark mode
-- Light mode uses `.light` class on `<html>` element
-- Always provide light mode overrides:
+- Theme switching sets `document.documentElement.style.colorScheme = 'light' | 'dark'`
+- Theme computed variables defined in `tokens.css` with progressive enhancement:
+  ```css
+  /* Progressive enhancement: fallback then light-dark() */
+  --bg-primary: var(--bg-primary-light);
+  --bg-primary: light-dark(var(--bg-primary-light), var(--bg-primary-dark));
+  ```
+
+- Most elements use computed theme variables:
   ```css
   .element {
-    background: var(--color-navy-800);
+    background: var(--bg-primary);
     color: var(--text-primary);
   }
+  ```
 
-  html.light .element {
-    background: #ffffff;
-    color: #0f172a;
+- Contextual colors use inline `light-dark()`:
+  ```css
+  .kbd {
+    border-color: light-dark(var(--border-primary-light), var(--color-navy-600));
   }
   ```
+
+**Progressive Enhancement**: Each theme variable is declared twice in tokens.css:
+1. First with light value as fallback for browsers without `light-dark()` support
+2. Then with `light-dark()` which overrides in supporting browsers
 
 ## Color Matching
 
@@ -172,7 +196,7 @@ screenshots/
 
 ### Light Mode Screenshots
 
-Light mode requires JavaScript to set theme and proper delay:
+Light mode requires JavaScript to set the color-scheme property:
 
 ```yaml
 - url: http://localhost:8080
@@ -181,8 +205,7 @@ Light mode requires JavaScript to set theme and proper delay:
   height: 2400
   javascript: |
     new Promise(takeShot => {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('light');
+      document.documentElement.style.colorScheme = 'light';
       setTimeout(() => {
         takeShot();
       }, 1000);
@@ -193,7 +216,7 @@ Light mode requires JavaScript to set theme and proper delay:
 
 ### Astro React Theme Toggle
 
-For Astro (React-based), use:
+For Astro (React-based), which still uses class-based theming:
 
 ```yaml
 javascript: |
@@ -224,10 +247,10 @@ When porting a section from Astro to 11ty:
 
 ### Common Issues
 
-- **Dark header in light mode**: Check `.site-header` has `html.light` override
-- **Section staying dark**: Add `html.light .section-name { background: #f8fafc; }`
+- **Colors not switching in dark mode**: Ensure element uses computed theme variables like `var(--bg-primary)` or inline `light-dark()`
+- **Missing dark mode colors**: Check that theme variable has both `-light` and `-dark` variants defined in tokens.css
 - **Wrong border colors**: Check color tokens are indigo not gray
-- **Screenshot timing**: Use Promise pattern with 1000ms delay
+- **Screenshot timing**: Use Promise pattern with 1000ms delay and set `colorScheme` property
 
 ## CSS Deletion Guidelines
 

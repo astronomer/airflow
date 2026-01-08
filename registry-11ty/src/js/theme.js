@@ -5,38 +5,30 @@
   const sunIcon = document.getElementById('theme-icon-sun');
   const moonIcon = document.getElementById('theme-icon-moon');
 
-  // Initialize theme from localStorage
-  const storedTheme = localStorage.getItem('theme');
-  if (storedTheme === 'light') {
-    html.classList.remove('dark');
-    html.classList.add('light');
-    if (sunIcon) sunIcon.style.display = 'block';
-    if (moonIcon) moonIcon.style.display = 'none';
-  } else {
-    html.classList.add('dark');
-    html.classList.remove('light');
-    if (sunIcon) sunIcon.style.display = 'none';
-    if (moonIcon) moonIcon.style.display = 'block';
+  // Get current theme from color-scheme property
+  function getCurrentTheme() {
+    return html.style.colorScheme || 'dark';
   }
+
+  // Update icon visibility based on current theme
+  function updateIcons() {
+    const isLight = getCurrentTheme() === 'light';
+    if (sunIcon) sunIcon.style.display = isLight ? 'block' : 'none';
+    if (moonIcon) moonIcon.style.display = isLight ? 'none' : 'block';
+  }
+
+  // Initialize icons on load
+  updateIcons();
 
   // Toggle theme
   if (themeToggle) {
     themeToggle.addEventListener('click', () => {
-      const isLight = html.classList.contains('light');
+      const currentTheme = getCurrentTheme();
+      const newTheme = currentTheme === 'light' ? 'dark' : 'light';
 
-      if (isLight) {
-        html.classList.remove('light');
-        html.classList.add('dark');
-        localStorage.setItem('theme', 'dark');
-        if (sunIcon) sunIcon.style.display = 'none';
-        if (moonIcon) moonIcon.style.display = 'block';
-      } else {
-        html.classList.remove('dark');
-        html.classList.add('light');
-        localStorage.setItem('theme', 'light');
-        if (sunIcon) sunIcon.style.display = 'block';
-        if (moonIcon) moonIcon.style.display = 'none';
-      }
+      html.style.colorScheme = newTheme;
+      localStorage.setItem('theme', newTheme);
+      updateIcons();
     });
   }
 })();
