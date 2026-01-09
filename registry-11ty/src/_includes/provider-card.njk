@@ -1,0 +1,66 @@
+<a href="/providers/{{ provider.id }}" class="provider-card">
+  <div class="logo">
+    {% if provider.logo %}
+    <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+    {% else %}
+    <span class="initial">{{ provider.name[0] }}</span>
+    {% endif %}
+  </div>
+
+  <div class="details">
+    <div class="title-row">
+      <h3>{{ provider.name }}</h3>
+      <span class="badge tier-{{ provider.tier }}">{{ provider.tier }}</span>
+    </div>
+
+    <p class="package">{{ provider.package_name }}</p>
+    <p class="description">{{ provider.description }}</p>
+
+    <div class="modules">
+      {% set counts = provider.module_counts or {} %}
+      {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
+      <span class="count">{{ totalMods }} modules</span>
+      <div class="breakdown">
+        {% if counts.operator %}
+        <div class="operator" style="width:{{ (counts.operator / totalMods * 100) }}%"></div>
+        {% endif %}
+        {% if counts.hook %}
+        <div class="hook" style="width:{{ (counts.hook / totalMods * 100) }}%"></div>
+        {% endif %}
+        {% if counts.sensor %}
+        <div class="sensor" style="width:{{ (counts.sensor / totalMods * 100) }}%"></div>
+        {% endif %}
+        {% if counts.trigger %}
+        <div class="trigger" style="width:{{ (counts.trigger / totalMods * 100) }}%"></div>
+        {% endif %}
+        {% if counts.transfer %}
+        <div class="transfer" style="width:{{ (counts.transfer / totalMods * 100) }}%"></div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="meta">
+      <div class="downloads">
+        <svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        <span>{{ provider.pypi_downloads.monthly | formatDownloads }}/mo</span>
+      </div>
+
+      {% if provider.airflow_versions %}
+      <div class="versions">
+        {% for version in provider.airflow_versions | slice(0, 2) %}
+        <span class="version">{{ version }}</span>
+        {% endfor %}
+        {% if provider.airflow_versions.length > 2 %}
+        <span class="more">+{{ provider.airflow_versions.length - 2 }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+  </svg>
+</a>

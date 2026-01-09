@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +7,9 @@
   <link rel="icon" type="image/png" href="/favicon.png">
   <title>{{ title }} | Airflow Registry</title>
   <script>
+    // Progressive enhancement - indicate JS is available
+    document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
+
     // Set theme before page renders to prevent flash
     (function() {
       const stored = localStorage.getItem('theme');
