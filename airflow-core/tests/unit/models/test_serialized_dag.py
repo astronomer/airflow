@@ -698,6 +698,82 @@ class TestSerializedDagModel:
         assert updated_sdag.dag_hash != initial_hash  # Hash should change
         assert len(updated_sdag.dag.task_dict) == 2  # Should have 2 tasks now
 
+    def test_versioned_bundle_updates_existing_dag_version_when_dag_version_bundle_version_is_same_as_incoming_bundle_version(
+        self, dag_maker, session
+    ):
+        bundle_name = "test_bundle"
+        bundle_version = "v1"
+
+        with dag_maker(
+            dag_id="test_versioned_bundle_update", bundle_name=bundle_name, bundle_version=bundle_version
+        ) as dag:
+            EmptyOperator(task_id="task1")
+
+        dag_maker.create_dagrun(run_id="run1")
+
+        assert session.scalar(select(func.count()).select_from(DagVersion)) == 1
+        assert session.scalar(select(func.count()).select_from(SDM)) == 1
+
+        initial_sdag = SDM.get("test_versioned_bundle_update", session=session)
+        assert initial_sdag is not None
+        initial_hash = initial_sdag.dag_hash
+
+        # Modify the DAG so the hash changes.
+        EmptyOperator(task_id="task2", dag=dag)
+        lazy_dag_updated = LazyDeserializedDAG.from_dag(dag)
+
+        result = SDM.write_dag(
+            dag=lazy_dag_updated,
+            bundle_name=bundle_name,
+            bundle_version=bundle_version,
+            session=session,
+        )
+        session.commit()
+
+        assert result is True
+        # Should not create a new DagVersion/serdag when bundle_version is set.
+        assert session.scalar(select(func.count()).select_from(DagVersion)) == 1
+        assert session.scalar(select(func.count()).select_from(SDM)) == 1
+
+        updated_sdag = SDM.get("test_versioned_bundle_update", session=session)
+        assert updated_sdag is not None
+        assert updated_sdag.dag_hash != initial_hash
+        assert len(updated_sdag.dag.task_dict) == 2
+
+    def test_versioned_bundle_creates_new_dag_version_if_bundle_version_changes(self, dag_maker, session):
+        bundle_name = "test_bundle"
+        initial_bundle_version = "v1"
+        new_bundle_version = "v2"
+
+        with dag_maker(
+            dag_id="test_versioned_bundle_version_change",
+            bundle_name=bundle_name,
+            bundle_version=initial_bundle_version,
+        ) as dag:
+            EmptyOperator(task_id="task1")
+
+        # Create task instances by creating a DagRun.
+        dag_maker.create_dagrun(run_id="run1")
+
+        assert session.scalar(select(func.count()).select_from(DagVersion)) == 1
+        assert session.scalar(select(func.count()).select_from(SDM)) == 1
+
+        # Modify the DAG so the hash changes.
+        EmptyOperator(task_id="task2", dag=dag)
+        lazy_dag_updated = LazyDeserializedDAG.from_dag(dag)
+
+        result = SDM.write_dag(
+            dag=lazy_dag_updated,
+            bundle_name=bundle_name,
+            bundle_version=new_bundle_version,
+            session=session,
+        )
+        session.commit()
+
+        assert result is True
+        assert session.scalar(select(func.count()).select_from(DagVersion)) == 2
+        assert session.scalar(select(func.count()).select_from(SDM)) == 2
+
     def test_write_dag_atomicity_on_dagcode_failure(self, dag_maker, session):
         """
         Test that SerializedDagModel.write_dag maintains atomicity.

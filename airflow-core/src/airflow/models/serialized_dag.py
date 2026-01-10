@@ -439,37 +439,25 @@ class SerializedDagModel(Base):
             log.debug("Serialized DAG (%s) is unchanged. Skipping writing to DB", dag.dag_id)
             return False
 
-        if dag_version and not dag_version.task_instances:
+        if dag_version:
             # This is for dynamic DAGs that the hashes changes often. We should update
             # the serialized dag, the dag_version and the dag_code instead of a new version
             # if the dag_version is not associated with any task instances
-
-            # Use direct UPDATE to avoid loading the full serialized DAG
-            result = session.execute(
-                update(cls)
-                .where(cls.dag_version_id == dag_version.id)
-                .values(
-                    {
-                        cls._data: new_serialized_dag._data,
-                        cls._data_compressed: new_serialized_dag._data_compressed,
-                        cls.dag_hash: new_serialized_dag.dag_hash,
-                    }
+            if dag_version.bundle_version is not None and dag_version.bundle_version == bundle_version:
+                # If versioned bundle, only update
+                return cls._update_dag_version(
+                    dag, dag_version, new_serialized_dag, bundle_name, bundle_version, session
                 )
-            )
+            if not dag_version.task_instances:
+                return cls._update_dag_version(
+                    dag, dag_version, new_serialized_dag, bundle_name, bundle_version, session
+                )
+        return cls._write_new_dag_version(dag, bundle_name, bundle_version, new_serialized_dag, session)
 
-            if getattr(result, "rowcount", 0) == 0:
-                # No rows updated - serialized DAG doesn't exist
-                return False
-            # The dag_version and dag_code may not have changed, still we should
-            # do the below actions:
-            # Update the latest dag version
-            dag_version.bundle_name = bundle_name
-            dag_version.bundle_version = bundle_version
-            session.merge(dag_version)
-            # Update the latest DagCode
-            DagCode.update_source_code(dag_id=dag.dag_id, fileloc=dag.fileloc, session=session)
-            return True
-
+    @classmethod
+    def _write_new_dag_version(
+        cls, dag: LazyDeserializedDAG, bundle_name: str, bundle_version: str | None, serialized_dag, session
+    ) -> bool:
         dagv = DagVersion.write_dag(
             dag_id=dag.dag_id,
             bundle_name=bundle_name,
@@ -477,10 +465,46 @@ class SerializedDagModel(Base):
             session=session,
         )
         log.debug("Writing Serialized DAG: %s to the DB", dag.dag_id)
-        new_serialized_dag.dag_version = dagv
-        session.add(new_serialized_dag)
+        serialized_dag.dag_version = dagv
+        session.add(serialized_dag)
         log.debug("DAG: %s written to the DB", dag.dag_id)
         DagCode.write_code(dagv, dag.fileloc, session=session)
+        return True
+
+    @classmethod
+    def _update_dag_version(
+        cls,
+        dag: LazyDeserializedDAG,
+        dag_version: DagVersion,
+        serialized_dag: SerializedDagModel,
+        bundle_name: str,
+        bundle_version: str | None,
+        session,
+    ) -> bool:
+        # Use direct UPDATE to avoid loading the full serialized DAG
+        result = session.execute(
+            update(cls)
+            .where(cls.dag_version_id == dag_version.id)
+            .values(
+                {
+                    cls._data: serialized_dag._data,
+                    cls._data_compressed: serialized_dag._data_compressed,
+                    cls.dag_hash: serialized_dag.dag_hash,
+                }
+            )
+        )
+
+        if getattr(result, "rowcount", 0) == 0:
+            # No rows updated - serialized DAG doesn't exist
+            return False
+        # The dag_version and dag_code may not have changed, still we should
+        # do the below actions:
+        # Update the latest dag version
+        dag_version.bundle_name = bundle_name
+        dag_version.bundle_version = bundle_version
+        session.merge(dag_version)
+        # Update the latest DagCode
+        DagCode.update_source_code(dag_id=dag.dag_id, fileloc=dag.fileloc, session=session)
         return True
 
     @classmethod
