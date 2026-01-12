@@ -68,18 +68,23 @@
   /* Additional Colors */
   --color-green-400: #4ade80;
   --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
   --color-blue-400: #60a5fa;
   --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
   --color-amber-400: #fbbf24;
   --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
   --color-purple-400: #c084fc;
   --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
   --color-pink-400: #f472b6;
   --color-pink-500: #ec4899;
   --color-indigo-400: #818cf8;
   --color-indigo-500: #6366f1;
   --color-rose-400: #fb7185;
   --color-rose-500: #f43f5e;
+  --color-rose-600: #e11d48;
   --color-teal-400: #2dd4bf;
   --color-teal-500: #14b8a6;
   --color-orange-400: #fb923c;
@@ -207,6 +212,8 @@
   --bg-primary: light-dark(var(--bg-primary-light), var(--bg-primary-dark));
   --bg-secondary: var(--bg-secondary-light);
   --bg-secondary: light-dark(var(--bg-secondary-light), var(--bg-secondary-dark));
+  --bg-surface-alt: var(--bg-secondary-light);
+  --bg-surface-alt: light-dark(var(--bg-secondary-light), var(--bg-primary-dark));
   --bg-tertiary: var(--bg-tertiary-light);
   --bg-tertiary: light-dark(var(--bg-tertiary-light), var(--bg-tertiary-dark));
 

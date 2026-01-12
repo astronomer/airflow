@@ -1,0 +1,174 @@
+---
+layout: base.njk
+title: Explore
+description: Discover Airflow providers by category and use case
+---
+
+<div class="explore-page">
+  <div class="container">
+    <!-- Hero -->
+    <div class="page-header">
+      <h1>Explore by Category</h1>
+      <p>Find the right providers for your data pipelines. Browse by use case or discover community contributions.</p>
+    </div>
+
+    <!-- Category Cards -->
+    <div class="category-grid">
+      {% for category in exploreCategories %}
+      {% set categoryProviders = [] %}
+      {% for provider in providers.providers %}
+        {% if categoryProviders.length < 6 %}
+          {% for keyword in category.keywords %}
+            {% if (provider.id.includes(keyword) or keyword.includes(provider.id)) and categoryProviders.length < 6 %}
+              {% set alreadyAdded = false %}
+              {% for existing in categoryProviders %}
+                {% if existing.id === provider.id %}
+                  {% set alreadyAdded = true %}
+                {% endif %}
+              {% endfor %}
+              {% if not alreadyAdded %}
+                {% set categoryProviders = (categoryProviders.push(provider), categoryProviders) %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endfor %}
+
+      <div class="category-card color-{{ category.color }}">
+        <div class="category-header">
+          <div class="category-icon">
+            {{ category.icon | safe }}
+          </div>
+          <div>
+            <h3>{{ category.name }}</h3>
+            <p class="provider-count">{{ categoryProviders.length }}+ providers</p>
+          </div>
+        </div>
+        <p class="category-description">{{ category.description }}</p>
+        <div class="provider-badges">
+          {% for provider in categoryProviders | slice(0, 6) %}
+          <a href="/providers/{{ provider.id }}" class="provider-badge">
+            {% if provider.logo %}
+            <img src="{{ provider.logo }}" alt="">
+            {% endif %}
+            <span>{{ provider.name }}</span>
+          </a>
+          {% endfor %}
+        </div>
+        <a href="/providers?category={{ category.id }}">
+          View all in {{ category.name }}
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          </svg>
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Two Column Layout -->
+    <div class="featured-sections">
+      <!-- Official Providers -->
+      <div class="featured-section">
+        <div class="section-header">
+          <h2>Official Providers</h2>
+          <span class="tier-badge tier-official">Pre-installed</span>
+        </div>
+        <div class="provider-list">
+          {% set officialProviders = [] %}
+          {% for provider in providers.providers %}
+            {% if provider.tier === 'official' %}
+              {% set counts = provider.module_counts or {} %}
+              {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
+              {% set officialProviders = (officialProviders.push({provider: provider, total: totalMods}), officialProviders) %}
+            {% endif %}
+          {% endfor %}
+          {% for item in officialProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
+          {% set provider = item.provider %}
+          <a href="/providers/{{ provider.id }}" class="provider-row">
+            <div class="provider-logo">
+              {% if provider.logo %}
+              <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+              {% else %}
+              <span class="initial">{{ provider.name[0] }}</span>
+              {% endif %}
+            </div>
+            <div class="provider-info">
+              <div class="provider-name">{{ provider.name }}</div>
+              <div class="provider-desc">{{ provider.description }}</div>
+            </div>
+            <div class="module-count">{{ item.total }} {% if item.total === 1 %}module{% else %}modules{% endif %}</div>
+          </a>
+          {% endfor %}
+        </div>
+        <a href="/providers?tier=official">
+          View all official providers →
+        </a>
+      </div>
+
+      <!-- Community Highlights -->
+      <div class="featured-section">
+        <div class="section-header">
+          <h2>Community Highlights</h2>
+          <span class="tier-badge tier-community">Community</span>
+        </div>
+        <div class="provider-list">
+          {% set communityProviders = [] %}
+          {% for provider in providers.providers %}
+            {% if provider.tier === 'community' %}
+              {% set counts = provider.module_counts or {} %}
+              {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
+              {% if totalMods > 5 %}
+                {% set communityProviders = (communityProviders.push({provider: provider, total: totalMods}), communityProviders) %}
+              {% endif %}
+            {% endif %}
+          {% endfor %}
+          {% for item in communityProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
+          {% set provider = item.provider %}
+          <a href="/providers/{{ provider.id }}" class="provider-row">
+            <div class="provider-logo">
+              {% if provider.logo %}
+              <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+              {% else %}
+              <span class="initial">{{ provider.name[0] }}</span>
+              {% endif %}
+            </div>
+            <div class="provider-info">
+              <div class="provider-name">{{ provider.name }}</div>
+              <div class="provider-desc">{{ provider.description }}</div>
+            </div>
+            <div class="module-count">{{ item.total }} {% if item.total === 1 %}module{% else %}modules{% endif %}</div>
+          </a>
+          {% endfor %}
+        </div>
+        <a href="/providers?tier=community">
+          View all community providers →
+        </a>
+      </div>
+    </div>
+
+    <!-- Quick Links -->
+    <div class="quick-links">
+      <p>Looking for something specific?</p>
+      <div class="link-buttons">
+        <a href="/providers">All Providers</a>
+        <a href="/stats">View Statistics</a>
+        <button id="open-search">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          Search Modules
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const openSearchBtn = document.getElementById('open-search');
+  if (openSearchBtn) {
+    openSearchBtn.addEventListener('click', () => {
+      // TODO: Implement search
+      console.log('Search not yet implemented');
+    });
+  }
+</script>
