@@ -32,6 +32,21 @@ module.exports = function(eleventyConfig) {
     return num.toLocaleString();
   });
 
+  eleventyConfig.addFilter("thousands", (num) => {
+    if (!num && num !== 0) return "0";
+    return num.toLocaleString();
+  });
+
+  eleventyConfig.addFilter("capitalize", (str) => {
+    if (!str) return "";
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  });
+
+  eleventyConfig.addFilter("first", (str) => {
+    if (!str) return "";
+    return str.charAt(0);
+  });
+
   return {
     dir: {
       input: "src",

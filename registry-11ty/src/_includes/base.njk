@@ -72,7 +72,7 @@
     </div>
   </header>
 
-  <main>
+  <main{% if mainClass %} class="{{ mainClass }}"{% endif %}>
     {{ content | safe }}
   </main>
 

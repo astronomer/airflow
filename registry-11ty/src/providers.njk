@@ -2,15 +2,15 @@
 layout: base.njk
 title: Providers
 description: Browse all Apache Airflow providers
+mainClass: providers-page
 ---
 
-<div class="providers-page">
-  <div class="container">
+<div class="container">
     <!-- Page Header -->
-    <div class="page-header">
+    <header class="page-header">
       <h1>Providers</h1>
       <p>Browse {{ providers.providers.length }} official and community providers</p>
-    </div>
+    </header>
 
     <!-- Filters Section -->
     <div class="filters">
@@ -64,7 +64,6 @@ description: Browse all Apache Airflow providers
       <h3>No providers found</h3>
       <p>Try adjusting your search or filters</p>
     </div>
-  </div>
 </div>
 
 <script src="/js/provider-filters.js"></script>

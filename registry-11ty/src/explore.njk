@@ -2,15 +2,15 @@
 layout: base.njk
 title: Explore
 description: Discover Airflow providers by category and use case
+mainClass: explore-page
 ---
 
-<div class="explore-page">
-  <div class="container">
+<div class="container">
     <!-- Hero -->
-    <div class="page-header">
+    <header class="page-header">
       <h1>Explore by Category</h1>
       <p>Find the right providers for your data pipelines. Browse by use case or discover community contributions.</p>
-    </div>
+    </header>
 
     <!-- Category Cards -->
     <div class="category-grid">
@@ -34,7 +34,7 @@ description: Discover Airflow providers by category and use case
         {% endif %}
       {% endfor %}
 
-      <div class="category-card color-{{ category.color }}">
+      <article class="category-card color-{{ category.color }}">
         <div class="category-header">
           <div class="category-icon">
             {{ category.icon | safe }}
@@ -61,14 +61,14 @@ description: Discover Airflow providers by category and use case
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
           </svg>
         </a>
-      </div>
+      </article>
       {% endfor %}
     </div>
 
     <!-- Two Column Layout -->
     <div class="featured-sections">
       <!-- Official Providers -->
-      <div class="featured-section">
+      <section class="featured-section">
         <div class="section-header">
           <h2>Official Providers</h2>
           <span class="tier-badge tier-official">Pre-installed</span>
@@ -103,10 +103,10 @@ description: Discover Airflow providers by category and use case
         <a href="/providers?tier=official">
           View all official providers →
         </a>
-      </div>
+      </section>
 
       <!-- Community Highlights -->
-      <div class="featured-section">
+      <section class="featured-section">
         <div class="section-header">
           <h2>Community Highlights</h2>
           <span class="tier-badge tier-community">Community</span>
@@ -143,7 +143,7 @@ description: Discover Airflow providers by category and use case
         <a href="/providers?tier=community">
           View all community providers →
         </a>
-      </div>
+      </section>
     </div>
 
     <!-- Quick Links -->
@@ -160,7 +160,6 @@ description: Discover Airflow providers by category and use case
         </button>
       </div>
     </div>
-  </div>
 </div>
 
 <script>
