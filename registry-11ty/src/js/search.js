@@ -3,6 +3,7 @@
   let currentFilter = 'all';
   let selectedIndex = 0;
   let currentResults = [];
+  let searchId = 0;
 
   const modal = document.getElementById('search-modal');
   const input = document.getElementById('search-input');
@@ -49,6 +50,7 @@
           <p>No results found</p>
         </div>
       `;
+      updateCountsFromResults([]);
       return;
     }
 
@@ -59,23 +61,28 @@
       const description = result.meta.description || result.excerpt;
       const moduleType = result.meta.moduleType || '';
       const icon = type === 'provider' ? 'P' : (moduleType ? moduleType[0].toUpperCase() : 'M');
+      const resultType = type === 'provider' ? 'provider' : moduleType;
 
       return `
-        <a href="${result.url}" class="result-item${index === selectedIndex ? ' selected' : ''}" data-index="${index}">
-          <span class="result-icon ${type}">${icon}</span>
-          <div class="result-content">
-            <div class="result-title">${name}</div>
-            <div class="result-meta">
-              ${providerName ? `<span>${providerName}</span>` : ''}
+        <a href="${result.url}" class="${resultType}${index === selectedIndex ? ' selected' : ''}" data-index="${index}">
+          <span>${icon}</span>
+          <div>
+            <div>
+              ${name}
+              ${moduleType ? `<span class="badge ${moduleType}">${moduleType}</span>` : ''}
+            </div>
+            <div>
+              ${providerName ? `<span><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg> ${providerName}</span>` : ''}
               ${description ? `<span>${description}</span>` : ''}
             </div>
           </div>
-          ${index === selectedIndex ? '<svg class="result-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>' : ''}
+          ${index === selectedIndex ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>' : ''}
         </a>
       `;
     }).join('');
 
     resultsContainer.innerHTML = html;
+    updateCountsFromResults(results);
 
     const selected = resultsContainer.querySelector('.result-item.selected');
     if (selected) {
@@ -83,26 +90,34 @@
     }
   }
 
-  async function updateCounts(query) {
+  function updateCountsFromResults(results) {
+    let providerCount = 0;
+    let moduleCount = 0;
+
+    results.forEach(result => {
+      const type = result.meta.type || 'provider';
+      if (type === 'provider') {
+        providerCount++;
+      } else {
+        moduleCount++;
+      }
+    });
+
+    document.getElementById('provider-count').textContent = providerCount;
+    document.getElementById('module-count').textContent = moduleCount;
+  }
+
+  async function initializeCounts() {
     const pf = await initPagefind();
-
-    if (!query.trim()) {
-      const providerSearch = await pf.search('', { filters: { type: ['provider'] } });
-      const moduleSearch = await pf.search('', { filters: { type: ['module'] } });
-      document.getElementById('provider-count').textContent = providerSearch.results.length;
-      document.getElementById('module-count').textContent = moduleSearch.results.length;
-      return;
-    }
-
-    const providerSearch = await pf.search(query, { filters: { type: ['provider'] } });
-    const moduleSearch = await pf.search(query, { filters: { type: ['module'] } });
-
+    const providerSearch = await pf.search('', { filters: { type: ['provider'] } });
+    const moduleSearch = await pf.search('', { filters: { type: ['module'] } });
     document.getElementById('provider-count').textContent = providerSearch.results.length;
     document.getElementById('module-count').textContent = moduleSearch.results.length;
   }
 
   input.addEventListener('input', async (e) => {
     const query = e.target.value;
+    const thisSearchId = ++searchId;
 
     if (!query.trim()) {
       resultsContainer.innerHTML = `
@@ -126,11 +141,12 @@
       search = await pf.debouncedSearch(query, {}, 150);
     }
 
-    // search will be null if a more recent search was initiated
-    if (search !== null) {
+    if (search !== null && thisSearchId === searchId) {
       const results = await Promise.all(search.results.map(r => r.data()));
-      renderResults(results);
-      await updateCounts(query);
+
+      if (thisSearchId === searchId) {
+        renderResults(results);
+      }
     }
   });
 
@@ -163,7 +179,7 @@
       </div>
     `;
 
-    updateCounts('');
+    initializeCounts();
   }
 
   function closeModal() {
