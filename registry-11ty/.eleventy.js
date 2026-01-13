@@ -18,9 +18,25 @@ module.exports = function(eleventyConfig) {
 
   eleventyConfig.addFilter("formatDownloads", (num) => {
     if (!num) return "0";
-    if (num >= 1_000_000_000) return `${(num / 1_000_000_000).toFixed(1)}B`;
-    if (num >= 1_000_000) return `${Math.round(num / 1_000_000)}M`;
-    if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+
+    // For billions
+    if (num >= 1_000_000_000) {
+      const billions = num / 1_000_000_000;
+      return billions >= 10 ? `${Math.round(billions)}B` : `${billions.toFixed(1)}B`;
+    }
+
+    // For millions
+    if (num >= 1_000_000) {
+      const millions = num / 1_000_000;
+      return millions >= 10 ? `${Math.round(millions)}M` : `${millions.toFixed(1)}M`;
+    }
+
+    // For thousands
+    if (num >= 1_000) {
+      const thousands = num / 1_000;
+      return thousands >= 10 ? `${Math.round(thousands)}K` : `${thousands.toFixed(1)}K`;
+    }
+
     return num.toString();
   });
 

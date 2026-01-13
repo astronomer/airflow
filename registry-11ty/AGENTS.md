@@ -1,6 +1,6 @@
-# Agent Guidelines for Airflow Registry 11ty
+# Agent Guidelines for Airflow Registry
 
-This document contains rules, patterns, and guidelines for working on the Airflow Registry 11ty project.
+This document contains rules, patterns, and guidelines for working on the Airflow Registry project.
 
 ## Project Overview
 
@@ -16,47 +16,201 @@ This document contains rules, patterns, and guidelines for working on the Airflo
 
 ## 1. Quality Standards
 
-- **Zero visual regression**: 11ty must match Astro pixel-perfect
+- **Visual consistency**: Changes should match existing design system and styling
 - **Semantic HTML**: Use proper elements and structure
 - **Maintainable CSS**: Descriptive class names, leverage cascade
 - **Light/Dark mode**: Full support with smooth transitions
 - **Responsive**: Mobile-first, works on all screen sizes
 
-### 2. Semantic CSS
+### 2. Semantic CSS & HTML
 
-Follow the principles from https://css-tricks.com/semantic-class-names/:
+Follow the principles from https://css-tricks.com/semantic-class-names/
 
-- **Class names describe CONTENT, not visual appearance**
-  - Good: `.hero`, `.badge`, `.provider`
-  - Bad: `.blue-text`, `.flex-container`, `.mb-4`
+#### 2.1 Class Names Describe CONTENT, Not Appearance
 
-- **Use CSS cascade instead of duplicative prefixes**
-  - Good: `.hero .badge`, `.hero h1`, `.hero .search`
-  - Bad: `.hero-badge`, `.hero-title`, `.hero-search`
-  - Rationale: A hero-badge only makes sense inside a hero section, so the prefix is redundant
+Class names should answer "what is this?" not "how should it look?"
 
-- **Leverage semantic HTML5 elements**
-  - Use `<section>`, `<header>`, `<nav>`, `<dl>`, `<dt>`, `<dd>`, `<article>`, etc.
-  - Example: Stats should use `<dl>` (definition list) not `<div class="stats-grid">`
+**Good examples:**
+- `.provider-card` - it's a card displaying provider information
+- `.connection-types` - a section showing connection types
+- `.dependencies` - shows dependency information
+- `.stats` - displays statistical data
 
-#### 2.1 No Utility Classes
+**Bad examples:**
+- `.blue-box` - describes appearance (what if design changes to green?)
+- `.flex-row` - describes layout implementation
+- `.mt-4` - describes spacing value
+- `.text-lg` - describes typography
 
-- Remove ALL utility classes like:
-  - Spacing: `.mb-2`, `.py-12`, `.gap-4`, `.px-6`
-  - Layout: `.flex`, `.grid`, `.grid-cols-2`, `.items-center`
-  - Text: `.text-center`, `.text-lg`, `.font-bold`
-- Style elements contextually where they appear
-- Use semantic CSS with cascade pattern
+**Why this matters:**
+- Design changes shouldn't require HTML updates
+- Code is self-documenting (you understand structure without seeing CSS)
+- Multiple elements can share appearance without sharing meaning
 
-#### 2.1 Contextual Button Styling
+#### 2.2 Use CSS Cascade to Avoid Redundant Prefixes
 
-- NO `.btn`, `.btn-primary`, `.btn-secondary` classes
-- Style buttons contextually:
-  ```css
-  .hero .popular-providers a {
-    /* Styles here */
-  }
-  ```
+When an element only makes sense within its parent, use descendant selectors instead of prefixing class names.
+
+**Good - leveraging cascade:**
+```html
+<section class="technical">
+  <div class="python-version">...</div>
+  <div class="connections">...</div>
+</section>
+```
+```css
+.technical { /* section styles */ }
+.technical h3 { /* heading styles */ }
+.technical .python-version { /* specific section */ }
+.technical code { /* all code in technical section */ }
+```
+
+**Bad - redundant prefixes:**
+```html
+<section class="technical">
+  <div class="technical-python">...</div>
+  <div class="technical-connections">...</div>
+</section>
+```
+```css
+.technical { /* section styles */ }
+.technical-heading { /* redundant prefix */ }
+.technical-python { /* redundant prefix */ }
+.technical-code { /* redundant prefix */ }
+```
+
+**Why this matters:**
+- Less typing, less repetition
+- Clearer hierarchy in CSS
+- If `.python-version` only appears in `.technical`, the prefix adds no information
+
+#### 2.3 Leverage Semantic HTML5 Elements
+
+Use the right HTML element for the job. This improves accessibility, SEO, and reduces need for classes.
+
+**Semantic elements and their uses:**
+- `<header>` - Page or section header
+- `<footer>` - Page or section footer
+- `<nav>` - Navigation menus
+- `<main>` - Main content of the page
+- `<section>` - Thematic grouping of content
+- `<article>` - Self-contained content
+- `<aside>` - Side content/sidebars
+- `<dl>`, `<dt>`, `<dd>` - Definition lists (key-value pairs)
+- `<details>`, `<summary>` - Collapsible content
+
+**Example - Statistics:**
+```html
+<!-- Good: Semantic -->
+<dl class="stats">
+  <div>
+    <dt>1,000+</dt>
+    <dd>Providers</dd>
+  </div>
+</dl>
+```
+```css
+.stats dt { font-size: var(--text-3xl); }
+.stats dd { font-size: var(--text-sm); }
+```
+
+**Example - Provider detail header:**
+```html
+<!-- Good: Semantic structure -->
+<header class="card">
+  <div class="top">
+    <div class="logo">...</div>
+    <div class="details">
+      <h1>Amazon</h1>
+      <p class="description">...</p>
+    </div>
+  </div>
+
+  <div class="stats">...</div>
+</header>
+```
+```css
+.provider-detail-page header { /* styles */ }
+.provider-detail-page header h1 { /* title */ }
+.provider-detail-page header .stats { /* grid of stats */ }
+```
+
+#### 2.4 When to Add Classes vs Use Element Selectors
+
+**Use element selectors when:**
+- There's only one of that element in the scope
+- The element's meaning is clear from context
+- Example: `.provider-detail-page header h1` - there's only one main heading
+
+**Add a class when:**
+- Multiple instances need different styling
+- The role isn't obvious from the element alone
+- You need to target it from JavaScript
+- Example: `.python-version`, `.connections`, `.dependencies` - all are `<div>` but serve different purposes
+
+**Prefer simpler selectors:**
+- `section code` over `section .code-snippet`
+- `details summary` over `.details-trigger`
+- `.connections a` over `.connection-badge`
+
+#### 2.5 No Utility Classes
+
+Utility classes describe HOW something looks, not WHAT it is.
+
+**Remove these patterns:**
+- Spacing: `.mb-2`, `.py-12`, `.gap-4`, `.px-6`, `.space-y-4`
+- Layout: `.flex`, `.grid`, `.grid-cols-2`, `.items-center`
+- Display: `.block`, `.inline-block`, `.hidden`
+- Text: `.text-center`, `.text-lg`, `.font-bold`, `.uppercase`
+- Colors: `.text-blue-500`, `.bg-gray-100`
+
+**Instead, style contextually:**
+```css
+/* Good */
+.technical h3 {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  margin-bottom: var(--space-3);
+  display: flex;
+  align-items: center;
+}
+
+/* Bad */
+<h3 class="text-sm font-semibold mb-3 flex items-center">
+```
+
+#### 2.6 Contextual Component Styling
+
+Components should be styled based on WHERE they appear, not through generic modifier classes.
+
+**No generic button classes:**
+```css
+/* Bad */
+.btn { }
+.btn-primary { }
+.btn-secondary { }
+```
+
+**Style contextually instead:**
+```css
+/* Good */
+.hero .popular-providers a {
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-lg);
+}
+
+.provider-detail-page .actions .btn-primary {
+  background: var(--accent-primary);
+  color: var(--color-navy-900);
+}
+```
+
+**Why this matters:**
+- Buttons in hero look different from buttons in provider detail
+- Context determines appearance
+- Reduces need for modifier classes
 
 ## CSS Architecture
 
@@ -160,19 +314,6 @@ The theme system uses the CSS `color-scheme` property and `light-dark()` functio
 1. First with light value as fallback for browsers without `light-dark()` support
 2. Then with `light-dark()` which overrides in supporting browsers
 
-## Color Matching
-
-When porting from Astro to 11ty:
-
-1. **Don't guess colors** - read the Astro source files
-2. Compare screenshots side-by-side
-3. Use exact color values from Astro version
-4. Common light mode colors:
-   - Hero background: Light cyan/blue gradient
-   - Search input: `#ffffff` with `#cbd5e1` border
-   - Buttons: `#f1f5f9` background, `#e2e8f0` border
-   - Section backgrounds: `#f8fafc` for light gray sections
-
 ## Screenshot Testing with shot-scraper
 
 ### Installation & Usage
@@ -186,12 +327,12 @@ uvx shot-scraper multi <config.yaml>
 
 ```
 screenshots/
-├── baseline/        # Astro version (baseline)
-│   ├── astro-full-page-dark.png
-│   └── astro-full-page-light.png
-└── 11ty/           # 11ty version (comparison)
-    ├── 11ty-full-page-dark.png
-    └── 11ty-full-page-light.png
+├── baseline/        # Baseline screenshots for comparison
+│   ├── full-page-dark.png
+│   └── full-page-light.png
+└── current/        # Current version screenshots
+    ├── full-page-dark.png
+    └── full-page-light.png
 ```
 
 ### Light Mode Screenshots
@@ -200,7 +341,7 @@ Light mode requires JavaScript to set the color-scheme property:
 
 ```yaml
 - url: http://localhost:8080
-  output: 11ty/11ty-full-page-light.png
+  output: current/full-page-light.png
   width: 1280
   height: 2400
   javascript: |
@@ -214,36 +355,20 @@ Light mode requires JavaScript to set the color-scheme property:
 
 **Important**: The Promise pattern with `takeShot()` callback is required. The `wait` parameter doesn't work with JavaScript execution.
 
-### Astro React Theme Toggle
-
-For Astro (React-based), which still uses class-based theming:
-
-```yaml
-javascript: |
-  new Promise(takeShot => {
-    localStorage.setItem('theme', 'light');
-    document.documentElement.classList.remove('dark');
-    document.documentElement.classList.add('light');
-    setTimeout(() => {
-      takeShot();
-    }, 1000);
-  });
-```
-
 ## HTML Structure Examples
 
 ## Development Workflow
 
-### Port Checklist
+### Feature Development Checklist
 
-When porting a section from Astro to 11ty:
+When adding or modifying features:
 
-1. **Read Astro source** - don't guess the structure or colors
-2. **Create semantic HTML** with proper elements
-3. **Write semantic CSS** using cascade pattern
-4. **Add light mode styles** for all elements
-5. **Take screenshots** to compare
-6. **Iterate** until visual parity achieved
+1. **Plan semantic HTML structure** using appropriate elements
+2. **Write semantic CSS** using cascade pattern
+3. **Add light/dark mode styles** for all elements
+4. **Test responsiveness** across different screen sizes
+5. **Take before/after screenshots** to document changes
+6. **Verify consistency** with existing design system
 
 ### Common Issues
 
@@ -267,7 +392,7 @@ When removing non-semantic CSS:
 
 ## Quality Standards
 
-- **Zero visual regression**: 11ty must match Astro pixel-perfect
+- **Visual consistency**: Changes should match existing design system and styling
 - **Semantic HTML**: Use proper elements and structure
 - **Maintainable CSS**: Descriptive class names, leverage cascade
 - **Light/Dark mode**: Full support with smooth transitions (except during screenshots)
@@ -275,16 +400,14 @@ When removing non-semantic CSS:
 
 ## Reference Files
 
-Key files to reference:
-- `/Users/ash/code/airflow/airflow-private/registry-11ty/src/index.njk` - Main template
-- `/Users/ash/code/airflow/airflow-private/registry-11ty/src/css/main.css` - Main styles
-- `/Users/ash/code/airflow/airflow-private/registry-11ty/src/css/tokens.css` - Design tokens
-- `/Users/ash/code/airflow/airflow-private/registry/src/` - Astro baseline for comparison
+Key files in the project:
+- `src/css/main.css` - Main styles
+- `src/css/tokens.css` - Design tokens
+- `src/` - All page templates (index, provider-detail, providers, explore, stats)
 
-## Server Ports
+## Development Server
 
-- Astro: http://localhost:4321
-- 11ty: http://localhost:8080
+Local development server runs at http://localhost:8080
 
 ## Troubleshooting
 
@@ -305,9 +428,9 @@ grep -r "class-name" src/
 grep "\.class-name" src/css/
 ```
 
-### Colors don't match
+### Color issues
 
-1. Read the Astro source component
-2. Use browser DevTools to inspect computed styles
-3. Check both light and dark mode
-4. Verify color tokens in `tokens.css`
+1. Use browser DevTools to inspect computed styles
+2. Check both light and dark mode
+3. Verify color tokens in `tokens.css`
+4. Ensure computed theme variables are used correctly

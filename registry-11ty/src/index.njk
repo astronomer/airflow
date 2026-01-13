@@ -165,13 +165,28 @@ title: Home
     </header>
 
     <div class="widget">
-      <div class="tabs">
-        <button class="tab active" data-tool="pip">pip</button>
-        <button class="tab" data-tool="uv">uv</button>
-        <button class="tab" data-tool="requirements">requirements.txt</button>
+      <label class="tab">
+        <input type="radio" name="install-tool" value="pip" checked hidden>
+        <span>pip</span>
+      </label>
+      <div class="command-box" data-tool="pip" data-copy-target="install-pip">
+        <code id="install-pip">pip install apache-airflow-providers-amazon</code>
       </div>
-      <div class="command-box" data-copy-target="install-command">
-        <code id="install-command">pip install apache-airflow-providers-amazon</code>
+
+      <label class="tab">
+        <input type="radio" name="install-tool" value="uv" hidden>
+        <span>uv</span>
+      </label>
+      <div class="command-box" data-tool="uv" data-copy-target="install-uv">
+        <code id="install-uv">uv pip install apache-airflow-providers-amazon</code>
+      </div>
+
+      <label class="tab">
+        <input type="radio" name="install-tool" value="requirements" hidden>
+        <span>requirements.txt</span>
+      </label>
+      <div class="command-box" data-tool="requirements" data-copy-target="install-requirements">
+        <code id="install-requirements">apache-airflow-providers-amazon</code>
       </div>
     </div>
   </div>

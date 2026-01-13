@@ -1,33 +1,5 @@
-// Install Widget
+// Search functionality
 (function() {
-  const installTabs = document.querySelectorAll('#install .tab');
-  const installCommand = document.getElementById('install-command');
-
-  const commands = {
-    pip: 'pip install apache-airflow-providers-amazon',
-    uv: 'uv pip install apache-airflow-providers-amazon',
-    requirements: 'apache-airflow-providers-amazon',
-  };
-
-  if (installTabs.length > 0) {
-    installTabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tool = tab.dataset.tool || 'pip';
-
-        // Update active tab styles
-        installTabs.forEach(t => {
-          t.classList.remove('active');
-        });
-        tab.classList.add('active');
-
-        // Update command
-        if (installCommand) {
-          installCommand.textContent = commands[tool] || commands.pip;
-        }
-      });
-    });
-  }
-
   // Hero search button
   const heroSearch = document.getElementById('hero-search');
   if (heroSearch) {
@@ -53,5 +25,31 @@
       // TODO: Implement command palette
       console.log('Search not yet implemented');
     }
+  });
+})();
+
+// Install tool preference persistence
+(function() {
+  const widget = document.querySelector('#install .widget');
+  if (!widget) return;
+
+  const radios = widget.querySelectorAll('input[type="radio"][name="install-tool"]');
+
+  // Restore saved preference
+  const savedTool = localStorage.getItem('installTool');
+  if (savedTool) {
+    const savedRadio = widget.querySelector(`input[value="${savedTool}"]`);
+    if (savedRadio) {
+      savedRadio.checked = true;
+    }
+  }
+
+  // Save preference on change
+  radios.forEach(radio => {
+    radio.addEventListener('change', () => {
+      if (radio.checked) {
+        localStorage.setItem('installTool', radio.value);
+      }
+    });
   });
 })();
