@@ -1230,33 +1230,33 @@ footer a:hover {
 }
 
 /* Install Widget Section */
-#install {
+.install {
   padding: var(--space-16) 0;
   background: linear-gradient(to right, rgba(6, 182, 212, 0.1), rgba(99, 102, 241, 0.1));
   border-top: 1px solid var(--border-primary);
 }
 
-#install .container {
+.install .container {
   max-width: 56rem;
   text-align: center;
 }
 
-#install header {
+.install header {
   margin-bottom: var(--space-8);
 }
 
-#install h2 {
+.install h2 {
   font-size: var(--text-2xl);
   font-weight: var(--font-bold);
   color: var(--text-primary);
   margin-bottom: var(--space-4);
 }
 
-#install header p {
+.install header p {
   color: var(--text-secondary);
 }
 
-#install .widget {
+.install .widget {
   display: grid;
   grid-template-columns: repeat(3, auto) 1fr;
   grid-template-rows: auto auto;
@@ -1269,7 +1269,7 @@ footer a:hover {
   margin: 0 auto;
 }
 
-#install .tab {
+.install .tab {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-sm);
   color: var(--text-muted);
@@ -1279,18 +1279,18 @@ footer a:hover {
   grid-row: 1;
 }
 
-#install .tab:hover {
+.install .tab:hover {
   color: var(--text-secondary);
 }
 
 /* Style active tab when its radio is checked */
-#install .tab:has(input:checked) {
+.install .tab:has(input:checked) {
   background: var(--bg-tertiary);
   color: var(--color-cyan-400);
 }
 
 /* Command boxes - hidden by default */
-#install .command-box {
+.install .command-box {
   display: none;
   align-items: stretch;
   background: var(--bg-tertiary-light);
@@ -1304,11 +1304,11 @@ footer a:hover {
 }
 
 /* Show command box when preceding tab's radio is checked - FULLY GENERIC */
-#install .tab:has(input:checked) + .command-box {
+.install .tab:has(input:checked) + .command-box {
   display: flex;
 }
 
-#install .command-box code {
+.install .command-box code {
   flex: 1;
   font-size: var(--text-sm);
   font-family: var(--font-mono);
@@ -1319,33 +1319,6 @@ footer a:hover {
   align-items: center;
 }
 
-#install .copy {
-  padding: 0.5rem 0.75rem;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background-color var(--transition-base);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-#install .copy:hover {
-  background: var(--border-primary-light);
-  background: light-dark(var(--border-primary-light), var(--color-navy-700));
-}
-
-#install .copy .icon {
-  width: 1rem;
-  height: 1rem;
-  color: var(--text-muted);
-  transition: color var(--transition-base);
-}
-
-#install .copy:hover .icon {
-  color: var(--color-cyan-400);
-}
 
 /* Main content area */
 main {

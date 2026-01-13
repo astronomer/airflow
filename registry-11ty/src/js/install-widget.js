@@ -30,7 +30,7 @@
 
 // Install tool preference persistence
 (function() {
-  const widget = document.querySelector('#install .widget');
+  const widget = document.querySelector('.install .widget');
   if (!widget) return;
 
   const radios = widget.querySelectorAll('input[type="radio"][name="install-tool"]');
