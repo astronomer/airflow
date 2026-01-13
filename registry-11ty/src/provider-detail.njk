@@ -36,7 +36,7 @@ eleventyComputed:
   </nav>
 
   <!-- Provider Header -->
-  <header class="card">
+  <header id="{{ provider.id }}" class="card">
     <div class="top">
       <div class="logo">
         {% if provider.logo %}
@@ -220,7 +220,7 @@ eleventyComputed:
     <h2>Modules ({{ providerModules.length }})</h2>
     <div class="grid">
       {% for module in providerModules %}
-      <div class="module card">
+      <div id="{{ module.id }}" class="module card">
         <div class="icon {{ module.type }}">
           <span>{{ module.type[0] | upper }}</span>
         </div>
@@ -234,4 +234,3 @@ eleventyComputed:
     </div>
   </section>
 </div>
->>>>>>> Stashed changes
