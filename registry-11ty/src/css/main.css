@@ -582,6 +582,11 @@ footer a:hover {
   }
 }
 
+/* Need explicit light mode to override media query when user manually selects light */
+:root[style*="color-scheme: light"] #stats {
+  background: linear-gradient(180deg, var(--bg-primary-light) 0%, var(--bg-secondary-light) 100%);
+}
+
 :root[style*="color-scheme: dark"] #stats {
   background: rgb(from var(--color-navy-800) r g b / 0.3);
 }
