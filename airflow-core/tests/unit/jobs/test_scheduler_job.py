@@ -4793,7 +4793,7 @@ class TestSchedulerJob:
         assert dr.creating_job_id == scheduler_job.id
 
     @pytest.mark.need_serialized_dag
-    def test_create_dag_runs_assets(self, session, dag_maker):
+    def test_create_dag_runs_assets(self, session: Session, dag_maker: DagMaker):
         """
         Test various invariants of _create_dag_runs.
 
@@ -4895,6 +4895,57 @@ class TestSchedulerJob:
         )
 
         assert created_run.creating_job_id == scheduler_job.id
+
+    def test_adrq_lock_prevents_duplicate_asset_dagrun(self, dag_maker, session):
+        asset = Asset(uri="test://asset", group="test-group")
+        with dag_maker(
+            session=session,
+            dag_id="my_dag",
+            max_active_runs=1,
+            schedule=[asset],
+            start_date=pendulum.now().add(days=-2),
+        ) as dag:
+            EmptyOperator(task_id="dummy")
+
+        dag_model = session.scalar(select(DagModel).where(DagModel.dag_id == dag.dag_id))
+        asset_model = dag_model.schedule_assets[0]
+        session.add(AssetDagRunQueue(asset_id=asset_model.id, target_dag_id=dag_model.dag_id))
+        session.commit()
+
+        # Session 1: read ADRQ (holds key-share lock if fix is present)
+        s1 = settings.Session()
+        s1.begin()
+        query1, triggered1 = DagModel.dags_needing_dagruns(s1)
+
+        # Session 2: create dagrun and delete ADRQ
+        s2 = settings.Session()
+        s2.begin()
+        query2, triggered2 = DagModel.dags_needing_dagruns(s2)
+        dags2 = list(query2.all())
+        if dags2:
+            dag.create_dagrun(
+                run_type=DagRunType.ASSET_TRIGGERED,
+                state=DagRunState.QUEUED,
+                logical_date=pendulum.now("UTC"),
+                session=s2,
+            )
+            s2.execute(delete(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag.dag_id))
+        s2.commit()
+
+        # Session 1 should NOT be able to schedule another run
+        dags1 = list(query1.all())
+        if dags1:
+            dag.create_dagrun(
+                run_type=DagRunType.ASSET_TRIGGERED,
+                state=DagRunState.QUEUED,
+                logical_date=pendulum.now("UTC"),
+                session=s1,
+            )
+        s1.commit()
+
+        assert (
+            session.scalar(select(func.count()).select_from(DagRun).where(DagRun.dag_id == dag.dag_id)) == 1
+        )
 
     @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):
@@ -8971,3 +9022,64 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
     assert apdr.created_dag_run_id is not None
     assert len(partition_dags) == 1
     assert partition_dags == {"asset-event-consumer"}
+
+
+import concurrent.futures
+import threading
+
+
+def test_adrq_lock_prevents_duplicate_asset_dagrun(dag_maker, session, create_dagrun):
+    asset = Asset(uri="test://asset", group="test-group")
+    with dag_maker(
+        session=session,
+        dag_id="my_dag",
+        max_active_runs=1,
+        schedule=[asset],
+        start_date=pendulum.now().add(days=-2),
+    ) as dag:
+        EmptyOperator(task_id="dummy")
+
+    dag_model = dag_maker.dag_model
+    asset_model = dag_model.schedule_assets[0]
+    session.add(AssetDagRunQueue(asset_id=asset_model.id, target_dag_id=dag_model.dag_id))
+    session.commit()
+
+    barrier = threading.Barrier(2)
+
+    def _worker():
+        _session = settings.Session.session_factory()
+        try:
+            with _session.begin():
+                query, _ = DagModel.dags_needing_dagruns(_session)
+                dags = list(query.all())
+
+                # make both threads read before scheduling
+                barrier.wait(timeout=5)
+
+                if dags:
+                    run_after = timezone.utcnow()
+                    run_id = DagRun.generate_run_id(
+                        run_type=DagRunType.ASSET_TRIGGERED, logical_date=None, run_after=run_after
+                    )
+                    dag_maker.create_dagrun(
+                        run_id=run_id,
+                        logical_date=None,
+                        data_interval=None,
+                        run_after=run_after,
+                        run_type=DagRunType.ASSET_TRIGGERED,
+                        triggered_by=DagRunTriggeredByType.ASSET,
+                        state=DagRunState.QUEUED,
+                        session=_session,
+                    )
+                    _session.execute(
+                        delete(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag_model.dag_id)
+                    )
+        finally:
+            _session.close()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(lambda _: _worker(), range(2)))
+
+    assert (
+        session.scalar(select(func.count()).select_from(DagRun).where(DagRun.dag_id == dag_model.dag_id)) == 1
+    )

@@ -644,11 +644,16 @@ class DagModel(Base):
                 return False
 
         # this loads all the ADRQ records.... may need to limit num dags
+        # {target_dag_id: ADRQ}
         adrq_by_dag: dict[str, list[AssetDagRunQueue]] = defaultdict(list)
         for adrq in session.scalars(
-            select(AssetDagRunQueue).options(
-                joinedload(AssetDagRunQueue.dag_model),
-                joinedload(AssetDagRunQueue.asset),
+            with_row_locks(
+                query=select(AssetDagRunQueue).options(
+                    joinedload(AssetDagRunQueue.dag_model),
+                    joinedload(AssetDagRunQueue.asset),
+                ),
+                session=session,
+                key_share=True,
             )
         ):
             if adrq.dag_model.asset_expression is None:
@@ -678,8 +683,7 @@ class DagModel(Base):
         }
         del adrq_by_dag
 
-        asset_triggered_dag_ids = set(triggered_date_by_dag.keys())
-        if asset_triggered_dag_ids:
+        if asset_triggered_dag_ids := set(triggered_date_by_dag.keys()):
             # exclude as max active runs has been reached
             exclusion_list = set(
                 session.scalars(
