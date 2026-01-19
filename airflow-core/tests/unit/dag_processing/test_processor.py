@@ -56,6 +56,8 @@ from airflow.dag_processing.processor import (
     DagFileProcessorProcess,
     ToDagProcessor,
     ToManager,
+    _estimate_dag_size,
+    _estimate_object_size,
     _execute_dag_callbacks,
     _execute_email_callbacks,
     _execute_task_callbacks,
@@ -1901,3 +1903,228 @@ class TestDagProcessingMessageTypes:
             + "\n".join(f"  - {t}" for t in sorted(task_diff))
             + "\n\nEither handle these types in ToDagProcessor or update in_task_runner_but_not_in_dag_processing_process list."
         )
+
+
+class TestEstimateObjectSize:
+    """Tests for _estimate_object_size function."""
+
+    def test_none(self):
+        assert _estimate_object_size(None) == 4  # "null"
+
+    def test_bool(self):
+        assert _estimate_object_size(True) == 5  # "true"
+        assert _estimate_object_size(False) == 5  # "false"
+
+    def test_int(self):
+        assert _estimate_object_size(0) == 1
+        assert _estimate_object_size(123) == 3
+        assert _estimate_object_size(-456) == 4
+
+    def test_float(self):
+        assert _estimate_object_size(1.5) == 3
+        assert _estimate_object_size(123.456) == 7
+
+    def test_string(self):
+        # String length + 2 for quotes
+        assert _estimate_object_size("") == 2
+        assert _estimate_object_size("hello") == 7  # 5 + 2
+        assert _estimate_object_size("x" * 100) == 102  # 100 + 2
+
+    def test_bytes(self):
+        # Bytes are base64 encoded: len * 4/3 + 4
+        assert _estimate_object_size(b"hello") >= 5
+
+    def test_dict(self):
+        # Empty dict: {}
+        assert _estimate_object_size({}) == 2
+        # {"a": 1} = 2 (braces) + 3 (key "a") + 1 (value) + 2 (: and ,)
+        assert _estimate_object_size({"a": 1}) > 2
+
+    def test_list(self):
+        # Empty list: []
+        assert _estimate_object_size([]) == 2
+        # [1, 2, 3]
+        assert _estimate_object_size([1, 2, 3]) > 2
+
+    def test_nested_structure(self):
+        nested = {"key": [1, 2, {"nested": "value"}]}
+        size = _estimate_object_size(nested)
+        assert size > 0
+
+    def test_large_string(self):
+        """Test that large strings are estimated correctly."""
+        large_string = "x" * (1024 * 1024)  # 1 MB
+        size = _estimate_object_size(large_string)
+        # Should be approximately 1 MB + 2 bytes for quotes
+        assert size >= 1024 * 1024
+
+
+class TestEstimateDagSize:
+    """Tests for _estimate_dag_size function."""
+
+    def test_empty_dag(self):
+        """Test that empty DAG returns 0 and is not partial."""
+        dag = DAG(dag_id="empty_dag", schedule=None)
+        size, is_partial = _estimate_dag_size(dag)
+        assert size == 0
+        assert is_partial is False
+
+    def test_none_dag(self):
+        """Test that None DAG returns 0 and is not partial."""
+        size, is_partial = _estimate_dag_size(None)
+        assert size == 0
+        assert is_partial is False
+
+    def test_dag_with_params(self):
+        """Test DAG with task params."""
+        with DAG(dag_id="test_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            TestOp(task_id="task1", params={"key": "value"})
+
+        size, is_partial = _estimate_dag_size(dag)
+        assert size > 0
+        assert is_partial is False
+
+    def test_dag_with_large_params(self):
+        """Test DAG with large params is detected."""
+        with DAG(dag_id="test_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            large_payload = "x" * (1024 * 1024)  # 1 MB
+            TestOp(task_id="task1", params={"payload": large_payload})
+
+        size, is_partial = _estimate_dag_size(dag)
+        # Should be at least 1 MB
+        assert size >= 1024 * 1024
+        assert is_partial is False
+
+    def test_early_exit_optimization(self):
+        """Test that early exit works when threshold is exceeded and returns partial=True."""
+        with DAG(dag_id="test_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            large_payload = "x" * (1024 * 1024)  # 1 MB per task
+            for i in range(10):
+                TestOp(task_id=f"task_{i}", params={"payload": large_payload})
+
+        # With early exit at 2 MB, should return early with is_partial=True
+        size_with_early_exit, is_partial_early = _estimate_dag_size(dag, max_size_bytes=2 * 1024 * 1024)
+        # Should be > 2 MB (exceeded threshold)
+        assert size_with_early_exit > 2 * 1024 * 1024
+        assert is_partial_early is True
+
+        # Without early exit, should count all with is_partial=False
+        size_without_early_exit, is_partial_full = _estimate_dag_size(dag, max_size_bytes=0)
+        # Should be ~10 MB
+        assert size_without_early_exit >= 10 * 1024 * 1024
+        assert is_partial_full is False
+
+
+class TestSerializeDagsWithSizeLimit:
+    """Tests for _serialize_dags with size limit configuration."""
+
+    def test_dag_exceeding_size_limit_rejected(self):
+        """Test that DAGs exceeding size limit are rejected."""
+        from airflow.dag_processing.processor import _serialize_dags
+
+        with DAG(dag_id="large_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            large_payload = "x" * (10 * 1024 * 1024)  # 10 MB
+            TestOp(task_id="task1", params={"payload": large_payload})
+
+        mock_bag = MagicMock(spec=DagBag)
+        mock_bag.dags = {"large_dag": dag}
+
+        log = structlog.get_logger()
+
+        # Set a low threshold (1 MB)
+        with conf_vars({("dag_processor", "max_dag_size_threshold_mb"): "1"}):
+            serialized_dags, errors = _serialize_dags(mock_bag, log)
+
+        # DAG should be rejected
+        assert len(serialized_dags) == 0
+        assert len(errors) == 1
+        assert "too large" in list(errors.values())[0]
+
+    def test_dag_within_size_limit_accepted(self):
+        """Test that DAGs within size limit are accepted."""
+        from airflow.dag_processing.processor import _serialize_dags
+
+        with DAG(dag_id="small_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            TestOp(task_id="task1", params={"key": "small_value"})
+
+        mock_bag = MagicMock(spec=DagBag)
+        mock_bag.dags = {"small_dag": dag}
+
+        log = structlog.get_logger()
+
+        # Set a high threshold (100 MB)
+        with conf_vars({("dag_processor", "max_dag_size_threshold_mb"): "100"}):
+            serialized_dags, errors = _serialize_dags(mock_bag, log)
+
+        # DAG should be accepted
+        assert len(serialized_dags) == 1
+        assert len(errors) == 0
+
+    def test_size_check_disabled_when_zero(self):
+        """Test that size check is disabled when threshold is 0."""
+        from airflow.dag_processing.processor import _serialize_dags
+
+        with DAG(dag_id="large_dag", schedule=None) as dag:
+
+            class TestOp(BaseOperator):
+                def __init__(self, **kwargs):
+                    super().__init__(**kwargs)
+
+                def execute(self, context):
+                    pass
+
+            large_payload = "x" * (10 * 1024 * 1024)  # 10 MB
+            TestOp(task_id="task1", params={"payload": large_payload})
+
+        mock_bag = MagicMock(spec=DagBag)
+        mock_bag.dags = {"large_dag": dag}
+
+        log = structlog.get_logger()
+
+        # Disable size check
+        with conf_vars({("dag_processor", "max_dag_size_threshold_mb"): "0"}):
+            serialized_dags, errors = _serialize_dags(mock_bag, log)
+
+        # DAG should be accepted (check disabled)
+        assert len(serialized_dags) == 1
+        assert len(errors) == 0
