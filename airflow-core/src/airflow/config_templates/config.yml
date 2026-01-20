@@ -2523,6 +2523,19 @@ dag_processor:
       type: integer
       example: ~
       default: "2"
+    max_dag_size_threshold_mb:
+      description: |
+        Maximum estimated size in megabytes (MB) for a DAG before serialization. This check
+        examines task attributes that commonly contain large data: params, template fields
+        (op_args, op_kwargs, bash_command, sql, etc.), and documentation fields. DAGs
+        exceeding this threshold will be rejected with an import error before serialization
+        is attempted, preventing potential out-of-memory issues.
+
+        Set to 0 to disable the size check.
+      version_added: 3.2.0
+      type: integer
+      example: ~
+      default: "0"
     file_parsing_sort_mode:
       description: |
         One of ``modified_time``, ``random_seeded_by_host`` and ``alphabetical``.

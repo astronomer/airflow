@@ -234,19 +234,185 @@ def _serialize_dags(
 ) -> tuple[list[LazyDeserializedDAG], dict[str, str]]:
     serialization_import_errors = {}
     serialized_dags = []
+
+    # Pre-serialization limit: estimated DAG size (0 means no limit)
+    max_dag_size_mb = conf.getint("dag_processor", "max_dag_size_threshold_mb")
+    max_dag_size_bytes = max_dag_size_mb * 1024 * 1024
+
     for dag in bag.dags.values():
+        # Check estimated Dag size before serialization
+        # This catches Dags with large data in task attributes (params, op_kwargs, etc.)
+        if max_dag_size_bytes > 0:
+            # Pass max_dag_size_bytes for early exit optimization
+            estimated_size, is_partial = _estimate_dag_size(dag, max_size_bytes=max_dag_size_bytes)
+            if estimated_size > max_dag_size_bytes:
+                estimated_size_mb = estimated_size / (1024 * 1024)
+                # Format with enough precision to show the difference from the limit
+                size_str = f"{estimated_size_mb:.4f}".rstrip("0").rstrip(".")
+                if is_partial:
+                    # Estimation stopped early - actual size is unknown and likely much larger
+                    log.error(
+                        "Dag %s is too large: already reached %s MB while still estimating "
+                        "(actual size is larger). Limit is %d MB. "
+                        "Consider reducing the size of data in task attributes or increasing "
+                        "[core] max_dag_size_threshold_mb.",
+                        dag.dag_id,
+                        size_str,
+                        max_dag_size_mb,
+                    )
+                    serialization_import_errors[dag.relative_fileloc] = (
+                        f"Dag '{dag.dag_id}' is too large: "
+                        f"already reached {size_str} MB while still estimating (actual size is larger). "
+                        f"Limit is {max_dag_size_mb} MB. The Dag has {len(dag.task_ids)} tasks. "
+                        f"Consider reducing the size of data in task attributes or increasing "
+                        f"[core] max_dag_size_threshold_mb configuration."
+                    )
+                else:
+                    # Full estimation completed
+                    log.error(
+                        "Dag %s is too large: estimated %s MB > %d MB limit. "
+                        "Consider reducing the size of data in task attributes or increasing "
+                        "[core] max_dag_size_threshold_mb.",
+                        dag.dag_id,
+                        size_str,
+                        max_dag_size_mb,
+                    )
+                    serialization_import_errors[dag.relative_fileloc] = (
+                        f"Dag '{dag.dag_id}' is too large: "
+                        f"estimated {size_str} MB > {max_dag_size_mb} MB limit. "
+                        f"The Dag has {len(dag.task_ids)} tasks. "
+                        f"Consider reducing the size of data in task attributes or increasing "
+                        f"[core] max_dag_size_threshold_mb configuration."
+                    )
+                continue
+
         try:
             data = DagSerialization.to_dict(dag)
             serialized_dags.append(LazyDeserializedDAG(data=data, last_loaded=dag.last_loaded))
         except Exception:
-            log.exception("Failed to serialize DAG: %s", dag.fileloc)
+            log.exception("Failed to serialize DAG: %s", dag.relative_fileloc)
             dagbag_import_error_traceback_depth = conf.getint(
                 "core", "dagbag_import_error_traceback_depth", fallback=None
             )
-            serialization_import_errors[dag.fileloc] = traceback.format_exc(
+            serialization_import_errors[dag.relative_fileloc] = traceback.format_exc(
                 limit=-dagbag_import_error_traceback_depth
             )
     return serialized_dags, serialization_import_errors
+
+
+# Common fields that can contain large data across different operators.
+# These are checked explicitly to catch large embedded data before serialization.
+_COMMON_LARGE_FIELDS: tuple[str, ...] = (
+    "params",
+    "op_args",
+    "op_kwargs",
+    "templates_dict",
+    "bash_command",
+    "env",
+    "sql",
+    "hql",
+    "query",
+    "doc",
+    "doc_md",
+    "doc_json",
+    "doc_yaml",
+    "doc_rst",
+)
+
+
+def _estimate_dag_size(dag, max_size_bytes: int = 0) -> tuple[int, bool]:
+    """
+    Estimate the serialized size of a DAG before actual serialization.
+
+    This checks task attributes that commonly contain large data:
+    - params: Task parameters
+    - template_fields: Operator-specific fields (dynamically read from each operator)
+    - Common large fields: op_args, op_kwargs, bash_command, sql, etc.
+    - doc fields: Documentation strings
+
+    The estimate accounts for the fact that when serialized, each task's attributes are
+    serialized independently (so shared Python object references become separate copies).
+
+    :param dag: The DAG to estimate size for
+    :param max_size_bytes: If > 0, return early once this threshold is exceeded (optimization)
+    :return: Tuple of (estimated size in bytes, is_partial). is_partial=True means the
+             estimation was stopped early because it exceeded max_size_bytes, so the
+             actual size could be larger.
+    """
+    # Early exit for empty DAGs
+    if not dag or not dag.tasks:
+        return 0, False
+
+    total_size = 0
+
+    for task in dag.tasks:
+        checked_fields: set[str] = set()
+
+        # Check common large fields explicitly
+        for field_name in _COMMON_LARGE_FIELDS:
+            value = getattr(task, field_name, None)
+            if value is not None:
+                total_size += _estimate_object_size(value)
+                checked_fields.add(field_name)
+
+                # Early exit optimization: stop if we've exceeded the threshold
+                if max_size_bytes > 0 and total_size > max_size_bytes:
+                    return total_size, True  # Partial estimate
+
+        # Also check template_fields for any operator-specific fields we might have missed
+        template_fields = getattr(task, "template_fields", None)
+        if template_fields:
+            for field_name in template_fields:
+                if field_name not in checked_fields:
+                    value = getattr(task, field_name, None)
+                    if value is not None:
+                        total_size += _estimate_object_size(value)
+
+                        # Early exit optimization
+                        if max_size_bytes > 0 and total_size > max_size_bytes:
+                            return total_size, True  # Partial estimate
+
+    return total_size, False  # Full estimate
+
+
+def _estimate_object_size(obj: object) -> int:
+    """
+    Estimate the serialized JSON size of an object.
+
+    This provides a rough estimate of how large an object will be when JSON serialized.
+    Note: This does NOT track seen objects because JSON serialization creates copies
+    of referenced objects (no deduplication).
+
+    :param obj: The object to estimate size for
+    :return: Estimated size in bytes
+    """
+    if obj is None:
+        return 4  # "null"
+    if isinstance(obj, bool):
+        return 5  # "true" or "false"
+    if isinstance(obj, (int, float)):
+        return len(str(obj))
+    if isinstance(obj, str):
+        # String length + quotes + potential escaping overhead
+        return len(obj.encode("utf-8")) + 2
+    if isinstance(obj, bytes):
+        # Bytes are typically base64 encoded
+        return len(obj) * 4 // 3 + 4
+    if isinstance(obj, dict):
+        size = 2  # {}
+        for k, v in obj.items():
+            size += _estimate_object_size(k) + _estimate_object_size(v) + 2  # : and ,
+        return size
+    if isinstance(obj, (list, tuple)):
+        size = 2  # []
+        for item in obj:
+            size += _estimate_object_size(item) + 1  # ,
+        return size
+    # For other objects, use string representation as estimate
+    try:
+        return len(str(obj))
+    except Exception:
+        return 100  # fallback estimate
 
 
 def _get_dag_with_task(
