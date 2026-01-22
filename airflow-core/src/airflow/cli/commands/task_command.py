@@ -358,7 +358,17 @@ def task_states_for_dag_run(args, session: Session = NEW_SESSION) -> None:
             "not found"
         )
 
-    has_mapped_instances = any(ti.map_index >= 0 for ti in dag_run.task_instances)
+    # Use EXISTS query instead of loading all task instances just for a boolean check
+    from sqlalchemy import exists, select
+
+    has_mapped_instances = session.scalar(
+        select(
+            exists()
+            .where(TaskInstance.dag_id == dag_run.dag_id)
+            .where(TaskInstance.run_id == dag_run.run_id)
+            .where(TaskInstance.map_index >= 0)
+        )
+    )
 
     def format_task_instance(ti: TaskInstance) -> dict[str, str]:
         data = {

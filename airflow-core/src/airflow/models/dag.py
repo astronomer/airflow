@@ -41,7 +41,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, Session, backref, joinedload, load_only, relationship
+from sqlalchemy.orm import Mapped, Session, backref, load_only, relationship
 from sqlalchemy.sql import expression
 
 from airflow import settings
@@ -628,16 +628,23 @@ class DagModel(Base):
                 log.exception("Dag '%s' failed to be evaluated; assuming not ready", dag_id)
                 return False
 
-        # this loads all the ADRQ records.... may need to limit num dags
+        # First, bulk delete stale ADRQs where the associated dag no longer depends on assets.
+        # This is more efficient than loading all records and deleting one by one.
+        from sqlalchemy import delete
+
+        stale_dag_ids_subq = select(cls.dag_id).where(cls.asset_expression.is_(None)).scalar_subquery()
+        session.execute(
+            delete(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id.in_(stale_dag_ids_subq))
+        )
+
+        # Now load only valid ADRQs (those that reference dags with asset expressions)
         adrq_by_dag: dict[str, list[AssetDagRunQueue]] = defaultdict(list)
-        for adrq in session.scalars(select(AssetDagRunQueue).options(joinedload(AssetDagRunQueue.dag_model))):
-            if adrq.dag_model.asset_expression is None:
-                # The dag referenced does not actually depend on an asset! This
-                # could happen if the dag DID depend on an asset at some point,
-                # but no longer does. Delete the stale adrq.
-                session.delete(adrq)
-            else:
-                adrq_by_dag[adrq.target_dag_id].append(adrq)
+        for adrq in session.scalars(
+            select(AssetDagRunQueue)
+            .join(cls, AssetDagRunQueue.target_dag_id == cls.dag_id)
+            .where(cls.asset_expression.isnot(None))
+        ):
+            adrq_by_dag[adrq.target_dag_id].append(adrq)
 
         dag_statuses: dict[str, dict[UKey, bool]] = {
             dag_id: {SerializedAssetUniqueKey.from_asset(adrq.asset): True for adrq in adrqs}

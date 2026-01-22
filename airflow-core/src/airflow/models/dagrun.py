@@ -66,6 +66,7 @@ from airflow.listeners.listener import get_listener_manager
 from airflow.models import Deadline, Log
 from airflow.models.backfill import Backfill
 from airflow.models.base import Base, StringID
+from airflow.models.dag_version import DagVersion
 from airflow.models.deadline_alert import DeadlineAlert as DeadlineAlertModel
 from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.taskinstancehistory import TaskInstanceHistory as TIH
@@ -105,7 +106,6 @@ if TYPE_CHECKING:
     from sqlalchemy.sql.elements import Case, ColumnElement
 
     from airflow._shared.observability.traces.base_tracer import EmptySpan
-    from airflow.models.dag_version import DagVersion
     from airflow.models.taskinstancekey import TaskInstanceKey
     from airflow.sdk import DAG as SDKDAG
     from airflow.serialization.definitions.dag import SerializedDAG
@@ -393,14 +393,63 @@ class DagRun(Base, LoggingMixin):
     @property
     def dag_versions(self) -> list[DagVersion]:
         """Return the DAG versions associated with the TIs of this DagRun."""
+        from sqlalchemy import inspect, union
+        from sqlalchemy.orm import object_session
+
+        from airflow.models.taskinstance import TaskInstance
+        from airflow.models.taskinstancehistory import TaskInstanceHistory
+
         # when the dag is in a versioned bundle, we keep the dag version fixed
         if self.bundle_version:
             return [self.created_dag_version] if self.created_dag_version is not None else []
-        dag_versions = [
-            dv
-            for dv in dict.fromkeys(list(self._tih_dag_versions) + list(self._ti_dag_versions))
-            if dv is not None
-        ]
+
+        # Check if task_instances relationship is already loaded to avoid N+1 queries
+        # If not loaded, query dag_version_ids directly instead of loading all TIs
+        insp = inspect(self)
+        ti_loaded = "task_instances" in insp.dict
+        tih_loaded = "task_instances_histories" in insp.dict
+
+        if ti_loaded and tih_loaded:
+            # Use the association proxy when TIs are already loaded
+            dag_versions = [
+                dv
+                for dv in dict.fromkeys(list(self._tih_dag_versions) + list(self._ti_dag_versions))
+                if dv is not None
+            ]
+        else:
+            # Query dag_version_ids directly to avoid loading all TIs
+            session: Session | None = object_session(self)
+            if session is None:
+                # Fallback to association proxy if no session (triggers lazy load)
+                dag_versions = [
+                    dv
+                    for dv in dict.fromkeys(list(self._tih_dag_versions) + list(self._ti_dag_versions))
+                    if dv is not None
+                ]
+            else:
+                # Query distinct dag_version_ids from both TI and TIH tables
+                ti_query = (
+                    select(TaskInstance.dag_version_id)
+                    .where(TaskInstance.dag_id == self.dag_id, TaskInstance.run_id == self.run_id)
+                    .where(TaskInstance.dag_version_id.isnot(None))
+                )
+                tih_query = (
+                    select(TaskInstanceHistory.dag_version_id)
+                    .where(
+                        TaskInstanceHistory.dag_id == self.dag_id, TaskInstanceHistory.run_id == self.run_id
+                    )
+                    .where(TaskInstanceHistory.dag_version_id.isnot(None))
+                )
+                combined = union(ti_query, tih_query).subquery()
+                dag_version_ids = session.scalars(select(combined.c.dag_version_id)).all()
+
+                if dag_version_ids:
+                    dag_versions = list(
+                        session.scalars(select(DagVersion).where(DagVersion.id.in_(dag_version_ids))).all()
+                    )
+                else:
+                    dag_versions = []
+
         sorted_ = sorted(dag_versions, key=lambda dv: dv.id)
         return sorted_
 
@@ -602,7 +651,8 @@ class DagRun(Base, LoggingMixin):
                 DagModel.is_paused == false(),
                 DagModel.is_stale == false(),
             )
-            .options(joinedload(cls.task_instances))
+            # Note: task_instances are NOT loaded here intentionally - they will be
+            # fetched with proper state filtering in task_instance_scheduling_decisions()
             .order_by(
                 nulls_first(cast("ColumnElement[Any]", BackfillDagRun.sort_ordinal), session=session),
                 nulls_first(cast("ColumnElement[Any]", cls.last_scheduling_decision), session=session),

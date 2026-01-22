@@ -2275,10 +2275,16 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         dag_run.dag = self.scheduler_dag_bag.get_dag_for_run(dag_run=dag_run, session=session)
         if not dag_run.dag:
             return False
-        # Select all TIs in State.unfinished and update the dag_version_id
-        for ti in dag_run.task_instances:
-            if ti.state in State.unfinished:
-                ti.dag_version = latest_dag_version
+        # Bulk update dag_version_id for unfinished TIs instead of loading all TIs and filtering
+        session.execute(
+            update(TI)
+            .where(
+                TI.dag_id == dag_run.dag_id,
+                TI.run_id == dag_run.run_id,
+                TI.state.in_(State.unfinished),
+            )
+            .values(dag_version_id=latest_dag_version.id)
+        )
         # Verify integrity also takes care of session.flush
         dag_run.verify_integrity(dag_version_id=latest_dag_version.id, session=session)
 

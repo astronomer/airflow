@@ -18,14 +18,11 @@
 from __future__ import annotations
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload
 from sqlalchemy.orm.interfaces import LoaderOption
 
 from airflow.models.dag import DagModel
-from airflow.models.dag_version import DagVersion
 from airflow.models.dagrun import DagRun
-from airflow.models.taskinstance import TaskInstance
-from airflow.models.taskinstancehistory import TaskInstanceHistory
 
 dagruns_select_with_state_count = (
     select(
@@ -41,14 +38,16 @@ dagruns_select_with_state_count = (
 
 
 def eager_load_dag_run_for_validation() -> tuple[LoaderOption, ...]:
-    """Construct the eager loading options necessary for a DagRunResponse object."""
+    """
+    Construct the eager loading options necessary for a DagRunResponse object.
+
+    Note: task_instances and task_instances_histories are NOT eager loaded here.
+    The DagRun.dag_versions property is optimized to query dag_version_ids directly
+    when TIs aren't loaded, avoiding the need to load all TIs just to get dag_versions.
+    """
     return (
         joinedload(DagRun.dag_model),
-        selectinload(DagRun.task_instances)
-        .joinedload(TaskInstance.dag_version)
-        .joinedload(DagVersion.bundle),
-        selectinload(DagRun.task_instances_histories)
-        .joinedload(TaskInstanceHistory.dag_version)
-        .joinedload(DagVersion.bundle),
         joinedload(DagRun.dag_run_note),
+        # Load created_dag_version for bundle_version short-circuit path
+        joinedload(DagRun.created_dag_version),
     )
