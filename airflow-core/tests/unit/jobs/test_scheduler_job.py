@@ -8727,6 +8727,7 @@ def _produce_and_register_asset_event(
     session.commit()
 
     serialized_outlets = dag.get_task("hi").outlets
+
     TaskInstance.register_asset_changes_in_db(
         ti=ti,
         task_outlets=[o.asprofile() for o in serialized_outlets],
