@@ -145,7 +145,7 @@ class TestSerializedDagModel:
             my_callable2()
         assert len(session.scalars(select(DagVersion)).all()) == 4
 
-    def test_serialized_dag_is_updated_if_dag_is_changed(self, testing_dag_bundle):
+    def test_serialized_dag_is_updated_if_dag_is_changed(self, testing_dag_bundle, session):
         """Test Serialized DAG is updated if DAG is changed"""
         example_dags = make_example_dags(example_dags_module)
         example_bash_op_dag = example_dags.get("example_bash_operator")
@@ -186,9 +186,7 @@ class TestSerializedDagModel:
         )
         s_dag_2 = SDM.get(example_bash_op_dag.dag_id)
 
-        # When updating in place, created_at stays the same but last_updated changes
-        assert s_dag.created_at == s_dag_2.created_at
-        assert s_dag.last_updated != s_dag_2.last_updated
+        assert s_dag.created_at != s_dag_2.created_at
         assert s_dag.dag_hash != s_dag_2.dag_hash
         assert s_dag_2.data["dag"]["tags"] == ["example", "example2", "new_tag"]
         assert dag_updated is True
@@ -218,7 +216,7 @@ class TestSerializedDagModel:
             run_type=DagRunType.MANUAL,
         )
 
-        dag.doc_md = "new doc string"
+        dag.tags.add("new_tag")
         SDM.write_dag(LazyDeserializedDAG.from_dag(dag), bundle_name="testing")
         serialized_dags2 = SDM.read_all_dags()
         sdags = session.scalars(select(SDM)).all()
@@ -839,13 +837,7 @@ class TestSerializedDagModel:
 
         # Verify update succeeded
         assert result2 is True
-        session.expire_all()
-        updated_sdag = session.scalar(
-            select(SDM).where(SDM.dag_id == "test_dynamic_success").order_by(SDM.created_at.desc()).limit(1)
-        )
-        assert updated_sdag is not None
-        # Clear cached data to force reload after direct UPDATE path
-        updated_sdag._SerializedDagModel__data_cache = None
+        updated_sdag = SDM.get("test_dynamic_success", session=session)
         assert updated_sdag.dag_hash != initial_hash  # Hash should change
         assert len(updated_sdag.dag.task_dict) == 2  # Should have 2 tasks now
 
