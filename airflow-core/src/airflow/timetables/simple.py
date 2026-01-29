@@ -267,14 +267,14 @@ class PartitionedAssetTimetable(AssetTriggeredTimetable):
 
         return {
             "asset_condition": encode_asset_like(self.asset_condition),
-            "partition_mapper": self.default_partition_mapper.serialize(),
+            "default_partition_mapper": self.default_partition_mapper.serialize(),
             "_partition_mappers_by_name": [
                 (name, encode_partition_mapper(partition_mapper))
                 for name, partition_mapper in self._partition_mappers_by_name.items()
             ],
             "_partition_mappers_by_uri": [
                 (uri, encode_partition_mapper(partition_mapper))
-                for uri, partition_mapper in self._partition_mappers_by_ui.items()
+                for uri, partition_mapper in self._partition_mappers_by_uri.items()
             ],
         }
 
@@ -285,7 +285,7 @@ class PartitionedAssetTimetable(AssetTriggeredTimetable):
 
         timetable = cls(
             assets=decode_asset_like(data["asset_condition"]),
-            default_partition_mapper=decode_partition_mapper(data["partition_mapper"]),
+            default_partition_mapper=decode_partition_mapper(data["default_partition_mapper"]),
         )
         timetable._partition_mappers_by_name = {
             name: decode_partition_mapper(ser_partition_mapper)

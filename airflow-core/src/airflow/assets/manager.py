@@ -391,7 +391,7 @@ class AssetManager(LoggingMixin):
             if TYPE_CHECKING:
                 assert isinstance(timetable, PartitionedAssetTimetable)
 
-            if asset_model := session.scalar(select(AssetModel).where(AssetModel.id == asset_id)) is None:
+            if (asset_model := session.scalar(select(AssetModel).where(AssetModel.id == asset_id))) is None:
                 raise ValueError()
 
             target_key = timetable.get_partition_mapper(
