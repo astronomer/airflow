@@ -8855,7 +8855,7 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
             dag_id="asset-event-consumer",
             schedule=PartitionedAssetTimetable(
                 # TODO: AIP-76: instead of removing partition_mapper, should we make it here, and make it
-                # a fallback value of assets withouth partition_mapper?
+                # a fallback value of assets without partition_mapper?
                 assets=(
                     Asset(name="asset-1", partition_mapper=Key1Mapper())
                     & Asset(name="asset-2", partition_mapper=Key1Mapper())
