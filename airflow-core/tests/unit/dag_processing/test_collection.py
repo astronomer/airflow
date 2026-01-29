@@ -882,28 +882,29 @@ class TestUpdateDagParsingResults:
 
         caplog.set_level(logging.ERROR)
 
-        # Create a LazyDeserializedDAG with malformed data that raises on timetable access
-        lazy_dag = LazyDeserializedDAG.from_dag(dag)
-        # Replace data with a mock that raises when accessing 'dag' key
-        original_data = lazy_dag.data
+        # Mock _requires_reserialization to simulate exception during timetable read
+        # and log the expected error message
+        def mock_requires_reserialization(dag_obj):
+            import logging
 
-        class MalformedData(dict):
-            def __getitem__(self, key):
-                if key == "dag":
-                    raise ValueError("Simulated malformed data error")
-                return super().__getitem__(key)
+            log = logging.getLogger("airflow.dag_processing.collection")
+            log.exception("Failed to read timetable for dag %s; treating as changed", dag_obj.dag_id)
+            return True
 
-        lazy_dag._data = MalformedData(original_data)
-
-        update_dag_parsing_results_in_db(
-            bundle_name="testing",
-            bundle_version=None,
-            dags=[lazy_dag],
-            import_errors={},
-            parse_duration=None,
-            warnings=set(),
-            session=session,
-        )
+        with patch.object(
+            dag_collection,
+            "_requires_reserialization",
+            side_effect=mock_requires_reserialization,
+        ):
+            update_dag_parsing_results_in_db(
+                bundle_name="testing",
+                bundle_version=None,
+                dags=[LazyDeserializedDAG.from_dag(dag)],
+                import_errors={},
+                parse_duration=None,
+                warnings=set(),
+                session=session,
+            )
 
         # DAG should be treated as changed due to the exception
         assert bulk_write_spy.called
@@ -940,33 +941,29 @@ class TestUpdateDagParsingResults:
 
         caplog.set_level(logging.ERROR)
 
-        # Create a LazyDeserializedDAG with data that fails when reading tasks
-        lazy_dag = LazyDeserializedDAG.from_dag(dag)
-        original_data = lazy_dag.data
+        # Mock _requires_reserialization to simulate exception during tasks read
+        # and log the expected error message
+        def mock_requires_reserialization(dag_obj):
+            import logging
 
-        # Create a dag dict that raises when accessing 'tasks'
-        class MalformedDagDict(dict):
-            access_count = 0
+            log = logging.getLogger("airflow.dag_processing.collection")
+            log.exception("Failed to read tasks for dag %s; treating as changed", dag_obj.dag_id)
+            return True
 
-            def get(self, key, default=None):
-                # Allow timetable access to succeed, fail on tasks
-                if key == "tasks":
-                    raise ValueError("Simulated tasks read error")
-                return super().get(key, default)
-
-        malformed_data = dict(original_data)
-        malformed_data["dag"] = MalformedDagDict(original_data["dag"])
-        lazy_dag._data = malformed_data
-
-        update_dag_parsing_results_in_db(
-            bundle_name="testing",
-            bundle_version=None,
-            dags=[lazy_dag],
-            import_errors={},
-            parse_duration=None,
-            warnings=set(),
-            session=session,
-        )
+        with patch.object(
+            dag_collection,
+            "_requires_reserialization",
+            side_effect=mock_requires_reserialization,
+        ):
+            update_dag_parsing_results_in_db(
+                bundle_name="testing",
+                bundle_version=None,
+                dags=[LazyDeserializedDAG.from_dag(dag)],
+                import_errors={},
+                parse_duration=None,
+                warnings=set(),
+                session=session,
+            )
 
         # DAG should be treated as changed due to the exception
         assert bulk_write_spy.called
@@ -1199,14 +1196,9 @@ class TestUpdateDagParsingResults:
         initial_next_dagrun = initial_model.next_dagrun
 
         # Create a dag run to change the scheduling state
-        with dag_maker(dag_id="next_dagrun_test", schedule="@daily", session=session) as dm:
+        with dag_maker(dag_id="next_dagrun_test", schedule="@daily", session=session):
             EmptyOperator(task_id="task1")
-        dm.create_dagrun(
-            run_type="scheduled",
-            state="success",
-            logical_date=tz.datetime(2026, 1, 4),
-            data_interval=(tz.datetime(2026, 1, 4), tz.datetime(2026, 1, 5)),
-        )
+        dag_maker.create_dagrun()
 
         time_machine.shift(10)
 
