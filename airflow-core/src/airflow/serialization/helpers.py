@@ -136,7 +136,6 @@ def find_registered_custom_partition_mapper(importable_string: str) -> type[Part
     from airflow import plugins_manager
 
     partition_mapper_classes = plugins_manager.get_partition_mapper_plugins()
-    breakpoint()
     with contextlib.suppress(KeyError):
         return partition_mapper_classes[importable_string]
     raise PartitionMapperNotFound(importable_string)
