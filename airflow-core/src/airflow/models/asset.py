@@ -377,7 +377,15 @@ class AssetModel(Base):
     def to_serialized(self) -> SerializedAsset:
         from airflow.serialization.definitions.assets import SerializedAsset
 
-        return SerializedAsset(name=self.name, uri=self.uri, group=self.group, extra=self.extra, watchers=[])
+        return SerializedAsset(
+            name=self.name,
+            uri=self.uri,
+            group=self.group,
+            extra=self.extra,
+            watchers=[],
+            # TODO: should we store it in db?
+            partition_mapper=None,
+        )
 
     def add_trigger(self, trigger: Trigger, watcher_name: str):
         self.watchers.append(AssetWatcherModel(name=watcher_name, trigger_id=trigger.id))
