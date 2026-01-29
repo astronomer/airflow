@@ -744,7 +744,9 @@ class DagModelOperation(NamedTuple):
                 last_automated_data_interval = None
             else:
                 last_automated_data_interval = get_run_data_interval(dag.timetable, last_automated_run)
-            dm.exceeds_max_non_backfill = run_info.num_active_runs >= dm.max_active_runs
+            dm.exceeds_max_non_backfill = (
+                dm.max_active_runs is not None and run_info.num_active_runs >= dm.max_active_runs
+            )
             dm.calculate_dagrun_date_fields(dag, last_automated_data_interval)
 
             # Skip static DAG properties for unchanged DAGs
