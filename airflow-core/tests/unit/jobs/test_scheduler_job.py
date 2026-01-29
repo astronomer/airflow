@@ -8747,10 +8747,11 @@ def test_partitioned_dag_run_with_customized_mapper(
         with dag_maker(
             dag_id="asset-event-consumer",
             schedule=PartitionedAssetTimetable(
-                assets=asset_1,
-                # TODO: (GH-57694) this partition mapper interface will be moved into asset as per-asset mapper
-                # and the type mismatch will be handled there
-                partition_mapper=Key1Mapper(),  # type: ignore[arg-type]
+                # TODO: (AIP-76) fix typing
+                assets=Asset(
+                    name="asset-1",
+                    partition_mapper=Key1Mapper(),  # type: ignore[call-overload]
+                ),
             ),
             session=session,
         ):
@@ -8822,8 +8823,8 @@ def test_consumer_dag_listen_to_two_partitioned_asset(
     with dag_maker(
         dag_id="asset-event-consumer",
         schedule=PartitionedAssetTimetable(
-            assets=asset_1 & asset_2,
-            partition_mapper=IdentityMapper(),
+            assets=(Asset(name="asset-1") & Asset(name="asset-2")),
+            default_partition_mapper=IdentityMapper(),
         ),
         session=session,
     ):
@@ -8897,10 +8898,11 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
         with dag_maker(
             dag_id="asset-event-consumer",
             schedule=PartitionedAssetTimetable(
-                assets=asset_1 & asset_2,
-                # TODO: (GH-57694) this partition mapper interface will be moved into asset as per-asset mapper
-                # and the type mismatch will be handled there
-                partition_mapper=Key1Mapper(),  # type: ignore[arg-type]
+                # TODO: (AIP-76): fix typing
+                assets=(
+                    Asset(name="asset-1", partition_mapper=Key1Mapper())  # type: ignore[call-overload]
+                    & Asset(name="asset-2", partition_mapper=Key1Mapper())  # type: ignore[call-overload]
+                ),
             ),
             session=session,
         ):
