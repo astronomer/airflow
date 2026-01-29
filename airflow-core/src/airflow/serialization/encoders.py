@@ -174,7 +174,9 @@ def encode_asset_like(a: BaseAsset | SerializedAssetBase) -> dict[str, Any]:
                 "uri": a.uri,
                 "group": a.group,
                 "extra": a.extra,
-                "partition_mapper": encode_partition_mapper(a.partition_mapper),
+                "partition_mapper": None
+                if a.partition_mapper is None
+                else encode_partition_mapper(a.partition_mapper),
             }
             if a.watchers:
                 d["watchers"] = [{"name": w.name, "trigger": encode_trigger(w.trigger)} for w in a.watchers]
@@ -185,7 +187,9 @@ def encode_asset_like(a: BaseAsset | SerializedAssetBase) -> dict[str, Any]:
                 "name": a.name,
                 "group": a.group,
                 # TODO: (AIP_76) should we add partition_mapper to asset alias? probably not?
-                "partition_mapper": encode_partition_mapper(a.partition_mapper),
+                "partition_mapper": None
+                if a.partition_mapper is None
+                else encode_partition_mapper(a.partition_mapper),
             }
         case AssetAll() | SerializedAssetAll():
             return {"__type": DAT.ASSET_ALL, "objects": [encode_asset_like(x) for x in a.objects]}
