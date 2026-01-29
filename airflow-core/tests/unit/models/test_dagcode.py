@@ -163,7 +163,7 @@ class TestDagCode:
 
         assert result.source_code is not None
 
-        example_dag.doc_md = "new doc"
+        example_dag.tags.add("new_doc")
         with patch("airflow.models.dagcode.DagCode.get_code_from_file") as mock_code:
             mock_code.return_value = "# dummy code"
             sync_dag_to_db(example_dag, session=session)
