@@ -174,28 +174,36 @@ def encode_asset_like(a: BaseAsset | SerializedAssetBase) -> dict[str, Any]:
                 "uri": a.uri,
                 "group": a.group,
                 "extra": a.extra,
-                "partition_mapper": None
-                if a.partition_mapper is None
-                else encode_partition_mapper(a.partition_mapper),
             }
             if a.watchers:
                 d["watchers"] = [{"name": w.name, "trigger": encode_trigger(w.trigger)} for w in a.watchers]
+
+            if a.partition_mapper:
+                if isinstance(a.partition_mapper, dict):
+                    d["partition_mapper"] = a.partition_mapper
+                else:
+                    d["partition_mapper"] = encode_partition_mapper(a.partition_mapper)
             return d
         case AssetAlias() | SerializedAssetAlias():
             return {
                 "__type": DAT.ASSET_ALIAS,
                 "name": a.name,
                 "group": a.group,
-                # TODO: (AIP_76) should we add partition_mapper to asset alias? probably not?
-                "partition_mapper": None
-                if a.partition_mapper is None
-                else encode_partition_mapper(a.partition_mapper),
+                # TODO: (AIP_76) add partition_mapper
+                # if a.partition_mapper:
+                #     if isinstance(a.partition_mapper, dict):
+                #         d["partition_mapper"] = a.partition_mapper
+                #     else:
+                #         d["partition_mapper"] = encode_partition_mapper(a.partition_mapper)
             }
         case AssetAll() | SerializedAssetAll():
+            # TODO: (AIP_76) add partition_mapper
             return {"__type": DAT.ASSET_ALL, "objects": [encode_asset_like(x) for x in a.objects]}
         case AssetAny() | SerializedAssetAny():
+            # TODO: (AIP_76) add partition_mapper
             return {"__type": DAT.ASSET_ANY, "objects": [encode_asset_like(x) for x in a.objects]}
         case AssetRef() | SerializedAssetRef():
+            # TODO: (AIP_76) add partition_mapper
             return {"__type": DAT.ASSET_REF, **attrs.asdict(a)}
     raise ValueError(f"serialization not implemented for {type(a).__name__!r}")
 
@@ -354,7 +362,14 @@ class _Serializer:
 
     @serialize_timetable.register
     def _(self, timetable: PartitionedAssetTimetable) -> dict[str, Any]:
-        return {"asset_condition": encode_asset_like(timetable.asset_condition)}
+        return {
+            "asset_condition": encode_asset_like(timetable.asset_condition),
+            "default_partition_mapper": encode_partition_mapper(timetable.default_partition_mapper)
+            if timetable.default_partition_mapper
+            else None,
+            # TODO: (AIP-76) implement
+            "_partition_mappsers": None,
+        }
 
     BUILTIN_PARTITION_MAPPERS: dict[type, str] = {
         IdentityMapper: "airflow.partition_mapper.identity.IdentityMapper",

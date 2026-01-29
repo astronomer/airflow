@@ -388,18 +388,19 @@ class AssetManager(LoggingMixin):
             if not serdag:
                 raise RuntimeError(f"Could not find serialized dag for dag_id={target_dag.dag_id}")
 
-            # TODO: (AIP-76) check the partition_mapper in asset instead
             timetable = serdag.dag.timetable
             if TYPE_CHECKING:
                 assert isinstance(timetable, PartitionedAssetTimetable)
 
+            # TODO: (AIP-76) group the assets in asset condition and create coresponding apdr and log_record
+            target_key = ""
             for _, s_asset in timetable.asset_condition.iter_assets():
                 s_partition_mapper = s_asset.partition_mapper
                 if s_partition_mapper:
-                    partition_mapper = PartitionMapper.from_serialized(s_partition_mapper)
+                    partition_mapper = PartitionMapper.deserialize(s_partition_mapper)
                     target_key = partition_mapper.to_downstream(partition_key)
                 else:
-                    target_key = None
+                    target_key = ""
 
             apdr = cls._get_or_create_apdr(
                 target_key=target_key,

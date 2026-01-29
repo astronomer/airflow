@@ -383,7 +383,9 @@ class AssetModel(Base):
             group=self.group,
             extra=self.extra,
             watchers=[],
-            # TODO: should we store it in db?
+            # AIP-76: we allow user to specify per asset partition_mapper, but this exists in timetable
+            # instead of asset model itself. Thus, from asset model to SerializedAsset will always set
+            # partition_mapper to None
             partition_mapper=None,
         )
 
