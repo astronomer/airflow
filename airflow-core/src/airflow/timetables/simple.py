@@ -270,3 +270,7 @@ class PartitionedAssetTimetable(AssetTriggeredTimetable):
         # TODO: (AIP-76) implement
         timetable._partition_mappers = None
         return timetable
+
+    # TODO: (AIP-76): get partition_mapper implement
+    def get_partition_mapper(self, asset_id: id) -> PartitionMapper:
+        pass

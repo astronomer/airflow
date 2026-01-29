@@ -40,7 +40,6 @@ from airflow.models.asset import (
     DagScheduleAssetUriReference,
     PartitionedAssetKeyLog,
 )
-from airflow.partition_mapper.base import PartitionMapper
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.sqlalchemy import get_dialect_name, with_row_locks
 
@@ -391,16 +390,7 @@ class AssetManager(LoggingMixin):
             timetable = serdag.dag.timetable
             if TYPE_CHECKING:
                 assert isinstance(timetable, PartitionedAssetTimetable)
-
-            # TODO: (AIP-76) group the assets in asset condition and create coresponding apdr and log_record
-            target_key = ""
-            for _, s_asset in timetable.asset_condition.iter_assets():
-                s_partition_mapper = s_asset.partition_mapper
-                if s_partition_mapper:
-                    partition_mapper = PartitionMapper.deserialize(s_partition_mapper)
-                    target_key = partition_mapper.to_downstream(partition_key)
-                else:
-                    target_key = ""
+            target_key = timetable.get_partition_mapper(asset_id=asset_id).to_downstream(partition_key)
 
             apdr = cls._get_or_create_apdr(
                 target_key=target_key,
