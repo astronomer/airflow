@@ -854,6 +854,127 @@ class TestUpdateDagParsingResults:
         assert "Failed to hash Dag" in caplog.text
 
     @pytest.mark.usefixtures("clean_db")
+    def test_malformed_dag_data_timetable_forces_reserialize(
+        self, spy_agency: SpyAgency, testing_dag_bundle, session, time_machine, caplog
+    ):
+        """Test that malformed dag.data (timetable read failure) triggers reserialization."""
+        time_machine.move_to(tz.datetime(2026, 1, 5, 0, 0, 0), tick=False)
+
+        dag = DAG(dag_id="malformed_timetable_dag")
+
+        # First sync
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=None,
+            warnings=set(),
+            session=session,
+        )
+
+        time_machine.shift(10)
+
+        bulk_write_spy = spy_agency.spy_on(
+            serialized_dag_def.SerializedDAG.bulk_write_to_db,
+            call_original=True,
+        )
+
+        caplog.set_level(logging.ERROR)
+
+        # Create a LazyDeserializedDAG with malformed data that raises on timetable access
+        lazy_dag = LazyDeserializedDAG.from_dag(dag)
+        # Replace data with a mock that raises when accessing 'dag' key
+        original_data = lazy_dag.data
+
+        class MalformedData(dict):
+            def __getitem__(self, key):
+                if key == "dag":
+                    raise ValueError("Simulated malformed data error")
+                return super().__getitem__(key)
+
+        lazy_dag._data = MalformedData(original_data)
+
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[lazy_dag],
+            import_errors={},
+            parse_duration=None,
+            warnings=set(),
+            session=session,
+        )
+
+        # DAG should be treated as changed due to the exception
+        assert bulk_write_spy.called
+        called_dags = bulk_write_spy.calls[0].args[2]
+        assert {d.dag_id for d in called_dags} == {"malformed_timetable_dag"}
+        assert "Failed to read timetable for dag" in caplog.text
+
+    @pytest.mark.usefixtures("clean_db")
+    def test_malformed_dag_data_tasks_forces_reserialize(
+        self, spy_agency: SpyAgency, testing_dag_bundle, session, time_machine, caplog
+    ):
+        """Test that malformed dag.data (tasks read failure) triggers reserialization."""
+        time_machine.move_to(tz.datetime(2026, 1, 5, 0, 0, 0), tick=False)
+
+        dag = DAG(dag_id="malformed_tasks_dag")
+
+        # First sync
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=None,
+            warnings=set(),
+            session=session,
+        )
+
+        time_machine.shift(10)
+
+        bulk_write_spy = spy_agency.spy_on(
+            serialized_dag_def.SerializedDAG.bulk_write_to_db,
+            call_original=True,
+        )
+
+        caplog.set_level(logging.ERROR)
+
+        # Create a LazyDeserializedDAG with data that fails when reading tasks
+        lazy_dag = LazyDeserializedDAG.from_dag(dag)
+        original_data = lazy_dag.data
+
+        # Create a dag dict that raises when accessing 'tasks'
+        class MalformedDagDict(dict):
+            access_count = 0
+
+            def get(self, key, default=None):
+                # Allow timetable access to succeed, fail on tasks
+                if key == "tasks":
+                    raise ValueError("Simulated tasks read error")
+                return super().get(key, default)
+
+        malformed_data = dict(original_data)
+        malformed_data["dag"] = MalformedDagDict(original_data["dag"])
+        lazy_dag._data = malformed_data
+
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[lazy_dag],
+            import_errors={},
+            parse_duration=None,
+            warnings=set(),
+            session=session,
+        )
+
+        # DAG should be treated as changed due to the exception
+        assert bulk_write_spy.called
+        called_dags = bulk_write_spy.calls[0].args[2]
+        assert {d.dag_id for d in called_dags} == {"malformed_tasks_dag"}
+        assert "Failed to read tasks for dag" in caplog.text
+
+    @pytest.mark.usefixtures("clean_db")
     def test_dag_with_core_timetable_skips_reserialize(
         self, spy_agency: SpyAgency, testing_dag_bundle, session, time_machine
     ):
@@ -978,6 +1099,135 @@ class TestUpdateDagParsingResults:
         # All DAGs should be in the database
         dag_count = session.scalar(select(func.count(DagModel.dag_id)))
         assert dag_count == 3
+
+    @pytest.mark.usefixtures("clean_db")
+    def test_unchanged_dag_only_updates_scheduling_fields(
+        self, spy_agency: SpyAgency, testing_dag_bundle, session, time_machine
+    ):
+        """Test that unchanged DAGs only have scheduling-relevant fields updated."""
+        time_machine.move_to(tz.datetime(2026, 1, 5, 0, 0, 0), tick=False)
+
+        # Create a DAG with specific properties
+        dag = DAG(
+            dag_id="unchanged_optimization_test",
+            schedule="@daily",
+            description="Original description",
+            tags=["tag1", "tag2"],
+            max_active_runs=5,
+        )
+        EmptyOperator(task_id="task1", dag=dag)
+
+        # First sync
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=1.5,
+            warnings=set(),
+            session=session,
+        )
+
+        # Capture initial state
+        session.expire_all()
+        initial_model = session.get(DagModel, ("unchanged_optimization_test",))
+        initial_last_parsed_time = initial_model.last_parsed_time
+        initial_description = initial_model.description
+        initial_max_active_runs = initial_model.max_active_runs
+        initial_timetable_summary = initial_model.timetable_summary
+
+        # Spy on the optimized update function
+        update_unchanged_spy = spy_agency.spy_on(
+            dag_collection._update_dag_models_for_unchanged_dags,
+            call_original=True,
+        )
+
+        time_machine.shift(10)
+
+        # Second sync with same DAG (unchanged)
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=2.0,
+            warnings=set(),
+            session=session,
+        )
+
+        # Verify the optimized function was called
+        assert update_unchanged_spy.called
+        assert len(update_unchanged_spy.calls) == 1
+
+        # Verify scheduling-relevant fields WERE updated
+        session.expire_all()
+        updated_model = session.get(DagModel, ("unchanged_optimization_test",))
+        assert updated_model.last_parsed_time > initial_last_parsed_time
+        assert updated_model.last_parse_duration == 2.0
+        assert updated_model.is_stale is False
+        assert updated_model.has_import_errors is False
+
+        # Verify static fields were NOT changed (still have original values)
+        assert updated_model.description == initial_description
+        assert updated_model.max_active_runs == initial_max_active_runs
+        assert updated_model.timetable_summary == initial_timetable_summary
+
+    @pytest.mark.usefixtures("clean_db")
+    def test_unchanged_dag_recalculates_next_dagrun(
+        self, spy_agency: SpyAgency, testing_dag_bundle, session, time_machine, dag_maker
+    ):
+        """Test that unchanged DAGs still have their next_dagrun fields recalculated."""
+        time_machine.move_to(tz.datetime(2026, 1, 5, 0, 0, 0), tick=False)
+
+        dag = DAG(dag_id="next_dagrun_test", schedule="@daily", start_date=tz.datetime(2026, 1, 1))
+        EmptyOperator(task_id="task1", dag=dag)
+
+        # First sync
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=1.0,
+            warnings=set(),
+            session=session,
+        )
+
+        # Capture initial next_dagrun
+        session.expire_all()
+        initial_model = session.get(DagModel, ("next_dagrun_test",))
+        initial_next_dagrun = initial_model.next_dagrun
+
+        # Create a dag run to change the scheduling state
+        with dag_maker(dag_id="next_dagrun_test", schedule="@daily", session=session) as dm:
+            EmptyOperator(task_id="task1")
+        dm.create_dagrun(
+            run_type="scheduled",
+            state="success",
+            logical_date=tz.datetime(2026, 1, 4),
+            data_interval=(tz.datetime(2026, 1, 4), tz.datetime(2026, 1, 5)),
+        )
+
+        time_machine.shift(10)
+
+        # Second sync - DAG unchanged but next_dagrun should be recalculated
+        update_dag_parsing_results_in_db(
+            bundle_name="testing",
+            bundle_version=None,
+            dags=[LazyDeserializedDAG.from_dag(dag)],
+            import_errors={},
+            parse_duration=1.0,
+            warnings=set(),
+            session=session,
+        )
+
+        # Verify next_dagrun was recalculated
+        session.expire_all()
+        updated_model = session.get(DagModel, ("next_dagrun_test",))
+        # The next_dagrun should have moved forward based on the new dag run
+        assert updated_model.next_dagrun is not None
+        # After a successful run on 2026-01-04, next should be 2026-01-05 or later
+        assert updated_model.next_dagrun >= initial_next_dagrun
 
     def test_parse_time_written_to_db_on_sync(self, testing_dag_bundle, session):
         """Test that the parse time is correctly written to the DB after parsing"""

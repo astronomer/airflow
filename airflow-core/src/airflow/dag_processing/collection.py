@@ -284,16 +284,23 @@ def _update_dag_models_for_unchanged_dags(
     parse_duration: float | None,
     session: Session,
 ) -> None:
+    """
+    Update only scheduling-relevant DagModel fields for unchanged DAGs.
+
+    For DAGs whose serialized payload hasn't changed, we skip the full update and only
+    update fields that affect scheduling and staleness detection. See
+    DagModelOperation.update_dags(unchanged_dags_only=True) for details.
+    """
     if not dags:
         return
-    log.debug("Updating DagModel for unchanged Dags", count=len(dags))
+    log.debug("Updating DagModel scheduling metadata for unchanged Dags", count=len(dags))
     dag_op = DagModelOperation(
         bundle_name=bundle_name,
         bundle_version=bundle_version,
         dags={dag.dag_id: dag for dag in dags},
     )
     orm_dags = dag_op.add_dags(session=session)
-    dag_op.update_dags(orm_dags, parse_duration, session=session)
+    dag_op.update_dags(orm_dags, parse_duration, session=session, unchanged_dags_only=True)
 
 
 def _requires_reserialization(dag: LazyDeserializedDAG) -> bool:
@@ -707,18 +714,46 @@ class DagModelOperation(NamedTuple):
         parse_duration: float | None,
         *,
         session: Session,
+        unchanged_dags_only: bool = False,
     ) -> None:
+        """
+        Update DagModel fields for DAGs.
+
+        :param orm_dags: Dictionary mapping dag_id to DagModel instances
+        :param parse_duration: How long the DAG file took to parse
+        :param session: Database session
+        :param unchanged_dags_only: If True, only update scheduling-relevant fields
+            (is_stale, has_import_errors, last_parsed_time, last_parse_duration,
+            exceeds_max_non_backfill, next_dagrun* fields). Static DAG properties
+            are skipped since they cannot change without the DAG content changing.
+        """
         # we exclude backfill from active run counts since their concurrency is separate
         for dag_id, dm in sorted(orm_dags.items()):
             run_info = _RunInfo.calculate(dag=self.dags[dag_id], session=session)
             dag = self.dags[dag_id]
-            dm.fileloc = dag.fileloc
-            dm.relative_fileloc = dag.relative_fileloc
-            dm.owners = dag.owner or conf.get("operators", "default_owner")
+
+            # Always update scheduling-relevant fields
             dm.is_stale = False
             dm.has_import_errors = False
             dm.last_parsed_time = utcnow()
             dm.last_parse_duration = parse_duration
+
+            # Recalculate scheduling fields that depend on current state
+            last_automated_run: DagRun | None = run_info.latest_run
+            if last_automated_run is None:
+                last_automated_data_interval = None
+            else:
+                last_automated_data_interval = get_run_data_interval(dag.timetable, last_automated_run)
+            dm.exceeds_max_non_backfill = run_info.num_active_runs >= dm.max_active_runs
+            dm.calculate_dagrun_date_fields(dag, last_automated_data_interval)
+
+            # Skip static DAG properties for unchanged DAGs
+            if unchanged_dags_only:
+                continue
+
+            dm.fileloc = dag.fileloc
+            dm.relative_fileloc = dag.relative_fileloc
+            dm.owners = dag.owner or conf.get("operators", "default_owner")
             if hasattr(dag, "_dag_display_property_value"):
                 dm._dag_display_property_value = dag._dag_display_property_value
             elif dag.dag_display_name != dag.dag_id:
@@ -766,13 +801,6 @@ class DagModelOperation(NamedTuple):
             dm.bundle_name = self.bundle_name
             dm.bundle_version = self.bundle_version
 
-            last_automated_run: DagRun | None = run_info.latest_run
-            if last_automated_run is None:
-                last_automated_data_interval = None
-            else:
-                last_automated_data_interval = get_run_data_interval(dag.timetable, last_automated_run)
-            dm.exceeds_max_non_backfill = run_info.num_active_runs >= dm.max_active_runs
-            dm.calculate_dagrun_date_fields(dag, last_automated_data_interval)
             if not dag.timetable.asset_condition:
                 dm.schedule_asset_references = []
                 dm.schedule_asset_alias_references = []
