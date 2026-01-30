@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 from unittest import mock
 
 import pytest
@@ -28,18 +27,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from airflow.api_fastapi.core_api.datamodels.dag_run import DAGRunResponse
 from airflow.models import DagRun
-from airflow.models.deadline import Deadline, ReferenceModels, _fetch_from_db
+from airflow.models.deadline import Deadline, _fetch_from_db
 from airflow.providers.standard.operators.empty import EmptyOperator
-from airflow.sdk import timezone
 from airflow.sdk.definitions.callback import AsyncCallback, SyncCallback
 from airflow.sdk.definitions.deadline import DeadlineReference, deadline_reference
+from airflow.serialization.definitions.deadline import SerializedReferenceModels
 from airflow.utils.state import DagRunState
 
 from tests_common.test_utils import db
 from unit.models import DEFAULT_DATE
-
-if TYPE_CHECKING:
-    from sqlalchemy.orm import Session
 
 DAG_ID = "dag_id_1"
 INVALID_DAG_ID = "invalid_dag_id"
@@ -56,6 +52,24 @@ REFERENCE_TYPES = [
 async def callback_for_deadline():
     """Used in a number of tests to confirm that Deadlines and DeadlineAlerts function correctly."""
     pass
+
+
+@pytest.fixture
+def to_serialized_reference():
+    """
+    Fixture that provides a converter from SDK deadline references to core's SerializedReferenceModels.
+
+    This simulates the serialization/deserialization flow that happens in reality:
+    SDK (authoring) -> serialize -> deserialize -> core (execution with database)
+    """
+
+    def converter(sdk_reference):
+        reference_data = sdk_reference.serialize_reference()
+        reference_type = reference_data[SerializedReferenceModels.REFERENCE_TYPE_FIELD]
+        serialized_class = SerializedReferenceModels.get_reference_class(reference_type)
+        return serialized_class.deserialize_reference(reference_data)
+
+    return converter
 
 
 TEST_CALLBACK_PATH = f"{__name__}.{callback_for_deadline.__name__}"
@@ -326,7 +340,9 @@ class TestCalculatedDeadlineDatabaseCalls:
             pytest.param(DeadlineReference.AVERAGE_RUNTIME(), None, id="average_runtime"),
         ],
     )
-    def test_deadline_database_integration(self, reference, expected_column, session):
+    def test_deadline_database_integration(
+        self, reference, expected_column, session, to_serialized_reference
+    ):
         """
         Test database integration for all deadline types.
 
@@ -335,28 +351,30 @@ class TestCalculatedDeadlineDatabaseCalls:
         2. Fixed deadlines do not interact with database.
         3. Intervals are added to reference times.
         """
+        serialized_ref = to_serialized_reference(reference)
+
         conditions = {"dag_id": DAG_ID, "run_id": "dagrun_1"}
         interval = timedelta(hours=1)
-        with mock.patch("airflow.models.deadline._fetch_from_db") as mock_fetch:
+        with mock.patch("airflow.serialization.definitions.deadline._fetch_from_db") as mock_fetch:
             mock_fetch.return_value = DEFAULT_DATE
 
             if expected_column is not None:
-                result = reference.evaluate_with(session=session, interval=interval, **conditions)
+                result = serialized_ref.evaluate_with(session=session, interval=interval, **conditions)
                 mock_fetch.assert_called_once_with(expected_column, session=session, **conditions)
-            elif reference == DeadlineReference.AVERAGE_RUNTIME():
+            elif isinstance(serialized_ref, SerializedReferenceModels.AverageRuntimeDeadline):
                 with mock.patch("airflow._shared.timezones.timezone.utcnow") as mock_utcnow:
                     mock_utcnow.return_value = DEFAULT_DATE
                     # No DAG runs exist, so it should use 24-hour default
-                    result = reference.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
+                    result = serialized_ref.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
                     mock_fetch.assert_not_called()
                     # Should return None when no DAG runs exist
                     assert result is None
             else:
-                result = reference.evaluate_with(session=session, interval=interval)
+                result = serialized_ref.evaluate_with(session=session, interval=interval)
                 mock_fetch.assert_not_called()
                 assert result == DEFAULT_DATE + interval
 
-    def test_average_runtime_with_sufficient_history(self, session, dag_maker):
+    def test_average_runtime_with_sufficient_history(self, session, dag_maker, to_serialized_reference):
         """Test AverageRuntimeDeadline when enough historical data exists."""
         with dag_maker(DAG_ID):
             EmptyOperator(task_id="test_task")
@@ -381,11 +399,12 @@ class TestCalculatedDeadlineDatabaseCalls:
 
         # Test with default max_runs (10)
         reference = DeadlineReference.AVERAGE_RUNTIME()
+        serialized_ref = to_serialized_reference(reference)
         interval = timedelta(hours=1)
 
         with mock.patch("airflow._shared.timezones.timezone.utcnow") as mock_utcnow:
             mock_utcnow.return_value = DEFAULT_DATE
-            result = reference.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
+            result = serialized_ref.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
 
             # Calculate expected average: sum(durations) / len(durations)
             expected_avg_seconds = sum(durations) / len(durations)
@@ -394,7 +413,7 @@ class TestCalculatedDeadlineDatabaseCalls:
             # Compare only up to minutes to avoid sub-second timing issues in CI
             assert result.replace(second=0, microsecond=0) == expected.replace(second=0, microsecond=0)
 
-    def test_average_runtime_with_insufficient_history(self, session, dag_maker):
+    def test_average_runtime_with_insufficient_history(self, session, dag_maker, to_serialized_reference):
         """Test AverageRuntimeDeadline when insufficient historical data exists."""
         with dag_maker(DAG_ID):
             EmptyOperator(task_id="test_task")
@@ -418,16 +437,17 @@ class TestCalculatedDeadlineDatabaseCalls:
         session.commit()
 
         reference = DeadlineReference.AVERAGE_RUNTIME()
+        serialized_ref = to_serialized_reference(reference)
         interval = timedelta(hours=1)
 
         with mock.patch("airflow._shared.timezones.timezone.utcnow") as mock_utcnow:
             mock_utcnow.return_value = DEFAULT_DATE
-            result = reference.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
+            result = serialized_ref.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
 
             # Should return None since insufficient runs
             assert result is None
 
-    def test_average_runtime_with_min_runs(self, session, dag_maker):
+    def test_average_runtime_with_min_runs(self, session, dag_maker, to_serialized_reference):
         """Test AverageRuntimeDeadline with min_runs parameter allowing calculation with fewer runs."""
         with dag_maker(DAG_ID):
             EmptyOperator(task_id="test_task")
@@ -452,11 +472,12 @@ class TestCalculatedDeadlineDatabaseCalls:
 
         # Test with min_runs=2, should work with 3 runs
         reference = DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=2)
+        serialized_ref = to_serialized_reference(reference)
         interval = timedelta(hours=1)
 
         with mock.patch("airflow._shared.timezones.timezone.utcnow") as mock_utcnow:
             mock_utcnow.return_value = DEFAULT_DATE
-            result = reference.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
+            result = serialized_ref.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
 
             # Should calculate average from 3 runs
             expected_avg_seconds = sum(durations) / len(durations)  # 4200 seconds
@@ -466,19 +487,22 @@ class TestCalculatedDeadlineDatabaseCalls:
 
         # Test with min_runs=5, should return None with only 3 runs
         reference = DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=5)
+        serialized_ref2 = to_serialized_reference(reference)
 
         with mock.patch("airflow._shared.timezones.timezone.utcnow") as mock_utcnow:
             mock_utcnow.return_value = DEFAULT_DATE
-            result = reference.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
+            result = serialized_ref2.evaluate_with(session=session, interval=interval, dag_id=DAG_ID)
             assert result is None
 
-    def test_average_runtime_min_runs_validation(self):
+    def test_average_runtime_min_runs_validation(self, to_serialized_reference):
         """Test that min_runs must be at least 1."""
+        sdk_ref = DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=0)
         with pytest.raises(ValueError, match="min_runs must be at least 1"):
-            DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=0)
+            to_serialized_reference(sdk_ref)
 
+        sdk_ref = DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=-1)
         with pytest.raises(ValueError, match="min_runs must be at least 1"):
-            DeadlineReference.AVERAGE_RUNTIME(max_runs=10, min_runs=-1)
+            to_serialized_reference(sdk_ref)
 
 
 class TestDeadlineReference:
@@ -489,8 +513,10 @@ class TestDeadlineReference:
 
     @pytest.mark.parametrize("reference", REFERENCE_TYPES)
     @pytest.mark.db_test
-    def test_deadline_evaluate_with(self, reference, session):
+    def test_deadline_evaluate_with(self, reference, session, to_serialized_reference):
         """Test that all deadline types evaluate correctly with their required conditions."""
+        serialized_ref = to_serialized_reference(reference)
+
         conditions = {
             "dag_id": DAG_ID,
             "run_id": "dagrun_1",
@@ -498,16 +524,16 @@ class TestDeadlineReference:
             "extra": "kwarg",  # Add another unexpected parameter.
         }
 
-        with mock.patch.object(reference, "_evaluate_with") as mock_evaluate:
+        with mock.patch.object(serialized_ref, "_evaluate_with") as mock_evaluate:
             mock_evaluate.return_value = DEFAULT_DATE
 
-            if reference.required_kwargs:
-                result = reference.evaluate_with(**self.DEFAULT_ARGS, session=session, **conditions)
+            if serialized_ref.required_kwargs:
+                result = serialized_ref.evaluate_with(**self.DEFAULT_ARGS, session=session, **conditions)
             else:
-                result = reference.evaluate_with(**self.DEFAULT_ARGS, session=session)
+                result = serialized_ref.evaluate_with(**self.DEFAULT_ARGS, session=session)
 
             # Verify only expected kwargs are passed through.
-            expected_kwargs = {k: conditions[k] for k in reference.required_kwargs if k in conditions}
+            expected_kwargs = {k: conditions[k] for k in serialized_ref.required_kwargs if k in conditions}
             expected_kwargs["session"] = session
 
             mock_evaluate.assert_called_once_with(**expected_kwargs)
@@ -516,36 +542,43 @@ class TestDeadlineReference:
 
     @pytest.mark.parametrize("reference", REFERENCE_TYPES)
     @pytest.mark.db_test
-    def test_deadline_missing_required_kwargs(self, reference, session):
+    def test_deadline_missing_required_kwargs(self, reference, session, to_serialized_reference):
         """Test that deadlines raise appropriate errors for missing required parameters."""
-        if reference.required_kwargs:
-            with pytest.raises(
-                ValueError, match=re.escape(f"{reference.__class__.__name__} is missing required parameters:")
-            ) as raised_exception:
-                reference.evaluate_with(session=session, **self.DEFAULT_ARGS)
+        serialized_ref = to_serialized_reference(reference)
 
-            assert all(substring in str(raised_exception.value) for substring in reference.required_kwargs)
+        if serialized_ref.required_kwargs:
+            with pytest.raises(
+                ValueError,
+                match=re.escape(f"{serialized_ref.__class__.__name__} is missing required parameters:"),
+            ) as raised_exception:
+                serialized_ref.evaluate_with(session=session, **self.DEFAULT_ARGS)
+
+            assert all(
+                substring in str(raised_exception.value) for substring in serialized_ref.required_kwargs
+            )
         else:
             # Let the lack of an exception here effectively assert that no exception is raised.
-            reference.evaluate_with(session=session, **self.DEFAULT_ARGS)
+            serialized_ref.evaluate_with(session=session, **self.DEFAULT_ARGS)
 
-        for required_param in reference.required_kwargs:
+        for required_param in serialized_ref.required_kwargs:
             assert required_param in str(raised_exception.value)
 
     def test_deadline_reference_creation(self):
         """Test that DeadlineReference provides consistent interface and types."""
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         fixed_reference = DeadlineReference.FIXED_DATETIME(DEFAULT_DATE)
-        assert isinstance(fixed_reference, ReferenceModels.FixedDatetimeDeadline)
+        assert isinstance(fixed_reference, SDKReferenceModels.FixedDatetimeDeadline)
         assert fixed_reference._datetime == DEFAULT_DATE
 
         logical_date_reference = DeadlineReference.DAGRUN_LOGICAL_DATE
-        assert isinstance(logical_date_reference, ReferenceModels.DagRunLogicalDateDeadline)
+        assert isinstance(logical_date_reference, SDKReferenceModels.DagRunLogicalDateDeadline)
 
         queued_reference = DeadlineReference.DAGRUN_QUEUED_AT
-        assert isinstance(queued_reference, ReferenceModels.DagRunQueuedAtDeadline)
+        assert isinstance(queued_reference, SDKReferenceModels.DagRunQueuedAtDeadline)
 
         average_runtime_reference = DeadlineReference.AVERAGE_RUNTIME()
-        assert isinstance(average_runtime_reference, ReferenceModels.AverageRuntimeDeadline)
+        assert isinstance(average_runtime_reference, SDKReferenceModels.AverageRuntimeDeadline)
         assert average_runtime_reference.max_runs == 10
         assert average_runtime_reference.min_runs == 10
 
@@ -556,34 +589,42 @@ class TestDeadlineReference:
 
 
 class TestCustomDeadlineReference:
-    class MyCustomRef(ReferenceModels.BaseDeadlineReference):
-        def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-            return timezone.datetime(DEFAULT_DATE)
+    from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
+    class MyCustomRef(SDKReferenceModels.BaseDeadlineReference):
+        """Custom reference for testing - inherits from SDK's BaseDeadlineReference."""
+
+        def _evaluate_with(self, *, session, **kwargs):
+            return DEFAULT_DATE
 
     class MyInvalidCustomRef:
         pass
 
-    class MyCustomRefWithKwargs(ReferenceModels.BaseDeadlineReference):
-        required_kwargs = {"custom_id"}
+    class MyCustomRefWithKwargs(SDKReferenceModels.BaseDeadlineReference):
+        """Custom reference with kwargs for testing."""
 
-        def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-            return timezone.datetime(DEFAULT_DATE)
+        def _evaluate_with(self, *, session, **kwargs):
+            return DEFAULT_DATE
 
     def setup_method(self):
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         self.original_dagrun_created = DeadlineReference.TYPES.DAGRUN_CREATED
         self.original_dagrun_queued = DeadlineReference.TYPES.DAGRUN_QUEUED
         self.original_dagrun = DeadlineReference.TYPES.DAGRUN
-        self.original_attrs = set(dir(ReferenceModels))
+        self.original_attrs = set(dir(SDKReferenceModels))
         self.original_deadline_attrs = set(dir(DeadlineReference))
 
     def teardown_method(self):
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         DeadlineReference.TYPES.DAGRUN_CREATED = self.original_dagrun_created
         DeadlineReference.TYPES.DAGRUN_QUEUED = self.original_dagrun_queued
         DeadlineReference.TYPES.DAGRUN = self.original_dagrun
 
-        for attr in set(dir(ReferenceModels)):
+        for attr in set(dir(SDKReferenceModels)):
             if attr not in self.original_attrs:
-                delattr(ReferenceModels, attr)
+                delattr(SDKReferenceModels, attr)
 
         for attr in set(dir(DeadlineReference)):
             if attr not in self.original_deadline_attrs:
@@ -613,7 +654,7 @@ class TestCustomDeadlineReference:
             expected_timing = timing
 
         assert result is reference
-        assert getattr(ReferenceModels, reference.__name__) is reference
+        assert getattr(self.SDKReferenceModels, reference.__name__) is reference
         assert getattr(DeadlineReference, reference.__name__).__class__ is reference
 
         assert_correct_timing(reference, expected_timing)
@@ -640,53 +681,59 @@ class TestCustomDeadlineReference:
     def test_custom_reference_discoverable_by_get_reference_class(self):
         DeadlineReference.register_custom_reference(self.MyCustomRef)
 
-        found_class = ReferenceModels.get_reference_class(self.MyCustomRef.__name__)
+        found_class = self.SDKReferenceModels.get_reference_class(self.MyCustomRef.__name__)
 
         assert found_class is self.MyCustomRef
 
 
 class TestDeadlineReferenceDecorator:
+    from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
     def setup_method(self):
         self.original_dagrun_created = DeadlineReference.TYPES.DAGRUN_CREATED
         self.original_dagrun_queued = DeadlineReference.TYPES.DAGRUN_QUEUED
         self.original_dagrun = DeadlineReference.TYPES.DAGRUN
-        self.original_attrs = set(dir(ReferenceModels))
+        self.original_attrs = set(dir(self.SDKReferenceModels))
 
     def teardown_method(self):
         DeadlineReference.TYPES.DAGRUN_CREATED = self.original_dagrun_created
         DeadlineReference.TYPES.DAGRUN_QUEUED = self.original_dagrun_queued
         DeadlineReference.TYPES.DAGRUN = self.original_dagrun
 
-        for attr in set(dir(ReferenceModels)):
+        for attr in set(dir(self.SDKReferenceModels)):
             if attr not in self.original_attrs:
-                delattr(ReferenceModels, attr)
+                delattr(self.SDKReferenceModels, attr)
 
     @staticmethod
     def create_decorated_custom_ref():
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         @deadline_reference()
-        class DecoratedCustomRef(ReferenceModels.BaseDeadlineReference):
-            def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-                return timezone.datetime(DEFAULT_DATE)
+        class DecoratedCustomRef(SDKReferenceModels.BaseDeadlineReference):
+            def _evaluate_with(self, *, session, **kwargs):
+                return DEFAULT_DATE
 
         return DecoratedCustomRef
 
     @staticmethod
     def create_decorated_custom_ref_with_kwargs():
-        @deadline_reference()
-        class DecoratedCustomRefWithKwargs(ReferenceModels.BaseDeadlineReference):
-            required_kwargs = {"custom_id"}
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
 
-            def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-                return timezone.datetime(DEFAULT_DATE)
+        @deadline_reference()
+        class DecoratedCustomRefWithKwargs(SDKReferenceModels.BaseDeadlineReference):
+            def _evaluate_with(self, *, session, **kwargs):
+                return DEFAULT_DATE
 
         return DecoratedCustomRefWithKwargs
 
     @staticmethod
     def create_decorated_custom_ref_queued():
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         @deadline_reference(DeadlineReference.TYPES.DAGRUN_QUEUED)
-        class DecoratedCustomRefQueued(ReferenceModels.BaseDeadlineReference):
-            def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-                return timezone.datetime(DEFAULT_DATE)
+        class DecoratedCustomRefQueued(SDKReferenceModels.BaseDeadlineReference):
+            def _evaluate_with(self, *, session, **kwargs):
+                return DEFAULT_DATE
 
         return DecoratedCustomRefQueued
 
@@ -713,7 +760,7 @@ class TestDeadlineReferenceDecorator:
     def test_deadline_reference_decorator(self, reference_factory, expected_timing):
         reference = reference_factory()
 
-        assert getattr(ReferenceModels, reference.__name__) is reference
+        assert getattr(self.SDKReferenceModels, reference.__name__) is reference
         assert getattr(DeadlineReference, reference.__name__).__class__ is reference
 
         assert_correct_timing(reference, expected_timing)
@@ -730,6 +777,8 @@ class TestDeadlineReferenceDecorator:
                 pass
 
     def test_deadline_reference_decorator_with_invalid_timing(self):
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         invalid_timing = ("not", "a", "valid", "timing")
 
         with pytest.raises(
@@ -741,17 +790,19 @@ class TestDeadlineReferenceDecorator:
         ):
 
             @deadline_reference(invalid_timing)
-            class DecoratedCustomRef(ReferenceModels.BaseDeadlineReference):
-                def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-                    return timezone.datetime(DEFAULT_DATE)
+            class DecoratedCustomRef(SDKReferenceModels.BaseDeadlineReference):
+                def _evaluate_with(self, *, session, **kwargs):
+                    return DEFAULT_DATE
 
     @mock.patch.object(DeadlineReference, "register_custom_reference")
     def test_deadline_reference_decorator_calls_register_method(self, mock_register):
+        from airflow.sdk.definitions.deadline import ReferenceModels as SDKReferenceModels
+
         timing = DeadlineReference.TYPES.DAGRUN_QUEUED
 
         @deadline_reference(timing)
-        class DecoratedCustomRef(ReferenceModels.BaseDeadlineReference):
-            def _evaluate_with(self, *, session: Session, **kwargs) -> datetime:
-                return timezone.datetime(DEFAULT_DATE)
+        class DecoratedCustomRef(SDKReferenceModels.BaseDeadlineReference):
+            def _evaluate_with(self, *, session, **kwargs):
+                return DEFAULT_DATE
 
         mock_register.assert_called_once_with(DecoratedCustomRef, timing)
