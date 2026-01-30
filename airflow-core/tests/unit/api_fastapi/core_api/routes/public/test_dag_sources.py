@@ -125,7 +125,9 @@ class TestGetDAGSource:
         assert response.headers["Content-Type"].startswith("application/json")
 
     @pytest.mark.parametrize("accept", ["application/json", "text/plain"])
-    def test_should_respond_200_version(self, test_client, accept, session, test_dag, force_reserialization):
+    def test_should_respond_200_version(
+        self, test_client, accept, session, test_dag, force_reserialization, real_dag_bag
+    ):
         dag_content = self._get_dag_file_code(test_dag.fileloc)
         test_dag.create_dagrun(
             run_id="test1",
@@ -134,8 +136,11 @@ class TestGetDAGSource:
             triggered_by=DagRunTriggeredByType.TEST,
             run_type=DagRunType.MANUAL,
         )
-        # force reserialization
-        test_dag.doc_md = "new doc"
+
+        # force reserialization by modifying the DAG in the dagbag (not test_dag which is from DB)
+        # Modifying tags will change the hash and trigger a new version
+        dag_from_bag = real_dag_bag.get_dag(test_dag.dag_id, session=session)
+        dag_from_bag.tags.add("new_tag_for_version")
         force_reserialization(test_dag.dag_id, "dag-folder")
         dagcode = session.scalars(
             select(DagCode).where(DagCode.fileloc == test_dag.fileloc).order_by(DagCode.id.desc())
