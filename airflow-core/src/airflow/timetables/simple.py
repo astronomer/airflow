@@ -289,3 +289,7 @@ class PartitionedAssetTimetable(AssetTriggeredTimetable):
             else None,
         )
         return timetable
+
+    def get_partition_mapper(self, *, name: str, uri: str) -> PartitionMapper:
+        # TODO: implement
+        ...
