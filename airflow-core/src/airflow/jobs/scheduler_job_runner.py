@@ -1838,7 +1838,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             asset_events = session.scalars(
                 select(AssetEvent).where(
                     PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id,
-                    PartitionedAssetKeyLog.asset_event_id == AssetEvent.id
+                    PartitionedAssetKeyLog.asset_event_id == AssetEvent.id,
                 )
             )
             dag_run.consumed_asset_events.extend(asset_events)
