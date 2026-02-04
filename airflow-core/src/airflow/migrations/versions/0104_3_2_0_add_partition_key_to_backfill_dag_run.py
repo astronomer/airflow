@@ -46,7 +46,7 @@ def upgrade():
 
 def downgrade():
     """Unapply Add partition_key to backfill_dag_run."""
+    op.execute("DELETE FROM backfill_dag_run WHERE logical_date IS NULL;")
     with op.batch_alter_table("backfill_dag_run", schema=None) as batch_op:
-        # todo: aip-76 must clear out the null values
         batch_op.alter_column("logical_date", existing_type=sa.TIMESTAMP(), nullable=False)
         batch_op.drop_column("partition_key")
