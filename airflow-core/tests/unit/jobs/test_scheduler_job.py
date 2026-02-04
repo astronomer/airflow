@@ -8731,6 +8731,14 @@ def test_partitioned_dag_run_with_customized_mapper(
     assert len(partition_dags) == 1
     assert partition_dags == {"asset-event-consumer"}
 
+    asset_event = session.scalar(
+        select(DagRun).where(DagRun.id == apdr.created_dag_run_id)
+    ).consumed_asset_events[0]
+
+    assert asset_event.source_task_id == "hi"
+    assert asset_event.source_dag_id == "asset-event-producer"
+    assert asset_event.source_run_id == "test"
+
 
 @pytest.mark.need_serialized_dag
 @pytest.mark.usefixtures("clear_asset_partition_rows")
@@ -8805,6 +8813,15 @@ def test_consumer_dag_listen_to_two_partitioned_asset(
     assert partition_dags == {"asset-event-consumer"}
 
 
+
+    for asset_event in session.scalar(
+        select(DagRun).where(DagRun.id == apdr.created_dag_run_id)
+    ).consumed_asset_events:
+        assert asset_event.source_task_id == "hi"
+        assert "asset-event-producer-" in asset_event.source_dag_id
+        assert asset_event.source_run_id == "test"
+
+
 @pytest.mark.need_serialized_dag
 @pytest.mark.usefixtures("clear_asset_partition_rows")
 def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
@@ -8868,3 +8885,10 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
     assert apdr.created_dag_run_id is not None
     assert len(partition_dags) == 1
     assert partition_dags == {"asset-event-consumer"}
+
+    asset_event = session.scalar(
+        select(DagRun).where(DagRun.id == apdr.created_dag_run_id)
+    ).consumed_asset_events[0]
+    assert asset_event.source_task_id == "hi"
+    assert asset_event.source_dag_id == "asset-event-producer-2"
+    assert asset_event.source_run_id == "test"
