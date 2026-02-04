@@ -390,6 +390,7 @@ class FabAuthManager(BaseAuthManager[User]):
         user: User,
         details: BackfillDetails | None = None,
     ) -> bool:
+        # Method can be removed once the min Airflow version is >= 3.2.0.
         warnings.warn(
             "Use ``is_authorized_dag`` on ``DagAccessEntity.RUN`` instead for a dag level access control.",
             AirflowProviderDeprecationWarning,
