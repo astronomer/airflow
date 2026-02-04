@@ -193,7 +193,7 @@ def encode_deadline_alert(d: DeadlineAlert | SerializedDeadlineAlert) -> dict[st
     from airflow.sdk.serde import serialize
 
     return {
-        "reference": d.reference.serialize_reference(),
+        "reference": encode_deadline_reference(d.reference),
         "interval": d.interval.total_seconds(),
         "callback": serialize(d.callback),
     }
@@ -203,9 +203,20 @@ def encode_deadline_reference(ref) -> dict[str, Any]:
     """
     Encode a deadline reference.
 
+    For custom (non-builtin) deadline references, includes the class path
+    so the decoder can import the user's class at runtime.
+
     :meta private:
     """
-    return ref.serialize_reference()
+    from airflow._shared.module_loading import qualname
+
+    serialized = ref.serialize_reference()
+
+    # For custom types (not built-in), store the class path so decoder can import them
+    if not getattr(ref, "__is_builtin__", False):
+        serialized["__class_path"] = qualname(type(ref))
+
+    return serialized
 
 
 def _get_serialized_timetable_import_path(var: BaseTimetable | CoreTimetable) -> str:

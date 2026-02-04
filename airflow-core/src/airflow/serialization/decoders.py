@@ -136,6 +136,19 @@ def decode_asset_like(var: dict[str, Any]) -> SerializedAssetBase:
             raise ValueError(f"deserialization not implemented for DAT {data_type!r}")
 
 
+def decode_deadline_reference(reference_data: dict):
+    """Decode a previously serialized deadline reference."""
+    reference_type = reference_data[SerializedReferenceModels.REFERENCE_TYPE_FIELD]
+
+    # check if this is a custom type
+    if "__class_path" in reference_data:
+        custom_class = import_string(reference_data["__class_path"])
+        return custom_class.deserialize_reference(reference_data)
+
+    reference_class = SerializedReferenceModels.get_reference_class(reference_type)
+    return reference_class.deserialize_reference(reference_data)
+
+
 def decode_deadline_alert(encoded_data: dict):
     """
     Decode a previously serialized deadline alert.
@@ -147,10 +160,7 @@ def decode_deadline_alert(encoded_data: dict):
     data = encoded_data.get(Encoding.VAR, encoded_data)
 
     reference_data = data[DeadlineAlertFields.REFERENCE]
-    reference_type = reference_data[SerializedReferenceModels.REFERENCE_TYPE_FIELD]
-
-    reference_class = SerializedReferenceModels.get_reference_class(reference_type)
-    reference = reference_class.deserialize_reference(reference_data)
+    reference = decode_deadline_reference(reference_data)
 
     return SerializedDeadlineAlert(
         reference=reference,
