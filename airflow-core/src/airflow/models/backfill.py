@@ -240,6 +240,11 @@ def _get_latest_dag_run_row_query(*, dag_id: str, info: DagRunInfo, session: Ses
         )
         .limit(1)  # not really necessary since uniqueness constraint, but hey
     )
+    if info.partition_key:
+        stmt = stmt.where(DagRun.partition_key == info.partition_key)
+    else:
+        stmt = stmt.where(DagRun.logical_date == info.logical_date)
+    return stmt
 
 
 def _get_dag_run_no_create_reason(dr, reprocess_behavior: ReprocessBehavior) -> str | None:
