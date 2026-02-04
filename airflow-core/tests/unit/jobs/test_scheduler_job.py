@@ -8714,46 +8714,15 @@ def test_partitioned_dag_run_with_customized_mapper(
     runner = SchedulerJobRunner(
         job=Job(job_type=SchedulerJobRunner.job_type, executor=MockExecutor(do_update=False))
     )
-
-    with dag_maker(dag_id="asset-event-producer", schedule=None, session=session) as dag:
-        EmptyOperator(task_id="hi", outlets=[asset_1])
-
-    dr = dag_maker.create_dagrun(partition_key="this-is-not-key-1-before-mapped", session=session)
-    [ti] = dr.get_task_instances(session=session)
-    session.commit()
-
-    serialized_outlets = dag.get_task("hi").outlets
     with custom_partition_mapper_patch():
-        TaskInstance.register_asset_changes_in_db(
-            ti=ti,
-            task_outlets=[o.asprofile() for o in serialized_outlets],
-            outlet_events=[],
+        apdr = _produce_and_register_asset_event(
+            dag_id="asset-event-producer",
+            asset=asset_1,
+            partition_key="this-is-not-key-1-before-mapped",
             session=session,
+            dag_maker=dag_maker,
+            expected_partition_key="key-1"
         )
-    session.commit()
-
-    event = session.scalar(
-        select(AssetEvent).where(
-            AssetEvent.source_dag_id == dag.dag_id,
-            AssetEvent.source_run_id == dr.run_id,
-        )
-    )
-    assert event is not None
-    assert event.partition_key == "this-is-not-key-1-before-mapped"
-
-    apdr = session.scalar(
-        select(AssetPartitionDagRun)
-        .join(
-            PartitionedAssetKeyLog,
-            PartitionedAssetKeyLog.asset_partition_dag_run_id == AssetPartitionDagRun.id,
-        )
-        .where(PartitionedAssetKeyLog.asset_event_id == event.id)
-    )
-    assert apdr is not None
-    assert apdr.created_dag_run_id is None
-    assert apdr.partition_key == "key-1"
-
-    with custom_partition_mapper_patch():
         partition_dags = runner._create_dagruns_for_partitioned_asset_dags(session=session)
     session.refresh(apdr)
     # Since asset event for Asset(name="asset-2") with key "key-1" has not yet been created,
