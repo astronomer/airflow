@@ -26,6 +26,7 @@ from jwt import InvalidTokenError
 from sqlalchemy import select
 
 from airflow.api_fastapi.auth.managers.models.base_user import BaseUser
+from airflow.api_fastapi.auth.managers.models.resource_details import DagDetails
 from airflow.api_fastapi.auth.tokens import (
     JWTGenerator,
     JWTValidator,
