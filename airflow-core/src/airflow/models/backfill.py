@@ -23,12 +23,12 @@ Internal classes for management of dag backfills.
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Sequence
+from collections.abc import Iterable
 from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
+import structlog
 from sqlalchemy import (
     Boolean,
     ForeignKeyConstraint,
@@ -58,7 +58,7 @@ if TYPE_CHECKING:
     from airflow.serialization.definitions.dag import SerializedDAG
     from airflow.timetables.base import DagRunInfo
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger(__name__)
 
 
 class AlreadyRunningBackfill(AirflowException):
@@ -187,7 +187,8 @@ class BackfillDagRun(Base):
     backfill_id: Mapped[int] = mapped_column(Integer, nullable=False)
     dag_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     exception_reason: Mapped[str | None] = mapped_column(StringID(), nullable=True)
-    logical_date: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False)
+    logical_date: Mapped[datetime] = mapped_column(UtcDateTime, nullable=True)
+    partition_key: Mapped[datetime] = mapped_column(String, nullable=True)
     sort_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
 
     backfill = relationship("Backfill", back_populates="backfill_dag_run_associations")
@@ -222,15 +223,19 @@ class BackfillDagRun(Base):
 def _get_latest_dag_run_row_query(*, dag_id: str, info: DagRunInfo, session: Session):
     from airflow.models import DagRun
 
-    return (
+    stmt = (
         select(DagRun)
         .where(
-            DagRun.logical_date == info.logical_date,
             DagRun.dag_id == dag_id,
         )
         .order_by(nulls_first(DagRun.start_date.desc(), session=session))
         .limit(1)
     )
+    if info.partition_key:
+        stmt = stmt.where(DagRun.partition_key == info.partition_key)
+    else:
+        stmt = stmt.where(DagRun.logical_date == info.logical_date)
+    return stmt
 
 
 def _get_dag_run_no_create_reason(dr, reprocess_behavior: ReprocessBehavior) -> str | None:
@@ -276,7 +281,7 @@ def _do_dry_run(
     reverse: bool,
     reprocess_behavior: ReprocessBehavior,
     session: Session,
-) -> Sequence[datetime]:
+) -> Iterable[DagRunInfo]:
     from airflow.models import DagModel
     from airflow.models.serialized_dag import SerializedDagModel
 
@@ -290,14 +295,12 @@ def _do_dry_run(
     )
     if no_schedule:
         raise DagNoScheduleException(f"{dag_id} has no schedule")
-
     dagrun_info_list = _get_info_list(
         dag=dag,
         from_date=from_date,
         to_date=to_date,
         reverse=reverse,
     )
-    logical_dates: list[datetime] = []
     for info in dagrun_info_list:
         if TYPE_CHECKING:
             assert info.logical_date
@@ -307,10 +310,9 @@ def _do_dry_run(
         if dr:
             non_create_reason = _get_dag_run_no_create_reason(dr, reprocess_behavior)
             if not non_create_reason:
-                logical_dates.append(info.logical_date)
+                yield info
         else:
-            logical_dates.append(info.logical_date)
-    return logical_dates
+            yield info
 
 
 def _create_backfill_dag_run(
@@ -337,6 +339,7 @@ def _create_backfill_dag_run(
                         backfill_id=backfill_id,
                         dag_run_id=None,
                         logical_date=info.logical_date,
+                        partition_key=info.partition_key,
                         exception_reason=non_create_reason,
                         sort_ordinal=backfill_sort_ordinal,
                     )
@@ -368,6 +371,7 @@ def _create_backfill_dag_run(
                         backfill_id=backfill_id,
                         dag_run_id=None,
                         logical_date=info.logical_date,
+                        partition_key=info.partition_key,
                         exception_reason=BackfillDagRunExceptionReason.IN_FLIGHT,
                         sort_ordinal=backfill_sort_ordinal,
                     )
@@ -380,6 +384,7 @@ def _create_backfill_dag_run(
                     run_type=DagRunType.BACKFILL_JOB, logical_date=info.logical_date, run_after=info.run_after
                 ),
                 logical_date=info.logical_date,
+                partition_key=info.partition_key,
                 data_interval=info.data_interval if info.logical_date else None,
                 run_after=info.run_after,
                 conf=dag_run_conf,
@@ -397,14 +402,15 @@ def _create_backfill_dag_run(
                     dag_run_id=dr.id,
                     sort_ordinal=backfill_sort_ordinal,
                     logical_date=info.logical_date,
+                    partition_key=info.partition_key,
                 )
             )
         except IntegrityError:
             log.info(
-                "Skipped creating backfill dag run for dag_id=%s backfill_id=%s, logical_date=%s (already exists)",
-                dag.dag_id,
-                backfill_id,
-                info.logical_date,
+                "Backfill dag run already exists; skipping.",
+                dag_id=dag.dag_id,
+                backfill_id=backfill_id,
+                logical_date=info.logical_date,
             )
             nested.rollback()
 
@@ -413,6 +419,7 @@ def _create_backfill_dag_run(
                     backfill_id=backfill_id,
                     dag_run_id=None,
                     logical_date=info.logical_date,
+                    partition_key=info.partition_key,
                     exception_reason=BackfillDagRunExceptionReason.IN_FLIGHT,
                     sort_ordinal=backfill_sort_ordinal,
                 )
@@ -432,7 +439,7 @@ def _get_info_list(
         x
         for x in infos
         # todo: AIP-76 update for partitioned dags
-        if x.data_interval and x.data_interval.end < now
+        if x.partition_key or (x.data_interval and x.data_interval.end < now)
     ]
     if reverse:
         dagrun_info_list = list(reversed(dagrun_info_list))
@@ -564,9 +571,9 @@ def _create_backfill(
                 session=session,
             )
             log.info(
-                "created backfill dag run dag_id=%s backfill_id=%s, info=%s",
-                dag.dag_id,
-                br.id,
-                info,
+                "created backfill dag run.",
+                dag_id=dag.dag_id,
+                backfill_id=br.id,
+                info=info,
             )
     return br
