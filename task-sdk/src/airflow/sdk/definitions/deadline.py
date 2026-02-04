@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -45,7 +45,7 @@ class BaseDeadlineReference(ABC):
     _evaluate_with() with deferred Core imports (imports inside the method body).
     """
 
-    # Built-in types set this to True; custom types inherit False
+    # way to detect builtin types. custom types inherit False while builtins set this to True
     __is_builtin__: bool = False
 
     @property
@@ -53,14 +53,13 @@ class BaseDeadlineReference(ABC):
         """Return the class name as the reference identifier."""
         return self.__class__.__name__
 
-    @abstractmethod
     def serialize_reference(self) -> dict[str, Any]:
         """
         Serialize this reference type into a dictionary representation.
 
-        Must be implemented by all subclasses.
+        Override this method in subclasses if additional data is needed for serialization.
         """
-        ...
+        return {REFERENCE_TYPE_FIELD: self.reference_name}
 
     @classmethod
     def deserialize_reference(cls, reference_data: dict[str, Any]) -> BaseDeadlineReference:

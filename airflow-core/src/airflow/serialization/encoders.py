@@ -212,7 +212,9 @@ def encode_deadline_reference(ref) -> dict[str, Any]:
 
     serialized = ref.serialize_reference()
 
-    # For custom types (not built-in), store the class path so decoder can import them
+    # Custom types (not built-in) need __class_path so the decoder can import them.
+    # Unlike built-in types which are looked up in SerializedReferenceModels,
+    # custom types are discovered via import_string(__class_path) at deserialization time.
     if not getattr(ref, "__is_builtin__", False):
         serialized["__class_path"] = qualname(type(ref))
 
