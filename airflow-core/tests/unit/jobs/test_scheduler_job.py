@@ -8721,7 +8721,7 @@ def test_partitioned_dag_run_with_customized_mapper(
             partition_key="this-is-not-key-1-before-mapped",
             session=session,
             dag_maker=dag_maker,
-            expected_partition_key="key-1"
+            expected_partition_key="key-1",
         )
         partition_dags = runner._create_dagruns_for_partitioned_asset_dags(session=session)
     session.refresh(apdr)
