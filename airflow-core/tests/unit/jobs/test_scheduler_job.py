@@ -17,10 +17,12 @@
 # under the License.
 from __future__ import annotations
 
+import concurrent.futures
 import contextlib
 import datetime
 import logging
 import os
+import threading
 from collections import Counter, deque
 from collections.abc import Callable, Generator, Iterator
 from contextlib import ExitStack
@@ -9024,10 +9026,6 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
     assert partition_dags == {"asset-event-consumer"}
 
 
-import concurrent.futures
-import threading
-
-
 def test_adrq_lock_prevents_duplicate_asset_dagrun(dag_maker, session, create_dagrun):
     asset = Asset(uri="test://asset", group="test-group")
     with dag_maker(
@@ -9036,7 +9034,7 @@ def test_adrq_lock_prevents_duplicate_asset_dagrun(dag_maker, session, create_da
         max_active_runs=1,
         schedule=[asset],
         start_date=pendulum.now().add(days=-2),
-    ) as dag:
+    ):
         EmptyOperator(task_id="dummy")
 
     dag_model = dag_maker.dag_model
