@@ -658,7 +658,9 @@ class DagModel(Base):
                     joinedload(AssetDagRunQueue.asset),
                 ),
                 session=session,
-                key_share=True,
+                key_share=False,
+                skip_locked=True,
+                of=AssetDagRunQueue,
             )
         ):
             if adrq.dag_model.asset_expression is None:
