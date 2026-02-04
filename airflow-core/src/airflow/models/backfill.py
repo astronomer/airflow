@@ -315,7 +315,7 @@ def _do_dry_run(
             yield info
 
 
-def _create_backfill_dag_run(
+def _create_backfill_dag_run_non_partitioned(
     *,
     dag: SerializedDAG,
     info: DagRunInfo,
@@ -424,6 +424,65 @@ def _create_backfill_dag_run(
                     sort_ordinal=backfill_sort_ordinal,
                 )
             )
+
+
+def _create_backfill_dag_run_partitioned(
+    *,
+    dag: SerializedDAG,
+    info: DagRunInfo,
+    reprocess_behavior: ReprocessBehavior,
+    backfill_id: int,
+    dag_run_conf: dict | None,
+    backfill_sort_ordinal: int,
+    triggering_user_name: str | None,
+    session: Session,
+) -> None:
+    from airflow.models.dagrun import DagRun
+
+    dr = session.scalar(_get_latest_dag_run_row_query(dag_id=dag.dag_id, info=info, session=session))
+    if dr:
+        non_create_reason = _get_dag_run_no_create_reason(dr, reprocess_behavior)
+        if non_create_reason:
+            session.add(
+                BackfillDagRun(
+                    backfill_id=backfill_id,
+                    dag_run_id=None,
+                    logical_date=info.logical_date,
+                    partition_key=info.partition_key,
+                    exception_reason=non_create_reason,
+                    sort_ordinal=backfill_sort_ordinal,
+                )
+            )
+            log.warning(
+                "Skipping dag run creation.", non_create_reason=non_create_reason, backfill_id=backfill_id
+            )
+            return
+    dr = dag.create_dagrun(
+        run_id=DagRun.generate_run_id(
+            run_type=DagRunType.BACKFILL_JOB, logical_date=info.logical_date, run_after=info.run_after
+        ),
+        logical_date=info.logical_date,
+        partition_key=info.partition_key,
+        data_interval=info.data_interval if info.logical_date else None,
+        run_after=info.run_after,
+        conf=dag_run_conf,
+        run_type=DagRunType.BACKFILL_JOB,
+        triggered_by=DagRunTriggeredByType.BACKFILL,
+        triggering_user_name=triggering_user_name,
+        state=DagRunState.QUEUED,
+        start_date=timezone.utcnow(),
+        backfill_id=backfill_id,
+        session=session,
+    )
+    session.add(
+        BackfillDagRun(
+            backfill_id=backfill_id,
+            dag_run_id=dr.id,
+            sort_ordinal=backfill_sort_ordinal,
+            logical_date=info.logical_date,
+            partition_key=info.partition_key,
+        )
+    )
 
 
 def _get_info_list(
@@ -558,22 +617,82 @@ def _create_backfill(
         if not dag_model:
             raise RuntimeError(f"Dag {dag_id} not found")
 
-        for backfill_sort_ordinal, info in enumerate(dagrun_info_list, start=1):
-            _create_backfill_dag_run(
+        if not dagrun_info_list:
+            raise RuntimeError(f"No runs to create for dag {dag_id}")
+
+        first_info = dagrun_info_list[0]
+        if first_info.partition_key:
+            _create_runs_partitioned(
+                br=br,
                 dag=dag,
-                info=info,
-                backfill_id=br.id,
-                dag_run_conf=br.dag_run_conf,
-                reprocess_behavior=ReprocessBehavior(br.reprocess_behavior),
-                backfill_sort_ordinal=backfill_sort_ordinal,
-                triggering_user_name=br.triggering_user_name,
+                dagrun_info_list=dagrun_info_list,
+                session=session,
+            )
+        else:
+            _create_runs_non_partitioned(
+                br=br,
+                dag=dag,
+                dagrun_info_list=dagrun_info_list,
                 run_on_latest_version=run_on_latest_version,
                 session=session,
             )
-            log.info(
-                "created backfill dag run.",
-                dag_id=dag.dag_id,
-                backfill_id=br.id,
-                info=info,
-            )
     return br
+
+
+def _create_runs_partitioned(
+    br: Backfill,
+    dag,
+    dagrun_info_list: list[DagRunInfo],
+    session: Session,
+):
+    for info in dagrun_info_list:
+        if not info.partition_key:
+            raise RuntimeError("Expected all dag run infos to have partition key and no logical date.")
+    for backfill_sort_ordinal, info in enumerate(dagrun_info_list, start=1):
+        _create_backfill_dag_run_partitioned(
+            dag=dag,
+            info=info,
+            backfill_id=br.id,
+            dag_run_conf=br.dag_run_conf,
+            reprocess_behavior=ReprocessBehavior(br.reprocess_behavior),
+            backfill_sort_ordinal=backfill_sort_ordinal,
+            triggering_user_name=br.triggering_user_name,
+            session=session,
+        )
+        log.info(
+            "created backfill dag run.",
+            dag_id=dag.dag_id,
+            backfill_id=br.id,
+            info=info,
+        )
+
+
+def _create_runs_non_partitioned(
+    br: Backfill,
+    dag,
+    dagrun_info_list: list[DagRunInfo],
+    run_on_latest_version: bool,
+    session: Session,
+):
+    for info in dagrun_info_list:
+        if info.partition_key or not info.logical_date:
+            raise RuntimeError("Expected all dag run infos to have logical date and no partition key.")
+
+    for backfill_sort_ordinal, info in enumerate(dagrun_info_list, start=1):
+        _create_backfill_dag_run_non_partitioned(
+            dag=dag,
+            info=info,
+            backfill_id=br.id,
+            dag_run_conf=br.dag_run_conf,
+            reprocess_behavior=ReprocessBehavior(br.reprocess_behavior),
+            backfill_sort_ordinal=backfill_sort_ordinal,
+            triggering_user_name=br.triggering_user_name,
+            run_on_latest_version=run_on_latest_version,
+            session=session,
+        )
+        log.info(
+            "created backfill dag run.",
+            dag_id=dag.dag_id,
+            backfill_id=br.id,
+            info=info,
+        )
