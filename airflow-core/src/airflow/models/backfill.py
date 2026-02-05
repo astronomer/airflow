@@ -223,19 +223,24 @@ class BackfillDagRun(Base):
 def _get_latest_dag_run_row_query(*, dag_id: str, info: DagRunInfo, session: Session):
     from airflow.models import DagRun
 
-    stmt = (
+    if info.partition_key:
+        return (
+            select(DagRun)
+            .where(
+                DagRun.dag_id == dag_id,
+                DagRun.partition_key == info.partition_key,
+            )
+            .order_by(nulls_first(DagRun.start_date.desc(), session=session))
+            .limit(1)
+        )
+    return (
         select(DagRun)
         .where(
             DagRun.dag_id == dag_id,
+            DagRun.logical_date == info.logical_date,
         )
-        .order_by(nulls_first(DagRun.start_date.desc(), session=session))
-        .limit(1)
+        .limit(1)  # not really necessary since uniqueness constraint, but hey
     )
-    if info.partition_key:
-        stmt = stmt.where(DagRun.partition_key == info.partition_key)
-    else:
-        stmt = stmt.where(DagRun.logical_date == info.logical_date)
-    return stmt
 
 
 def _get_dag_run_no_create_reason(dr, reprocess_behavior: ReprocessBehavior) -> str | None:
@@ -437,9 +442,8 @@ def _create_backfill_dag_run_partitioned(
     triggering_user_name: str | None,
     session: Session,
 ) -> None:
-    from airflow.models.dagrun import DagRun
-
-    dr = session.scalar(_get_latest_dag_run_row_query(dag_id=dag.dag_id, info=info, session=session))
+    stmt = _get_latest_dag_run_row_query(dag_id=dag.dag_id, info=info, session=session)
+    dr = session.scalar(stmt)
     if dr:
         non_create_reason = _get_dag_run_no_create_reason(dr, reprocess_behavior)
         if non_create_reason:
@@ -458,8 +462,11 @@ def _create_backfill_dag_run_partitioned(
             )
             return
     dr = dag.create_dagrun(
-        run_id=DagRun.generate_run_id(
-            run_type=DagRunType.BACKFILL_JOB, logical_date=info.logical_date, run_after=info.run_after
+        run_id=dag.timetable.generate_run_id(
+            run_type=DagRunType.BACKFILL_JOB,
+            data_interval=info.data_interval,
+            partition_key=info.partition_key,
+            run_after=info.run_after,
         ),
         logical_date=info.logical_date,
         partition_key=info.partition_key,
