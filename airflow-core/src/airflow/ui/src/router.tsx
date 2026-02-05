@@ -33,6 +33,7 @@ import { Calendar } from "src/pages/Dag/Calendar/Calendar";
 import { Code } from "src/pages/Dag/Code";
 import { Details as DagDetails } from "src/pages/Dag/Details";
 import { Overview } from "src/pages/Dag/Overview";
+import { PartitionedDagRuns as DagPartitionedDagRuns } from "src/pages/Dag/PartitionedDagRuns";
 import { Tasks } from "src/pages/Dag/Tasks";
 import { DagRuns } from "src/pages/DagRuns";
 import { DagsList } from "src/pages/DagsList";
@@ -44,6 +45,10 @@ import { GroupTaskInstance } from "src/pages/GroupTaskInstance";
 import { HITLTaskInstances } from "src/pages/HITLTaskInstances";
 import { Jobs } from "src/pages/Jobs";
 import { MappedTaskInstance } from "src/pages/MappedTaskInstance";
+import { PartitionedDagRun } from "src/pages/PartitionedDagRun";
+import { Details as PartitionedDagRunDetails } from "src/pages/PartitionedDagRun/Details";
+import { PartitionKeys } from "src/pages/PartitionedDagRun/PartitionKeys";
+import { PartitionedDagRuns } from "src/pages/PartitionedDagRuns";
 import { Plugins } from "src/pages/Plugins";
 import { Pools } from "src/pages/Pools";
 import { Providers } from "src/pages/Providers";
@@ -82,6 +87,11 @@ export const taskInstanceRoutes = [
   pluginRoute,
 ];
 
+const partitionedDagRunDetailRoutes = [
+  { element: <PartitionKeys />, index: true },
+  { element: <PartitionedDagRunDetails />, path: "details" },
+];
+
 export const routerConfig = [
   {
     children: [
@@ -93,10 +103,7 @@ export const routerConfig = [
         element: <HITLTaskInstances />,
         path: "required_actions",
       },
-      {
-        element: <DagsList />,
-        path: "dags",
-      },
+      { element: <DagsList />, path: "dags" },
       {
         element: (
           <DagsLayout>
@@ -114,49 +121,29 @@ export const routerConfig = [
         path: "task_instances",
       },
       {
-        element: <AssetsList />,
-        path: "assets",
+        element: (
+          <DagsLayout>
+            <PartitionedDagRuns />
+          </DagsLayout>
+        ),
+        path: "partitioned_dag_runs",
       },
       {
-        element: <Configs />,
-        path: "configs",
+        children: partitionedDagRunDetailRoutes,
+        element: <PartitionedDagRun />,
+        path: "partitioned_dag_runs/:dagId/:partitionKey",
       },
-      {
-        element: <Asset />,
-        path: "assets/:assetId",
-      },
-      {
-        element: <Events />,
-        path: "events",
-      },
-      {
-        element: <XCom />,
-        path: "xcoms",
-      },
-      {
-        element: <Variables />,
-        path: "variables",
-      },
-      {
-        element: <Pools />,
-        path: "pools",
-      },
-      {
-        element: <Providers />,
-        path: "providers",
-      },
-      {
-        element: <Plugins />,
-        path: "plugins",
-      },
-      {
-        element: <Security />,
-        path: "security/:page",
-      },
-      {
-        element: <Connections />,
-        path: "connections",
-      },
+      { element: <AssetsList />, path: "assets" },
+      { element: <Configs />, path: "configs" },
+      { element: <Asset />, path: "assets/:assetId" },
+      { element: <Events />, path: "events" },
+      { element: <XCom />, path: "xcoms" },
+      { element: <Variables />, path: "variables" },
+      { element: <Pools />, path: "pools" },
+      { element: <Providers />, path: "providers" },
+      { element: <Plugins />, path: "plugins" },
+      { element: <Security />, path: "security/:page" },
+      { element: <Connections />, path: "connections" },
       {
         element: <Jobs />,
         path: "jobs",
@@ -170,6 +157,7 @@ export const routerConfig = [
           { element: <Calendar />, path: "calendar" },
           { element: <HITLTaskInstances />, path: "required_actions" },
           { element: <Backfills />, path: "backfills" },
+          { element: <DagPartitionedDagRuns />, path: "partitioned_dag_runs" },
           { element: <Events />, path: "events" },
           { element: <Code />, path: "code" },
           { element: <DagDetails />, path: "details" },

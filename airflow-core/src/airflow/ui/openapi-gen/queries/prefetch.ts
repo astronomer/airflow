@@ -1,7 +1,7 @@
 // generated with @7nohe/openapi-react-query-codegen@1.6.2 
 
 import { type QueryClient } from "@tanstack/react-query";
-import { AssetService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagRunService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
+import { AssetService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagRunService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PartitionedDagRunService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
 import { DagRunState, DagWarningType } from "../requests/types.gen";
 import * as Common from "./common";
 /**
@@ -1496,6 +1496,32 @@ export const prefetchUseAuthLinksServiceGetAuthMenus = (queryClient: QueryClient
 * @throws ApiError
 */
 export const prefetchUseAuthLinksServiceGetCurrentUserInfo = (queryClient: QueryClient) => queryClient.prefetchQuery({ queryKey: Common.UseAuthLinksServiceGetCurrentUserInfoKeyFn(), queryFn: () => AuthLinksService.getCurrentUserInfo() });
+/**
+* Get Partitioned Dag Runs
+* Return PartitionedDagRuns. Filter by dag_id and/or pending status.
+* @param data The data for the request.
+* @param data.dagId
+* @param data.pending
+* @returns PartitionedDagRunCollectionResponse Successful Response
+* @throws ApiError
+*/
+export const prefetchUsePartitionedDagRunServiceGetPartitionedDagRuns = (queryClient: QueryClient, { dagId, pending }: {
+  dagId?: string;
+  pending?: boolean;
+} = {}) => queryClient.prefetchQuery({ queryKey: Common.UsePartitionedDagRunServiceGetPartitionedDagRunsKeyFn({ dagId, pending }), queryFn: () => PartitionedDagRunService.getPartitionedDagRuns({ dagId, pending }) });
+/**
+* Get Partitioned Dag Run
+* Return full details for a single PartitionedDagRun.
+* @param data The data for the request.
+* @param data.dagId
+* @param data.partitionKey
+* @returns PartitionedDagRunDetailResponse Successful Response
+* @throws ApiError
+*/
+export const prefetchUsePartitionedDagRunServiceGetPartitionedDagRun = (queryClient: QueryClient, { dagId, partitionKey }: {
+  dagId: string;
+  partitionKey: string;
+}) => queryClient.prefetchQuery({ queryKey: Common.UsePartitionedDagRunServiceGetPartitionedDagRunKeyFn({ dagId, partitionKey }), queryFn: () => PartitionedDagRunService.getPartitionedDagRun({ dagId, partitionKey }) });
 /**
 * Get Dependencies
 * Dependencies graph.

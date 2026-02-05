@@ -2043,6 +2043,61 @@ export type NodeResponse = {
 export type OklchColor = string;
 
 /**
+ * Asset info within a partitioned dag run detail.
+ */
+export type PartitionedDagRunAssetResponse = {
+    asset_id: number;
+    asset_name: string;
+    asset_uri: string;
+    received: boolean;
+};
+
+/**
+ * Collection of partitioned dag runs.
+ */
+export type PartitionedDagRunCollectionResponse = {
+    partitioned_dag_runs: Array<PartitionedDagRunResponse>;
+    total: number;
+    asset_expressions?: {
+    [key: string]: ({
+    [key: string]: unknown;
+} | null);
+} | null;
+};
+
+/**
+ * Detail of a single partitioned dag run.
+ */
+export type PartitionedDagRunDetailResponse = {
+    id: number;
+    dag_id: string;
+    partition_key: string;
+    created_at?: string | null;
+    updated_at?: string | null;
+    created_dag_run_id?: string | null;
+    assets: Array<PartitionedDagRunAssetResponse>;
+    total_required: number;
+    total_received: number;
+    asset_expression?: {
+    [key: string]: unknown;
+} | null;
+};
+
+/**
+ * Single partitioned dag run item.
+ */
+export type PartitionedDagRunResponse = {
+    id: number;
+    partition_key: string;
+    created_at?: string | null;
+    total_received: number;
+    total_required: number;
+    dag_id?: string | null;
+    state?: string | null;
+    created_dag_run_id?: string | null;
+};
+
+/**
  * Standard fields of a Hook that a form will render.
  */
 export type StandardHookFields = {
@@ -3432,6 +3487,20 @@ export type LogoutResponse = unknown;
 export type GetAuthMenusResponse = MenuItemCollectionResponse;
 
 export type GetCurrentUserInfoResponse = AuthenticatedMeResponse;
+
+export type GetPartitionedDagRunsData = {
+    dagId?: string | null;
+    pending?: boolean | null;
+};
+
+export type GetPartitionedDagRunsResponse = PartitionedDagRunCollectionResponse;
+
+export type GetPartitionedDagRunData = {
+    dagId: string;
+    partitionKey: string;
+};
+
+export type GetPartitionedDagRunResponse = PartitionedDagRunDetailResponse;
 
 export type GetDependenciesData = {
     dependencyType?: 'scheduling' | 'data';
@@ -6604,6 +6673,36 @@ export type $OpenApiTs = {
                  * Successful Response
                  */
                 200: AuthenticatedMeResponse;
+            };
+        };
+    };
+    '/ui/partitioned_dag_runs': {
+        get: {
+            req: GetPartitionedDagRunsData;
+            res: {
+                /**
+                 * Successful Response
+                 */
+                200: PartitionedDagRunCollectionResponse;
+                /**
+                 * Validation Error
+                 */
+                422: HTTPValidationError;
+            };
+        };
+    };
+    '/ui/partitioned_dag_runs/{dag_id}/{partition_key}': {
+        get: {
+            req: GetPartitionedDagRunData;
+            res: {
+                /**
+                 * Successful Response
+                 */
+                200: PartitionedDagRunDetailResponse;
+                /**
+                 * Validation Error
+                 */
+                422: HTTPValidationError;
             };
         };
     };

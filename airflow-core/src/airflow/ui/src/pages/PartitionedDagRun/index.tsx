@@ -16,26 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box } from "@chakra-ui/react";
-import type { PropsWithChildren } from "react";
-import { useTranslation } from "react-i18next";
+import { ReactFlowProvider } from "@xyflow/react";
 
-import { NavTabs } from "./Details/NavTabs";
+import { PartitionedDagRun as Layout } from "./PartitionedDagRun";
 
-export const DagsLayout = ({ children }: PropsWithChildren) => {
-  const { t: translate } = useTranslation("common");
-
-  const tabs = [
-    { label: translate("nav.dags"), value: "/dags" },
-    { label: translate("dagRun_other"), value: "/dag_runs" },
-    { label: translate("taskInstance_other"), value: "/task_instances" },
-    { label: translate("partitionedDagRun_other"), value: "/partitioned_dag_runs" },
-  ];
-
-  return (
-    <Box>
-      <NavTabs tabs={tabs} />
-      {children}
-    </Box>
-  );
-};
+export const PartitionedDagRun = () => (
+  <ReactFlowProvider>
+    <Layout />
+  </ReactFlowProvider>
+);
