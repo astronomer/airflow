@@ -29,7 +29,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryLimit,
     QueryOffset,
     SortParam,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.backfills import BackfillCollectionResponse, BackfillResponse
@@ -54,13 +53,13 @@ def list_backfills_ui(
     offset: QueryOffset,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["id"], Backfill).dynamic_depends()),
+        Depends(SortParam.for_model(["id"], Backfill)),
     ],
     session: SessionDep,
-    dag_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(Backfill.dag_id, str | None))],
+    dag_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Backfill.dag_id, str | None))],
     active: Annotated[
         FilterParam[bool | None],
-        Depends(filter_param_factory(Backfill.completed_at, bool | None, FilterOptionEnum.IS_NONE, "active")),
+        Depends(FilterParam.for_attr(Backfill.completed_at, bool | None, FilterOptionEnum.IS_NONE, "active")),
     ],
 ) -> BackfillCollectionResponse:
     select_stmt, total_entries = paginated_select(

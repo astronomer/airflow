@@ -102,7 +102,7 @@ def get_pools(
     offset: QueryOffset,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["id", "pool"], Pool, to_replace={"name": "pool"}).dynamic_depends()),
+        Depends(SortParam.for_model(["id", "pool"], Pool, to_replace={"name": "pool"})),
     ],
     pool_name_pattern: QueryPoolNamePatternSearch,
     readable_pools_filter: ReadablePoolsFilterDep,

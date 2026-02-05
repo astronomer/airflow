@@ -32,8 +32,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryOffset,
     RangeFilter,
     SortParam,
-    datetime_range_filter_factory,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.job import (
@@ -54,18 +52,18 @@ job_router = AirflowRouter(tags=["Job"], prefix="/jobs")
 def get_jobs(
     start_date_range: Annotated[
         RangeFilter,
-        Depends(datetime_range_filter_factory("start_date", Job)),
+        Depends(RangeFilter.for_datetime("start_date", Job)),
     ],
     end_date_range: Annotated[
         RangeFilter,
-        Depends(datetime_range_filter_factory("end_date", Job)),
+        Depends(RangeFilter.for_datetime("end_date", Job)),
     ],
     limit: QueryLimit,
     offset: QueryOffset,
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",
                     "dag_id",
@@ -79,24 +77,25 @@ def get_jobs(
                     "unixname",
                 ],
                 Job,
-            ).dynamic_depends(default="id")
+                default="id",
+            )
         ),
     ],
     session: SessionDep,
     state: Annotated[
-        FilterParam[str | None], Depends(filter_param_factory(Job.state, str | None, filter_name="job_state"))
+        FilterParam[str | None], Depends(FilterParam.for_attr(Job.state, str | None, filter_name="job_state"))
     ],
     job_type: Annotated[
         FilterParam[str | None],
-        Depends(filter_param_factory(Job.job_type, str | None, filter_name="job_type")),
+        Depends(FilterParam.for_attr(Job.job_type, str | None, filter_name="job_type")),
     ],
     hostname: Annotated[
         FilterParam[str | None],
-        Depends(filter_param_factory(Job.hostname, str | None, filter_name="hostname")),
+        Depends(FilterParam.for_attr(Job.hostname, str | None, filter_name="hostname")),
     ],
     executor_class: Annotated[
         FilterParam[str | None],
-        Depends(filter_param_factory(Job.executor_class, str | None, filter_name="executor_class")),
+        Depends(FilterParam.for_attr(Job.executor_class, str | None, filter_name="executor_class")),
     ],
     is_alive: bool | None = None,
 ) -> JobCollectionResponse:

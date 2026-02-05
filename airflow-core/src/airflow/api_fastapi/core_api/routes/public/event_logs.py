@@ -34,8 +34,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryOffset,
     SortParam,
     _SearchParam,
-    filter_param_factory,
-    search_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.event_logs import (
@@ -81,7 +79,7 @@ def get_event_logs(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",  # event_log_id
                     "dttm",  # when
@@ -95,41 +93,41 @@ def get_event_logs(
                 ],
                 Log,
                 to_replace={"when": "dttm", "event_log_id": "id"},
-            ).dynamic_depends()
+            )
         ),
     ],
     # Exact match filters (for backward compatibility)
-    dag_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(Log.dag_id, str | None))],
-    task_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(Log.task_id, str | None))],
-    run_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(Log.run_id, str | None))],
-    map_index: Annotated[FilterParam[int | None], Depends(filter_param_factory(Log.map_index, int | None))],
-    try_number: Annotated[FilterParam[int | None], Depends(filter_param_factory(Log.try_number, int | None))],
-    owner: Annotated[FilterParam[str | None], Depends(filter_param_factory(Log.owner, str | None))],
-    event: Annotated[FilterParam[str | None], Depends(filter_param_factory(Log.event, str | None))],
+    dag_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Log.dag_id, str | None))],
+    task_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Log.task_id, str | None))],
+    run_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Log.run_id, str | None))],
+    map_index: Annotated[FilterParam[int | None], Depends(FilterParam.for_attr(Log.map_index, int | None))],
+    try_number: Annotated[FilterParam[int | None], Depends(FilterParam.for_attr(Log.try_number, int | None))],
+    owner: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Log.owner, str | None))],
+    event: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(Log.event, str | None))],
     excluded_events: Annotated[
         FilterParam[list[str] | None],
         Depends(
-            filter_param_factory(Log.event, list[str] | None, FilterOptionEnum.NOT_IN, "excluded_events")
+            FilterParam.for_attr(Log.event, list[str] | None, FilterOptionEnum.NOT_IN, "excluded_events")
         ),
     ],
     included_events: Annotated[
         FilterParam[list[str] | None],
-        Depends(filter_param_factory(Log.event, list[str] | None, FilterOptionEnum.IN, "included_events")),
+        Depends(FilterParam.for_attr(Log.event, list[str] | None, FilterOptionEnum.IN, "included_events")),
     ],
     before: Annotated[
         FilterParam[datetime | None],
-        Depends(filter_param_factory(Log.dttm, datetime | None, FilterOptionEnum.LESS_THAN, "before")),
+        Depends(FilterParam.for_attr(Log.dttm, datetime | None, FilterOptionEnum.LESS_THAN, "before")),
     ],
     after: Annotated[
         FilterParam[datetime | None],
-        Depends(filter_param_factory(Log.dttm, datetime | None, FilterOptionEnum.GREATER_THAN, "after")),
+        Depends(FilterParam.for_attr(Log.dttm, datetime | None, FilterOptionEnum.GREATER_THAN, "after")),
     ],
     # Pattern search filters (new - for partial matching)
-    dag_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(Log.dag_id, "dag_id_pattern"))],
-    task_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(Log.task_id, "task_id_pattern"))],
-    run_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(Log.run_id, "run_id_pattern"))],
-    owner_pattern: Annotated[_SearchParam, Depends(search_param_factory(Log.owner, "owner_pattern"))],
-    event_pattern: Annotated[_SearchParam, Depends(search_param_factory(Log.event, "event_pattern"))],
+    dag_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(Log.dag_id, "dag_id_pattern"))],
+    task_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(Log.task_id, "task_id_pattern"))],
+    run_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(Log.run_id, "run_id_pattern"))],
+    owner_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(Log.owner, "owner_pattern"))],
+    event_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(Log.event, "event_pattern"))],
     readable_event_logs_filter: ReadableEventLogsFilterDep,
 ) -> EventLogCollectionResponse:
     """Get all Event Logs."""

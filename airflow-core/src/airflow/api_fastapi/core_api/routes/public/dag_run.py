@@ -51,10 +51,6 @@ from airflow.api_fastapi.common.parameters import (
     RangeFilter,
     SortParam,
     _SearchParam,
-    datetime_range_filter_factory,
-    filter_param_factory,
-    float_range_filter_factory,
-    search_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.common.types import Mimetype
@@ -332,15 +328,15 @@ def get_dag_runs(
     dag_id: str,
     limit: QueryLimit,
     offset: QueryOffset,
-    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
-    logical_date: Annotated[RangeFilter, Depends(datetime_range_filter_factory("logical_date", DagRun))],
-    start_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("start_date", DagRun))],
-    end_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("end_date", DagRun))],
-    duration_range: Annotated[RangeFilter, Depends(float_range_filter_factory("duration", DagRun))],
-    update_at_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("updated_at", DagRun))],
+    run_after: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("run_after", DagRun))],
+    logical_date: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("logical_date", DagRun))],
+    start_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("start_date", DagRun))],
+    end_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("end_date", DagRun))],
+    duration_range: Annotated[RangeFilter, Depends(RangeFilter.for_float("duration", DagRun))],
+    update_at_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("updated_at", DagRun))],
     conf_contains: Annotated[
         FilterParam[str],
-        Depends(filter_param_factory(DagRun.conf, str, FilterOptionEnum.CONTAINS, "conf_contains")),
+        Depends(FilterParam.for_attr(DagRun.conf, str, FilterOptionEnum.CONTAINS, "conf_contains")),
     ],
     run_type: QueryDagRunRunTypesFilter,
     state: QueryDagRunStateFilter,
@@ -348,7 +344,7 @@ def get_dag_runs(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",
                     "state",
@@ -364,18 +360,19 @@ def get_dag_runs(
                 ],
                 DagRun,
                 {"dag_run_id": "run_id"},
-            ).dynamic_depends(default="id")
+                default="id",
+            )
         ),
     ],
     readable_dag_runs_filter: ReadableDagRunsFilterDep,
     session: SessionDep,
     dag_bag: DagBagDep,
-    run_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(DagRun.run_id, "run_id_pattern"))],
+    run_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(DagRun.run_id, "run_id_pattern"))],
     triggering_user_name_pattern: Annotated[
         _SearchParam,
-        Depends(search_param_factory(DagRun.triggering_user_name, "triggering_user_name_pattern")),
+        Depends(_SearchParam.for_attr(DagRun.triggering_user_name, "triggering_user_name_pattern")),
     ],
-    dag_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(DagRun.dag_id, "dag_id_pattern"))],
+    dag_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(DagRun.dag_id, "dag_id_pattern"))],
 ) -> DAGRunCollectionResponse:
     """
     Get all DAG Runs.

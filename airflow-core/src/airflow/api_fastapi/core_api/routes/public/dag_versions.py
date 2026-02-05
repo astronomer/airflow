@@ -30,7 +30,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryLimit,
     QueryOffset,
     SortParam,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.dag_versions import (
@@ -89,17 +88,15 @@ def get_dag_versions(
     limit: QueryLimit,
     offset: QueryOffset,
     version_number: Annotated[
-        FilterParam[int], Depends(filter_param_factory(DagVersion.version_number, int))
+        FilterParam[int], Depends(FilterParam.for_attr(DagVersion.version_number, int))
     ],
-    bundle_name: Annotated[FilterParam[str], Depends(filter_param_factory(DagVersion.bundle_name, str))],
+    bundle_name: Annotated[FilterParam[str], Depends(FilterParam.for_attr(DagVersion.bundle_name, str))],
     bundle_version: Annotated[
-        FilterParam[str | None], Depends(filter_param_factory(DagVersion.bundle_version, str | None))
+        FilterParam[str | None], Depends(FilterParam.for_attr(DagVersion.bundle_version, str | None))
     ],
     order_by: Annotated[
         SortParam,
-        Depends(
-            SortParam(["id", "version_number", "bundle_name", "bundle_version"], DagVersion).dynamic_depends()
-        ),
+        Depends(SortParam.for_model(["id", "version_number", "bundle_name", "bundle_version"], DagVersion)),
     ],
     dag_bag: DagBagDep,
 ) -> DAGVersionCollectionResponse:

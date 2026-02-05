@@ -37,7 +37,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryOffset,
     RangeFilter,
     SortParam,
-    datetime_range_filter_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.ui.common import (
@@ -129,9 +128,9 @@ def get_dag_structure(
     limit: QueryLimit,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["run_after", "logical_date", "start_date", "end_date"], DagRun).dynamic_depends()),
+        Depends(SortParam.for_model(["run_after", "logical_date", "start_date", "end_date"], DagRun)),
     ],
-    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
+    run_after: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("run_after", DagRun))],
     run_type: QueryDagRunRunTypesFilter,
     state: QueryDagRunStateFilter,
     triggering_user: QueryDagRunTriggeringUserSearch,
@@ -257,7 +256,7 @@ def get_grid_runs(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "run_after",
                     "logical_date",
@@ -265,10 +264,10 @@ def get_grid_runs(
                     "end_date",
                 ],
                 DagRun,
-            ).dynamic_depends()
+            )
         ),
     ],
-    run_after: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", DagRun))],
+    run_after: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("run_after", DagRun))],
     run_type: QueryDagRunRunTypesFilter,
     state: QueryDagRunStateFilter,
     triggering_user: QueryDagRunTriggeringUserSearch,

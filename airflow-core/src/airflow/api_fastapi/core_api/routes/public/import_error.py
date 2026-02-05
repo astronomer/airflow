@@ -114,7 +114,7 @@ def get_import_errors(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",
                     "timestamp",
@@ -124,7 +124,7 @@ def get_import_errors(
                 ],
                 ParseImportError,
                 {"import_error_id": "id"},
-            ).dynamic_depends()
+            )
         ),
     ],
     filename_pattern: QueryParseImportErrorFilenamePatternSearch,

@@ -33,7 +33,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryLimit,
     QueryOffset,
     SortParam,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.dag_warning import (
@@ -50,16 +49,16 @@ dag_warning_router = AirflowRouter(tags=["DagWarning"])
     dependencies=[Depends(requires_access_dag(method="GET", access_entity=DagAccessEntity.WARNING))],
 )
 def list_dag_warnings(
-    dag_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(DagWarning.dag_id, str | None))],
+    dag_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(DagWarning.dag_id, str | None))],
     warning_type: Annotated[
         FilterParam[DagWarningType | None],
-        Depends(filter_param_factory(DagWarning.warning_type, DagWarningType | None)),
+        Depends(FilterParam.for_attr(DagWarning.warning_type, DagWarningType | None)),
     ],
     limit: QueryLimit,
     offset: QueryOffset,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["dag_id", "warning_type", "message", "timestamp"], DagWarning).dynamic_depends()),
+        Depends(SortParam.for_model(["dag_id", "warning_type", "message", "timestamp"], DagWarning)),
     ],
     readable_dag_warning_filter: ReadableDagWarningsFilterDep,
     session: SessionDep,

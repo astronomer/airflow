@@ -49,7 +49,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryPendingActionsFilter,
     QueryTagsFilter,
     SortParam,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.dags import DAGResponse
@@ -88,7 +87,7 @@ def get_dags(
     owners: QueryOwnersFilter,
     dag_ids: Annotated[
         FilterParam[list[str] | None],
-        Depends(filter_param_factory(DagModel.dag_id, list[str] | None, FilterOptionEnum.IN, "dag_ids")),
+        Depends(FilterParam.for_attr(DagModel.dag_id, list[str] | None, FilterOptionEnum.IN, "dag_ids")),
     ],
     dag_id_pattern: QueryDagIdPatternSearch,
     dag_display_name_pattern: QueryDagDisplayNamePatternSearch,
@@ -101,11 +100,11 @@ def get_dags(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 ["dag_id", "dag_display_name", "next_dagrun", "state", "start_date"],
                 DagModel,
                 {"last_run_state": DagRun.state, "last_run_start_date": DagRun.start_date},
-            ).dynamic_depends()
+            )
         ),
     ],
     is_favorite: QueryFavoriteFilter,

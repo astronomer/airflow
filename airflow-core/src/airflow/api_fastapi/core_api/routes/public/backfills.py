@@ -73,7 +73,7 @@ def list_backfills(
     offset: QueryOffset,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["id"], Backfill).dynamic_depends()),
+        Depends(SortParam.for_model(["id"], Backfill)),
     ],
     session: SessionDep,
 ) -> BackfillCollectionResponse:

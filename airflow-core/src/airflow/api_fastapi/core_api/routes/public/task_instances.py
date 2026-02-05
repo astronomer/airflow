@@ -58,10 +58,6 @@ from airflow.api_fastapi.common.parameters import (
     RangeFilter,
     SortParam,
     _SearchParam,
-    datetime_range_filter_factory,
-    filter_param_factory,
-    float_range_filter_factory,
-    search_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.common import BulkBody, BulkResponse
@@ -146,12 +142,12 @@ def get_mapped_task_instances(
     dag_run_id: str,
     task_id: str,
     dag_bag: DagBagDep,
-    run_after_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", TI))],
-    logical_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("logical_date", TI))],
-    start_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("start_date", TI))],
-    end_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("end_date", TI))],
-    update_at_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("updated_at", TI))],
-    duration_range: Annotated[RangeFilter, Depends(float_range_filter_factory("duration", TI))],
+    run_after_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("run_after", TI))],
+    logical_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("logical_date", TI))],
+    start_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("start_date", TI))],
+    end_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("end_date", TI))],
+    update_at_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("updated_at", TI))],
+    duration_range: Annotated[RangeFilter, Depends(RangeFilter.for_float("duration", TI))],
     state: QueryTIStateFilter,
     pool: QueryTIPoolFilter,
     pool_name_pattern: QueryTIPoolNamePatternSearch,
@@ -168,7 +164,7 @@ def get_mapped_task_instances(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",
                     "state",
@@ -191,7 +187,8 @@ def get_mapped_task_instances(
                     "data_interval_start": DagRun.data_interval_start,
                     "data_interval_end": DagRun.data_interval_end,
                 },
-            ).dynamic_depends(default="map_index")
+                default="map_index",
+            )
         ),
     ],
     session: SessionDep,
@@ -417,17 +414,17 @@ def get_task_instances(
     dag_id: str,
     dag_run_id: str,
     dag_bag: DagBagDep,
-    task_id: Annotated[FilterParam[str | None], Depends(filter_param_factory(TI.task_id, str | None))],
-    run_after_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("run_after", TI))],
-    logical_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("logical_date", TI))],
-    start_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("start_date", TI))],
-    end_date_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("end_date", TI))],
-    update_at_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("updated_at", TI))],
-    duration_range: Annotated[RangeFilter, Depends(float_range_filter_factory("duration", TI))],
+    task_id: Annotated[FilterParam[str | None], Depends(FilterParam.for_attr(TI.task_id, str | None))],
+    run_after_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("run_after", TI))],
+    logical_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("logical_date", TI))],
+    start_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("start_date", TI))],
+    end_date_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("end_date", TI))],
+    update_at_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("updated_at", TI))],
+    duration_range: Annotated[RangeFilter, Depends(RangeFilter.for_float("duration", TI))],
     task_display_name_pattern: QueryTITaskDisplayNamePatternSearch,
     task_group_id: QueryTITaskGroupFilter,
-    dag_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(TI.dag_id, "dag_id_pattern"))],
-    run_id_pattern: Annotated[_SearchParam, Depends(search_param_factory(TI.run_id, "run_id_pattern"))],
+    dag_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(TI.dag_id, "dag_id_pattern"))],
+    run_id_pattern: Annotated[_SearchParam, Depends(_SearchParam.for_attr(TI.run_id, "run_id_pattern"))],
     state: QueryTIStateFilter,
     pool: QueryTIPoolFilter,
     pool_name_pattern: QueryTIPoolNamePatternSearch,
@@ -444,7 +441,7 @@ def get_task_instances(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "id",
                     "state",
@@ -467,7 +464,8 @@ def get_task_instances(
                     "data_interval_start": DagRun.data_interval_start,
                     "data_interval_end": DagRun.data_interval_end,
                 },
-            ).dynamic_depends(default="map_index")
+                default="map_index",
+            )
         ),
     ],
     readable_ti_filter: ReadableTIFilterDep,
@@ -495,7 +493,7 @@ def get_task_instances(
         dag = get_dag_for_run_or_latest_version(dag_bag, dag_run, dag_id, session)
         query = query.where(TI.dag_id == dag_id)
         if dag:
-            task_group_id.dag = dag
+            task_group_id.with_dag(dag)
 
     task_instance_select, total_entries = paginated_select(
         statement=query,

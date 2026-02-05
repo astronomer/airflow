@@ -53,8 +53,6 @@ from airflow.api_fastapi.common.parameters import (
     RangeFilter,
     SortParam,
     _transform_dag_run_states,
-    datetime_range_filter_factory,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.compat import HTTP_422_UNPROCESSABLE_CONTENT
@@ -98,15 +96,15 @@ def get_dags(
     has_asset_schedule: QueryHasAssetScheduleFilter,
     asset_dependency: QueryAssetDependencyFilter,
     dag_run_start_date_range: Annotated[
-        RangeFilter, Depends(datetime_range_filter_factory("dag_run_start_date", DagRun, "start_date"))
+        RangeFilter, Depends(RangeFilter.for_datetime("dag_run_start_date", DagRun, "start_date"))
     ],
     dag_run_end_date_range: Annotated[
-        RangeFilter, Depends(datetime_range_filter_factory("dag_run_end_date", DagRun, "end_date"))
+        RangeFilter, Depends(RangeFilter.for_datetime("dag_run_end_date", DagRun, "end_date"))
     ],
     dag_run_state: Annotated[
         FilterParam[list[str]],
         Depends(
-            filter_param_factory(
+            FilterParam.for_attr(
                 DagRun.state,
                 list[str],
                 FilterOptionEnum.ANY_EQUAL,
@@ -119,11 +117,11 @@ def get_dags(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 ["dag_id", "dag_display_name", "next_dagrun", "state", "start_date"],
                 DagModel,
                 {"last_run_state": DagRun.state, "last_run_start_date": DagRun.start_date},
-            ).dynamic_depends()
+            )
         ),
     ],
     readable_dags_filter: ReadableDagsFilterDep,
@@ -131,7 +129,7 @@ def get_dags(
     is_favorite: QueryFavoriteFilter,
     timetable_type: Annotated[
         FilterParam[list[str] | None],
-        Depends(filter_param_factory(DagModel.timetable_type, list[str], FilterOptionEnum.IN)),
+        Depends(FilterParam.for_attr(DagModel.timetable_type, list[str], FilterOptionEnum.IN)),
     ],
 ) -> DAGCollectionResponse:
     """Get all DAGs."""

@@ -24,12 +24,12 @@ import pytest
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
 
-from airflow.api_fastapi.common.parameters import FilterParam, SortParam, _SearchParam, filter_param_factory
+from airflow.api_fastapi.common.parameters import FilterParam, SortParam, _SearchParam
 from airflow.models import DagModel, DagRun, Log
 
 
 class TestFilterParam:
-    def test_filter_param_factory_description(self):
+    def test_filter_param_for_attr_description(self):
         app = FastAPI()  # Create a FastAPI app to test OpenAPI generation
         expected_descriptions = {
             "dag_id": "Filter by Dag ID Description",
@@ -43,23 +43,23 @@ class TestFilterParam:
             dag_id: Annotated[
                 FilterParam[str | None],
                 Depends(
-                    filter_param_factory(Log.dag_id, str | None, description="Filter by Dag ID Description")
+                    FilterParam.for_attr(Log.dag_id, str | None, description="Filter by Dag ID Description")
                 ),
             ],
             task_id: Annotated[
                 FilterParam[str | None],
                 Depends(
-                    filter_param_factory(Log.task_id, str | None, description="Filter by Task ID Description")
+                    FilterParam.for_attr(Log.task_id, str | None, description="Filter by Task ID Description")
                 ),
             ],
             map_index: Annotated[
                 FilterParam[int | None],
-                Depends(filter_param_factory(Log.map_index, int | None)),
+                Depends(FilterParam.for_attr(Log.map_index, int | None)),
             ],
             run_id: Annotated[
                 FilterParam[str | None],
                 Depends(
-                    filter_param_factory(
+                    FilterParam.for_attr(
                         DagRun.run_id, str | None, description="Filter by Run ID Description"
                     )
                 ),
@@ -100,6 +100,30 @@ class TestSortParam:
             ),
         ):
             param.to_orm(None)
+
+    def test_to_orm_does_not_mutate_value(self):
+        """to_orm must not mutate self.value so repeated calls stay idempotent."""
+        param = SortParam(["dag_id"], DagModel, None)
+        param.value = None
+
+        statement = select(DagModel)
+        param.to_orm(statement)
+
+        # After to_orm, self.value should still be None (not mutated to a list)
+        assert param.value is None
+
+    def test_for_model_returns_distinct_instances(self):
+        """for_model's dependency function must return a new SortParam per call to avoid shared state."""
+        depends_fn = SortParam.for_model(["dag_id", "state"], DagModel)
+
+        instance_a = depends_fn()
+        instance_b = depends_fn()
+
+        assert instance_a is not instance_b
+
+        # Mutating one instance must not affect the other
+        instance_a.value = ["-dag_id"]
+        assert instance_b.value != ["-dag_id"]
 
 
 class TestSearchParam:

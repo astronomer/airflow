@@ -102,10 +102,10 @@ def get_variables(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 ["key", "id", "_val", "description", "is_encrypted", "team_name"],
                 Variable,
-            ).dynamic_depends()
+            )
         ),
     ],
     readable_variables_filter: ReadableVariablesFilterDep,

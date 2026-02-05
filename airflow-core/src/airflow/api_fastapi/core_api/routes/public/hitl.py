@@ -41,7 +41,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryTIStateFilter,
     RangeFilter,
     SortParam,
-    datetime_range_filter_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.hitl import (
@@ -255,8 +254,8 @@ def get_hitl_details(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
-                allowed_attrs=[
+            SortParam.for_model(
+                [
                     "ti_id",
                     "subject",
                     "responded_at",
@@ -264,7 +263,7 @@ def get_hitl_details(
                     "responded_by_user_id",
                     "responded_by_user_name",
                 ],
-                model=HITLDetailModel,
+                HITLDetailModel,
                 to_replace={
                     "dag_id": TI.dag_id,
                     "run_id": TI.run_id,
@@ -274,7 +273,7 @@ def get_hitl_details(
                     "task_instance_operator": TI.operator,
                     "task_instance_state": TI.state,
                 },
-            ).dynamic_depends(),
+            ),
         ),
     ],
     session: SessionDep,
@@ -292,7 +291,7 @@ def get_hitl_details(
     responded_by_user_name: QueryHITLDetailRespondedUserNameFilter,
     subject_patten: QueryHITLDetailSubjectSearch,
     body_patten: QueryHITLDetailBodySearch,
-    created_at: Annotated[RangeFilter, Depends(datetime_range_filter_factory("created_at", HITLDetailModel))],
+    created_at: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("created_at", HITLDetailModel))],
 ) -> HITLDetailCollection:
     """Get Human-in-the-loop details."""
     query = (

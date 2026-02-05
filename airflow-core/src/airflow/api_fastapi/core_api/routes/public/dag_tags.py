@@ -48,10 +48,10 @@ def get_dag_tags(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 ["name"],
                 DagTag,
-            ).dynamic_depends()
+            )
         ),
     ],
     tag_name_pattern: QueryDagTagPatternSearch,

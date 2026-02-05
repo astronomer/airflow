@@ -115,11 +115,11 @@ def get_connections(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 ["conn_id", "conn_type", "description", "host", "port", "id", "team_name"],
                 Connection,
                 {"connection_id": "conn_id"},
-            ).dynamic_depends()
+            )
         ),
     ],
     readable_connections_filter: ReadableConnectionsFilterDep,

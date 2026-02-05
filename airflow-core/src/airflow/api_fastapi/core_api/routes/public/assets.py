@@ -40,8 +40,6 @@ from airflow.api_fastapi.common.parameters import (
     QueryUriPatternSearch,
     RangeFilter,
     SortParam,
-    datetime_range_filter_factory,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.assets import (
@@ -135,7 +133,7 @@ def get_assets(
     only_active: Annotated[OnlyActiveFilter, Depends(OnlyActiveFilter.depends)],
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["id", "name", "uri", "created_at", "updated_at"], AssetModel).dynamic_depends()),
+        Depends(SortParam.for_model(["id", "name", "uri", "created_at", "updated_at"], AssetModel)),
     ],
     session: SessionDep,
 ) -> AssetCollectionResponse:
@@ -234,7 +232,7 @@ def get_asset_aliases(
     name_pattern: QueryAssetAliasNamePatternSearch,
     order_by: Annotated[
         SortParam,
-        Depends(SortParam(["id", "name"], AssetAliasModel).dynamic_depends()),
+        Depends(SortParam.for_model(["id", "name"], AssetAliasModel)),
     ],
     session: SessionDep,
 ) -> AssetAliasCollectionResponse:
@@ -281,7 +279,7 @@ def get_asset_events(
     order_by: Annotated[
         SortParam,
         Depends(
-            SortParam(
+            SortParam.for_model(
                 [
                     "source_task_id",
                     "source_dag_id",
@@ -290,26 +288,27 @@ def get_asset_events(
                     "timestamp",
                 ],
                 AssetEvent,
-            ).dynamic_depends("timestamp")
+                default="timestamp",
+            )
         ),
     ],
     asset_id: Annotated[
-        FilterParam[int | None], Depends(filter_param_factory(AssetEvent.asset_id, int | None))
+        FilterParam[int | None], Depends(FilterParam.for_attr(AssetEvent.asset_id, int | None))
     ],
     source_dag_id: Annotated[
-        FilterParam[str | None], Depends(filter_param_factory(AssetEvent.source_dag_id, str | None))
+        FilterParam[str | None], Depends(FilterParam.for_attr(AssetEvent.source_dag_id, str | None))
     ],
     source_task_id: Annotated[
-        FilterParam[str | None], Depends(filter_param_factory(AssetEvent.source_task_id, str | None))
+        FilterParam[str | None], Depends(FilterParam.for_attr(AssetEvent.source_task_id, str | None))
     ],
     source_run_id: Annotated[
-        FilterParam[str | None], Depends(filter_param_factory(AssetEvent.source_run_id, str | None))
+        FilterParam[str | None], Depends(FilterParam.for_attr(AssetEvent.source_run_id, str | None))
     ],
     source_map_index: Annotated[
-        FilterParam[int | None], Depends(filter_param_factory(AssetEvent.source_map_index, int | None))
+        FilterParam[int | None], Depends(FilterParam.for_attr(AssetEvent.source_map_index, int | None))
     ],
     name_pattern: QueryAssetNamePatternSearch,
-    timestamp_range: Annotated[RangeFilter, Depends(datetime_range_filter_factory("timestamp", AssetEvent))],
+    timestamp_range: Annotated[RangeFilter, Depends(RangeFilter.for_datetime("timestamp", AssetEvent))],
     session: SessionDep,
 ) -> AssetEventCollectionResponse:
     """Get asset events."""

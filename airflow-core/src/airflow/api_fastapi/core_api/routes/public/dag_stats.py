@@ -30,7 +30,6 @@ from airflow.api_fastapi.common.db.dag_runs import dagruns_select_with_state_cou
 from airflow.api_fastapi.common.parameters import (
     FilterOptionEnum,
     FilterParam,
-    filter_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.dag_stats import (
@@ -65,7 +64,7 @@ def get_dag_stats(
     session: SessionDep,
     dag_ids: Annotated[
         FilterParam[list[str]],
-        Depends(filter_param_factory(DagRun.dag_id, list[str], FilterOptionEnum.IN, "dag_ids")),
+        Depends(FilterParam.for_attr(DagRun.dag_id, list[str], FilterOptionEnum.IN, "dag_ids")),
     ],
 ) -> DagStatsCollectionResponse:
     """Get Dag statistics."""
