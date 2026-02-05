@@ -8703,8 +8703,7 @@ def test_partitioned_dag_run_with_customized_mapper(
             dag_id="asset-event-consumer",
             schedule=PartitionedAssetTimetable(
                 assets=Asset(name="asset-1"),
-                # TODO: (AIP-76) fix typing
-                default_partition_mapper=Key1Mapper(),  # type: ignore[arg-type]
+                default_partition_mapper=Key1Mapper(),
             ),
             session=session,
         ):
@@ -8776,7 +8775,7 @@ def test_consumer_dag_listen_to_two_partitioned_asset(
     with dag_maker(
         dag_id="asset-event-consumer",
         schedule=PartitionedAssetTimetable(
-            assets=(Asset(name="asset-1") & Asset(name="asset-2")),
+            assets=(Asset(name="asset-1") & Asset.ref(name="asset-2")),
             default_partition_mapper=IdentityMapper(),
         ),
         session=session,
@@ -8851,7 +8850,6 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
         with dag_maker(
             dag_id="asset-event-consumer",
             schedule=PartitionedAssetTimetable(
-                # TODO: (AIP-76): fix typing
                 assets=(Asset(name="asset-1") & Asset(name="asset-2")),
                 partition_mapper_mapping={
                     Asset(name="asset-1"): Key1Mapper(),  # type: ignore[dict-item]
