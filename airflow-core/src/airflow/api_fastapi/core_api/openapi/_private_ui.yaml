@@ -2573,7 +2573,7 @@ components:
       - asset_uri
       - received
       title: PartitionedDagRunAssetResponse
-      description: Asset info within a partitioned dag run detail.
+      description: Asset info within a partitioned Dag run detail.
     PartitionedDagRunCollectionResponse:
       properties:
         partitioned_dag_runs:
@@ -2599,7 +2599,7 @@ components:
       - partitioned_dag_runs
       - total
       title: PartitionedDagRunCollectionResponse
-      description: Collection of partitioned dag runs.
+      description: Collection of partitioned Dag runs.
     PartitionedDagRunDetailResponse:
       properties:
         id:
@@ -2652,7 +2652,7 @@ components:
       - total_required
       - total_received
       title: PartitionedDagRunDetailResponse
-      description: Detail of a single partitioned dag run.
+      description: Detail of a single partitioned Dag run.
     PartitionedDagRunResponse:
       properties:
         id:
@@ -2694,7 +2694,7 @@ components:
       - total_received
       - total_required
       title: PartitionedDagRunResponse
-      description: Single partitioned dag run item.
+      description: Single partitioned Dag run item.
     ReprocessBehavior:
       type: string
       enum:

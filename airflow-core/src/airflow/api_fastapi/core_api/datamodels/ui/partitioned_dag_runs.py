@@ -20,7 +20,7 @@ from airflow.api_fastapi.core_api.base import BaseModel
 
 
 class PartitionedDagRunResponse(BaseModel):
-    """Single partitioned dag run item."""
+    """Single partitioned Dag run item."""
 
     id: int
     partition_key: str
@@ -33,7 +33,7 @@ class PartitionedDagRunResponse(BaseModel):
 
 
 class PartitionedDagRunCollectionResponse(BaseModel):
-    """Collection of partitioned dag runs."""
+    """Collection of partitioned Dag runs."""
 
     partitioned_dag_runs: list[PartitionedDagRunResponse]
     total: int
@@ -41,7 +41,7 @@ class PartitionedDagRunCollectionResponse(BaseModel):
 
 
 class PartitionedDagRunAssetResponse(BaseModel):
-    """Asset info within a partitioned dag run detail."""
+    """Asset info within a partitioned Dag run detail."""
 
     asset_id: int
     asset_name: str
@@ -50,7 +50,7 @@ class PartitionedDagRunAssetResponse(BaseModel):
 
 
 class PartitionedDagRunDetailResponse(BaseModel):
-    """Detail of a single partitioned dag run."""
+    """Detail of a single partitioned Dag run."""
 
     id: int
     dag_id: str

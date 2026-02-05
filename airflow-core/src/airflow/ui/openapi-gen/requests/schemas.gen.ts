@@ -8305,7 +8305,7 @@ export const $PartitionedDagRunAssetResponse = {
     type: 'object',
     required: ['asset_id', 'asset_name', 'asset_uri', 'received'],
     title: 'PartitionedDagRunAssetResponse',
-    description: 'Asset info within a partitioned dag run detail.'
+    description: 'Asset info within a partitioned Dag run detail.'
 } as const;
 
 export const $PartitionedDagRunCollectionResponse = {
@@ -8347,7 +8347,7 @@ export const $PartitionedDagRunCollectionResponse = {
     type: 'object',
     required: ['partitioned_dag_runs', 'total'],
     title: 'PartitionedDagRunCollectionResponse',
-    description: 'Collection of partitioned dag runs.'
+    description: 'Collection of partitioned Dag runs.'
 } as const;
 
 export const $PartitionedDagRunDetailResponse = {
@@ -8428,7 +8428,7 @@ export const $PartitionedDagRunDetailResponse = {
     type: 'object',
     required: ['id', 'dag_id', 'partition_key', 'assets', 'total_required', 'total_received'],
     title: 'PartitionedDagRunDetailResponse',
-    description: 'Detail of a single partitioned dag run.'
+    description: 'Detail of a single partitioned Dag run.'
 } as const;
 
 export const $PartitionedDagRunResponse = {
@@ -8497,7 +8497,7 @@ export const $PartitionedDagRunResponse = {
     type: 'object',
     required: ['id', 'partition_key', 'total_received', 'total_required'],
     title: 'PartitionedDagRunResponse',
-    description: 'Single partitioned dag run item.'
+    description: 'Single partitioned Dag run item.'
 } as const;
 
 export const $StandardHookFields = {

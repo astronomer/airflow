@@ -68,7 +68,7 @@ def get_partitioned_dag_runs(
 ) -> PartitionedDagRunCollectionResponse:
     """Return PartitionedDagRuns. Filter by dag_id and/or pending status."""
     if dag_id.value is not None:
-        # Single query: validate dag + get required count
+        # Single query: validate Dag + get required count
         dag_info = session.execute(
             select(
                 DagModel.timetable_summary,
@@ -124,8 +124,7 @@ def get_partitioned_dag_runs(
     query = apply_filters_to_select(statement=query, filters=[dag_id, pending])
     query = query.order_by(AssetPartitionDagRun.created_at.desc())
 
-    rows = session.execute(query).all()
-    if not rows:
+    if not (rows := session.execute(query).all()):
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
     if dag_id.value is not None:
