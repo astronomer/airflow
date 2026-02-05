@@ -8852,8 +8852,8 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
             schedule=PartitionedAssetTimetable(
                 assets=(Asset(name="asset-1") & Asset(name="asset-2")),
                 partition_mapper_mapping={
-                    Asset(name="asset-1"): Key1Mapper(),  # type: ignore[dict-item]
-                    Asset(name="asset-2"): Key1Mapper(),  # type: ignore[dict-item]
+                    Asset(name="asset-1"): Key1Mapper(),
+                    Asset(name="asset-2"): Key1Mapper(),
                 },
             ),
             session=session,
