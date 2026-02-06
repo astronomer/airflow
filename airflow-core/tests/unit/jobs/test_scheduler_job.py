@@ -8860,7 +8860,7 @@ def test_consumer_dag_listen_to_two_partitioned_asset_with_key_1_mapper(
                 # Advanced users can import from core and register their own partition mapper
                 # via an Airflow plugin.
                 # We intentionally exclude core mappers from the public typing
-                # so standard users don’t accidentally rely on internal implementations.
+                # so standard users don't accidentally rely on internal implementations.
                 partition_mapper_mapping={
                     Asset(name="asset-1"): Key1Mapper(),  # type: ignore[dict-item]
                     Asset(name="asset-2"): Key1Mapper(),  # type: ignore[dict-item]
