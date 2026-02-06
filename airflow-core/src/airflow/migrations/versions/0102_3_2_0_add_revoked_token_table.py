@@ -17,11 +17,11 @@
 # under the License.
 
 """
-Add partition_key to backfill_dag_run.
+Add revoked_token table.
 
-Revision ID: 134de42d3cb0
+Revision ID: 53ff648b8a26
 Revises: a5a3e5eb9b8d
-Create Date: 2026-02-04 11:42:08.773068
+Create Date: 2026-02-01 00:00:00.000000
 
 """
 
@@ -32,7 +32,8 @@ from alembic import op
 
 from airflow.utils.sqlalchemy import UtcDateTime
 
-revision = "134de42d3cb0"
+# revision identifiers, used by Alembic.
+revision = "53ff648b8a26"
 down_revision = "a5a3e5eb9b8d"
 branch_labels = None
 depends_on = None
@@ -40,20 +41,14 @@ airflow_version = "3.2.0"
 
 
 def upgrade():
-    """Apply Add partition_key to backfill_dag_run."""
-    op.add_column("dag_run", sa.Column("created_at", UtcDateTime, nullable=True))
-    op.execute("update dag_run set created_at = run_after;")
-
-    with op.batch_alter_table("backfill_dag_run", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("partition_key", sa.String(), nullable=True))
-        batch_op.alter_column("logical_date", existing_type=sa.TIMESTAMP(), nullable=True)
-        batch_op.alter_column("created_at", existing_type=sa.TIMESTAMP(), nullable=False)
+    """Add revoked_token table."""
+    op.create_table(
+        "revoked_token",
+        sa.Column("jti", sa.String(32), primary_key=True, nullable=False),
+        sa.Column("exp", UtcDateTime, nullable=False, index=True),
+    )
 
 
 def downgrade():
-    """Unapply Add partition_key to backfill_dag_run."""
-    op.execute("DELETE FROM backfill_dag_run WHERE logical_date IS NULL;")
-    with op.batch_alter_table("backfill_dag_run", schema=None) as batch_op:
-        batch_op.alter_column("logical_date", existing_type=sa.TIMESTAMP(), nullable=False)
-        batch_op.drop_column("partition_key")
-        batch_op.drop_column("created_at")
+    """Drop revoked_token table."""
+    op.drop_table("revoked_token")
