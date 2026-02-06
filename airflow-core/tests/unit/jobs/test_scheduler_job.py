@@ -8707,7 +8707,7 @@ def test_partitioned_dag_run_with_customized_mapper(
                 # Advanced users can import from core and register their own partition mapper
                 # via an Airflow plugin.
                 # We intentionally exclude core mappers from the public typing
-                # so standard users don’t accidentally rely on internal implementations.
+                # so standard users don't accidentally rely on internal implementations.
                 default_partition_mapper=Key1Mapper(),  # type: ignore[arg-type]
             ),
             session=session,
