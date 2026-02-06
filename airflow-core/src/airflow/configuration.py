@@ -871,13 +871,15 @@ def initialize_secrets_backends(
 
     custom_secret_backend = get_custom_secret_backend(worker_mode)
 
-    from airflow.models import Connection
-
     if custom_secret_backend is not None:
+        from airflow.models import Connection
+
         custom_secret_backend._set_connection_class(Connection)
         backend_list.append(custom_secret_backend)
 
     for class_name in default_backends:
+        from airflow.models import Connection
+
         secrets_backend_cls = import_string(class_name)
         backend = secrets_backend_cls()
         backend._set_connection_class(Connection)
