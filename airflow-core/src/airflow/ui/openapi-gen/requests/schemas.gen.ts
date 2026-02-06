@@ -3478,8 +3478,7 @@ export const $DryRunBackfillResponse = {
         partition_key: {
             anyOf: [
                 {
-                    type: 'string',
-                    format: 'date-time'
+                    type: 'string'
                 },
                 {
                     type: 'null'
@@ -6670,13 +6669,6 @@ export const $ValidationError = {
         type: {
             type: 'string',
             title: 'Error Type'
-        },
-        input: {
-            title: 'Input'
-        },
-        ctx: {
-            type: 'object',
-            title: 'Context'
         }
     },
     type: 'object',

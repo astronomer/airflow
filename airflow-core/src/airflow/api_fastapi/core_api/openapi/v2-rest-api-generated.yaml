@@ -11268,7 +11268,6 @@ components:
         partition_key:
           anyOf:
           - type: string
-            format: date-time
           - type: 'null'
           title: Partition Key
         partition_date:
@@ -13367,11 +13366,6 @@ components:
         type:
           type: string
           title: Error Type
-        input:
-          title: Input
-        ctx:
-          type: object
-          title: Context
       type: object
       required:
       - loc
