@@ -462,7 +462,7 @@ class DryRunBackfillResponse(BaseModel):
     """
 
     logical_date: Annotated[datetime | None, Field(title="Logical Date")] = None
-    partition_key: Annotated[datetime | None, Field(title="Partition Key")] = None
+    partition_key: Annotated[str | None, Field(title="Partition Key")] = None
     partition_date: Annotated[datetime | None, Field(title="Partition Date")] = None
 
 
@@ -930,8 +930,6 @@ class ValidationError(BaseModel):
     loc: Annotated[list[str | int], Field(title="Location")]
     msg: Annotated[str, Field(title="Message")]
     type: Annotated[str, Field(title="Error Type")]
-    input: Annotated[Any | None, Field(title="Input")] = None
-    ctx: Annotated[dict[str, Any] | None, Field(title="Context")] = None
 
 
 class VariableBody(BaseModel):
