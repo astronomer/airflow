@@ -31,7 +31,6 @@ from airflow.sdk._shared.configuration.parser import (
     AirflowConfigParser as _SharedAirflowConfigParser,
     configure_parser_from_configuration_description,
 )
-from airflow.sdk.definitions.connection import Connection
 from airflow.sdk.execution_time.secrets import _SERVER_DEFAULT_SECRETS_SEARCH_PATH
 
 log = logging.getLogger(__name__)
@@ -226,6 +225,8 @@ def initialize_secrets_backends(
         worker_mode = True
 
     custom_secret_backend = get_custom_secret_backend(worker_mode)
+
+    from airflow.sdk.definitions.connection import Connection
 
     if custom_secret_backend is not None:
         custom_secret_backend._set_connection_class(Connection)

@@ -47,7 +47,6 @@ from airflow._shared.configuration.parser import (
 )
 from airflow._shared.module_loading import import_string
 from airflow.exceptions import AirflowConfigException, RemovedInAirflow4Warning
-from airflow.models import Connection
 from airflow.secrets import DEFAULT_SECRETS_SEARCH_PATH
 from airflow.task.weight_rule import WeightRule
 from airflow.utils import yaml
@@ -871,6 +870,8 @@ def initialize_secrets_backends(
         worker_mode = True
 
     custom_secret_backend = get_custom_secret_backend(worker_mode)
+
+    from airflow.models import Connection
 
     if custom_secret_backend is not None:
         custom_secret_backend._set_connection_class(Connection)
