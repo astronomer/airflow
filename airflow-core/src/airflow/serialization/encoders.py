@@ -199,6 +199,12 @@ def encode_deadline_alert(d: DeadlineAlert | SerializedDeadlineAlert) -> dict[st
     }
 
 
+_BUILTIN_DEADLINE_MODULES = (
+    "airflow.sdk.definitions.deadline",
+    "airflow.serialization.definitions.deadline",
+)
+
+
 def encode_deadline_reference(ref) -> dict[str, Any]:
     """
     Encode a deadline reference.
@@ -215,7 +221,8 @@ def encode_deadline_reference(ref) -> dict[str, Any]:
     # Custom types (not built-in) need __class_path so the decoder can import them.
     # Unlike built-in types which are looked up in SerializedReferenceModels,
     # custom types are discovered via import_string(__class_path) at deserialization time.
-    if not getattr(ref, "__is_builtin__", False):
+    module = type(ref).__module__
+    if module not in _BUILTIN_DEADLINE_MODULES:
         serialized["__class_path"] = qualname(type(ref))
 
     return serialized

@@ -45,9 +45,6 @@ class BaseDeadlineReference(ABC):
     _evaluate_with() with deferred Core imports (imports inside the method body).
     """
 
-    # way to detect builtin types. custom types inherit False while builtins set this to True
-    __is_builtin__: bool = False
-
     @property
     def reference_name(self) -> str:
         """Return the class name as the reference identifier."""
@@ -82,16 +79,12 @@ class BaseDeadlineReference(ABC):
 class DagRunLogicalDateDeadline(BaseDeadlineReference):
     """A deadline that returns a DagRun's logical date."""
 
-    __is_builtin__ = True
-
     def serialize_reference(self) -> dict[str, Any]:
         return {REFERENCE_TYPE_FIELD: self.reference_name}
 
 
 class DagRunQueuedAtDeadline(BaseDeadlineReference):
     """A deadline that returns when a DagRun was queued."""
-
-    __is_builtin__ = True
 
     def serialize_reference(self) -> dict[str, Any]:
         return {REFERENCE_TYPE_FIELD: self.reference_name}
@@ -100,8 +93,6 @@ class DagRunQueuedAtDeadline(BaseDeadlineReference):
 @dataclass
 class FixedDatetimeDeadline(BaseDeadlineReference):
     """A deadline that always returns a fixed datetime."""
-
-    __is_builtin__ = True
 
     _datetime: datetime
 
@@ -121,8 +112,6 @@ class FixedDatetimeDeadline(BaseDeadlineReference):
 @dataclass
 class AverageRuntimeDeadline(BaseDeadlineReference):
     """A deadline that calculates the average runtime from past DAG runs."""
-
-    __is_builtin__ = True
 
     DEFAULT_LIMIT = 10
     max_runs: int
