@@ -1398,6 +1398,7 @@ class TestGetDagRunAssetTriggerEvents:
                             "logical_date": from_datetime_to_zulu_without_ms(dr.logical_date),
                             "start_date": from_datetime_to_zulu_without_ms(dr.start_date),
                             "state": "running",
+                            "partition_key": None,
                         }
                     ],
                     "partition_key": None,
