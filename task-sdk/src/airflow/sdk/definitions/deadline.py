@@ -79,15 +79,9 @@ class BaseDeadlineReference(ABC):
 class DagRunLogicalDateDeadline(BaseDeadlineReference):
     """A deadline that returns a DagRun's logical date."""
 
-    def serialize_reference(self) -> dict[str, Any]:
-        return {REFERENCE_TYPE_FIELD: self.reference_name}
-
 
 class DagRunQueuedAtDeadline(BaseDeadlineReference):
     """A deadline that returns when a DagRun was queued."""
-
-    def serialize_reference(self) -> dict[str, Any]:
-        return {REFERENCE_TYPE_FIELD: self.reference_name}
 
 
 @dataclass
