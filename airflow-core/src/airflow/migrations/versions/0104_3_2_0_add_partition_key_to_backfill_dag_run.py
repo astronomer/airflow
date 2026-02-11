@@ -47,8 +47,8 @@ def upgrade():
 
     with op.batch_alter_table("backfill_dag_run", schema=None) as batch_op:
         batch_op.add_column(sa.Column("partition_key", StringID(), nullable=True))
+        batch_op.add_column("created_at", UtcDateTime, nullable=True)
         batch_op.alter_column("logical_date", existing_type=sa.TIMESTAMP(), nullable=True)
-        batch_op.alter_column("created_at", existing_type=sa.TIMESTAMP(), nullable=False)
 
 
 def downgrade():
