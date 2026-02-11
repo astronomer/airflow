@@ -22,7 +22,7 @@ from sqlalchemy import exists, func, select
 from airflow.api_fastapi.common.db.common import SessionDep, apply_filters_to_select
 from airflow.api_fastapi.common.parameters import (
     QueryPartitionedDagRunDagIdFilter,
-    QueryPartitionedDagRunPendingFilter,
+    QueryPartitionedDagRunHasCreatedDagRunIdFilter,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.ui.partitioned_dag_runs import (
@@ -31,7 +31,7 @@ from airflow.api_fastapi.core_api.datamodels.ui.partitioned_dag_runs import (
     PartitionedDagRunDetailResponse,
     PartitionedDagRunResponse,
 )
-from airflow.api_fastapi.core_api.security import requires_access_asset, requires_access_dag
+from airflow.api_fastapi.core_api.security import requires_access_asset
 from airflow.models import DagModel
 from airflow.models.asset import (
     AssetModel,
@@ -64,9 +64,9 @@ def _build_response(row, required_count: int) -> PartitionedDagRunResponse:
 def get_partitioned_dag_runs(
     session: SessionDep,
     dag_id: QueryPartitionedDagRunDagIdFilter,
-    pending: QueryPartitionedDagRunPendingFilter,
+    has_created_dag_run_id: QueryPartitionedDagRunHasCreatedDagRunIdFilter,
 ) -> PartitionedDagRunCollectionResponse:
-    """Return PartitionedDagRuns. Filter by dag_id and/or pending status."""
+    """Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id."""
     if dag_id.value is not None:
         # Single query: validate Dag + get required count
         dag_info = session.execute(
@@ -121,7 +121,7 @@ def get_partitioned_dag_runs(
         DagRun.state.label("dag_run_state"),
         received_subq.label("total_received"),
     ).outerjoin(DagRun, AssetPartitionDagRun.created_dag_run_id == DagRun.id)
-    query = apply_filters_to_select(statement=query, filters=[dag_id, pending])
+    query = apply_filters_to_select(statement=query, filters=[dag_id, has_created_dag_run_id])
     query = query.order_by(AssetPartitionDagRun.created_at.desc())
 
     if not (rows := session.execute(query).all()):
@@ -161,7 +161,7 @@ def get_partitioned_dag_runs(
 
 @partitioned_dag_runs_router.get(
     "/partitioned_dag_runs/{dag_id}/{partition_key}",
-    dependencies=[Depends(requires_access_asset(method="GET")), Depends(requires_access_dag(method="GET"))],
+    dependencies=[Depends(requires_access_asset(method="GET"))],
 )
 def get_partitioned_dag_run(
     dag_id: str,

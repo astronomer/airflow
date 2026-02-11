@@ -1498,17 +1498,17 @@ export const useAuthLinksServiceGetAuthMenusSuspense = <TData = Common.AuthLinks
 export const useAuthLinksServiceGetCurrentUserInfoSuspense = <TData = Common.AuthLinksServiceGetCurrentUserInfoDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>(queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseAuthLinksServiceGetCurrentUserInfoKeyFn(queryKey), queryFn: () => AuthLinksService.getCurrentUserInfo() as TData, ...options });
 /**
 * Get Partitioned Dag Runs
-* Return PartitionedDagRuns. Filter by dag_id and/or pending status.
+* Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id.
 * @param data The data for the request.
 * @param data.dagId
-* @param data.pending
+* @param data.hasCreatedDagRunId
 * @returns PartitionedDagRunCollectionResponse Successful Response
 * @throws ApiError
 */
-export const usePartitionedDagRunServiceGetPartitionedDagRunsSuspense = <TData = Common.PartitionedDagRunServiceGetPartitionedDagRunsDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ dagId, pending }: {
+export const usePartitionedDagRunServiceGetPartitionedDagRunsSuspense = <TData = Common.PartitionedDagRunServiceGetPartitionedDagRunsDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ dagId, hasCreatedDagRunId }: {
   dagId?: string;
-  pending?: boolean;
-} = {}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UsePartitionedDagRunServiceGetPartitionedDagRunsKeyFn({ dagId, pending }, queryKey), queryFn: () => PartitionedDagRunService.getPartitionedDagRuns({ dagId, pending }) as TData, ...options });
+  hasCreatedDagRunId?: boolean;
+} = {}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UsePartitionedDagRunServiceGetPartitionedDagRunsKeyFn({ dagId, hasCreatedDagRunId }, queryKey), queryFn: () => PartitionedDagRunService.getPartitionedDagRuns({ dagId, hasCreatedDagRunId }) as TData, ...options });
 /**
 * Get Partitioned Dag Run
 * Return full details for a single PartitionedDagRun.

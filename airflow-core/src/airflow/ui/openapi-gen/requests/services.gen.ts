@@ -3849,10 +3849,10 @@ export class AuthLinksService {
 export class PartitionedDagRunService {
     /**
      * Get Partitioned Dag Runs
-     * Return PartitionedDagRuns. Filter by dag_id and/or pending status.
+     * Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id.
      * @param data The data for the request.
      * @param data.dagId
-     * @param data.pending
+     * @param data.hasCreatedDagRunId
      * @returns PartitionedDagRunCollectionResponse Successful Response
      * @throws ApiError
      */
@@ -3862,7 +3862,7 @@ export class PartitionedDagRunService {
             url: '/ui/partitioned_dag_runs',
             query: {
                 dag_id: data.dagId,
-                pending: data.pending
+                has_created_dag_run_id: data.hasCreatedDagRunId
             },
             errors: {
                 422: 'Validation Error'

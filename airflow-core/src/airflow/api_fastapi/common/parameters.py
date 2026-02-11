@@ -1038,14 +1038,15 @@ QueryAssetAliasNamePatternSearch = Annotated[
 QueryAssetDagIdPatternSearch = Annotated[
     _DagIdAssetReferenceFilter, Depends(_DagIdAssetReferenceFilter.depends)
 ]
-QueryPartitionedDagRunPendingFilter = Annotated[
+QueryPartitionedDagRunHasCreatedDagRunIdFilter = Annotated[
     FilterParam[bool | None],
     Depends(
         filter_param_factory(
             AssetPartitionDagRun.created_dag_run_id,
             bool | None,
             FilterOptionEnum.IS_NONE,
-            filter_name="pending",
+            filter_name="has_created_dag_run_id",
+            transform_callable=lambda v: not v if v is not None else None,
         )
     ),
 ]

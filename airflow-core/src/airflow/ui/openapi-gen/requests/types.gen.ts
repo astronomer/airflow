@@ -3490,7 +3490,7 @@ export type GetCurrentUserInfoResponse = AuthenticatedMeResponse;
 
 export type GetPartitionedDagRunsData = {
     dagId?: string | null;
-    pending?: boolean | null;
+    hasCreatedDagRunId?: boolean | null;
 };
 
 export type GetPartitionedDagRunsResponse = PartitionedDagRunCollectionResponse;

@@ -76,7 +76,7 @@ paths:
       tags:
       - PartitionedDagRun
       summary: Get Partitioned Dag Runs
-      description: Return PartitionedDagRuns. Filter by dag_id and/or pending status.
+      description: Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id.
       operationId: get_partitioned_dag_runs
       security:
       - OAuth2PasswordBearer: []
@@ -90,14 +90,14 @@ paths:
           - type: string
           - type: 'null'
           title: Dag Id
-      - name: pending
+      - name: has_created_dag_run_id
         in: query
         required: false
         schema:
           anyOf:
           - type: boolean
           - type: 'null'
-          title: Pending
+          title: Has Created Dag Run Id
       responses:
         '200':
           description: Successful Response
