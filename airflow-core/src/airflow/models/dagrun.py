@@ -71,6 +71,7 @@ from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.taskinstancehistory import TaskInstanceHistory as TIH
 from airflow.models.tasklog import LogTemplate
 from airflow.models.taskmap import TaskMap
+from airflow.observability import trace
 from airflow.observability.trace import Trace
 from airflow.serialization.definitions.deadline import SerializedReferenceModels
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
@@ -362,7 +363,12 @@ class DagRun(Base, LoggingMixin):
         self.triggered_by = triggered_by
         self.triggering_user_name = triggering_user_name
         self.scheduled_by_job_id = None
-        self.context_carrier = {}
+        context_carrier = Trace.inject()
+        self.context_carrier = context_carrier
+        context = Trace.extract(self.context_carrier)
+        span = Trace.start_child_span("dr_creation", context).__enter__()
+        span.add_event("dagrun init")
+
         if not isinstance(partition_key, str | None):
             raise ValueError(
                 f"Expected partition_key to be a `str` or `None` but got `{partition_key.__class__.__name__}`"
@@ -531,9 +537,6 @@ class DagRun(Base, LoggingMixin):
                 if state in State.finished_dr_states:
                     self.end_date = timezone.utcnow()
             self._state = state
-        else:
-            if state == DagRunState.QUEUED:
-                self.queued_at = timezone.utcnow()
 
     @declared_attr
     def state(self):
@@ -1042,7 +1045,14 @@ class DagRun(Base, LoggingMixin):
 
     def start_dr_spans_if_needed(self, tis: list[TI]):
         # If there is no value in active_spans, then the span hasn't already been started.
-        if self.active_spans is not None and self.active_spans.get("dr:" + str(self.id)) is None:
+        span_id = "dr:" + str(self.id)
+        if self.context_carrier:
+            if self.active_spans is not None and not self.active_spans.get(span_id):
+                context = Trace.extract(self.context_carrier)
+                tracer = Trace.get_tracer("dagrun")
+                span = tracer.start_span("dr!", context=context)
+                self.active_spans.set(span_id, span)
+        if self.active_spans is not None and self.active_spans.get(span_id) is None:
             if self.span_status == SpanStatus.NOT_STARTED or self.span_status == SpanStatus.NEEDS_CONTINUANCE:
                 dr_span = None
                 continue_ti_spans = False
@@ -1053,6 +1063,7 @@ class DagRun(Base, LoggingMixin):
                         start_time=self.queued_at,  # This is later converted to nano.
                         start_as_current=False,
                     )
+                    dr_span.add_event("update state first called")
                 elif self.span_status == SpanStatus.NEEDS_CONTINUANCE:
                     # Use the existing context_carrier to set the initial dag_run span as the parent.
                     parent_context = Trace.extract(self.context_carrier)
@@ -1102,10 +1113,12 @@ class DagRun(Base, LoggingMixin):
                 )
 
     def end_dr_span_if_needed(self):
+        self.log.info("active_spans", active_spans=self.active_spans.get_all())
         if self.active_spans is not None:
             active_span = self.active_spans.get("dr:" + str(self.id))
             if active_span is not None:
-                self.log.debug(
+                # breakpoint()
+                self.log.warning(
                     "Found active span with span_id: %s, for dag_id: %s, run_id: %s, state: %s",
                     active_span.get_span_context().span_id,
                     self.dag_id,

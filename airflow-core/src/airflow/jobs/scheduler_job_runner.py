@@ -33,6 +33,7 @@ from functools import lru_cache, partial
 from itertools import groupby
 from typing import TYPE_CHECKING, Any
 
+from opentelemetry.trace import set_span_in_context
 from sqlalchemy import (
     and_,
     delete,
@@ -244,7 +245,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         self,
         job: Job,
         num_runs: int = conf.getint("scheduler", "num_runs"),
-        scheduler_idle_sleep_time: float = conf.getfloat("scheduler", "scheduler_idle_sleep_time"),
+        scheduler_idle_sleep_time: float = 0.1,  # conf.getfloat("scheduler", "scheduler_idle_sleep_time"),
         log: Logger | None = None,
     ):
         super().__init__(job)
@@ -2174,8 +2175,17 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             partial(self.scheduler_dag_bag.get_dag_for_run, session=session)
         )
 
-        span = Trace.get_current_span()
+        parent_span = Trace.get_current_span()
         for dag_run in dag_runs:
+            span_id = "dr:" + str(dag_run.id)
+            tracer = Trace.get_tracer("dagrun")
+            if dag_run.context_carrier:
+                context = Trace.extract(dag_run.context_carrier)
+            else:
+                context = set_span_in_context(parent_span)
+            span = tracer.start_span("dagrun", context=context)
+            if self.active_spans and self.active_spans.get(span_id) is None:
+                self.active_spans.set(span_id, span)
             dag_id = dag_run.dag_id
             run_id = dag_run.run_id
             backfill_id = dag_run.backfill_id
@@ -2216,7 +2226,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     continue
             if span.is_recording():
                 span.add_event(
-                    name="dag_run",
+                    name="dag_run.set_running",
                     attributes={
                         "run_id": dag_run.run_id,
                         "dag_id": dag_run.dag_id,
@@ -2639,6 +2649,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             for prev_key in self.previous_ti_metrics[state]:
                 # Reset previously exported stats that are no longer present in current metrics to zero
                 if prev_key not in ti_metrics:
+                    dag_id, task_id, queue = prev_key
                     DualStatsManager.gauge(
                         f"ti.{state}",
                         0,
