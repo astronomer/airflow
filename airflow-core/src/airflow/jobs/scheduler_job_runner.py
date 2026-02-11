@@ -2183,7 +2183,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 context = Trace.extract(dag_run.context_carrier)
             else:
                 context = set_span_in_context(parent_span)
-            span = tracer.start_span("dagrun", context=context)
+            span = tracer.start_span("manage_dagrun", context=context, attributes={"component": "scheduler"})
             if self.active_spans and self.active_spans.get(span_id) is None:
                 self.active_spans.set(span_id, span)
             dag_id = dag_run.dag_id

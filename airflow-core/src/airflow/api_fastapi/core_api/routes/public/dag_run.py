@@ -448,8 +448,8 @@ def trigger_dag_run(
 ) -> DAGRunResponse:
     """Trigger a DAG."""
     with Trace.start_span(
-        span_name="dr.something",
-        component="dag",
+        span_name="trigger_dag_run",
+        component="api-server",
     ) as span:
         span.add_event("trigger_dag.start")
         dm = session.scalar(select(DagModel).where(~DagModel.is_stale, DagModel.dag_id == dag_id).limit(1))

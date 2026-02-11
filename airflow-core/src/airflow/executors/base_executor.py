@@ -392,11 +392,12 @@ class BaseExecutor(LoggingMixin):
                     # values will be available (end_time, duration, etc.).
 
                     span = Trace.start_child_span(
-                        span_name=f"task.{ti.task_id}",
+                        span_name="manage_task",
                         parent_context=parent_context,
-                        component="task",
                         start_as_current=False,
                     )
+                    span.set_attribute("task_id", ti.task_id)
+                    span.set_attribute("component", "executor")
                     span.add_event("task triggered")
                     self.active_spans.set("ti:" + str(ti.id), span)
                     # Inject the current context into the carrier.

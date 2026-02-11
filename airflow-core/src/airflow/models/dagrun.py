@@ -71,7 +71,6 @@ from airflow.models.taskinstance import TaskInstance as TI
 from airflow.models.taskinstancehistory import TaskInstanceHistory as TIH
 from airflow.models.tasklog import LogTemplate
 from airflow.models.taskmap import TaskMap
-from airflow.observability import trace
 from airflow.observability.trace import Trace
 from airflow.serialization.definitions.deadline import SerializedReferenceModels
 from airflow.serialization.definitions.notset import NOTSET, ArgNotSet, is_arg_set
@@ -365,9 +364,6 @@ class DagRun(Base, LoggingMixin):
         self.scheduled_by_job_id = None
         context_carrier = Trace.inject()
         self.context_carrier = context_carrier
-        context = Trace.extract(self.context_carrier)
-        span = Trace.start_child_span("dr_creation", context).__enter__()
-        span.add_event("dagrun init")
 
         if not isinstance(partition_key, str | None):
             raise ValueError(
