@@ -189,6 +189,7 @@ class BackfillDagRun(Base):
     logical_date: Mapped[datetime] = mapped_column(UtcDateTime, nullable=True)
     partition_key: Mapped[datetime] = mapped_column(StringID(), nullable=True)
     sort_ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=timezone.utcnow, nullable=False)
 
     backfill = relationship("Backfill", back_populates="backfill_dag_run_associations")
     dag_run = relationship("DagRun")
