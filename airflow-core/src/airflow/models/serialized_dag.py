@@ -382,9 +382,6 @@ class SerializedDagModel(Base):
         "doc_json",
         "doc_yaml",
         "doc_rst",
-        # Scheduling
-        "start_date",
-        "end_date",
         # Template metadata (not actual values)
         "template_fields",
         "template_ext",
@@ -397,9 +394,6 @@ class SerializedDagModel(Base):
         # Display/documentation
         "description",
         "doc_md",
-        # Scheduling
-        "start_date",
-        "end_date",
         # Config
         "render_template_as_native_obj",
         # Location (can change without affecting logic)
