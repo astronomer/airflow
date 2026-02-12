@@ -279,7 +279,7 @@ _IMPORT_MAP: dict[str, str | tuple[str, ...]] = {
         "airflow.sdk._shared.observability.metrics.dual_stats_manager",
         "airflow._shared.observability.metrics.dual_stats_manager",
     ),
-    "Stats": ("airflow.sdk._shared.observability.metrics.stats", "airflow.stats"),
+    "Stats": ("airflow.sdk.observability.stats", "airflow.observability.stats", "airflow.stats"),
     # ============================================================================
     # Secrets Masking
     # ============================================================================
