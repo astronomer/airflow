@@ -19,7 +19,11 @@ from __future__ import annotations
 
 from cadwyn import ResponseInfo, VersionChange, convert_response_to_previous_version_for, schema
 
-from airflow.api_fastapi.execution_api.datamodels.asset_event import AssetEventResponse, AssetEventsResponse
+from airflow.api_fastapi.execution_api.datamodels.asset_event import (
+    AssetEventResponse,
+    AssetEventsResponse,
+    DagRunAssetReference,
+)
 from airflow.api_fastapi.execution_api.datamodels.dagrun import TriggerDAGRunPayload
 from airflow.api_fastapi.execution_api.datamodels.taskinstance import DagRun, TIRunContext
 
@@ -33,6 +37,7 @@ class AddPartitionKeyField(VersionChange):
         schema(DagRun).field("partition_key").didnt_exist,
         schema(AssetEventResponse).field("partition_key").didnt_exist,
         schema(TriggerDAGRunPayload).field("partition_key").didnt_exist,
+        schema(DagRunAssetReference).field("partition_key").didnt_exist,
     )
 
     @convert_response_to_previous_version_for(TIRunContext)  # type: ignore[arg-type]
@@ -47,3 +52,9 @@ class AddPartitionKeyField(VersionChange):
         events = response.body["asset_events"]
         for elem in events:
             elem.pop("partition_key", None)
+
+    @convert_response_to_previous_version_for(DagRunAssetReference)  # type: ignore[arg-type]
+    def remove_partition_key_from_dag_run_asset_reference(response: ResponseInfo) -> None:  # type: ignore[misc]
+        """Remove the `partition_key` field from DagRunAssetReference when converting to the previous version."""
+        if isinstance(response.body, dict):
+            response.body.pop("partition_key", None)
