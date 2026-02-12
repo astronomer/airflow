@@ -26,7 +26,7 @@ from airflow.api_fastapi.common.db.common import SessionDep  # noqa: TC001
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
 from airflow.executors.workloads import ExecuteTask
-from airflow.providers.common.compat.sdk import Stats, timezone
+from airflow.providers.common.compat.sdk import DualStatsManager, Stats, timezone
 from airflow.providers.edge3.models.edge_job import EdgeJobModel
 from airflow.providers.edge3.worker_api.auth import jwt_token_authorization_rest
 from airflow.providers.edge3.worker_api.datamodels import (
@@ -87,8 +87,6 @@ def fetch(
     # Edge worker does not backport emitted Airflow metrics, so export some metrics
     tags = {"dag_id": job.dag_id, "task_id": job.task_id, "queue": job.queue}
     try:
-        from airflow.sdk._shared.observability.metrics.dual_stats_manager import DualStatsManager
-
         DualStatsManager.incr("edge_worker.ti.start", tags=tags)
     except ImportError:
         Stats.incr(f"edge_worker.ti.start.{job.queue}.{job.dag_id}.{job.task_id}", tags=tags)
@@ -146,8 +144,6 @@ def state(
                 "state": str(state),
             }
             try:
-                from airflow.sdk._shared.observability.metrics.dual_stats_manager import DualStatsManager
-
                 DualStatsManager.incr(
                     "edge_worker.ti.finish",
                     tags=tags,

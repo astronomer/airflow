@@ -69,6 +69,9 @@ if TYPE_CHECKING:
         teardown as teardown,
     )
     from airflow.sdk._shared.listeners import hookimpl as hookimpl
+    from airflow.sdk._shared.observability.metrics.dual_stats_manager import (
+        DualStatsManager as DualStatsManager,
+    )
     from airflow.sdk._shared.observability.metrics.stats import Stats as Stats
     from airflow.sdk.bases.decorator import (
         DecoratedMappedOperator as DecoratedMappedOperator,
@@ -272,6 +275,10 @@ _IMPORT_MAP: dict[str, str | tuple[str, ...]] = {
     # ============================================================================
     # Observability
     # ============================================================================
+    "DualStatsManager": (
+        "airflow.sdk._shared.observability.metrics.dual_stats_manager",
+        "airflow._shared.observability.metrics.dual_stats_manager",
+    ),
     "Stats": ("airflow.sdk._shared.observability.metrics.stats", "airflow.stats"),
     # ============================================================================
     # Secrets Masking

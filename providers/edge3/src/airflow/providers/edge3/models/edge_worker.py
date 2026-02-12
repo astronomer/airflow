@@ -27,7 +27,7 @@ from sqlalchemy import Integer, String, delete, select
 from sqlalchemy.orm import Mapped
 
 from airflow.models.base import Base
-from airflow.providers.common.compat.sdk import AirflowException, Stats, timezone
+from airflow.providers.common.compat.sdk import AirflowException, DualStatsManager, Stats, timezone
 from airflow.providers.common.compat.sqlalchemy.orm import mapped_column
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
@@ -174,8 +174,6 @@ def set_metrics(
     )
 
     try:
-        from airflow.sdk._shared.observability.metrics.dual_stats_manager import DualStatsManager
-
         DualStatsManager.gauge(
             "edge_worker.connected",
             int(connected),
