@@ -590,28 +590,76 @@ class TestCreateBackfillDryRun(TestBackfillEndpoint):
             (
                 "none",
                 [
-                    {"logical_date": "2024-01-01T00:00:00Z"},
-                    {"logical_date": "2024-01-04T00:00:00Z"},
-                    {"logical_date": "2024-01-05T00:00:00Z"},
+                    {
+                        "logical_date": "2024-01-01T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-04T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-05T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
                 ],
             ),
             (
                 "failed",
                 [
-                    {"logical_date": "2024-01-01T00:00:00Z"},
-                    {"logical_date": "2024-01-03T00:00:00Z"},  # Reprocess failed
-                    {"logical_date": "2024-01-04T00:00:00Z"},
-                    {"logical_date": "2024-01-05T00:00:00Z"},
+                    {
+                        "logical_date": "2024-01-01T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-03T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },  # Reprocess failed
+                    {
+                        "logical_date": "2024-01-04T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-05T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
                 ],
             ),
             (
                 "completed",
                 [
-                    {"logical_date": "2024-01-01T00:00:00Z"},
-                    {"logical_date": "2024-01-02T00:00:00Z"},  # Reprocess all
-                    {"logical_date": "2024-01-03T00:00:00Z"},
-                    {"logical_date": "2024-01-04T00:00:00Z"},
-                    {"logical_date": "2024-01-05T00:00:00Z"},
+                    {
+                        "logical_date": "2024-01-01T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-02T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },  # Reprocess all
+                    {
+                        "logical_date": "2024-01-03T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-04T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
+                    {
+                        "logical_date": "2024-01-05T00:00:00Z",
+                        "partition_date": None,
+                        "partition_key": None,
+                    },
                 ],
             ),
         ],
