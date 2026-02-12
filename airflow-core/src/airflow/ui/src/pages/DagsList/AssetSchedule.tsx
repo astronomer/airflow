@@ -35,9 +35,32 @@ type Props = {
   readonly timetableSummary: string | null;
 };
 
+type PartitionScheduleProps = {
+  readonly dagId: string;
+  readonly isLoading: boolean;
+  readonly pendingCount: number;
+};
+
+const PartitionSchedule = ({ dagId, isLoading, pendingCount }: PartitionScheduleProps) => {
+  const { t: translate } = useTranslation("common");
+
+  return (
+    <Link asChild color="fg.info">
+      <RouterLink to={`/dags/${dagId}/partitioned_dag_runs`}>
+        <Button loading={isLoading} paddingInline={0} size="sm" variant="ghost">
+          <FiDatabase style={{ display: "inline" }} />
+          {translate("pendingPartitionedDagRun", { count: pendingCount })}
+        </Button>
+      </RouterLink>
+    </Link>
+  );
+};
+
 export const AssetSchedule = ({ assetExpression, dagId, latestRunAfter, timetableSummary }: Props) => {
   const { t: translate } = useTranslation("dags");
   const { data: nextRun, isLoading } = useAssetServiceNextRunAssets({ dagId });
+
+  const isPartitioned = timetableSummary === "Partitioned Asset";
 
   const nextRunEvents = (nextRun?.events ?? []) as Array<NextRunEvent>;
 
@@ -56,6 +79,12 @@ export const AssetSchedule = ({ assetExpression, dagId, latestRunAfter, timetabl
         <Text>{timetableSummary}</Text>
       </HStack>
     );
+  }
+
+  if (isPartitioned) {
+    const pendingCount = (nextRun?.pending_partition_count as number | undefined) ?? 0;
+
+    return <PartitionSchedule dagId={dagId} isLoading={isLoading} pendingCount={pendingCount} />;
   }
 
   const [asset] = nextRunEvents;
