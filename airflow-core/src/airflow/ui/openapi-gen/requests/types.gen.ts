@@ -782,7 +782,7 @@ export type DagProcessorInfoResponse = {
 };
 
 /**
- * DAGRun serializer for asset responses.
+ * DagRun serializer for asset responses.
  */
 export type DagRunAssetReference = {
     run_id: string;
@@ -793,6 +793,7 @@ export type DagRunAssetReference = {
     state: string;
     data_interval_start: string | null;
     data_interval_end: string | null;
+    partition_key: string | null;
 };
 
 /**
@@ -1195,6 +1196,9 @@ export type PluginResponse = {
  */
 export type PoolBody = {
     name: string;
+    /**
+     * Number of slots. Use -1 for unlimited.
+     */
     slots: number;
     description?: string | null;
     include_deferred?: boolean;
@@ -1225,6 +1229,9 @@ export type PoolPatchBody = {
  */
 export type PoolResponse = {
     name: string;
+    /**
+     * Number of slots. Use -1 for unlimited.
+     */
     slots: number;
     description?: string | null;
     include_deferred: boolean;
@@ -1666,6 +1673,7 @@ export type XComResponse = {
     run_id: string;
     dag_display_name: string;
     task_display_name: string;
+    run_after: string;
 };
 
 /**
@@ -1681,6 +1689,7 @@ export type XComResponseNative = {
     run_id: string;
     dag_display_name: string;
     task_display_name: string;
+    run_after: string;
     value: unknown;
 };
 
@@ -1697,6 +1706,7 @@ export type XComResponseString = {
     run_id: string;
     dag_display_name: string;
     task_display_name: string;
+    run_after: string;
     value: string | null;
 };
 

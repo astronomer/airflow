@@ -20,7 +20,7 @@
 Add partition_key to backfill_dag_run.
 
 Revision ID: 134de42d3cb0
-Revises: 53ff648b8a26
+Revises: f8c9d7e6b5a4
 Create Date: 2026-02-04 11:42:08.773068
 
 """
@@ -34,7 +34,7 @@ from airflow.migrations.db_types import StringID
 from airflow.utils.sqlalchemy import UtcDateTime
 
 revision = "134de42d3cb0"
-down_revision = "53ff648b8a26"
+down_revision = "f8c9d7e6b5a4"
 branch_labels = None
 depends_on = None
 airflow_version = "3.2.0"
