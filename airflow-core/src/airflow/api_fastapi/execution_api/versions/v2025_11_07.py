@@ -52,9 +52,3 @@ class AddPartitionKeyField(VersionChange):
         events = response.body["asset_events"]
         for elem in events:
             elem.pop("partition_key", None)
-
-    @convert_response_to_previous_version_for(DagRunAssetReference)  # type: ignore[arg-type]
-    def remove_partition_key_from_dag_run_asset_reference(response: ResponseInfo) -> None:  # type: ignore[misc]
-        """Remove the `partition_key` field from DagRunAssetReference when converting to the previous version."""
-        if isinstance(response.body, dict):
-            response.body.pop("partition_key", None)
