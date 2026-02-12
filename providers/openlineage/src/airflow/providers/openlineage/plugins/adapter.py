@@ -40,7 +40,7 @@ from airflow.providers.common.compat.sdk import Stats, conf as airflow_conf
 try:
     from airflow.providers.common.compat.sdk import DualStatsManager
 except ImportError:
-    DualStatsManager = None  # Airflow 2
+    DualStatsManager = None  # type: ignore[assignment,misc]  # Airflow 2
 from airflow.providers.openlineage import __version__ as OPENLINEAGE_PROVIDER_VERSION, conf
 from airflow.providers.openlineage.utils.utils import (
     OpenLineageRedactor,
