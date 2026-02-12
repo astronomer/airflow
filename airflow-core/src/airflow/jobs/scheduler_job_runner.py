@@ -1275,10 +1275,9 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 "airflow.task.pid": ti.pid,
             }
         )
-        if span.is_recording():
-            span.add_event(name="airflow.task.queued", timestamp=datetime_to_nano(ti.queued_dttm))
-            span.add_event(name="airflow.task.started", timestamp=datetime_to_nano(ti.start_date))
-            span.add_event(name="airflow.task.ended", timestamp=datetime_to_nano(ti.end_date))
+        span.add_event(name="airflow.task.queued", timestamp=datetime_to_nano(ti.queued_dttm))
+        span.add_event(name="airflow.task.started", timestamp=datetime_to_nano(ti.start_date))
+        span.add_event(name="airflow.task.ended", timestamp=datetime_to_nano(ti.end_date))
 
     def _execute(self) -> int | None:
         import os
@@ -1667,13 +1666,12 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 self.log.debug("Next timed event is in %f", next_event)
 
             self.log.debug("Ran scheduling loop in %.2f seconds", timer.duration)
-            if span.is_recording():
-                span.add_event(
-                    name="Ran scheduling loop",
-                    attributes={
-                        "duration in seconds": timer.duration,
-                    },
-                )
+            span.add_event(
+                name="Ran scheduling loop",
+                attributes={
+                    "duration in seconds": timer.duration,
+                },
+            )
 
             if not is_unit_test and not num_queued_tis and not num_finished_events:
                 # If the scheduler is doing things, don't sleep. This means when there is work to do, the
@@ -1687,8 +1685,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     self.num_runs,
                     loop_count,
                 )
-                if span.is_recording():
-                    span.add_event("Exiting scheduler loop as requested number of runs has been reached")
+                span.add_event("Exiting scheduler loop as requested number of runs has been reached")
                 break
 
     def _do_scheduling(self, session: Session) -> int:
@@ -2164,28 +2161,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     tags={},
                     extra_tags={"dag_id": dag.dag_id},
                 )
-                if span.is_recording():
-                    span.add_event(
-                        name="schedule_delay",
-                        attributes={"dag_id": dag.dag_id, "schedule_delay": str(schedule_delay)},
-                    )
+                span.add_event(
+                    name="schedule_delay",
+                    attributes={"dag_id": dag.dag_id, "schedule_delay": str(schedule_delay)},
+                )
 
         # cache saves time during scheduling of many dag_runs for same dag
         cached_get_dag: Callable[[DagRun], SerializedDAG | None] = lru_cache()(
             partial(self.scheduler_dag_bag.get_dag_for_run, session=session)
         )
 
-        parent_span = Trace.get_current_span()
         for dag_run in dag_runs:
-            span_id = "dr:" + str(dag_run.id)
-            tracer = Trace.get_tracer("dagrun")
-            if dag_run.context_carrier:
-                context = Trace.extract(dag_run.context_carrier)
-            else:
-                context = set_span_in_context(parent_span)
-            span = tracer.start_span("manage_dagrun", context=context, attributes={"component": "scheduler"})
-            if self.active_spans and self.active_spans.get(span_id) is None:
-                self.active_spans.set(span_id, span)
+            span = self._get_or_create_dagrun_span(dag_run)
             dag_id = dag_run.dag_id
             run_id = dag_run.run_id
             backfill_id = dag_run.backfill_id
@@ -2224,18 +2211,29 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         dag_run.run_id,
                     )
                     continue
-            if span.is_recording():
-                span.add_event(
-                    name="dag_run.set_running",
-                    attributes={
-                        "run_id": dag_run.run_id,
-                        "dag_id": dag_run.dag_id,
-                        "conf": str(dag_run.conf),
-                    },
-                )
+            span.add_event(
+                name="dag_run.set_running",
+                attributes={
+                    "run_id": dag_run.run_id,
+                    "dag_id": dag_run.dag_id,
+                },
+            )
             active_runs_of_dags[(dag_run.dag_id, backfill_id)] += 1
             _update_state(dag, dag_run)
             dag_run.notify_dagrun_state_changed(msg="started")
+
+    def _get_or_create_dagrun_span(self, dag_run: DagRun) -> EmptySpan:
+        parent_span = Trace.get_current_span()
+        span_id = "dr:" + str(dag_run.id)
+        tracer = Trace.get_tracer("dagrun")
+        if dag_run.context_carrier:
+            context = Trace.extract(dag_run.context_carrier)
+        else:
+            context = set_span_in_context(parent_span)
+        span = tracer.start_span("manage_dagrun", context=context, attributes={"component": "scheduler"})
+        if self.active_spans and self.active_spans.get(span_id) is None:
+            self.active_spans.set(span_id, span)
+        return span
 
     @retry_db_transaction
     def _schedule_all_dag_runs(
@@ -2344,15 +2342,14 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         extra_tags={"dag_id": dag_run.dag_id},
                     )
                 span.set_attribute("error", True)
-                if span.is_recording():
-                    span.add_event(
-                        name="error",
-                        attributes={
-                            "message": f"Run {dag_run.run_id} of {dag_run.dag_id} has timed-out",
-                            "duration": str(duration),
-                        },
-                    )
-                return callback_to_execute
+                span.add_event(
+                    name="error",
+                    attributes={
+                        "message": f"Run {dag_run.run_id} of {dag_run.dag_id} has timed-out",
+                        "duration": str(duration),
+                    },
+                )
+            return callback_to_execute
 
             if dag_run.logical_date and dag_run.logical_date > timezone.utcnow():
                 self.log.error("Logical date is in future: %s", dag_run.logical_date)
@@ -2393,14 +2390,13 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             # query to update all the TIs across all the logical dates and dag
             # IDs in a single query, but it turns out that can be _very very slow_
             # see #11147/commit ee90807ac for more details
-            if span.is_recording():
-                span.add_event(
-                    name="schedule_tis",
-                    attributes={
-                        "message": "dag_run scheduling its tis",
-                        "schedulable_tis": [_ti.task_id for _ti in schedulable_tis],
-                    },
-                )
+            span.add_event(
+                name="schedule_tis",
+                attributes={
+                    "message": "dag_run scheduling its tis",
+                    "schedulable_tis": [_ti.task_id for _ti in schedulable_tis],
+                },
+            )
             dag_run.schedule_tis(schedulable_tis, session, max_tis_per_query=self.job.max_tis_per_query)
 
             return callback_to_run
