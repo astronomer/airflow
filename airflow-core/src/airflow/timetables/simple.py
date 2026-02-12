@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias
 import structlog
 
 from airflow._shared.timezones import timezone
-from airflow.partition_mapper.identity import IdentityMapper
+from airflow.partition_mappers.identity import IdentityMapper
 from airflow.serialization.definitions.assets import (
     SerializedAsset,
     SerializedAssetAlias,

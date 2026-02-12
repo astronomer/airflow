@@ -23,7 +23,7 @@ import attrs
 
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions.asset import AssetAll, BaseAsset
-from airflow.sdk.definitions.partition_mapper.identity import IdentityMapper
+from airflow.sdk.definitions.partition_mappers.identity import IdentityMapper
 
 if TYPE_CHECKING:
     from collections.abc import Collection
