@@ -67,6 +67,9 @@ def git_repo(tmp_path_factory):
 
 
 def assert_repo_is_closed(bundle: GitDagBundle):
+    # When .git was pruned, repo is cleared and there is nothing to close
+    if getattr(bundle, "repo", None) is None:
+        return
     # cat-file processes get left around if the repo is not closed, so check it was
     assert bundle.repo.git.cat_file_all is None
     assert bundle.bare_repo.git.cat_file_all is None

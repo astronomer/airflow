@@ -168,11 +168,14 @@ class GitDagBundle(BaseDagBundle):
                             raise RuntimeError("Error pulling submodule from repository") from e
 
                 if self.prune_dotgit_folder:
+                    self.repo.close()
                     shutil.rmtree(self.repo_path / ".git")
+                    self.repo = None
             else:
                 self.refresh()
 
-            self.repo.close()
+            if self.repo is not None:
+                self.repo.close()
 
     def initialize(self) -> None:
         if not self.repo_url:
@@ -263,7 +266,7 @@ class GitDagBundle(BaseDagBundle):
         )
 
     def get_current_version(self) -> str:
-        if self.version is not None:
+        if self.version is not None and getattr(self, "repo", None) is None:
             return self.version
         with self.repo as repo:
             return repo.head.commit.hexsha
