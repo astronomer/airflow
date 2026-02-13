@@ -58,4 +58,6 @@ def downgrade():
     with op.batch_alter_table("backfill_dag_run", schema=None) as batch_op:
         batch_op.alter_column("logical_date", existing_type=sa.TIMESTAMP(), nullable=False)
         batch_op.drop_column("partition_key")
+
+    with op.batch_alter_table("dag_run", schema=None) as batch_op:
         batch_op.drop_column("created_at")
