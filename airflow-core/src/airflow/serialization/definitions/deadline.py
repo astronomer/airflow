@@ -239,6 +239,53 @@ class SerializedReferenceModels:
         def deserialize_reference(cls, reference_data: dict):
             return cls(max_runs=reference_data["max_runs"], min_runs=reference_data.get("min_runs"))
 
+    class SerializedCustomReference(SerializedBaseDeadlineReference):
+        """Wrapper for custom deadline references."""
+
+        def __init__(self, inner_ref):
+            self.inner_ref = inner_ref
+
+        @property
+        def reference_name(self) -> str:
+            return self.inner_ref.reference_name
+
+        def evaluate_with(self, *, session: Session, interval: timedelta, **kwargs: Any) -> datetime | None:
+            required_kwargs = getattr(self.inner_ref, "required_kwargs", set())
+            filtered_kwargs = {k: v for k, v in kwargs.items() if k in required_kwargs}
+
+            if missing_kwargs := required_kwargs - filtered_kwargs.keys():
+                raise ValueError(
+                    f"{self.inner_ref.__class__.__name__} is missing required parameters: {', '.join(missing_kwargs)}"
+                )
+
+            if extra_kwargs := kwargs.keys() - filtered_kwargs.keys():
+                logger.debug("Ignoring unexpected parameters: %s", ", ".join(extra_kwargs))
+
+            base_time = self.inner_ref._evaluate_with(session=session, **filtered_kwargs)
+            return base_time + interval if base_time is not None else None
+
+        def _evaluate_with(self, *, session: Session, **kwargs: Any) -> datetime | None:
+            return self.inner_ref._evaluate_with(session=session, **kwargs)
+
+        def serialize_reference(self) -> dict:
+            return self.inner_ref.serialize_reference()
+
+        @classmethod
+        def deserialize_reference(cls, reference_data: dict):
+            from airflow._shared.module_loading import import_string
+
+            custom_class = import_string(reference_data["__class_path"])
+            inner_ref = custom_class.deserialize_reference(reference_data)
+            return cls(inner_ref)
+
+        def __eq__(self, other) -> bool:
+            if not isinstance(other, SerializedReferenceModels.SerializedCustomReference):
+                return False
+            return self.inner_ref == other.inner_ref
+
+        def __hash__(self) -> int:
+            return hash(self.inner_ref)
+
     class TYPES:
         """Collection of SerializedDeadlineReference types for type checking."""
 
@@ -259,7 +306,9 @@ SerializedReferenceModels.TYPES.DAGRUN_CREATED = (
 )
 SerializedReferenceModels.TYPES.DAGRUN_QUEUED = (SerializedReferenceModels.DagRunQueuedAtDeadline,)
 SerializedReferenceModels.TYPES.DAGRUN = (
-    SerializedReferenceModels.TYPES.DAGRUN_CREATED + SerializedReferenceModels.TYPES.DAGRUN_QUEUED
+    SerializedReferenceModels.TYPES.DAGRUN_CREATED
+    + SerializedReferenceModels.TYPES.DAGRUN_QUEUED
+    + (SerializedReferenceModels.SerializedCustomReference,)
 )
 
 
