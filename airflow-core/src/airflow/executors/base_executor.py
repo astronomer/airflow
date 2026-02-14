@@ -37,7 +37,6 @@ from airflow.models import Log
 from airflow.observability.trace import DebugTrace, Trace, add_debug_span
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.state import TaskInstanceState
-from airflow.utils.thread_safe_dict import ThreadSafeDict
 
 PARALLELISM: int = conf.getint("core", "PARALLELISM")
 
@@ -140,8 +139,6 @@ class BaseExecutor(LoggingMixin):
     :param parallelism: how many jobs should run at one time.
     """
 
-    active_spans = ThreadSafeDict()
-
     supports_ad_hoc_ti_run: bool = False
     supports_multi_team: bool = False
     sentry_integration: str = ""
@@ -214,10 +211,6 @@ class BaseExecutor(LoggingMixin):
             _repr += f", team_name={self.team_name!r}"
         _repr += ")"
         return _repr
-
-    @classmethod
-    def set_active_spans(cls, active_spans: ThreadSafeDict):
-        cls.active_spans = active_spans
 
     def start(self):  # pragma: no cover
         """Executors may need to get things started."""
@@ -381,25 +374,21 @@ class BaseExecutor(LoggingMixin):
             if isinstance(item, workloads.ExecuteTask) and hasattr(item, "ti"):
                 ti = item.ti
 
-                # If it's None, then the span for the current id hasn't been started.
-                if self.active_spans is not None and self.active_spans.get("ti:" + str(ti.id)) is None:
-                    if isinstance(ti, workloads.TaskInstance):
-                        parent_context = Trace.extract(ti.parent_context_carrier)
-                    else:
-                        parent_context = Trace.extract(ti.dag_run.context_carrier)
-                    # Start a new span using the context from the parent.
-                    # Attributes will be set once the task has finished so that all
-                    # values will be available (end_time, duration, etc.).
+                if isinstance(ti, workloads.TaskInstance):
+                    parent_context = Trace.extract(ti.parent_context_carrier)
+                else:
+                    parent_context = Trace.extract(ti.dag_run.context_carrier)
+                # Start a new span using the context from the parent.
+                # Attributes will be set once the task has finished so that all
+                # values will be available (end_time, duration, etc.).
 
-                    span = Trace.start_child_span(
-                        span_name="manage_task",
-                        parent_context=parent_context,
-                        start_as_current=False,
-                    )
+                tracer = Trace.get_tracer("dagrun")
+                with tracer.start_as_current_span("task", context=parent_context) as span:
                     span.set_attribute("task_id", ti.task_id)
+                    span.set_attribute("dag_id", ti.dag_id)
+                    span.set_attribute("run_id", ti.run_id)
                     span.set_attribute("component", "executor")
                     span.add_event("task triggered")
-                    self.active_spans.set("ti:" + str(ti.id), span)
                     # Inject the current context into the carrier.
                     carrier = Trace.inject()
                     ti.context_carrier = carrier
