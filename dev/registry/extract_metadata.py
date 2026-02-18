@@ -66,6 +66,8 @@ GENERATED_DIR = AIRFLOW_ROOT / "generated"
 INVENTORY_CACHE = GENERATED_DIR / "_inventory_cache"
 REGISTRY_DIR = AIRFLOW_ROOT / "registry"
 OUTPUT_DIR = REGISTRY_DIR / "src" / "data"
+REGISTRY_11TY_DIR = AIRFLOW_ROOT / "registry-11ty"
+OUTPUT_DIR_11TY = REGISTRY_11TY_DIR / "src" / "_data"
 
 
 @dataclass
@@ -370,12 +372,18 @@ def module_path_to_file_path(module_path: str, provider_id: str) -> Path:
 
 
 def extract_modules_from_yaml(
-    provider_yaml: dict[str, Any], provider_id: str, provider_name: str
+    provider_yaml: dict[str, Any], provider_id: str, provider_name: str, version: str = ""
 ) -> list[Module]:
     """Extract module information from provider.yaml, including actual class names from source files."""
     modules: list[Module] = []
+    tag = f"providers-{provider_id}/{version}" if version else "main"
     base_docs_url = f"https://airflow.apache.org/docs/apache-airflow-providers-{provider_id}/stable"
-    base_source_url = f"https://github.com/apache/airflow/blob/main/providers/{provider_id}/src"
+    # NOTE: Older provider versions (before the per-provider src/ restructure) used a flat layout:
+    #   providers/src/airflow/providers/{id}/...
+    # Current versions use:
+    #   providers/{id}/src/airflow/providers/{id}/...
+    # This only matters if we backfill data for old tags. For current latest versions the new layout is correct.
+    base_source_url = f"https://github.com/apache/airflow/blob/{tag}/providers/{provider_id}/src"
 
     # Helper to extract integration name as category
     def get_category(integration_name: str) -> str:
@@ -1011,7 +1019,7 @@ def main():
             dependencies=pyproject_data["dependencies"],
             optional_extras=pyproject_data.get("optional_extras", {}),
             docs_url=f"https://airflow.apache.org/docs/{package_name}/stable/",
-            source_url=f"https://github.com/apache/airflow/tree/main/providers/{provider_id}",
+            source_url=f"https://github.com/apache/airflow/tree/providers-{provider_id}/{version}/providers/{provider_id}",
             pypi_url=f"https://pypi.org/project/{package_name}/",
             last_updated="",  # Could be populated from git or release dates
         )
@@ -1019,7 +1027,7 @@ def main():
         all_providers.append(provider)
 
         # Extract modules (now extracts actual class names from Python files)
-        modules = extract_modules_from_yaml(provider_yaml, provider_id, name)
+        modules = extract_modules_from_yaml(provider_yaml, provider_id, name, version)
         all_modules.extend(modules)
 
         print(f"  {provider_id}: {len(modules)} classes, {len(categories)} categories, score={quality_score}")
@@ -1112,6 +1120,27 @@ def main():
     with open(search_output, "w") as f:
         json.dump(search_data, f, indent=2)
     print(f"Wrote {len(search_data)} search entries to {search_output}")
+
+    # Also write to registry-11ty if it exists
+    if REGISTRY_11TY_DIR.exists():
+        OUTPUT_DIR_11TY.mkdir(parents=True, exist_ok=True)
+        for filename, data in [
+            ("providers.json", providers_json),
+            ("modules.json", modules_json),
+            ("search-index.json", search_data),
+        ]:
+            with open(OUTPUT_DIR_11TY / filename, "w") as f:
+                json.dump(data, f, indent=2)
+        print(f"Also wrote data to {OUTPUT_DIR_11TY}")
+
+        # Sync logos to 11ty public dir
+        logos_11ty_dir = REGISTRY_11TY_DIR / "public" / "logos"
+        logos_source = REGISTRY_DIR / "public" / "logos"
+        if logos_source.exists():
+            logos_11ty_dir.mkdir(parents=True, exist_ok=True)
+            for logo_file in logos_source.iterdir():
+                shutil.copy2(logo_file, logos_11ty_dir / logo_file.name)
+            print(f"Copied logos to {logos_11ty_dir}")
 
     print("\nDone!")
 

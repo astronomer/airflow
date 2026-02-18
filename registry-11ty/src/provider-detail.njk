@@ -142,13 +142,51 @@ eleventyComputed:
     </div>
   </header>
 
-  <!-- Install Command -->
+  <!-- Install Command with version and extras -->
   <section class="install card">
     <span class="label">Install:</span>
     <div class="command" data-copy-target="install-text">
-      <code id="install-text">pip install {{ provider.package_name }}=={{ provider.version }}</code>
+      <code id="install-text" data-package="{{ provider.package_name }}">pip install {{ provider.package_name }}=={{ provider.version }}</code>
+    </div>
+    <div class="install-options">
+      {% set extras = provider.optional_extras or {} %}
+      {% set extrasKeys = extras | keys %}
+      {% if extrasKeys.length > 0 %}
+      <div class="install-option">
+        <label for="extras-select">Extras:</label>
+        <select id="extras-select">
+          <option value="">None</option>
+          {% for key in extrasKeys %}
+          <option value="{{ key }}">[{{ key }}]</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      {% set versionList = provider.versions if provider.versions.length > 0 else [provider.version] %}
+      <div class="install-option">
+        <label for="version-select">Version:</label>
+        <select id="version-select">
+          {% for v in versionList %}
+          <option value="{{ v }}"{% if loop.first %} selected{% endif %}>{{ v }}{% if loop.first %} (latest){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
     </div>
   </section>
+
+  <!-- Extra dependencies info -->
+  <div id="extra-deps-info" class="extra-deps-info card" hidden>
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+    <div>
+      <strong>Additional dependencies with this extra:</strong>
+      <p id="extra-deps-list"></p>
+    </div>
+  </div>
+
+  <!-- Extras data for JS -->
+  <script id="extras-data" type="application/json">{{ extras | dump | safe }}</script>
 
   <!-- Technical Details -->
   <section class="technical card">
@@ -174,9 +212,9 @@ eleventyComputed:
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
           </svg>
-          Connections ({{ provider.connection_types.length or 0 }})
+          Connections ({{ (provider.connection_types or []).length }})
         </h3>
-        {% if provider.connection_types.length > 0 %}
+        {% if (provider.connection_types or []).length > 0 %}
           {% for conn in provider.connection_types %}
           <a href="{{ conn.docs_url }}" target="_blank" rel="noopener" title="View {{ conn.conn_type }} connection docs">
             {{ conn.conn_type }}
@@ -193,9 +231,9 @@ eleventyComputed:
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
-          Dependencies ({{ provider.dependencies.length or 0 }})
+          Dependencies ({{ (provider.dependencies or []).length }})
         </h3>
-        {% if provider.dependencies.length > 0 %}
+        {% if (provider.dependencies or []).length > 0 %}
         <details>
           <summary>
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -215,22 +253,149 @@ eleventyComputed:
     </div>
   </section>
 
-  <!-- Module Grid -->
-  <section class="modules">
-    <h2>Modules ({{ providerModules.length }})</h2>
-    <div class="grid">
-      {% for module in providerModules %}
-      <div id="{{ module.id }}" class="module card">
-        <div class="icon {{ module.type }}">
-          <span>{{ module.type[0] | upper }}</span>
-        </div>
-        <div class="content">
-          <h3>{{ module.name }}</h3>
-          <p>{{ module.short_description }}</p>
-          <code class="path">{{ module.import_path }}</code>
+  <!-- Module Type Tabs -->
+  <nav class="module-tabs">
+    <button class="module-tab active" data-type="all">All ({{ totalModules }})</button>
+    {% if moduleCounts.operator > 0 %}
+    <button class="module-tab" data-type="operator">
+      <span class="tab-icon operator">O</span> Operators ({{ moduleCounts.operator }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.hook > 0 %}
+    <button class="module-tab" data-type="hook">
+      <span class="tab-icon hook">H</span> Hooks ({{ moduleCounts.hook }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.sensor > 0 %}
+    <button class="module-tab" data-type="sensor">
+      <span class="tab-icon sensor">S</span> Sensors ({{ moduleCounts.sensor }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.trigger > 0 %}
+    <button class="module-tab" data-type="trigger">
+      <span class="tab-icon trigger">T</span> Triggers ({{ moduleCounts.trigger }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.transfer > 0 %}
+    <button class="module-tab" data-type="transfer">
+      <span class="tab-icon transfer">X</span> Transfers ({{ moduleCounts.transfer }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.notifier > 0 %}
+    <button class="module-tab" data-type="notifier">
+      <span class="tab-icon notifier">N</span> Notifiers ({{ moduleCounts.notifier }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.secret > 0 %}
+    <button class="module-tab" data-type="secret">
+      <span class="tab-icon secret">K</span> Secrets ({{ moduleCounts.secret }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.logging > 0 %}
+    <button class="module-tab" data-type="logging">
+      <span class="tab-icon logging">L</span> Log Handlers ({{ moduleCounts.logging }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.executor > 0 %}
+    <button class="module-tab" data-type="executor">
+      <span class="tab-icon executor">E</span> Executors ({{ moduleCounts.executor }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.decorator > 0 %}
+    <button class="module-tab" data-type="decorator">
+      <span class="tab-icon decorator">@</span> Decorators ({{ moduleCounts.decorator }})
+    </button>
+    {% endif %}
+  </nav>
+
+  <!-- Main content with sidebar -->
+  <div class="modules-layout">
+    <!-- Sidebar -->
+    <aside class="modules-sidebar">
+      <!-- Categories -->
+      {% if provider.categories and provider.categories.length > 0 %}
+      <div class="sidebar-section card">
+        <h3>Categories</h3>
+        <nav class="category-nav">
+          <button class="category-btn active" data-category="">
+            <span>All</span>
+            <span class="count">{{ totalModules }}</span>
+          </button>
+          {% for cat in provider.categories %}
+          <button class="category-btn" data-category="{{ cat.id }}">
+            <span>{{ cat.name }}</span>
+          </button>
+          {% endfor %}
+        </nav>
+      </div>
+      {% endif %}
+
+      <!-- Related Providers -->
+      {% if provider.related_providers and provider.related_providers.length > 0 %}
+      <div class="sidebar-section card">
+        <h3>Related Providers</h3>
+        <nav class="related-nav">
+          {% for relatedId in provider.related_providers %}
+            {% for p in providers.providers %}
+              {% if p.id === relatedId %}
+              <a href="/providers/{{ p.id }}/">{{ p.name }}</a>
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        </nav>
+      </div>
+      {% endif %}
+    </aside>
+
+    <!-- Module list -->
+    <section class="modules">
+      <div class="modules-header">
+        <h2>Modules</h2>
+        <div class="search-wrapper module-search-wrapper">
+          <svg class="search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input id="module-search" type="text" placeholder="Search modules..." aria-label="Search modules">
         </div>
       </div>
-      {% endfor %}
-    </div>
-  </section>
+
+      <div class="grid">
+        {% for module in providerModules %}
+        <div id="{{ module.id }}" class="module card" data-name="{{ module.name | lower }}" data-type="{{ module.type }}" data-category="{{ module.category }}">
+          <div class="icon {{ module.type }}">
+            <span>{{ module.type[0] | upper }}</span>
+          </div>
+          <div class="content">
+            <h3>{{ module.name }}</h3>
+            <p>{{ module.short_description }}</p>
+            <div class="import-row">
+              <code class="path">{{ module.import_path }}</code>
+              <button class="copy-import" data-copy="from {{ module.import_path }} import {{ module.name }}" title="Copy import statement">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
+            <div class="module-actions">
+              {% if module.docs_url %}
+              <a href="{{ module.docs_url }}" target="_blank" rel="noopener" class="docs-link">
+                View Docs
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
+              {% endif %}
+              {% if module.source_url %}
+              <a href="{{ module.source_url }}" target="_blank" rel="noopener" class="source-link">
+                Source
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
 </div>
+
+<script src="/js/provider-detail.js"></script>

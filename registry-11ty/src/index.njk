@@ -98,6 +98,38 @@ title: Home
   </div>
 </section>
 
+<!-- Newly Added Modules -->
+{% set recentModules = modules.modules | slice(0, 4) %}
+{% if recentModules.length > 0 %}
+<section id="newly-added">
+  <div class="container">
+    <header>
+      <div>
+        <h2>Newly Added</h2>
+        <p>Recent operators, hooks, and sensors from updated providers</p>
+      </div>
+    </header>
+
+    <ul class="new-modules">
+      {% for module in recentModules %}
+      <li>
+        <a href="/providers/{{ module.provider_id }}/#{{ module.id }}" class="new-module card">
+          <div class="type-icon {{ module.type }}">
+            <span>{{ module.type[0] | upper }}</span>
+          </div>
+          <div>
+            <h4>{{ module.name }}</h4>
+            <span class="provider-label">{{ module.provider_name }}</span>
+            <p>{{ module.short_description }}</p>
+          </div>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
+{% endif %}
+
 <section id="categories">
   <div class="container">
     <header>

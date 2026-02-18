@@ -38,6 +38,7 @@ mainClass: providers-page
         <select id="provider-sort" aria-label="Sort providers">
           <option value="downloads">Most Downloads</option>
           <option value="name">Name A-Z</option>
+          <option value="updated">Recently Updated</option>
           <option value="score">Quality Score</option>
         </select>
       </div>
@@ -50,7 +51,8 @@ mainClass: providers-page
           data-tier="{{ provider.tier }}"
           data-name="{{ provider.name | lower }}"
           data-downloads="{{ provider.pypi_downloads.monthly }}"
-          data-score="{{ provider.quality_score or 0 }}">
+          data-score="{{ provider.quality_score or 0 }}"
+          data-updated="{{ provider.last_updated or '' }}">
         {% include "provider-card.njk" %}
       </li>
       {% endfor %}

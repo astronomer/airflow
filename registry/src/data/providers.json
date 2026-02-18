@@ -7,18 +7,18 @@
       "description": "Amazon integration (including Amazon Web Services (AWS)).",
       "tier": "community",
       "logo": "/logos/amazon-AWS-Cloud-alt_light-bg@4x.png",
-      "version": "9.19.0",
+      "version": "9.22.0",
       "versions": [
+        "9.22.0",
+        "9.21.0",
+        "9.20.0",
         "9.19.0",
         "9.18.1",
         "9.18.0",
         "9.17.0",
         "9.16.0",
         "9.15.0",
-        "9.14.0",
-        "9.13.0",
-        "9.12.0",
-        "9.11.0"
+        "9.14.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -27,8 +27,8 @@
       ],
       "quality_score": 92,
       "pypi_downloads": {
-        "weekly": 1458465,
-        "monthly": 6442725,
+        "weekly": 2925382,
+        "monthly": 11715724,
         "total": 0
       },
       "module_counts": {
@@ -310,11 +310,11 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "apache-airflow-providers-common-sql>=1.27.0",
         "apache-airflow-providers-http",
-        "boto3>=1.37.2",
-        "botocore>=1.37.2",
+        "boto3>=1.41.0",
+        "botocore>=1.41.0",
         "inflection>=0.5.1",
         "watchtower>=3.3.1,<4",
         "jsonpath_ng>=1.5.3",
@@ -389,7 +389,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-amazon/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/amazon",
+      "source_url": "https://github.com/apache/airflow/tree/providers-amazon/9.22.0/providers/amazon",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-amazon/",
       "last_updated": ""
     },
@@ -400,18 +400,18 @@
       "description": "Google services including Google Ads, Google Cloud (GCP), Google Firebase, Google LevelDB, Google Marketing Platform, Google Workspace (formerly Google Suite)",
       "tier": "community",
       "logo": "/logos/google-Google-Cloud.png",
-      "version": "19.3.0",
+      "version": "20.0.0",
       "versions": [
+        "20.0.0",
+        "19.5.0",
+        "19.4.0",
         "19.3.0",
         "19.2.0",
         "19.1.0",
         "19.0.0",
         "18.1.0",
         "18.0.0",
-        "17.2.0",
-        "17.1.0",
-        "17.0.0",
-        "16.1.0"
+        "17.2.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -420,15 +420,15 @@
       ],
       "quality_score": 92,
       "pypi_downloads": {
-        "weekly": 3605434,
-        "monthly": 15462238,
+        "weekly": 3467268,
+        "monthly": 15168236,
         "total": 0
       },
       "module_counts": {
-        "operator": 518,
-        "hook": 121,
+        "operator": 535,
+        "hook": 127,
         "sensor": 34,
-        "trigger": 51,
+        "trigger": 53,
         "transfer": 37,
         "notifier": 0,
         "secret": 1,
@@ -746,6 +746,11 @@
           "id": "google-cloud-generative-ai",
           "name": "Google Cloud Generative AI",
           "module_count": 0
+        },
+        {
+          "id": "google-ray",
+          "name": "Google Ray",
+          "module_count": 0
         }
       ],
       "connection_types": [
@@ -798,7 +803,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "apache-airflow-providers-common-sql>=1.27.0",
         "asgiref>=3.5.2",
         "dill>=0.2.3",
@@ -814,6 +819,9 @@
         "google-auth-httplib2>=0.0.1"
       ],
       "optional_extras": {
+        "apache.beam": [
+          "apache-airflow-providers-apache-beam>=6.2.2"
+        ],
         "cncf.kubernetes": [
           "apache-airflow-providers-cncf-kubernetes>=10.1.0"
         ],
@@ -836,7 +844,7 @@
           "apache-airflow-providers-apache-cassandra"
         ],
         "microsoft.azure": [
-          "apache-airflow-providers-microsoft-azure"
+          "apache-airflow-providers-microsoft-azure>=13.0.0"
         ],
         "microsoft.mssql": [
           "apache-airflow-providers-microsoft-mssql"
@@ -870,12 +878,15 @@
         ],
         "standard": [
           "apache-airflow-providers-standard"
+        ],
+        "common.messaging": [
+          "apache-airflow-providers-common-messaging>=2.0.0"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-google/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/google",
+      "source_url": "https://github.com/apache/airflow/tree/providers-google/20.0.0/providers/google",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-google/",
       "last_updated": ""
     },
@@ -886,26 +897,26 @@
       "description": "Microsoft Azure",
       "tier": "community",
       "logo": "/logos/microsoft-azure-Microsoft-Azure.png",
-      "version": "12.10.1",
+      "version": "13.0.0",
       "versions": [
+        "13.0.0",
+        "12.10.3",
+        "12.10.2",
         "12.10.1",
         "12.10.0",
         "12.9.0",
         "12.8.1",
         "12.8.0",
         "12.7.1",
-        "12.7.0",
-        "12.6.1",
-        "12.6.0",
-        "12.5.0"
+        "12.7.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 87,
       "pypi_downloads": {
-        "weekly": 1821008,
-        "monthly": 7689873,
+        "weekly": 381776,
+        "monthly": 1580031,
         "total": 0
       },
       "module_counts": {
@@ -1082,7 +1093,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "adlfs>=2023.10.0",
         "azure-batch>=8.0.0",
         "azure-cosmos>=4.6.0",
@@ -1106,20 +1117,20 @@
         "amazon": [
           "apache-airflow-providers-amazon"
         ],
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ],
         "oracle": [
           "apache-airflow-providers-oracle"
         ],
         "sftp": [
           "apache-airflow-providers-sftp"
+        ],
+        "common.messaging": [
+          "apache-airflow-providers-common-messaging>=2.0.0"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-microsoft-azure/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/microsoft-azure",
+      "source_url": "https://github.com/apache/airflow/tree/providers-microsoft-azure/13.0.0/providers/microsoft-azure",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-microsoft-azure/",
       "last_updated": ""
     },
@@ -1130,18 +1141,18 @@
       "description": "Teradata",
       "tier": "community",
       "logo": "/logos/teradata-Teradata.png",
-      "version": "3.4.0",
+      "version": "3.4.3",
       "versions": [
+        "3.4.3",
+        "3.4.2",
+        "3.4.1",
         "3.4.0",
         "3.3.1",
         "3.3.0",
         "3.2.3",
         "3.2.2",
         "3.2.1",
-        "3.2.0",
-        "3.1.0",
-        "3.0.3",
-        "3.0.2"
+        "3.2.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1150,8 +1161,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 61351,
-        "monthly": 270524,
+        "weekly": 60732,
+        "monthly": 199622,
         "total": 0
       },
       "module_counts": {
@@ -1198,7 +1209,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.20.0",
         "teradatasqlalchemy>=17.20.0.0",
         "teradatasql>=17.20.0.28"
@@ -1210,6 +1221,9 @@
         "amazon": [
           "apache-airflow-providers-amazon"
         ],
+        "sqlalchemy": [
+          "sqlalchemy>=1.4.49"
+        ],
         "ssh": [
           "apache-airflow-providers-ssh"
         ]
@@ -1217,7 +1231,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-teradata/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/teradata",
+      "source_url": "https://github.com/apache/airflow/tree/providers-teradata/3.4.3/providers/teradata",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-teradata/",
       "last_updated": ""
     },
@@ -1228,18 +1242,18 @@
       "description": "Databricks",
       "tier": "community",
       "logo": "/logos/databricks-Databricks.png",
-      "version": "7.8.2",
+      "version": "7.9.1",
       "versions": [
+        "7.9.1",
+        "7.9.0",
+        "7.8.3",
         "7.8.2",
         "7.8.1",
         "7.8.0",
         "7.7.5",
         "7.7.4",
         "7.7.3",
-        "7.7.2",
-        "7.7.1",
-        "7.7.0",
-        "7.6.0"
+        "7.7.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1248,8 +1262,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 4524369,
-        "monthly": 19219793,
+        "weekly": 4842473,
+        "monthly": 19498718,
         "total": 0
       },
       "module_counts": {
@@ -1296,7 +1310,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "apache-airflow-providers-common-sql>=1.27.0",
         "requests>=2.32.0,<3",
         "databricks-sql-connector>=4.0.0",
@@ -1308,14 +1322,21 @@
         "pyarrow>=18.0.0; python_version >= '3.13'"
       ],
       "optional_extras": {
-        "sdk": [
-          "databricks-sdk==0.10.0"
+        "avro": [
+          "fastavro>=1.9.0",
+          "3.12"
         ],
         "azure-identity": [
           "azure-identity>=1.3.1"
         ],
         "fab": [
           "apache-airflow-providers-fab>=2.2.0; python_version < '3.13'"
+        ],
+        "google": [
+          "apache-airflow-providers-google>=10.24.0"
+        ],
+        "sdk": [
+          "databricks-sdk==0.10.0"
         ],
         "standard": [
           "apache-airflow-providers-standard"
@@ -1330,7 +1351,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-databricks/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/databricks",
+      "source_url": "https://github.com/apache/airflow/tree/providers-databricks/7.9.1/providers/databricks",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-databricks/",
       "last_updated": ""
     },
@@ -1341,8 +1362,10 @@
       "description": "SSH File Transfer Protocol (SFTP)",
       "tier": "community",
       "logo": "/logos/sftp-SFTP.png",
-      "version": "5.5.1",
+      "version": "5.7.0",
       "versions": [
+        "5.7.0",
+        "5.6.0",
         "5.5.1",
         "5.5.0",
         "5.4.2",
@@ -1350,9 +1373,7 @@
         "5.4.0",
         "5.3.4",
         "5.3.3",
-        "5.3.2",
-        "5.3.1",
-        "5.3.0"
+        "5.3.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1361,8 +1382,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 759437,
-        "monthly": 3439267,
+        "weekly": 899008,
+        "monthly": 4079880,
         "total": 0
       },
       "module_counts": {
@@ -1395,22 +1416,22 @@
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-ssh>=4.0.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "paramiko>=2.9.0,<4.0.0",
         "asyncssh>=2.12.0"
       ],
       "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ],
         "openlineage": [
           "apache-airflow-providers-openlineage"
+        ],
+        "sshfs": [
+          "sshfs>=2023.1.0"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-sftp/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/sftp",
+      "source_url": "https://github.com/apache/airflow/tree/providers-sftp/5.7.0/providers/sftp",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-sftp/",
       "last_updated": ""
     },
@@ -1421,18 +1442,18 @@
       "description": "Snowflake",
       "tier": "community",
       "logo": "/logos/snowflake-Snowflake.png",
-      "version": "6.8.1",
+      "version": "6.9.1",
       "versions": [
+        "6.9.1",
+        "6.9.0",
+        "6.8.2",
         "6.8.1",
         "6.8.0",
         "6.7.0",
         "6.6.1",
         "6.6.0",
         "6.5.4",
-        "6.5.3",
-        "6.5.2",
-        "6.5.1",
-        "6.5.0"
+        "6.5.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1441,8 +1462,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 4792292,
-        "monthly": 19687491,
+        "weekly": 4547733,
+        "monthly": 18553855,
         "total": 0
       },
       "module_counts": {
@@ -1474,7 +1495,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.27.5",
         "3.13",
         "3.13",
@@ -1497,7 +1518,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-snowflake/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/snowflake",
+      "source_url": "https://github.com/apache/airflow/tree/providers-snowflake/6.9.1/providers/snowflake",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-snowflake/",
       "last_updated": ""
     },
@@ -1508,8 +1529,10 @@
       "description": "Alibaba Cloud integration (including Alibaba Cloud).",
       "tier": "community",
       "logo": "/logos/alibaba-alibabacloud-oss.png",
-      "version": "3.3.2",
+      "version": "3.3.4",
       "versions": [
+        "3.3.4",
+        "3.3.3",
         "3.3.2",
         "3.3.1",
         "3.3.0",
@@ -1517,9 +1540,7 @@
         "3.2.4",
         "3.2.3",
         "3.2.2",
-        "3.2.1",
-        "3.2.0",
-        "3.1.0"
+        "3.2.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1528,8 +1549,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 363852,
-        "monthly": 1606097,
+        "weekly": 205624,
+        "monthly": 484463,
         "total": 0
       },
       "module_counts": {
@@ -1586,7 +1607,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "oss2>=2.14.0",
         "alibabacloud_adb20211201>=1.0.0",
         "alibabacloud_tea_openapi>=0.3.7",
@@ -1596,7 +1617,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-alibaba/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/alibaba",
+      "source_url": "https://github.com/apache/airflow/tree/providers-alibaba/3.3.4/providers/alibaba",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-alibaba/",
       "last_updated": ""
     },
@@ -1607,18 +1628,18 @@
       "description": "Airflow Standard Provider",
       "tier": "official",
       "logo": null,
-      "version": "1.10.2",
+      "version": "1.11.1",
       "versions": [
+        "1.11.1",
+        "1.11.0",
+        "1.10.3",
         "1.10.2",
         "1.10.1",
         "1.10.0",
         "1.9.2",
         "1.9.1",
         "1.9.0",
-        "1.8.0",
-        "1.7.0",
-        "1.6.0",
-        "1.5.0"
+        "1.8.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1627,8 +1648,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 605256,
-        "monthly": 2588089,
+        "weekly": 777067,
+        "monthly": 2643356,
         "total": 0
       },
       "module_counts": {
@@ -1654,7 +1675,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1"
+        "apache-airflow-providers-common-compat>=1.13.0"
       ],
       "optional_extras": {
         "openlineage": [
@@ -1664,7 +1685,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-standard/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/standard",
+      "source_url": "https://github.com/apache/airflow/tree/providers-standard/1.11.1/providers/standard",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-standard/",
       "last_updated": ""
     },
@@ -1675,18 +1696,18 @@
       "description": "This package is for Yandex, including Yandex.Cloud",
       "tier": "community",
       "logo": "/logos/yandex-Yandex-Cloud.png",
-      "version": "4.3.1",
+      "version": "4.4.0",
       "versions": [
+        "4.4.0",
+        "4.3.3",
+        "4.3.2",
         "4.3.1",
         "4.3.0",
         "4.2.1",
         "4.2.0",
         "4.1.1",
         "4.1.0",
-        "4.0.3",
-        "4.0.2",
-        "4.0.1",
-        "4.0.0"
+        "4.0.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1695,8 +1716,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 39535,
-        "monthly": 178651,
+        "weekly": 169874,
+        "monthly": 327955,
         "total": 0
       },
       "module_counts": {
@@ -1735,22 +1756,20 @@
           "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-yandex/stable/connections/index.html"
         }
       ],
-      "requires_python": ">=3.10,!=3.13",
+      "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "yandexcloud>=0.308.0; python_version < '3.13'",
-        "yandex-query-client>=0.1.4; python_version < '3.13'",
-        "apache-airflow-providers-common-compat>=1.8.0"
+        "3.13",
+        "3.13",
+        "yandex-query-client>=0.1.4",
+        "apache-airflow-providers-common-compat>=1.13.0",
+        "3.13"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-yandex/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/yandex",
+      "source_url": "https://github.com/apache/airflow/tree/providers-yandex/4.4.0/providers/yandex",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-yandex/",
       "last_updated": ""
     },
@@ -1761,8 +1780,9 @@
       "description": "Slack services integration including Slack API, Slack Incoming Webhook",
       "tier": "community",
       "logo": "/logos/slack-Slack.png",
-      "version": "9.6.1",
+      "version": "9.6.2",
       "versions": [
+        "9.6.2",
         "9.6.1",
         "9.6.0",
         "9.5.0",
@@ -1771,8 +1791,7 @@
         "9.2.0",
         "9.1.4",
         "9.1.3",
-        "9.1.2",
-        "9.1.1"
+        "9.1.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -1781,8 +1800,8 @@
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 1775323,
-        "monthly": 8063635,
+        "weekly": 2003980,
+        "monthly": 8759645,
         "total": 0
       },
       "module_counts": {
@@ -1838,7 +1857,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-slack/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/slack",
+      "source_url": "https://github.com/apache/airflow/tree/providers-slack/9.6.2/providers/slack",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-slack/",
       "last_updated": ""
     },
@@ -1849,8 +1868,10 @@
       "description": "Apache Kafka",
       "tier": "community",
       "logo": "/logos/apache-kafka-kafka.svg",
-      "version": "1.11.2",
+      "version": "1.12.0",
       "versions": [
+        "1.12.0",
+        "1.11.3",
         "1.11.2",
         "1.11.1",
         "1.11.0",
@@ -1858,17 +1879,15 @@
         "1.10.5",
         "1.10.4",
         "1.10.3",
-        "1.10.2",
-        "1.10.1",
-        "1.10.0"
+        "1.10.2"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 335024,
-        "monthly": 1324871,
+        "weekly": 329070,
+        "monthly": 1354779,
         "total": 0
       },
       "module_counts": {
@@ -1897,10 +1916,10 @@
           "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-kafka/stable/connections/index.html"
         }
       ],
-      "requires_python": ">=3.10,!=3.13",
+      "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "asgiref>=2.3.0",
         "confluent-kafka>=2.6.0"
       ],
@@ -1915,7 +1934,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-kafka/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-kafka",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-kafka/1.12.0/providers/apache-kafka",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-kafka/",
       "last_updated": ""
     },
@@ -1926,26 +1945,26 @@
       "description": "Apache Hive",
       "tier": "community",
       "logo": "/logos/apache-hive-hive.png",
-      "version": "9.2.2",
+      "version": "9.2.5",
       "versions": [
+        "9.2.5",
+        "9.2.4",
+        "9.2.3",
         "9.2.2",
         "9.2.1",
         "9.2.0",
         "9.1.4",
         "9.1.3",
         "9.1.2",
-        "9.1.1",
-        "9.1.0",
-        "9.0.6",
-        "9.0.5"
+        "9.1.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 78910,
-        "monthly": 382909,
+        "weekly": 82239,
+        "monthly": 286554,
         "total": 0
       },
       "module_counts": {
@@ -1987,7 +2006,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.26.0",
         "hmsclient>=0.1.0",
         "3.13",
@@ -2009,21 +2028,21 @@
         "samba": [
           "apache-airflow-providers-samba"
         ],
+        "sqlalchemy": [
+          "sqlalchemy>=1.4.49"
+        ],
         "vertica": [
           "apache-airflow-providers-vertica"
         ],
         "GSSAPI": [
           "win32",
           "win32"
-        ],
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-hive/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-hive",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-hive/9.2.5/providers/apache-hive",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-hive/",
       "last_updated": ""
     },
@@ -2034,8 +2053,9 @@
       "description": "Apache Spark",
       "tier": "community",
       "logo": "/logos/apache-spark-spark.png",
-      "version": "5.4.2",
+      "version": "5.5.0",
       "versions": [
+        "5.5.0",
         "5.4.2",
         "5.4.1",
         "5.4.0",
@@ -2044,20 +2064,19 @@
         "5.3.2",
         "5.3.1",
         "5.3.0",
-        "5.2.1",
-        "5.2.0"
+        "5.2.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 220361,
-        "monthly": 1000949,
+        "weekly": 199003,
+        "monthly": 833148,
         "total": 0
       },
       "module_counts": {
-        "operator": 3,
+        "operator": 4,
         "hook": 5,
         "sensor": 0,
         "trigger": 0,
@@ -2100,7 +2119,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "pyspark>=3.5.2",
         "grpcio-status>=1.59.0"
       ],
@@ -2115,7 +2134,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-spark/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-spark",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-spark/5.5.0/providers/apache-spark",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-spark/",
       "last_updated": ""
     },
@@ -2126,26 +2145,26 @@
       "description": "Kubernetes",
       "tier": "community",
       "logo": "/logos/cncf-kubernetes-Kubernetes.png",
-      "version": "10.12.0",
+      "version": "10.12.4",
       "versions": [
+        "10.12.4",
+        "10.12.3",
+        "10.12.2",
+        "10.12.1",
         "10.12.0",
         "10.11.1",
         "10.11.0",
         "10.10.0",
         "10.9.0",
-        "10.8.2",
-        "10.8.1",
-        "10.8.0",
-        "10.7.0",
-        "10.6.2"
+        "10.8.2"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 82,
       "pypi_downloads": {
-        "weekly": 4427199,
-        "monthly": 19028398,
+        "weekly": 4962057,
+        "monthly": 20436444,
         "total": 0
       },
       "module_counts": {
@@ -2183,10 +2202,10 @@
       "dependencies": [
         "aiofiles>=23.2.0",
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "asgiref>=3.5.2",
         "cryptography>=41.0.0,<46.0.0",
-        "kubernetes>=32.0.0,<35.0.0",
+        "kubernetes>=35.0.0,<36.0.0",
         "urllib3>=2.1.0,!=2.6.0",
         "kubernetes_asyncio>=32.0.0,<35.0.0"
       ],
@@ -2194,7 +2213,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-cncf-kubernetes/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/cncf-kubernetes",
+      "source_url": "https://github.com/apache/airflow/tree/providers-cncf-kubernetes/10.12.4/providers/cncf-kubernetes",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-cncf-kubernetes/",
       "last_updated": ""
     },
@@ -2205,8 +2224,9 @@
       "description": "Redis",
       "tier": "community",
       "logo": "/logos/redis-Redis.png",
-      "version": "4.4.1",
+      "version": "4.4.2",
       "versions": [
+        "4.4.2",
         "4.4.1",
         "4.4.0",
         "4.3.3",
@@ -2215,8 +2235,7 @@
         "4.3.0",
         "4.2.0",
         "4.1.1",
-        "4.1.0",
-        "4.0.2"
+        "4.1.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2225,8 +2244,8 @@
       ],
       "quality_score": 80,
       "pypi_downloads": {
-        "weekly": 221407,
-        "monthly": 1028472,
+        "weekly": 244160,
+        "monthly": 1012776,
         "total": 0
       },
       "module_counts": {
@@ -2258,7 +2277,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "redis>=4.5.2,!=4.5.5,!=5.0.2"
       ],
       "optional_extras": {
@@ -2269,7 +2288,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-redis/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/redis",
+      "source_url": "https://github.com/apache/airflow/tree/providers-redis/4.4.2/providers/redis",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-redis/",
       "last_updated": ""
     },
@@ -2280,8 +2299,9 @@
       "description": "Neo4j",
       "tier": "community",
       "logo": null,
-      "version": "3.11.2",
+      "version": "3.11.3",
       "versions": [
+        "3.11.3",
         "3.11.2",
         "3.11.1",
         "3.11.0",
@@ -2290,8 +2310,7 @@
         "3.10.1",
         "3.10.0",
         "3.9.2",
-        "3.9.1",
-        "3.9.0"
+        "3.9.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2300,8 +2319,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 55684,
-        "monthly": 227806,
+        "weekly": 39249,
+        "monthly": 125847,
         "total": 0
       },
       "module_counts": {
@@ -2340,7 +2359,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-neo4j/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/neo4j",
+      "source_url": "https://github.com/apache/airflow/tree/providers-neo4j/3.11.3/providers/neo4j",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-neo4j/",
       "last_updated": ""
     },
@@ -2351,8 +2370,10 @@
       "description": "Cohere",
       "tier": "community",
       "logo": null,
-      "version": "1.6.0",
+      "version": "1.6.2",
       "versions": [
+        "1.6.2",
+        "1.6.1",
         "1.6.0",
         "1.5.4",
         "1.5.3",
@@ -2360,9 +2381,7 @@
         "1.5.1",
         "1.5.0",
         "1.4.3",
-        "1.4.2",
-        "1.4.0",
-        "1.3.0"
+        "1.4.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2371,8 +2390,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 29529,
-        "monthly": 156729,
+        "weekly": 37376,
+        "monthly": 101758,
         "total": 0
       },
       "module_counts": {
@@ -2405,13 +2424,14 @@
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-common-compat>=1.8.0",
-        "cohere>=5.13.4"
+        "cohere>=5.13.4",
+        "3.13"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-cohere/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/cohere",
+      "source_url": "https://github.com/apache/airflow/tree/providers-cohere/1.6.2/providers/cohere",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-cohere/",
       "last_updated": ""
     },
@@ -2422,8 +2442,9 @@
       "description": "Presto",
       "tier": "community",
       "logo": "/logos/presto-PrestoDB.png",
-      "version": "5.10.2",
+      "version": "5.10.3",
       "versions": [
+        "5.10.3",
         "5.10.2",
         "5.10.1",
         "5.10.0",
@@ -2432,8 +2453,7 @@
         "5.9.2",
         "5.9.1",
         "5.9.0",
-        "5.8.4",
-        "5.8.3"
+        "5.8.4"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2442,8 +2462,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 98966,
-        "monthly": 435433,
+        "weekly": 94842,
+        "monthly": 340348,
         "total": 0
       },
       "module_counts": {
@@ -2475,7 +2495,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.26.0",
         "presto-python-client>=0.8.4",
         "3.13",
@@ -2494,7 +2514,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-presto/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/presto",
+      "source_url": "https://github.com/apache/airflow/tree/providers-presto/5.10.3/providers/presto",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-presto/",
       "last_updated": ""
     },
@@ -2505,8 +2525,9 @@
       "description": "Papermill",
       "tier": "community",
       "logo": "/logos/papermill-Papermill.png",
-      "version": "3.12.0",
+      "version": "3.12.1",
       "versions": [
+        "3.12.1",
         "3.12.0",
         "3.11.4",
         "3.11.3",
@@ -2515,8 +2536,7 @@
         "3.11.0",
         "3.10.1",
         "3.10.0",
-        "3.9.2",
-        "3.9.1"
+        "3.9.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2525,8 +2545,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 156183,
-        "monthly": 718217,
+        "weekly": 154908,
+        "monthly": 629713,
         "total": 0
       },
       "module_counts": {
@@ -2560,15 +2580,11 @@
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-common-compat>=1.8.0"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-papermill/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/papermill",
+      "source_url": "https://github.com/apache/airflow/tree/providers-papermill/3.12.1/providers/papermill",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-papermill/",
       "last_updated": ""
     },
@@ -2579,8 +2595,10 @@
       "description": "Tableau",
       "tier": "community",
       "logo": "/logos/tableau-Tableau.png",
-      "version": "5.3.1",
+      "version": "5.3.3",
       "versions": [
+        "5.3.3",
+        "5.3.2",
         "5.3.1",
         "5.3.0",
         "5.2.2",
@@ -2588,9 +2606,7 @@
         "5.2.0",
         "5.1.1",
         "5.1.0",
-        "5.0.2",
-        "5.0.1",
-        "5.0.0"
+        "5.0.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2599,8 +2615,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 194252,
-        "monthly": 869932,
+        "weekly": 194135,
+        "monthly": 848403,
         "total": 0
       },
       "module_counts": {
@@ -2633,13 +2649,13 @@
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-common-compat>=1.10.1",
-        "tableauserverclient>=0.27"
+        "tableauserverclient>=0.27, !=0.39"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-tableau/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/tableau",
+      "source_url": "https://github.com/apache/airflow/tree/providers-tableau/5.3.3/providers/tableau",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-tableau/",
       "last_updated": ""
     },
@@ -2650,8 +2666,9 @@
       "description": "Trino",
       "tier": "community",
       "logo": "/logos/trino-trino-og.png",
-      "version": "6.4.1",
+      "version": "6.4.2",
       "versions": [
+        "6.4.2",
         "6.4.1",
         "6.4.0",
         "6.3.5",
@@ -2660,8 +2677,7 @@
         "6.3.2",
         "6.3.1",
         "6.3.0",
-        "6.2.0",
-        "6.1.2"
+        "6.2.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2670,8 +2686,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 200234,
-        "monthly": 916565,
+        "weekly": 225473,
+        "monthly": 967269,
         "total": 0
       },
       "module_counts": {
@@ -2703,7 +2719,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.20.0",
         "3.13",
         "3.13",
@@ -2720,7 +2736,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-trino/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/trino",
+      "source_url": "https://github.com/apache/airflow/tree/providers-trino/6.4.2/providers/trino",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-trino/",
       "last_updated": ""
     },
@@ -2731,8 +2747,10 @@
       "description": "OpenSearch",
       "tier": "community",
       "logo": "/logos/opensearch-OpenSearch.png",
-      "version": "1.8.2",
+      "version": "1.8.4",
       "versions": [
+        "1.8.4",
+        "1.8.3",
         "1.8.2",
         "1.8.1",
         "1.8.0",
@@ -2740,9 +2758,7 @@
         "1.7.4",
         "1.7.3",
         "1.7.2",
-        "1.7.1",
-        "1.7.0",
-        "1.6.3"
+        "1.7.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2751,8 +2767,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 90185,
-        "monthly": 389315,
+        "weekly": 98052,
+        "monthly": 325299,
         "total": 0
       },
       "module_counts": {
@@ -2784,14 +2800,14 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "opensearch-py>=2.2.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-opensearch/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/opensearch",
+      "source_url": "https://github.com/apache/airflow/tree/providers-opensearch/1.8.4/providers/opensearch",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-opensearch/",
       "last_updated": ""
     },
@@ -2802,8 +2818,10 @@
       "description": "Oracle",
       "tier": "community",
       "logo": "/logos/oracle-Oracle.png",
-      "version": "4.3.0",
+      "version": "4.4.0",
       "versions": [
+        "4.4.0",
+        "4.3.1",
         "4.3.0",
         "4.2.1",
         "4.2.0",
@@ -2811,9 +2829,7 @@
         "4.1.2",
         "4.1.1",
         "4.1.0",
-        "4.0.3",
-        "4.0.2",
-        "4.0.1"
+        "4.0.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2822,13 +2838,13 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 464009,
-        "monthly": 1961062,
+        "weekly": 502871,
+        "monthly": 2080309,
         "total": 0
       },
       "module_counts": {
         "operator": 1,
-        "hook": 1,
+        "hook": 2,
         "sensor": 0,
         "trigger": 0,
         "transfer": 1,
@@ -2873,7 +2889,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-oracle/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/oracle",
+      "source_url": "https://github.com/apache/airflow/tree/providers-oracle/4.4.0/providers/oracle",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-oracle/",
       "last_updated": ""
     },
@@ -2884,8 +2900,9 @@
       "description": "DingTalk",
       "tier": "community",
       "logo": "/logos/dingding-Dingding.png",
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -2894,8 +2911,7 @@
         "3.8.0",
         "3.7.3",
         "3.7.2",
-        "3.7.0",
-        "3.6.0"
+        "3.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2904,8 +2920,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 47625,
-        "monthly": 227922,
+        "weekly": 31425,
+        "monthly": 93951,
         "total": 0
       },
       "module_counts": {
@@ -2944,7 +2960,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-dingding/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/dingding",
+      "source_url": "https://github.com/apache/airflow/tree/providers-dingding/3.9.2/providers/dingding",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-dingding/",
       "last_updated": ""
     },
@@ -2955,8 +2971,9 @@
       "description": "SQLite",
       "tier": "community",
       "logo": "/logos/sqlite-SQLite.png",
-      "version": "4.2.0",
+      "version": "4.2.1",
       "versions": [
+        "4.2.1",
         "4.2.0",
         "4.1.3",
         "4.1.2",
@@ -2965,8 +2982,7 @@
         "4.0.2",
         "4.0.1",
         "4.0.0",
-        "3.9.1",
-        "3.9.0"
+        "3.9.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -2975,8 +2991,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 1563925,
-        "monthly": 7839833,
+        "weekly": 2128511,
+        "monthly": 9086394,
         "total": 0
       },
       "module_counts": {
@@ -3014,7 +3030,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-sqlite/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/sqlite",
+      "source_url": "https://github.com/apache/airflow/tree/providers-sqlite/4.2.1/providers/sqlite",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-sqlite/",
       "last_updated": ""
     },
@@ -3025,18 +3041,18 @@
       "description": "Exasol",
       "tier": "community",
       "logo": "/logos/exasol-Exasol.png",
-      "version": "4.9.0",
+      "version": "4.9.3",
       "versions": [
+        "4.9.3",
+        "4.9.2",
+        "4.9.1",
         "4.9.0",
         "4.8.4",
         "4.8.3",
         "4.8.2",
         "4.8.1",
         "4.8.0",
-        "4.7.5",
-        "4.7.4",
-        "4.7.3",
-        "4.7.2"
+        "4.7.5"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3045,8 +3061,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 35036,
-        "monthly": 182662,
+        "weekly": 49616,
+        "monthly": 132200,
         "total": 0
       },
       "module_counts": {
@@ -3078,16 +3094,21 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.26.0",
         "pyexasol>=0.26.0",
         "3.13",
         "3.13"
       ],
-      "optional_extras": {},
+      "optional_extras": {
+        "sqlalchemy": [
+          "sqlalchemy>=1.4.49"
+        ]
+      },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-exasol/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/exasol",
+      "source_url": "https://github.com/apache/airflow/tree/providers-exasol/4.9.3/providers/exasol",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-exasol/",
       "last_updated": ""
     },
@@ -3098,8 +3119,9 @@
       "description": "Java Database Connectivity (JDBC)",
       "tier": "community",
       "logo": "/logos/jdbc-jdbc.png",
-      "version": "5.3.1",
+      "version": "5.3.2",
       "versions": [
+        "5.3.2",
         "5.3.1",
         "5.3.0",
         "5.2.5",
@@ -3108,8 +3130,7 @@
         "5.2.2",
         "5.2.1",
         "5.2.0",
-        "5.1.0",
-        "5.0.1"
+        "5.1.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3118,8 +3139,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 275557,
-        "monthly": 1249828,
+        "weekly": 319670,
+        "monthly": 1288468,
         "total": 0
       },
       "module_counts": {
@@ -3159,7 +3180,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-jdbc/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/jdbc",
+      "source_url": "https://github.com/apache/airflow/tree/providers-jdbc/5.3.2/providers/jdbc",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-jdbc/",
       "last_updated": ""
     },
@@ -3170,8 +3191,9 @@
       "description": "Pinecone",
       "tier": "community",
       "logo": null,
-      "version": "2.4.1",
+      "version": "2.4.2",
       "versions": [
+        "2.4.2",
         "2.4.1",
         "2.4.0",
         "2.3.5",
@@ -3180,8 +3202,7 @@
         "2.3.2",
         "2.3.1",
         "2.3.0",
-        "2.2.2",
-        "2.2.1"
+        "2.2.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3190,8 +3211,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 44705,
-        "monthly": 167858,
+        "weekly": 27646,
+        "monthly": 82604,
         "total": 0
       },
       "module_counts": {
@@ -3230,7 +3251,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-pinecone/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/pinecone",
+      "source_url": "https://github.com/apache/airflow/tree/providers-pinecone/2.4.2/providers/pinecone",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-pinecone/",
       "last_updated": ""
     },
@@ -3241,18 +3262,18 @@
       "description": "PostgreSQL",
       "tier": "community",
       "logo": "/logos/postgres-postgres.png",
-      "version": "6.5.1",
+      "version": "6.5.4",
       "versions": [
+        "6.5.4",
+        "6.5.3",
+        "6.5.2",
         "6.5.1",
         "6.5.0",
         "6.4.1",
         "6.4.0",
         "6.3.0",
         "6.2.3",
-        "6.2.2",
-        "6.2.1",
-        "6.2.0",
-        "6.1.3"
+        "6.2.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3261,8 +3282,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 555451,
-        "monthly": 2594215,
+        "weekly": 555169,
+        "monthly": 2693403,
         "total": 0
       },
       "module_counts": {
@@ -3294,7 +3315,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.23.0",
         "psycopg2-binary>=2.9.9; python_version < '3.13'",
         "psycopg2-binary>=2.9.10; python_version >= '3.13'",
@@ -3316,13 +3337,89 @@
         ],
         "polars": [
           "polars>=1.26.0"
+        ],
+        "sqlalchemy": [
+          "sqlalchemy>=1.4.49"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-postgres/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/postgres",
+      "source_url": "https://github.com/apache/airflow/tree/providers-postgres/6.5.4/providers/postgres",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-postgres/",
+      "last_updated": ""
+    },
+    {
+      "id": "ssh",
+      "name": "SSH",
+      "package_name": "apache-airflow-providers-ssh",
+      "description": "Secure Shell (SSH)",
+      "tier": "community",
+      "logo": "/logos/ssh-SSH.png",
+      "version": "4.3.1",
+      "versions": [
+        "4.3.1",
+        "4.3.0",
+        "4.2.1",
+        "4.2.0",
+        "4.1.6",
+        "4.1.5",
+        "4.1.4",
+        "4.1.3",
+        "4.1.2",
+        "4.1.1"
+      ],
+      "airflow_versions": [
+        "3.1+",
+        "3.0+",
+        "2.9+"
+      ],
+      "quality_score": 77,
+      "pypi_downloads": {
+        "weekly": 3519091,
+        "monthly": 15573936,
+        "total": 0
+      },
+      "module_counts": {
+        "operator": 2,
+        "hook": 2,
+        "sensor": 0,
+        "trigger": 1,
+        "transfer": 0,
+        "notifier": 0,
+        "secret": 0,
+        "logging": 0,
+        "executor": 0,
+        "decorator": 0
+      },
+      "categories": [
+        {
+          "id": "secure-shell-ssh",
+          "name": "Secure Shell (SSH)",
+          "module_count": 0
+        }
+      ],
+      "connection_types": [
+        {
+          "conn_type": "ssh",
+          "hook_class": "airflow.providers.ssh.hooks.ssh.SSHHook",
+          "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ssh/stable/connections/index.html"
+        }
+      ],
+      "requires_python": ">=3.10",
+      "dependencies": [
+        "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
+        "asyncssh>=2.12.0",
+        "paramiko>=2.9.0,<4.0.0",
+        "sshtunnel>=0.3.2"
+      ],
+      "optional_extras": {},
+      "dependents": [],
+      "related_providers": [],
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ssh/stable/",
+      "source_url": "https://github.com/apache/airflow/tree/providers-ssh/4.3.1/providers/ssh",
+      "pypi_url": "https://pypi.org/project/apache-airflow-providers-ssh/",
       "last_updated": ""
     },
     {
@@ -3332,8 +3429,10 @@
       "description": "YDB",
       "tier": "community",
       "logo": "/logos/ydb-YDB.png",
-      "version": "2.3.1",
+      "version": "2.4.0",
       "versions": [
+        "2.4.0",
+        "2.3.2",
         "2.3.1",
         "2.3.0",
         "2.2.3",
@@ -3341,9 +3440,7 @@
         "2.2.1",
         "2.2.0",
         "2.1.1",
-        "2.1.0",
-        "2.0.0",
-        "1.4.0"
+        "2.1.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3352,8 +3449,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 22475,
-        "monthly": 116227,
+        "weekly": 23796,
+        "monthly": 47991,
         "total": 0
       },
       "module_counts": {
@@ -3382,19 +3479,19 @@
           "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ydb/stable/connections/index.html"
         }
       ],
-      "requires_python": ">=3.10,!=3.13",
+      "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-common-compat>=1.10.1",
-        "apache-airflow-providers-common-sql>=1.20.0; python_version < '3.13'",
-        "ydb>=3.18.8; python_version < '3.13'",
-        "ydb-dbapi>=0.1.0; python_version < '3.13'"
+        "apache-airflow-providers-common-sql>=1.20.0",
+        "ydb>=3.18.8",
+        "ydb-dbapi>=0.1.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ydb/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/ydb",
+      "source_url": "https://github.com/apache/airflow/tree/providers-ydb/2.4.0/providers/ydb",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-ydb/",
       "last_updated": ""
     },
@@ -3405,18 +3502,18 @@
       "description": "Hypertext Transfer Protocol (HTTP)",
       "tier": "community",
       "logo": "/logos/http-http.png",
-      "version": "5.6.2",
+      "version": "6.0.0",
       "versions": [
+        "6.0.0",
+        "5.6.4",
+        "5.6.3",
         "5.6.2",
         "5.6.1",
         "5.6.0",
         "5.5.0",
         "5.4.0",
         "5.3.4",
-        "5.3.3",
-        "5.3.2",
-        "5.3.1",
-        "5.3.0"
+        "5.3.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3425,8 +3522,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 2643491,
-        "monthly": 12456521,
+        "weekly": 3587131,
+        "monthly": 14378514,
         "total": 0
       },
       "module_counts": {
@@ -3458,21 +3555,17 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "requests>=2.32.0,<3",
         "requests-toolbelt>=1.0.0",
         "aiohttp>=3.12.14",
         "asgiref>=2.3.0"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-http/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/http",
+      "source_url": "https://github.com/apache/airflow/tree/providers-http/6.0.0/providers/http",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-http/",
       "last_updated": ""
     },
@@ -3483,8 +3576,9 @@
       "description": "ODBC",
       "tier": "community",
       "logo": "/logos/odbc-ODBC.png",
-      "version": "4.11.0",
+      "version": "4.11.1",
       "versions": [
+        "4.11.1",
         "4.11.0",
         "4.10.3",
         "4.10.2",
@@ -3493,8 +3587,7 @@
         "4.9.2",
         "4.9.1",
         "4.9.0",
-        "4.8.1",
-        "4.8.0"
+        "4.8.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3503,8 +3596,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 259617,
-        "monthly": 1158070,
+        "weekly": 263328,
+        "monthly": 1112955,
         "total": 0
       },
       "module_counts": {
@@ -3536,7 +3629,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.20.0",
         "pyodbc>=5.0.0; python_version < '3.13'",
         "pyodbc>=5.2.0; python_version >= '3.13'"
@@ -3545,7 +3638,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-odbc/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/odbc",
+      "source_url": "https://github.com/apache/airflow/tree/providers-odbc/4.11.1/providers/odbc",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-odbc/",
       "last_updated": ""
     },
@@ -3556,8 +3649,9 @@
       "description": "Opsgenie",
       "tier": "community",
       "logo": "/logos/opsgenie-Opsgenie.png",
-      "version": "5.10.0",
+      "version": "5.10.1",
       "versions": [
+        "5.10.1",
         "5.10.0",
         "5.9.3",
         "5.9.2",
@@ -3566,8 +3660,7 @@
         "5.8.3",
         "5.8.2",
         "5.8.1",
-        "5.8.0",
-        "5.7.0"
+        "5.8.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3576,8 +3669,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 163824,
-        "monthly": 772187,
+        "weekly": 185762,
+        "monthly": 758816,
         "total": 0
       },
       "module_counts": {
@@ -3616,7 +3709,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-opsgenie/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/opsgenie",
+      "source_url": "https://github.com/apache/airflow/tree/providers-opsgenie/5.10.1/providers/opsgenie",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-opsgenie/",
       "last_updated": ""
     },
@@ -3627,18 +3720,18 @@
       "description": "MySQL",
       "tier": "community",
       "logo": "/logos/mysql-MySQL.png",
-      "version": "6.4.0",
+      "version": "6.4.3",
       "versions": [
+        "6.4.3",
+        "6.4.2",
+        "6.4.1",
         "6.4.0",
         "6.3.5",
         "6.3.4",
         "6.3.3",
         "6.3.2",
         "6.3.1",
-        "6.3.0",
-        "6.2.2",
-        "6.2.1",
-        "6.2.0"
+        "6.3.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3647,8 +3740,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 3776233,
-        "monthly": 16136773,
+        "weekly": 3610670,
+        "monthly": 15473443,
         "total": 0
       },
       "module_counts": {
@@ -3680,7 +3773,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.8.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.20.0",
         "darwin",
         "aiomysql>=0.2.0"
@@ -3705,7 +3798,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-mysql/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/mysql",
+      "source_url": "https://github.com/apache/airflow/tree/providers-mysql/6.4.3/providers/mysql",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-mysql/",
       "last_updated": ""
     },
@@ -3716,8 +3809,9 @@
       "description": "Telegram",
       "tier": "community",
       "logo": "/logos/telegram-Telegram.png",
-      "version": "4.9.1",
+      "version": "4.9.2",
       "versions": [
+        "4.9.2",
         "4.9.1",
         "4.9.0",
         "4.8.4",
@@ -3726,8 +3820,7 @@
         "4.8.1",
         "4.8.0",
         "4.7.2",
-        "4.7.1",
-        "4.7.0"
+        "4.7.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3736,8 +3829,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 41774,
-        "monthly": 252675,
+        "weekly": 38803,
+        "monthly": 116181,
         "total": 0
       },
       "module_counts": {
@@ -3776,7 +3869,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-telegram/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/telegram",
+      "source_url": "https://github.com/apache/airflow/tree/providers-telegram/4.9.2/providers/telegram",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-telegram/",
       "last_updated": ""
     },
@@ -3787,8 +3880,9 @@
       "description": "Qdrant",
       "tier": "community",
       "logo": null,
-      "version": "1.5.1",
+      "version": "1.5.2",
       "versions": [
+        "1.5.2",
         "1.5.1",
         "1.5.0",
         "1.4.4",
@@ -3797,8 +3891,7 @@
         "1.4.1",
         "1.4.0",
         "1.3.2",
-        "1.3.1",
-        "1.3.0"
+        "1.3.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3807,8 +3900,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 42339,
-        "monthly": 157540,
+        "weekly": 22662,
+        "monthly": 68966,
         "total": 0
       },
       "module_counts": {
@@ -3847,7 +3940,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-qdrant/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/qdrant",
+      "source_url": "https://github.com/apache/airflow/tree/providers-qdrant/1.5.2/providers/qdrant",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-qdrant/",
       "last_updated": ""
     },
@@ -3858,8 +3951,9 @@
       "description": "Salesforce",
       "tier": "community",
       "logo": "/logos/salesforce-Salesforce.png",
-      "version": "5.12.1",
+      "version": "5.12.2",
       "versions": [
+        "5.12.2",
         "5.12.1",
         "5.12.0",
         "5.11.4",
@@ -3868,8 +3962,7 @@
         "5.11.1",
         "5.11.0",
         "5.10.1",
-        "5.10.0",
-        "5.9.0"
+        "5.10.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3878,8 +3971,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 255360,
-        "monthly": 1163272,
+        "weekly": 178630,
+        "monthly": 871382,
         "total": 0
       },
       "module_counts": {
@@ -3920,7 +4013,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-salesforce/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/salesforce",
+      "source_url": "https://github.com/apache/airflow/tree/providers-salesforce/5.12.2/providers/salesforce",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-salesforce/",
       "last_updated": ""
     },
@@ -3931,8 +4024,9 @@
       "description": "Airbyte",
       "tier": "community",
       "logo": "/logos/airbyte-Airbyte.png",
-      "version": "5.3.1",
+      "version": "5.3.2",
       "versions": [
+        "5.3.2",
         "5.3.1",
         "5.3.0",
         "5.2.5",
@@ -3941,8 +4035,7 @@
         "5.2.2",
         "5.2.1",
         "5.2.0",
-        "5.1.0",
-        "5.0.2"
+        "5.1.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -3951,8 +4044,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 433397,
-        "monthly": 1951342,
+        "weekly": 543027,
+        "monthly": 2199434,
         "total": 0
       },
       "module_counts": {
@@ -3984,7 +4077,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "airbyte-api>=0.52.0",
         "requests>=2.32.0"
       ],
@@ -3992,7 +4085,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-airbyte/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/airbyte",
+      "source_url": "https://github.com/apache/airflow/tree/providers-airbyte/5.3.2/providers/airbyte",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-airbyte/",
       "last_updated": ""
     },
@@ -4003,8 +4096,9 @@
       "description": "Weaviate",
       "tier": "community",
       "logo": null,
-      "version": "3.3.0",
+      "version": "3.3.1",
       "versions": [
+        "3.3.1",
         "3.3.0",
         "3.2.5",
         "3.2.4",
@@ -4013,8 +4107,7 @@
         "3.2.1",
         "3.2.0",
         "3.1.0",
-        "3.0.3",
-        "3.0.2"
+        "3.0.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -4023,8 +4116,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 28275,
-        "monthly": 151817,
+        "weekly": 27998,
+        "monthly": 84012,
         "total": 0
       },
       "module_counts": {
@@ -4066,7 +4159,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-weaviate/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/weaviate",
+      "source_url": "https://github.com/apache/airflow/tree/providers-weaviate/3.3.1/providers/weaviate",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-weaviate/",
       "last_updated": ""
     },
@@ -4077,8 +4170,9 @@
       "description": "Vertica",
       "tier": "community",
       "logo": "/logos/vertica-Vertica.png",
-      "version": "4.2.0",
+      "version": "4.2.1",
       "versions": [
+        "4.2.1",
         "4.2.0",
         "4.1.4",
         "4.1.3",
@@ -4087,8 +4181,7 @@
         "4.1.0",
         "4.0.1",
         "4.0.0",
-        "3.9.1",
-        "3.9.0"
+        "3.9.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -4097,8 +4190,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 74389,
-        "monthly": 336095,
+        "weekly": 112995,
+        "monthly": 469997,
         "total": 0
       },
       "module_counts": {
@@ -4130,14 +4223,19 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.26.0",
         "vertica-python>=1.3.0"
       ],
-      "optional_extras": {},
+      "optional_extras": {
+        "sqlalchemy": [
+          "sqlalchemy>=1.4.49"
+        ]
+      },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-vertica/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/vertica",
+      "source_url": "https://github.com/apache/airflow/tree/providers-vertica/4.2.1/providers/vertica",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-vertica/",
       "last_updated": ""
     },
@@ -4148,8 +4246,9 @@
       "description": "Asana",
       "tier": "community",
       "logo": null,
-      "version": "2.11.0",
+      "version": "2.11.1",
       "versions": [
+        "2.11.1",
         "2.11.0",
         "2.10.4",
         "2.10.3",
@@ -4158,8 +4257,7 @@
         "2.10.0",
         "2.9.1",
         "2.9.0",
-        "2.7.0",
-        "2.6.0"
+        "2.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -4168,8 +4266,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 40777,
-        "monthly": 205387,
+        "weekly": 45210,
+        "monthly": 146376,
         "total": 0
       },
       "module_counts": {
@@ -4208,7 +4306,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-asana/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/asana",
+      "source_url": "https://github.com/apache/airflow/tree/providers-asana/2.11.1/providers/asana",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-asana/",
       "last_updated": ""
     },
@@ -4219,8 +4317,9 @@
       "description": "OpenAI",
       "tier": "community",
       "logo": null,
-      "version": "1.7.1",
+      "version": "1.7.2",
       "versions": [
+        "1.7.2",
         "1.7.1",
         "1.7.0",
         "1.6.4",
@@ -4229,8 +4328,7 @@
         "1.6.1",
         "1.6.0",
         "1.5.4",
-        "1.5.3",
-        "1.5.2"
+        "1.5.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -4239,8 +4337,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 51235,
-        "monthly": 257990,
+        "weekly": 84428,
+        "monthly": 204339,
         "total": 0
       },
       "module_counts": {
@@ -4272,13 +4370,13 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1"
+        "apache-airflow-providers-common-compat>=1.12.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-openai/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/openai",
+      "source_url": "https://github.com/apache/airflow/tree/providers-openai/1.7.2/providers/openai",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-openai/",
       "last_updated": ""
     },
@@ -4289,8 +4387,9 @@
       "description": "Apache TinkerPop. Apache TinkerPop is a graph computing framework for both graph databases (OLTP) and graph analytic systems (OLAP) and Gremlin is its graph traversal language.",
       "tier": "community",
       "logo": null,
-      "version": "1.1.0",
+      "version": "1.1.1",
       "versions": [
+        "1.1.1",
         "1.1.0",
         "1.0.5",
         "1.0.4",
@@ -4304,8 +4403,8 @@
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 20713,
-        "monthly": 118431,
+        "weekly": 68314,
+        "monthly": 167529,
         "total": 0
       },
       "module_counts": {
@@ -4337,17 +4436,14 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.8.0",
         "gremlinpython>=3.7.3"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-tinkerpop/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-tinkerpop",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-tinkerpop/1.1.1/providers/apache-tinkerpop",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-tinkerpop/",
       "last_updated": ""
     },
@@ -4358,8 +4454,9 @@
       "description": "Apache Drill.",
       "tier": "community",
       "logo": "/logos/apache-drill-drill.png",
-      "version": "3.2.0",
+      "version": "3.2.1",
       "versions": [
+        "3.2.1",
         "3.2.0",
         "3.1.4",
         "3.1.3",
@@ -4368,16 +4465,15 @@
         "3.1.0",
         "3.0.1",
         "3.0.0",
-        "2.8.1",
-        "2.8.0"
+        "2.8.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 28572,
-        "monthly": 153463,
+        "weekly": 28170,
+        "monthly": 83937,
         "total": 0
       },
       "module_counts": {
@@ -4417,7 +4513,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-drill/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-drill",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-drill/3.2.1/providers/apache-drill",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-drill/",
       "last_updated": ""
     },
@@ -4428,8 +4524,9 @@
       "description": "Apache Pig",
       "tier": "community",
       "logo": "/logos/apache-pig-pig.png",
-      "version": "4.8.1",
+      "version": "4.8.2",
       "versions": [
+        "4.8.2",
         "4.8.1",
         "4.8.0",
         "4.7.4",
@@ -4438,16 +4535,15 @@
         "4.7.1",
         "4.7.0",
         "4.6.1",
-        "4.6.0",
-        "4.5.0"
+        "4.6.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 37506,
-        "monthly": 187815,
+        "weekly": 29136,
+        "monthly": 88763,
         "total": 0
       },
       "module_counts": {
@@ -4485,7 +4581,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-pig/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-pig",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-pig/4.8.2/providers/apache-pig",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-pig/",
       "last_updated": ""
     },
@@ -4496,8 +4592,9 @@
       "description": "Apache Pinot",
       "tier": "community",
       "logo": "/logos/apache-pinot-pinot.png",
-      "version": "4.9.1",
+      "version": "4.9.2",
       "versions": [
+        "4.9.2",
         "4.9.1",
         "4.9.0",
         "4.8.4",
@@ -4506,16 +4603,15 @@
         "4.8.1",
         "4.8.0",
         "4.7.0",
-        "4.6.0",
-        "4.5.1"
+        "4.6.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 37681,
-        "monthly": 190910,
+        "weekly": 29503,
+        "monthly": 93787,
         "total": 0
       },
       "module_counts": {
@@ -4560,7 +4656,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-pinot/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-pinot",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-pinot/4.9.2/providers/apache-pinot",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-pinot/",
       "last_updated": ""
     },
@@ -4571,8 +4667,9 @@
       "description": "Apache Kylin",
       "tier": "community",
       "logo": "/logos/apache-kylin-kylin.png",
-      "version": "3.10.1",
+      "version": "3.10.2",
       "versions": [
+        "3.10.2",
         "3.10.1",
         "3.10.0",
         "3.9.3",
@@ -4581,16 +4678,15 @@
         "3.9.0",
         "3.8.3",
         "3.8.2",
-        "3.8.1",
-        "3.8.0"
+        "3.8.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 36387,
-        "monthly": 183115,
+        "weekly": 28157,
+        "monthly": 83941,
         "total": 0
       },
       "module_counts": {
@@ -4629,7 +4725,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-kylin/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-kylin",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-kylin/3.10.2/providers/apache-kylin",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-kylin/",
       "last_updated": ""
     },
@@ -4640,8 +4736,9 @@
       "description": "Apache Impala.",
       "tier": "community",
       "logo": null,
-      "version": "1.8.0",
+      "version": "1.8.1",
       "versions": [
+        "1.8.1",
         "1.8.0",
         "1.7.4",
         "1.7.3",
@@ -4650,16 +4747,15 @@
         "1.7.0",
         "1.6.1",
         "1.6.0",
-        "1.5.2",
-        "1.5.1"
+        "1.5.2"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 266293,
-        "monthly": 1153399,
+        "weekly": 246958,
+        "monthly": 634569,
         "total": 0
       },
       "module_counts": {
@@ -4691,6 +4787,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "impyla>=0.22.0,<1.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.26.0",
         "apache-airflow>=2.11.0"
       ],
@@ -4705,7 +4802,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-impala/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-impala",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-impala/1.8.1/providers/apache-impala",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-impala/",
       "last_updated": ""
     },
@@ -4716,8 +4813,10 @@
       "description": "Apache Livy",
       "tier": "community",
       "logo": "/logos/apache-livy-Livy.png",
-      "version": "4.5.1",
+      "version": "4.5.3",
       "versions": [
+        "4.5.3",
+        "4.5.2",
         "4.5.1",
         "4.5.0",
         "4.4.5",
@@ -4725,17 +4824,15 @@
         "4.4.3",
         "4.4.2",
         "4.4.1",
-        "4.4.0",
-        "4.3.2",
-        "4.3.1"
+        "4.4.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 150134,
-        "monthly": 650608,
+        "weekly": 120511,
+        "monthly": 522427,
         "total": 0
       },
       "module_counts": {
@@ -4768,7 +4865,7 @@
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-http>=5.1.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "aiohttp>=3.9.2",
         "asgiref>=2.3.0"
       ],
@@ -4776,7 +4873,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-livy/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-livy",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-livy/4.5.3/providers/apache-livy",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-livy/",
       "last_updated": ""
     },
@@ -4787,8 +4884,10 @@
       "description": "Apache Cassandra.",
       "tier": "community",
       "logo": "/logos/apache-cassandra-cassandra-3.png",
-      "version": "3.9.0",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
+        "3.9.1",
         "3.9.0",
         "3.8.4",
         "3.8.3",
@@ -4796,17 +4895,15 @@
         "3.8.1",
         "3.8.0",
         "3.7.2",
-        "3.7.1",
-        "3.7.0",
-        "3.6.0"
+        "3.7.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 49914,
-        "monthly": 254388,
+        "weekly": 47456,
+        "monthly": 137079,
         "total": 0
       },
       "module_counts": {
@@ -4838,17 +4935,16 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "cassandra-driver>=3.29.1"
+        "apache-airflow-providers-common-compat>=1.8.0",
+        "cassandra-driver>=3.29.3; python_version >= '3.13'",
+        "cassandra-driver>=3.29.2; python_version >= '3.12' and python_version < '3.13'",
+        "cassandra-driver>=3.29.1; python_version < '3.12'"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-cassandra/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-cassandra",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-cassandra/3.9.2/providers/apache-cassandra",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-cassandra/",
       "last_updated": ""
     },
@@ -4859,8 +4955,9 @@
       "description": "Apache Druid.",
       "tier": "community",
       "logo": "/logos/apache-druid-druid-1.png",
-      "version": "4.4.1",
+      "version": "4.4.2",
       "versions": [
+        "4.4.2",
         "4.4.1",
         "4.4.0",
         "4.3.1",
@@ -4869,16 +4966,15 @@
         "4.2.0",
         "4.1.1",
         "4.1.0",
-        "4.0.0",
-        "3.12.1"
+        "4.0.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 81122,
-        "monthly": 388875,
+        "weekly": 75976,
+        "monthly": 289055,
         "total": 0
       },
       "module_counts": {
@@ -4917,15 +5013,12 @@
       "optional_extras": {
         "apache.hive": [
           "apache-airflow-providers-apache-hive"
-        ],
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
         ]
       },
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-druid/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-druid",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-druid/4.4.2/providers/apache-druid",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-druid/",
       "last_updated": ""
     },
@@ -4936,8 +5029,10 @@
       "description": "Hadoop Distributed File System (HDFS) and WebHDFS.",
       "tier": "community",
       "logo": "/logos/apache-hdfs-hadoop.png",
-      "version": "4.11.1",
+      "version": "4.11.3",
       "versions": [
+        "4.11.3",
+        "4.11.2",
         "4.11.1",
         "4.11.0",
         "4.10.5",
@@ -4945,17 +5040,15 @@
         "4.10.3",
         "4.10.2",
         "4.10.1",
-        "4.10.0",
-        "4.9.0",
-        "4.8.1"
+        "4.10.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 31843,
-        "monthly": 164027,
+        "weekly": 32694,
+        "monthly": 76427,
         "total": 0
       },
       "module_counts": {
@@ -4992,13 +5085,13 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1"
+        "apache-airflow-providers-common-compat>=1.12.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-hdfs/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-hdfs",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-hdfs/4.11.3/providers/apache-hdfs",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-hdfs/",
       "last_updated": ""
     },
@@ -5009,31 +5102,31 @@
       "description": "Common SQL Provider",
       "tier": "official",
       "logo": "/logos/common-sql-sql.png",
-      "version": "1.30.2",
+      "version": "1.31.0",
       "versions": [
+        "1.31.0",
+        "1.30.4",
+        "1.30.3",
         "1.30.2",
         "1.30.1",
         "1.30.0",
         "1.29.0",
         "1.28.2",
         "1.28.1",
-        "1.28.0",
-        "1.27.5",
-        "1.27.4",
-        "1.27.3"
+        "1.28.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 6204946,
-        "monthly": 28015192,
+        "weekly": 7742683,
+        "monthly": 32728539,
         "total": 0
       },
       "module_counts": {
         "operator": 2,
-        "hook": 2,
+        "hook": 3,
         "sensor": 1,
         "trigger": 1,
         "transfer": 0,
@@ -5041,7 +5134,7 @@
         "secret": 0,
         "logging": 0,
         "executor": 0,
-        "decorator": 0
+        "decorator": 1
       },
       "categories": [
         {
@@ -5054,7 +5147,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "sqlparse>=0.5.1",
         "more-itertools>=9.0.0",
         "methodtools>=0.4.7"
@@ -5073,7 +5166,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-common-sql/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/common-sql",
+      "source_url": "https://github.com/apache/airflow/tree/providers-common-sql/1.31.0/providers/common-sql",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-common-sql/",
       "last_updated": ""
     },
@@ -5084,8 +5177,9 @@
       "description": "Windows Remote Management (WinRM)",
       "tier": "community",
       "logo": "/logos/microsoft-winrm-WinRM.png",
-      "version": "3.13.2",
+      "version": "3.13.3",
       "versions": [
+        "3.13.3",
         "3.13.2",
         "3.13.1",
         "3.13.0",
@@ -5094,23 +5188,22 @@
         "3.11.0",
         "3.10.2",
         "3.10.1",
-        "3.10.0",
-        "3.9.2"
+        "3.10.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 52065,
-        "monthly": 213298,
+        "weekly": 32618,
+        "monthly": 105258,
         "total": 0
       },
       "module_counts": {
         "operator": 1,
         "hook": 1,
         "sensor": 0,
-        "trigger": 0,
+        "trigger": 1,
         "transfer": 0,
         "notifier": 0,
         "secret": 0,
@@ -5135,14 +5228,14 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "pywinrm>=0.5.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-microsoft-winrm/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/microsoft-winrm",
+      "source_url": "https://github.com/apache/airflow/tree/providers-microsoft-winrm/3.13.3/providers/microsoft-winrm",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-microsoft-winrm/",
       "last_updated": ""
     },
@@ -5153,8 +5246,9 @@
       "description": "Microsoft SQL Server (MSSQL)",
       "tier": "community",
       "logo": "/logos/microsoft-mssql-Microsoft-SQL-Server.png",
-      "version": "4.4.0",
+      "version": "4.4.1",
       "versions": [
+        "4.4.1",
         "4.4.0",
         "4.3.3",
         "4.3.2",
@@ -5163,16 +5257,15 @@
         "4.2.2",
         "4.2.1",
         "4.2.0",
-        "4.0.0",
-        "3.9.2"
+        "4.0.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 769822,
-        "monthly": 3606919,
+        "weekly": 789625,
+        "monthly": 3701210,
         "total": 0
       },
       "module_counts": {
@@ -5216,7 +5309,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-microsoft-mssql/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/microsoft-mssql",
+      "source_url": "https://github.com/apache/airflow/tree/providers-microsoft-mssql/4.4.1/providers/microsoft-mssql",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-microsoft-mssql/",
       "last_updated": ""
     },
@@ -5227,8 +5320,10 @@
       "description": "dbt Cloud",
       "tier": "community",
       "logo": "/logos/dbt-cloud-dbt.png",
-      "version": "4.6.2",
+      "version": "4.6.4",
       "versions": [
+        "4.6.4",
+        "4.6.3",
         "4.6.2",
         "4.6.1",
         "4.6.0",
@@ -5236,17 +5331,15 @@
         "4.4.4",
         "4.4.3",
         "4.4.2",
-        "4.4.1",
-        "4.4.0",
-        "4.3.3"
+        "4.4.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 77,
       "pypi_downloads": {
-        "weekly": 332234,
-        "monthly": 1446513,
+        "weekly": 414922,
+        "monthly": 1591841,
         "total": 0
       },
       "module_counts": {
@@ -5278,7 +5371,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-http",
         "asgiref>=2.3.0",
         "aiohttp>=3.9.2",
@@ -5292,7 +5385,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-dbt-cloud/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/dbt-cloud",
+      "source_url": "https://github.com/apache/airflow/tree/providers-dbt-cloud/4.6.4/providers/dbt-cloud",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-dbt-cloud/",
       "last_updated": ""
     },
@@ -5303,8 +5396,9 @@
       "description": "File Transfer Protocol (FTP)",
       "tier": "community",
       "logo": "/logos/ftp-ftp.png",
-      "version": "3.14.0",
+      "version": "3.14.1",
       "versions": [
+        "3.14.1",
         "3.14.0",
         "3.13.3",
         "3.13.2",
@@ -5313,8 +5407,7 @@
         "3.12.3",
         "3.12.2",
         "3.12.0",
-        "3.11.1",
-        "3.11.0"
+        "3.11.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5323,8 +5416,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 1232751,
-        "monthly": 6433450,
+        "weekly": 2069266,
+        "monthly": 8684321,
         "total": 0
       },
       "module_counts": {
@@ -5359,9 +5452,6 @@
         "apache-airflow-providers-common-compat>=1.8.0"
       ],
       "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ],
         "openlineage": [
           "apache-airflow-providers-openlineage"
         ]
@@ -5369,7 +5459,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ftp/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/ftp",
+      "source_url": "https://github.com/apache/airflow/tree/providers-ftp/3.14.1/providers/ftp",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-ftp/",
       "last_updated": ""
     },
@@ -5380,8 +5470,9 @@
       "description": "Docker",
       "tier": "community",
       "logo": "/logos/docker-Docker.png",
-      "version": "4.5.1",
+      "version": "4.5.2",
       "versions": [
+        "4.5.2",
         "4.5.1",
         "4.5.0",
         "4.4.5",
@@ -5390,8 +5481,7 @@
         "4.4.2",
         "4.4.1",
         "4.4.0",
-        "4.3.1",
-        "4.3.0"
+        "4.3.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5400,8 +5490,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 1349388,
-        "monthly": 5803830,
+        "weekly": 1401860,
+        "monthly": 5920231,
         "total": 0
       },
       "module_counts": {
@@ -5442,15 +5532,11 @@
         "docker>=7.1.0",
         "python-dotenv>=0.21.0"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-docker/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/docker",
+      "source_url": "https://github.com/apache/airflow/tree/providers-docker/4.5.2/providers/docker",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-docker/",
       "last_updated": ""
     },
@@ -5461,8 +5547,10 @@
       "description": "Internet Message Access Protocol (IMAP)",
       "tier": "community",
       "logo": "/logos/imap-imap.png",
-      "version": "3.10.2",
+      "version": "3.11.0",
       "versions": [
+        "3.11.0",
+        "3.10.3",
         "3.10.2",
         "3.10.1",
         "3.10.0",
@@ -5470,9 +5558,7 @@
         "3.9.3",
         "3.9.2",
         "3.9.1",
-        "3.9.0",
-        "3.8.3",
-        "3.8.2"
+        "3.9.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5481,8 +5567,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 1318899,
-        "monthly": 6472958,
+        "weekly": 2278581,
+        "monthly": 9397272,
         "total": 0
       },
       "module_counts": {
@@ -5514,13 +5600,13 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1"
+        "apache-airflow-providers-common-compat>=1.12.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-imap/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/imap",
+      "source_url": "https://github.com/apache/airflow/tree/providers-imap/3.11.0/providers/imap",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-imap/",
       "last_updated": ""
     },
@@ -5531,8 +5617,9 @@
       "description": "Discord",
       "tier": "community",
       "logo": "/logos/discord-Discord.png",
-      "version": "3.11.1",
+      "version": "3.12.0",
       "versions": [
+        "3.12.0",
         "3.11.1",
         "3.11.0",
         "3.10.3",
@@ -5541,8 +5628,7 @@
         "3.10.0",
         "3.9.5",
         "3.9.4",
-        "3.9.3",
-        "3.9.2"
+        "3.9.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5551,8 +5637,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 41364,
-        "monthly": 205219,
+        "weekly": 34044,
+        "monthly": 108592,
         "total": 0
       },
       "module_counts": {
@@ -5591,7 +5677,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-discord/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/discord",
+      "source_url": "https://github.com/apache/airflow/tree/providers-discord/3.12.0/providers/discord",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-discord/",
       "last_updated": ""
     },
@@ -5602,8 +5688,9 @@
       "description": "gRPC",
       "tier": "community",
       "logo": null,
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -5612,8 +5699,7 @@
         "3.8.0",
         "3.7.3",
         "3.7.2",
-        "3.7.0",
-        "3.6.0"
+        "3.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5622,8 +5708,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 60230,
-        "monthly": 265191,
+        "weekly": 63413,
+        "monthly": 225591,
         "total": 0
       },
       "module_counts": {
@@ -5664,7 +5750,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-grpc/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/grpc",
+      "source_url": "https://github.com/apache/airflow/tree/providers-grpc/3.9.2/providers/grpc",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-grpc/",
       "last_updated": ""
     },
@@ -5675,18 +5761,18 @@
       "description": "Hashicorp including Hashicorp Vault",
       "tier": "community",
       "logo": "/logos/hashicorp-Hashicorp-Vault.png",
-      "version": "4.4.1",
+      "version": "4.5.0",
       "versions": [
+        "4.5.0",
+        "4.4.3",
+        "4.4.2",
         "4.4.1",
         "4.4.0",
         "4.3.4",
         "4.3.3",
         "4.3.2",
         "4.3.1",
-        "4.3.0",
-        "4.2.0",
-        "4.1.1",
-        "4.1.0"
+        "4.3.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5695,8 +5781,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 108324,
-        "monthly": 488018,
+        "weekly": 104519,
+        "monthly": 361560,
         "total": 0
       },
       "module_counts": {
@@ -5742,7 +5828,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-hashicorp/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/hashicorp",
+      "source_url": "https://github.com/apache/airflow/tree/providers-hashicorp/4.5.0/providers/hashicorp",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-hashicorp/",
       "last_updated": ""
     },
@@ -5753,8 +5839,10 @@
       "description": "Pagerduty",
       "tier": "community",
       "logo": "/logos/pagerduty-Pagerduty.png",
-      "version": "5.2.1",
+      "version": "5.2.3",
       "versions": [
+        "5.2.3",
+        "5.2.2",
         "5.2.1",
         "5.2.0",
         "5.1.1",
@@ -5762,9 +5850,7 @@
         "5.0.2",
         "5.0.1",
         "5.0.0",
-        "4.0.3",
-        "4.0.2",
-        "4.0.1"
+        "4.0.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5773,8 +5859,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 279523,
-        "monthly": 1271642,
+        "weekly": 319942,
+        "monthly": 1735265,
         "total": 0
       },
       "module_counts": {
@@ -5819,7 +5905,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-pagerduty/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/pagerduty",
+      "source_url": "https://github.com/apache/airflow/tree/providers-pagerduty/5.2.3/providers/pagerduty",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-pagerduty/",
       "last_updated": ""
     },
@@ -5830,8 +5916,9 @@
       "description": "IBM Cloudant",
       "tier": "community",
       "logo": "/logos/cloudant-cloudant.png",
-      "version": "4.3.1",
+      "version": "4.3.2",
       "versions": [
+        "4.3.2",
         "4.3.1",
         "4.3.0",
         "4.2.3",
@@ -5840,8 +5927,7 @@
         "4.2.0",
         "4.1.1",
         "4.1.0",
-        "4.0.3",
-        "4.0.2"
+        "4.0.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5850,8 +5936,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 58959,
-        "monthly": 292305,
+        "weekly": 39218,
+        "monthly": 178429,
         "total": 0
       },
       "module_counts": {
@@ -5890,7 +5976,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-cloudant/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/cloudant",
+      "source_url": "https://github.com/apache/airflow/tree/providers-cloudant/4.3.2/providers/cloudant",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-cloudant/",
       "last_updated": ""
     },
@@ -5901,8 +5987,9 @@
       "description": "ArangoDB",
       "tier": "community",
       "logo": null,
-      "version": "2.9.1",
+      "version": "2.9.2",
       "versions": [
+        "2.9.2",
         "2.9.1",
         "2.9.0",
         "2.8.4",
@@ -5911,8 +5998,7 @@
         "2.8.1",
         "2.8.0",
         "2.7.4",
-        "2.7.3",
-        "2.7.2"
+        "2.7.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5921,8 +6007,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 41445,
-        "monthly": 202368,
+        "weekly": 40459,
+        "monthly": 135806,
         "total": 0
       },
       "module_counts": {
@@ -5961,7 +6047,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-arangodb/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/arangodb",
+      "source_url": "https://github.com/apache/airflow/tree/providers-arangodb/2.9.2/providers/arangodb",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-arangodb/",
       "last_updated": ""
     },
@@ -5972,8 +6058,9 @@
       "description": "Segment",
       "tier": "community",
       "logo": "/logos/segment-Segment.png",
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -5982,8 +6069,7 @@
         "3.8.0",
         "3.7.2",
         "3.7.1",
-        "3.7.0",
-        "3.6.0"
+        "3.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -5992,8 +6078,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 38419,
-        "monthly": 190866,
+        "weekly": 31458,
+        "monthly": 95162,
         "total": 0
       },
       "module_counts": {
@@ -6032,7 +6118,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-segment/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/segment",
+      "source_url": "https://github.com/apache/airflow/tree/providers-segment/3.9.2/providers/segment",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-segment/",
       "last_updated": ""
     },
@@ -6043,8 +6129,9 @@
       "description": "InfluxDB",
       "tier": "community",
       "logo": null,
-      "version": "2.10.1",
+      "version": "2.10.2",
       "versions": [
+        "2.10.2",
         "2.10.1",
         "2.10.0",
         "2.9.4",
@@ -6053,8 +6140,7 @@
         "2.9.1",
         "2.9.0",
         "2.8.3",
-        "2.8.2",
-        "2.8.0"
+        "2.8.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6063,8 +6149,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 56379,
-        "monthly": 220291,
+        "weekly": 40329,
+        "monthly": 134802,
         "total": 0
       },
       "module_counts": {
@@ -6104,80 +6190,8 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-influxdb/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/influxdb",
+      "source_url": "https://github.com/apache/airflow/tree/providers-influxdb/2.10.2/providers/influxdb",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-influxdb/",
-      "last_updated": ""
-    },
-    {
-      "id": "ssh",
-      "name": "SSH",
-      "package_name": "apache-airflow-providers-ssh",
-      "description": "Secure Shell (SSH)",
-      "tier": "community",
-      "logo": "/logos/ssh-SSH.png",
-      "version": "4.2.1",
-      "versions": [
-        "4.2.1",
-        "4.2.0",
-        "4.1.6",
-        "4.1.5",
-        "4.1.4",
-        "4.1.3",
-        "4.1.2",
-        "4.1.1",
-        "4.1.0",
-        "4.0.1"
-      ],
-      "airflow_versions": [
-        "3.1+",
-        "3.0+",
-        "2.9+"
-      ],
-      "quality_score": 75,
-      "pypi_downloads": {
-        "weekly": 3680572,
-        "monthly": 15956872,
-        "total": 0
-      },
-      "module_counts": {
-        "operator": 1,
-        "hook": 1,
-        "sensor": 0,
-        "trigger": 0,
-        "transfer": 0,
-        "notifier": 0,
-        "secret": 0,
-        "logging": 0,
-        "executor": 0,
-        "decorator": 0
-      },
-      "categories": [
-        {
-          "id": "secure-shell-ssh",
-          "name": "Secure Shell (SSH)",
-          "module_count": 0
-        }
-      ],
-      "connection_types": [
-        {
-          "conn_type": "ssh",
-          "hook_class": "airflow.providers.ssh.hooks.ssh.SSHHook",
-          "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ssh/stable/connections/index.html"
-        }
-      ],
-      "requires_python": ">=3.10",
-      "dependencies": [
-        "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
-        "paramiko>=2.9.0,<4.0.0",
-        "sshtunnel>=0.3.2"
-      ],
-      "optional_extras": {},
-      "dependents": [],
-      "related_providers": [],
-      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-ssh/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/ssh",
-      "pypi_url": "https://pypi.org/project/apache-airflow-providers-ssh/",
       "last_updated": ""
     },
     {
@@ -6187,8 +6201,9 @@
       "description": "Apprise",
       "tier": "community",
       "logo": null,
-      "version": "2.3.0",
+      "version": "2.3.1",
       "versions": [
+        "2.3.1",
         "2.3.0",
         "2.2.0",
         "2.1.3",
@@ -6197,8 +6212,7 @@
         "2.1.0",
         "2.0.2",
         "2.0.1",
-        "2.0.0",
-        "1.4.1"
+        "2.0.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6207,8 +6221,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 32383,
-        "monthly": 171451,
+        "weekly": 31067,
+        "monthly": 101037,
         "total": 0
       },
       "module_counts": {
@@ -6247,7 +6261,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apprise/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apprise",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apprise/2.3.1/providers/apprise",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apprise/",
       "last_updated": ""
     },
@@ -6258,8 +6272,10 @@
       "description": "GitHub",
       "tier": "community",
       "logo": null,
-      "version": "2.10.1",
+      "version": "2.11.0",
       "versions": [
+        "2.11.0",
+        "2.10.2",
         "2.10.1",
         "2.10.0",
         "2.9.4",
@@ -6267,9 +6283,7 @@
         "2.9.2",
         "2.9.1",
         "2.9.0",
-        "2.8.3",
-        "2.8.2",
-        "2.8.0"
+        "2.8.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6278,8 +6292,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 99406,
-        "monthly": 465103,
+        "weekly": 155130,
+        "monthly": 442099,
         "total": 0
       },
       "module_counts": {
@@ -6318,7 +6332,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-github/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/github",
+      "source_url": "https://github.com/apache/airflow/tree/providers-github/2.11.0/providers/github",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-github/",
       "last_updated": ""
     },
@@ -6329,8 +6343,9 @@
       "description": "Facebook Ads",
       "tier": "community",
       "logo": "/logos/facebook-Facebook-Ads.png",
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -6339,8 +6354,7 @@
         "3.8.0",
         "3.7.2",
         "3.7.1",
-        "3.7.0",
-        "3.6.0"
+        "3.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6349,8 +6363,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 0,
-        "monthly": 0,
+        "weekly": 39304,
+        "monthly": 150244,
         "total": 0
       },
       "module_counts": {
@@ -6389,7 +6403,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-facebook/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/facebook",
+      "source_url": "https://github.com/apache/airflow/tree/providers-facebook/3.9.2/providers/facebook",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-facebook/",
       "last_updated": ""
     },
@@ -6400,8 +6414,9 @@
       "description": "Samba",
       "tier": "community",
       "logo": "/logos/samba-Samba.png",
-      "version": "4.12.1",
+      "version": "4.12.2",
       "versions": [
+        "4.12.2",
         "4.12.1",
         "4.12.0",
         "4.11.1",
@@ -6410,8 +6425,7 @@
         "4.10.2",
         "4.10.1",
         "4.10.0",
-        "4.9.2",
-        "4.9.1"
+        "4.9.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6420,8 +6434,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 0,
-        "monthly": 0,
+        "weekly": 148017,
+        "monthly": 546344,
         "total": 0
       },
       "module_counts": {
@@ -6464,7 +6478,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-samba/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/samba",
+      "source_url": "https://github.com/apache/airflow/tree/providers-samba/4.12.2/providers/samba",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-samba/",
       "last_updated": ""
     },
@@ -6475,8 +6489,9 @@
       "description": "Zendesk",
       "tier": "community",
       "logo": "/logos/zendesk-Zendesk.png",
-      "version": "4.11.0",
+      "version": "4.11.1",
       "versions": [
+        "4.11.1",
         "4.11.0",
         "4.10.4",
         "4.10.3",
@@ -6485,8 +6500,7 @@
         "4.10.0",
         "4.9.1",
         "4.9.0",
-        "4.8.0",
-        "4.7.1"
+        "4.8.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6495,8 +6509,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 33360,
-        "monthly": 177887,
+        "weekly": 33888,
+        "monthly": 111426,
         "total": 0
       },
       "module_counts": {
@@ -6535,7 +6549,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-zendesk/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/zendesk",
+      "source_url": "https://github.com/apache/airflow/tree/providers-zendesk/4.11.1/providers/zendesk",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-zendesk/",
       "last_updated": ""
     },
@@ -6546,8 +6560,9 @@
       "description": "Simple Mail Transfer Protocol (SMTP)",
       "tier": "official",
       "logo": "/logos/smtp-smtp.png",
-      "version": "2.4.1",
+      "version": "2.4.2",
       "versions": [
+        "2.4.2",
         "2.4.1",
         "2.4.0",
         "2.3.2",
@@ -6556,8 +6571,7 @@
         "2.2.1",
         "2.2.0",
         "2.1.2",
-        "2.1.1",
-        "2.1.0"
+        "2.1.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6566,8 +6580,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 1756455,
-        "monthly": 7639797,
+        "weekly": 2422525,
+        "monthly": 9847490,
         "total": 0
       },
       "module_counts": {
@@ -6606,8 +6620,72 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-smtp/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/smtp",
+      "source_url": "https://github.com/apache/airflow/tree/providers-smtp/2.4.2/providers/smtp",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-smtp/",
+      "last_updated": ""
+    },
+    {
+      "id": "informatica",
+      "name": "Informatica Airflow",
+      "package_name": "apache-airflow-providers-informatica",
+      "description": "Informatica",
+      "tier": "community",
+      "logo": "/logos/informatica-informatica.png",
+      "version": "0.1.0",
+      "versions": [
+        "0.1.0"
+      ],
+      "airflow_versions": [
+        "3.0+"
+      ],
+      "quality_score": 75,
+      "pypi_downloads": {
+        "weekly": 0,
+        "monthly": 30,
+        "total": 0
+      },
+      "module_counts": {
+        "operator": 0,
+        "hook": 2,
+        "sensor": 0,
+        "trigger": 0,
+        "transfer": 0,
+        "notifier": 0,
+        "secret": 0,
+        "logging": 0,
+        "executor": 0,
+        "decorator": 0
+      },
+      "categories": [
+        {
+          "id": "informatica",
+          "name": "Informatica",
+          "module_count": 0
+        }
+      ],
+      "connection_types": [
+        {
+          "conn_type": "informatica_edc",
+          "hook_class": "airflow.providers.informatica.hooks.edc.InformaticaEDCHook",
+          "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-informatica/stable/connections/index.html"
+        }
+      ],
+      "requires_python": ">=3.10",
+      "dependencies": [
+        "apache-airflow>=3.0.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
+        "apache-airflow-providers-http>=4.13.2"
+      ],
+      "optional_extras": {
+        "common.compat": [
+          "apache-airflow-providers-common-compat"
+        ]
+      },
+      "dependents": [],
+      "related_providers": [],
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-informatica/stable/",
+      "source_url": "https://github.com/apache/airflow/tree/providers-informatica/0.1.0/providers/informatica",
+      "pypi_url": "https://pypi.org/project/apache-airflow-providers-informatica/",
       "last_updated": ""
     },
     {
@@ -6617,8 +6695,9 @@
       "description": "Datadog",
       "tier": "community",
       "logo": "/logos/datadog-Datadog.png",
-      "version": "3.10.1",
+      "version": "3.10.2",
       "versions": [
+        "3.10.2",
         "3.10.1",
         "3.10.0",
         "3.9.3",
@@ -6627,8 +6706,7 @@
         "3.9.0",
         "3.8.3",
         "3.8.2",
-        "3.8.0",
-        "3.7.1"
+        "3.8.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6637,8 +6715,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 284992,
-        "monthly": 1245645,
+        "weekly": 341967,
+        "monthly": 1517683,
         "total": 0
       },
       "module_counts": {
@@ -6677,7 +6755,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-datadog/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/datadog",
+      "source_url": "https://github.com/apache/airflow/tree/providers-datadog/3.10.2/providers/datadog",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-datadog/",
       "last_updated": ""
     },
@@ -6688,8 +6766,9 @@
       "description": "MongoDB",
       "tier": "community",
       "logo": "/logos/mongo-MongoDB.png",
-      "version": "5.3.1",
+      "version": "5.3.2",
       "versions": [
+        "5.3.2",
         "5.3.1",
         "5.3.0",
         "5.2.3",
@@ -6698,8 +6777,7 @@
         "5.2.0",
         "5.1.0",
         "5.0.3",
-        "5.0.2",
-        "5.0.1"
+        "5.0.2"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6708,8 +6786,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 303718,
-        "monthly": 1333708,
+        "weekly": 364996,
+        "monthly": 1384691,
         "total": 0
       },
       "module_counts": {
@@ -6749,7 +6827,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-mongo/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/mongo",
+      "source_url": "https://github.com/apache/airflow/tree/providers-mongo/5.3.2/providers/mongo",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-mongo/",
       "last_updated": ""
     },
@@ -6760,8 +6838,9 @@
       "description": "OpenFaaS",
       "tier": "community",
       "logo": "/logos/openfaas-OpenFaaS.png",
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -6770,8 +6849,7 @@
         "3.8.0",
         "3.7.2",
         "3.7.1",
-        "3.7.0",
-        "3.6.0"
+        "3.7.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6780,8 +6858,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 36806,
-        "monthly": 184961,
+        "weekly": 28304,
+        "monthly": 85628,
         "total": 0
       },
       "module_counts": {
@@ -6819,7 +6897,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-openfaas/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/openfaas",
+      "source_url": "https://github.com/apache/airflow/tree/providers-openfaas/3.9.2/providers/openfaas",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-openfaas/",
       "last_updated": ""
     },
@@ -6830,8 +6908,9 @@
       "description": "Jenkins",
       "tier": "community",
       "logo": "/logos/jenkins-Jenkins.png",
-      "version": "4.2.1",
+      "version": "4.2.2",
       "versions": [
+        "4.2.2",
         "4.2.1",
         "4.2.0",
         "4.1.5",
@@ -6840,8 +6919,7 @@
         "4.1.2",
         "4.1.1",
         "4.1.0",
-        "4.0.4",
-        "4.0.3"
+        "4.0.4"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6850,8 +6928,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 50872,
-        "monthly": 253610,
+        "weekly": 46425,
+        "monthly": 163327,
         "total": 0
       },
       "module_counts": {
@@ -6890,7 +6968,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-jenkins/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/jenkins",
+      "source_url": "https://github.com/apache/airflow/tree/providers-jenkins/4.2.2/providers/jenkins",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-jenkins/",
       "last_updated": ""
     },
@@ -6901,8 +6979,10 @@
       "description": "Elasticsearch",
       "tier": "community",
       "logo": "/logos/elasticsearch-Elasticsearch.png",
-      "version": "6.4.2",
+      "version": "6.4.4",
       "versions": [
+        "6.4.4",
+        "6.4.3",
         "6.4.2",
         "6.4.1",
         "6.4.0",
@@ -6910,9 +6990,7 @@
         "6.3.4",
         "6.3.3",
         "6.3.2",
-        "6.3.1",
-        "6.3.0",
-        "6.2.2"
+        "6.3.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6921,8 +6999,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 127785,
-        "monthly": 553537,
+        "weekly": 135998,
+        "monthly": 479078,
         "total": 0
       },
       "module_counts": {
@@ -6954,7 +7032,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "apache-airflow-providers-common-sql>=1.27.0",
         "elasticsearch>=8.10,<9"
       ],
@@ -6962,7 +7040,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-elasticsearch/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/elasticsearch",
+      "source_url": "https://github.com/apache/airflow/tree/providers-elasticsearch/6.4.4/providers/elasticsearch",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-elasticsearch/",
       "last_updated": ""
     },
@@ -6973,18 +7051,18 @@
       "description": "Distributed version control system (GIT)",
       "tier": "community",
       "logo": null,
-      "version": "0.2.0",
+      "version": "0.2.3",
       "versions": [
+        "0.2.3",
+        "0.2.2",
+        "0.2.1",
         "0.2.0",
         "0.1.1",
         "0.1.0",
         "0.0.9",
         "0.0.8",
         "0.0.7",
-        "0.0.6",
-        "0.0.5",
-        "0.0.4",
-        "0.0.3"
+        "0.0.6"
       ],
       "airflow_versions": [
         "3.1+",
@@ -6993,8 +7071,8 @@
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 42431,
-        "monthly": 169111,
+        "weekly": 51215,
+        "monthly": 120692,
         "total": 0
       },
       "module_counts": {
@@ -7026,14 +7104,14 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=3.0.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "GitPython>=3.1.44"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-git/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/git",
+      "source_url": "https://github.com/apache/airflow/tree/providers-git/0.2.3/providers/git",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-git/",
       "last_updated": ""
     },
@@ -7044,8 +7122,9 @@
       "description": "Iceberg",
       "tier": "community",
       "logo": "/logos/apache-iceberg-iceberg.png",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "versions": [
+        "1.4.1",
         "1.4.0",
         "1.3.4",
         "1.3.3",
@@ -7054,16 +7133,15 @@
         "1.3.0",
         "1.2.1",
         "1.2.0",
-        "1.1.0",
-        "1.0.0"
+        "1.1.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 30940,
-        "monthly": 175482,
+        "weekly": 26471,
+        "monthly": 96124,
         "total": 0
       },
       "module_counts": {
@@ -7094,17 +7172,14 @@
       ],
       "requires_python": ">=3.10",
       "dependencies": [
-        "apache-airflow>=2.11.0"
+        "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.8.0"
       ],
-      "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ]
-      },
+      "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-iceberg/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-iceberg",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-iceberg/1.4.1/providers/apache-iceberg",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-iceberg/",
       "last_updated": ""
     },
@@ -7115,8 +7190,9 @@
       "description": "Atlassian Jira",
       "tier": "community",
       "logo": "/logos/atlassian-jira-Jira.png",
-      "version": "3.3.0",
+      "version": "3.3.1",
       "versions": [
+        "3.3.1",
         "3.3.0",
         "3.2.1",
         "3.2.0",
@@ -7125,16 +7201,15 @@
         "3.1.0",
         "3.0.2",
         "3.0.1",
-        "3.0.0",
-        "2.7.1"
+        "3.0.0"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 156628,
-        "monthly": 752877,
+        "weekly": 138779,
+        "monthly": 776923,
         "total": 0
       },
       "module_counts": {
@@ -7174,7 +7249,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-atlassian-jira/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/atlassian-jira",
+      "source_url": "https://github.com/apache/airflow/tree/providers-atlassian-jira/3.3.1/providers/atlassian-jira",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-atlassian-jira/",
       "last_updated": ""
     },
@@ -7185,8 +7260,9 @@
       "description": "This package provides remote execution capabilities via the PowerShell Remoting Protocol (PSRP).",
       "tier": "community",
       "logo": null,
-      "version": "3.2.2",
+      "version": "3.2.3",
       "versions": [
+        "3.2.3",
         "3.2.2",
         "3.2.1",
         "3.2.0",
@@ -7195,16 +7271,15 @@
         "3.1.4",
         "3.1.3",
         "3.1.2",
-        "3.1.1",
-        "3.1.0"
+        "3.1.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 75,
       "pypi_downloads": {
-        "weekly": 48856,
-        "monthly": 197681,
+        "weekly": 28986,
+        "monthly": 96560,
         "total": 0
       },
       "module_counts": {
@@ -7243,7 +7318,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-microsoft-psrp/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/microsoft-psrp",
+      "source_url": "https://github.com/apache/airflow/tree/providers-microsoft-psrp/3.2.3/providers/microsoft-psrp",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-microsoft-psrp/",
       "last_updated": ""
     },
@@ -7254,8 +7329,9 @@
       "description": "pgvector",
       "tier": "community",
       "logo": null,
-      "version": "1.6.0",
+      "version": "1.6.1",
       "versions": [
+        "1.6.1",
         "1.6.0",
         "1.5.4",
         "1.5.3",
@@ -7264,8 +7340,7 @@
         "1.5.0",
         "1.4.1",
         "1.4.0",
-        "1.3.0",
-        "1.2.2"
+        "1.3.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7274,8 +7349,8 @@
       ],
       "quality_score": 72,
       "pypi_downloads": {
-        "weekly": 39432,
-        "monthly": 216264,
+        "weekly": 27326,
+        "monthly": 93751,
         "total": 0
       },
       "module_counts": {
@@ -7313,7 +7388,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-pgvector/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/pgvector",
+      "source_url": "https://github.com/apache/airflow/tree/providers-pgvector/1.6.1/providers/pgvector",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-pgvector/",
       "last_updated": ""
     },
@@ -7324,8 +7399,9 @@
       "description": "Apache Flink",
       "tier": "community",
       "logo": "/logos/apache-flink-FlinkOnK8s.png",
-      "version": "1.8.1",
+      "version": "1.8.2",
       "versions": [
+        "1.8.2",
         "1.8.1",
         "1.8.0",
         "1.7.4",
@@ -7334,16 +7410,15 @@
         "1.7.1",
         "1.7.0",
         "1.6.2",
-        "1.6.1",
-        "1.6.0"
+        "1.6.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 72,
       "pypi_downloads": {
-        "weekly": 95939,
-        "monthly": 411188,
+        "weekly": 53381,
+        "monthly": 194913,
         "total": 0
       },
       "module_counts": {
@@ -7377,7 +7452,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-flink/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-flink",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-flink/1.8.2/providers/apache-flink",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-flink/",
       "last_updated": ""
     },
@@ -7388,8 +7463,9 @@
       "description": "Apache Beam.",
       "tier": "community",
       "logo": null,
-      "version": "6.2.1",
+      "version": "6.2.2",
       "versions": [
+        "6.2.2",
         "6.2.1",
         "6.2.0",
         "6.1.7",
@@ -7398,16 +7474,15 @@
         "6.1.4",
         "6.1.3",
         "6.1.2",
-        "6.1.1",
-        "6.1.0"
+        "6.1.1"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 72,
       "pypi_downloads": {
-        "weekly": 72767,
-        "monthly": 310352,
+        "weekly": 79909,
+        "monthly": 362724,
         "total": 0
       },
       "module_counts": {
@@ -7430,21 +7505,21 @@
         }
       ],
       "connection_types": [],
-      "requires_python": ">=3.10,!=3.13",
+      "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
-        "3.13",
-        "pyarrow>=16.1.0; python_version < '3.13'",
+        "apache-airflow-providers-common-compat>=1.12.0",
+        "apache-beam>=2.69.0",
+        "pyarrow>=16.1.0",
         "numpy>=1.22.4; python_version<'3.11'",
         "numpy>=1.23.2; python_version<'3.12' and python_version>='3.11'",
-        "numpy>=1.26.0; python_version>='3.12' and python_version < '3.13'"
+        "numpy>=1.26.0; python_version>='3.12'"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-apache-beam/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/apache-beam",
+      "source_url": "https://github.com/apache/airflow/tree/providers-apache-beam/6.2.2/providers/apache-beam",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-apache-beam/",
       "last_updated": ""
     },
@@ -7455,8 +7530,9 @@
       "description": "Common IO Provider",
       "tier": "official",
       "logo": null,
-      "version": "1.7.0",
+      "version": "1.7.1",
       "versions": [
+        "1.7.1",
         "1.7.0",
         "1.6.5",
         "1.6.4",
@@ -7465,16 +7541,15 @@
         "1.6.1",
         "1.6.0",
         "1.5.4",
-        "1.5.3",
-        "1.5.2"
+        "1.5.3"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 72,
       "pypi_downloads": {
-        "weekly": 1591642,
-        "monthly": 7066018,
+        "weekly": 1990583,
+        "monthly": 8002916,
         "total": 0
       },
       "module_counts": {
@@ -7499,12 +7574,10 @@
       "connection_types": [],
       "requires_python": ">=3.10",
       "dependencies": [
-        "apache-airflow>=2.11.0"
+        "apache-airflow>=2.11.0",
+        "apache-airflow-providers-common-compat>=1.12.0"
       ],
       "optional_extras": {
-        "common.compat": [
-          "apache-airflow-providers-common-compat"
-        ],
         "openlineage": [
           "apache-airflow-providers-openlineage"
         ]
@@ -7512,7 +7585,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-common-io/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/common-io",
+      "source_url": "https://github.com/apache/airflow/tree/providers-common-io/1.7.1/providers/common-io",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-common-io/",
       "last_updated": ""
     },
@@ -7523,8 +7596,9 @@
       "description": "Singularity",
       "tier": "community",
       "logo": "/logos/singularity-Singularity.png",
-      "version": "3.9.1",
+      "version": "3.9.2",
       "versions": [
+        "3.9.2",
         "3.9.1",
         "3.9.0",
         "3.8.3",
@@ -7533,8 +7607,7 @@
         "3.8.0",
         "3.7.1",
         "3.7.0",
-        "3.6.0",
-        "3.5.1"
+        "3.6.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7543,8 +7616,8 @@
       ],
       "quality_score": 70,
       "pypi_downloads": {
-        "weekly": 36356,
-        "monthly": 182728,
+        "weekly": 27908,
+        "monthly": 83579,
         "total": 0
       },
       "module_counts": {
@@ -7577,7 +7650,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-singularity/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/singularity",
+      "source_url": "https://github.com/apache/airflow/tree/providers-singularity/3.9.2/providers/singularity",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-singularity/",
       "last_updated": ""
     },
@@ -7585,21 +7658,21 @@
       "id": "openlineage",
       "name": "OpenLineage Airflow",
       "package_name": "apache-airflow-providers-openlineage",
-      "description": "OpenLineage",
+      "description": "OpenLineage is an open framework for data lineage collection. At its core it is an extensible specification that systems can use to interoperate with lineage metadata.",
       "tier": "community",
       "logo": "/logos/openlineage-openlineage.svg",
-      "version": "2.9.2",
+      "version": "2.10.2",
       "versions": [
+        "2.10.2",
+        "2.10.1",
+        "2.10.0",
         "2.9.2",
         "2.9.1",
         "2.9.0",
         "2.8.0",
         "2.7.3",
         "2.7.2",
-        "2.7.1",
-        "2.7.0",
-        "2.6.1",
-        "2.6.0"
+        "2.7.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7608,8 +7681,8 @@
       ],
       "quality_score": 70,
       "pypi_downloads": {
-        "weekly": 550048,
-        "monthly": 2323621,
+        "weekly": 587074,
+        "monthly": 2338035,
         "total": 0
       },
       "module_counts": {
@@ -7636,7 +7709,7 @@
       "dependencies": [
         "apache-airflow>=2.11.0",
         "apache-airflow-providers-common-sql>=1.20.0",
-        "apache-airflow-providers-common-compat>=1.11.0",
+        "apache-airflow-providers-common-compat>=1.13.1",
         "attrs>=22.2",
         "openlineage-integration-common>=1.41.0",
         "openlineage-python>=1.41.0"
@@ -7649,7 +7722,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-openlineage/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/openlineage",
+      "source_url": "https://github.com/apache/airflow/tree/providers-openlineage/2.10.2/providers/openlineage",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-openlineage/",
       "last_updated": ""
     },
@@ -7660,18 +7733,18 @@
       "description": "Celery",
       "tier": "community",
       "logo": "/logos/celery-Celery.png",
-      "version": "3.15.0",
+      "version": "3.16.0",
       "versions": [
+        "3.16.0",
+        "3.15.2",
+        "3.15.1",
         "3.15.0",
         "3.14.1",
         "3.14.0",
         "3.13.1",
         "3.13.0",
         "3.12.4",
-        "3.12.3",
-        "3.12.2",
-        "3.12.1",
-        "3.12.0"
+        "3.12.3"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7680,8 +7753,8 @@
       ],
       "quality_score": 70,
       "pypi_downloads": {
-        "weekly": 271282,
-        "monthly": 1187815,
+        "weekly": 477951,
+        "monthly": 1675649,
         "total": 0
       },
       "module_counts": {
@@ -7707,7 +7780,7 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=2.11.0",
-        "apache-airflow-providers-common-compat>=1.10.1"
+        "apache-airflow-providers-common-compat>=1.13.0"
       ],
       "optional_extras": {
         "cncf.kubernetes": [
@@ -7717,7 +7790,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-celery/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/celery",
+      "source_url": "https://github.com/apache/airflow/tree/providers-celery/3.16.0/providers/celery",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-celery/",
       "last_updated": ""
     },
@@ -7728,26 +7801,26 @@
       "description": "Common Compatibility Provider - providing compatibility code for previous Airflow versions",
       "tier": "official",
       "logo": null,
-      "version": "1.11.0",
+      "version": "1.13.1",
       "versions": [
+        "1.13.1",
+        "1.13.0",
+        "1.12.0",
         "1.11.0",
         "1.10.1",
         "1.10.0",
         "1.9.0",
         "1.8.0",
         "1.7.4",
-        "1.7.3",
-        "1.7.2",
-        "1.7.1",
-        "1.7.0"
+        "1.7.3"
       ],
       "airflow_versions": [
         "3.0+"
       ],
       "quality_score": 70,
       "pypi_downloads": {
-        "weekly": 2510504,
-        "monthly": 10483688,
+        "weekly": 3569127,
+        "monthly": 14755830,
         "total": 0
       },
       "module_counts": {
@@ -7786,7 +7859,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-common-compat/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/common-compat",
+      "source_url": "https://github.com/apache/airflow/tree/providers-common-compat/1.13.1/providers/common-compat",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-common-compat/",
       "last_updated": ""
     },
@@ -7797,8 +7870,9 @@
       "description": "Common Messaging Provider",
       "tier": "community",
       "logo": null,
-      "version": "2.0.1",
+      "version": "2.0.2",
       "versions": [
+        "2.0.2",
         "2.0.1",
         "2.0.0",
         "1.0.5",
@@ -7813,8 +7887,8 @@
       ],
       "quality_score": 70,
       "pypi_downloads": {
-        "weekly": 46583,
-        "monthly": 147405,
+        "weekly": 30038,
+        "monthly": 88513,
         "total": 0
       },
       "module_counts": {
@@ -7852,7 +7926,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-common-messaging/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/common-messaging",
+      "source_url": "https://github.com/apache/airflow/tree/providers-common-messaging/2.0.2/providers/common-messaging",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-common-messaging/",
       "last_updated": ""
     },
@@ -7863,8 +7937,9 @@
       "description": "Sendgrid",
       "tier": "community",
       "logo": null,
-      "version": "4.2.0",
+      "version": "4.2.1",
       "versions": [
+        "4.2.1",
         "4.2.0",
         "4.1.5",
         "4.1.4",
@@ -7873,8 +7948,7 @@
         "4.1.1",
         "4.1.0",
         "4.0.1",
-        "4.0.0",
-        "3.6.0"
+        "4.0.0"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7883,8 +7957,8 @@
       ],
       "quality_score": 60,
       "pypi_downloads": {
-        "weekly": 89586,
-        "monthly": 444645,
+        "weekly": 105484,
+        "monthly": 394787,
         "total": 0
       },
       "module_counts": {
@@ -7913,7 +7987,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-sendgrid/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/sendgrid",
+      "source_url": "https://github.com/apache/airflow/tree/providers-sendgrid/4.2.1/providers/sendgrid",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-sendgrid/",
       "last_updated": ""
     },
@@ -7924,18 +7998,18 @@
       "description": "Handle edge workers on remote sites via HTTP(s) connection and orchestrates work over distributed sites. When tasks need to be executed on remote sites where the connection need to pass through fir...",
       "tier": "community",
       "logo": null,
-      "version": "2.0.1",
+      "version": "3.0.2",
       "versions": [
+        "3.0.2",
+        "3.0.1",
+        "3.0.0",
         "2.0.1",
         "2.0.0",
         "1.6.0",
         "1.5.0",
         "1.4.1",
         "1.4.0",
-        "1.3.1",
-        "1.3.0",
-        "1.2.0",
-        "1.1.3"
+        "1.3.1"
       ],
       "airflow_versions": [
         "3.1+",
@@ -7943,8 +8017,8 @@
       ],
       "quality_score": 60,
       "pypi_downloads": {
-        "weekly": 40687,
-        "monthly": 162669,
+        "weekly": 33357,
+        "monthly": 63140,
         "total": 0
       },
       "module_counts": {
@@ -7964,15 +8038,17 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=3.0.0,!=3.1.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.13.0",
         "pydantic>=2.11.0",
-        "retryhttp>=1.2.0,!=1.3.0"
+        "retryhttp>=1.4.0",
+        "aiofiles>=23.2.0",
+        "aiohttp>=3.9.2"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-edge3/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/edge3",
+      "source_url": "https://github.com/apache/airflow/tree/providers-edge3/3.0.2/providers/edge3",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-edge3/",
       "last_updated": ""
     },
@@ -7983,18 +8059,18 @@
       "description": "Flask App Builder",
       "tier": "community",
       "logo": null,
-      "version": "3.1.1",
+      "version": "3.3.0",
       "versions": [
+        "3.3.0",
+        "3.2.0",
+        "3.1.2",
         "3.1.1",
         "3.1.0",
         "3.0.3",
         "3.0.2",
         "3.0.1",
         "3.0.0",
-        "2.4.4",
-        "2.4.3",
-        "2.4.2",
-        "2.4.1"
+        "2.4.4"
       ],
       "airflow_versions": [
         "3.1+",
@@ -8003,8 +8079,8 @@
       ],
       "quality_score": 60,
       "pypi_downloads": {
-        "weekly": 4933175,
-        "monthly": 21826156,
+        "weekly": 7075426,
+        "monthly": 22636110,
         "total": 0
       },
       "module_counts": {
@@ -8024,7 +8100,7 @@
       "requires_python": ">=3.10,!=3.13",
       "dependencies": [
         "apache-airflow>=3.0.2",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "blinker>=1.6.2; python_version < '3.13'",
         "flask>=2.2.1,<2.3; python_version < '3.13'",
         "flask-appbuilder==5.0.1; python_version < '3.13'",
@@ -8042,7 +8118,7 @@
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-fab/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/fab",
+      "source_url": "https://github.com/apache/airflow/tree/providers-fab/3.3.0/providers/fab",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-fab/",
       "last_updated": ""
     },
@@ -8053,8 +8129,11 @@
       "description": "Keycloak Provider",
       "tier": "community",
       "logo": null,
-      "version": "0.4.1",
+      "version": "0.5.2",
       "versions": [
+        "0.5.2",
+        "0.5.1",
+        "0.5.0",
         "0.4.1",
         "0.4.0",
         "0.3.0",
@@ -8068,8 +8147,8 @@
       ],
       "quality_score": 60,
       "pypi_downloads": {
-        "weekly": 49077,
-        "monthly": 171562,
+        "weekly": 35872,
+        "monthly": 77864,
         "total": 0
       },
       "module_counts": {
@@ -8089,15 +8168,61 @@
       "requires_python": ">=3.10",
       "dependencies": [
         "apache-airflow>=3.0.0",
-        "apache-airflow-providers-common-compat>=1.10.1",
+        "apache-airflow-providers-common-compat>=1.12.0",
         "python-keycloak>=5.0.0"
       ],
       "optional_extras": {},
       "dependents": [],
       "related_providers": [],
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-keycloak/stable/",
-      "source_url": "https://github.com/apache/airflow/tree/main/providers/keycloak",
+      "source_url": "https://github.com/apache/airflow/tree/providers-keycloak/0.5.2/providers/keycloak",
       "pypi_url": "https://pypi.org/project/apache-airflow-providers-keycloak/",
+      "last_updated": ""
+    },
+    {
+      "id": "common-ai",
+      "name": "Common AI",
+      "package_name": "apache-airflow-providers-common-ai",
+      "description": "Common AI Provider",
+      "tier": "community",
+      "logo": null,
+      "version": "0.0.1",
+      "versions": [
+        "0.0.1"
+      ],
+      "airflow_versions": [
+        "3.0+"
+      ],
+      "quality_score": 50,
+      "pypi_downloads": {
+        "weekly": 0,
+        "monthly": 0,
+        "total": 0
+      },
+      "module_counts": {
+        "operator": 0,
+        "hook": 0,
+        "sensor": 0,
+        "trigger": 0,
+        "transfer": 0,
+        "notifier": 0,
+        "secret": 0,
+        "logging": 0,
+        "executor": 0,
+        "decorator": 0
+      },
+      "categories": [],
+      "connection_types": [],
+      "requires_python": ">=3.10",
+      "dependencies": [
+        "apache-airflow>=3.0.0"
+      ],
+      "optional_extras": {},
+      "dependents": [],
+      "related_providers": [],
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-common-ai/stable/",
+      "source_url": "https://github.com/apache/airflow/tree/providers-common-ai/0.0.1/providers/common-ai",
+      "pypi_url": "https://pypi.org/project/apache-airflow-providers-common-ai/",
       "last_updated": ""
     }
   ]
