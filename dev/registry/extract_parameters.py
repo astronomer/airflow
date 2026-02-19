@@ -18,18 +18,18 @@
 """
 Airflow Registry Parameter Extractor
 
-Extracts complete constructor parameter information for all provider modules
-using runtime inspection with MRO-resolved inheritance. Must be run inside
-breeze where all providers are installed.
+Extracts constructor parameters for provider modules using runtime inspection.
+Only includes parameters defined in provider classes (airflow.providers.*),
+not inherited SDK/core params like those from BaseOperator. The full MRO chain
+is stored for reference. Must be run inside breeze where all providers are installed.
 
 Usage:
     breeze run python dev/registry/extract_parameters.py
 
 Output:
-    - registry-11ty/src/_data/parameters/{provider_id}.json (per-provider)
-    - registry-11ty/src/_data/parameters.json (combined)
-    - registry/src/data/parameters/{provider_id}.json (per-provider)
-    - registry/src/data/parameters.json (combined)
+    - registry-11ty/src/_data/versions/{provider_id}/{version}/parameters.json
+    - registry/src/data/versions/{provider_id}/{version}/parameters.json
+    - dev/registry/output/versions/{provider_id}/{version}/parameters.json
 """
 
 from __future__ import annotations
@@ -54,6 +54,12 @@ MODULES_JSON_CANDIDATES = [
     SCRIPT_DIR / "modules.json",
     AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "modules.json",
     AIRFLOW_ROOT / "registry" / "src" / "data" / "modules.json",
+]
+
+PROVIDERS_JSON_CANDIDATES = [
+    SCRIPT_DIR / "providers.json",
+    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "providers.json",
+    AIRFLOW_ROOT / "registry" / "src" / "data" / "providers.json",
 ]
 
 # Inside breeze, write to dev/registry/output/ (mounted).
@@ -129,6 +135,7 @@ def get_params_from_class(cls: type) -> dict[str, dict]:
     """
     Extract all __init__ parameters by walking the MRO in reverse
     so child class overrides parent for the same parameter name.
+    Records the full qualified origin (module.ClassName) for each param.
     """
     params: dict[str, dict] = {}
 
@@ -145,6 +152,8 @@ def get_params_from_class(cls: type) -> dict[str, dict]:
         except (TypeError, ValueError):
             continue
 
+        qualified_origin = f"{klass.__module__}.{klass.__qualname__}"
+
         for name, param in sig.parameters.items():
             if name in ("self", "cls"):
                 continue
@@ -158,10 +167,15 @@ def get_params_from_class(cls: type) -> dict[str, dict]:
                 "type": format_annotation(param.annotation),
                 "default": format_default(param.default),
                 "required": param.default is inspect.Parameter.empty,
-                "origin": klass.__name__,
+                "origin": qualified_origin,
             }
 
     return params
+
+
+def get_mro_chain(cls: type) -> list[str]:
+    """Return the full MRO as a list of qualified class names."""
+    return [f"{k.__module__}.{k.__qualname__}" for k in cls.__mro__ if k is not object]
 
 
 def parse_docstring_params(cls: type) -> dict[str, str]:
@@ -192,8 +206,12 @@ def parse_docstring_params(cls: type) -> dict[str, str]:
     return descriptions
 
 
-def extract_class_params(cls: type) -> list[dict]:
-    """Extract full parameter list for a class, merging signature + docstrings."""
+def extract_class_params(cls: type) -> tuple[list[str], list[dict]]:
+    """
+    Extract parameter list for a class, merging signature + docstrings.
+    Only includes params originating from provider classes (airflow.providers.*).
+    Returns (mro_chain, filtered_params).
+    """
     params = get_params_from_class(cls)
     descriptions = parse_docstring_params(cls)
 
@@ -203,7 +221,10 @@ def extract_class_params(cls: type) -> list[dict]:
         else:
             param["description"] = None
 
-    return list(params.values())
+    provider_params = [p for p in params.values() if p["origin"].startswith("airflow.providers.")]
+    mro = get_mro_chain(cls)
+
+    return mro, provider_params
 
 
 def import_class(import_path: str) -> type | None:
@@ -221,33 +242,42 @@ def import_class(import_path: str) -> type | None:
         return None
 
 
+def find_json(candidates: list[Path], name: str) -> Path:
+    """Find first existing JSON file from candidates list."""
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    print(f"ERROR: {name} not found. Searched:")
+    for c in candidates:
+        print(f"  - {c}")
+    print(f"\nCopy {name} to dev/registry/ or run extract_metadata.py first.")
+    sys.exit(1)
+
+
 def main():
     print("Airflow Registry Parameter Extractor")
     print("=" * 50)
 
-    modules_json_path = None
-    for candidate in MODULES_JSON_CANDIDATES:
-        if candidate.exists():
-            modules_json_path = candidate
-            break
-
-    if modules_json_path is None:
-        print("ERROR: modules.json not found. Searched:")
-        for c in MODULES_JSON_CANDIDATES:
-            print(f"  - {c}")
-        print("\nCopy modules.json to dev/registry/ or run extract_metadata.py first.")
-        sys.exit(1)
+    modules_json_path = find_json(MODULES_JSON_CANDIDATES, "modules.json")
+    providers_json_path = find_json(PROVIDERS_JSON_CANDIDATES, "providers.json")
 
     print(f"Reading modules from {modules_json_path}")
     with open(modules_json_path) as f:
         modules_data = json.load(f)
+
+    with open(providers_json_path) as f:
+        providers_data = json.load(f)
+
+    # Build provider_id -> latest version mapping
+    provider_versions: dict[str, str] = {}
+    for p in providers_data.get("providers", []):
+        provider_versions[p["id"]] = p["version"]
 
     modules = modules_data.get("modules", [])
     print(f"Found {len(modules)} modules to process")
 
     generated_at = datetime.now(timezone.utc).isoformat()
 
-    # Group by provider_id for per-provider output
     provider_classes: dict[str, dict[str, dict]] = defaultdict(dict)
     provider_names: dict[str, str] = {}
 
@@ -273,7 +303,7 @@ def main():
             continue
 
         try:
-            params = extract_class_params(cls)
+            mro, params = extract_class_params(cls)
         except Exception as e:
             print(f"  ERROR extracting params for {import_path}: {e}")
             total_failed += 1
@@ -282,6 +312,7 @@ def main():
         provider_classes[provider_id][import_path] = {
             "name": class_name,
             "type": module_type,
+            "mro": mro,
             "parameters": params,
         }
 
@@ -295,45 +326,36 @@ def main():
     print(f"Extracted {total_params} total parameters")
     print(f"Across {len(provider_classes)} providers")
 
-    # Build combined data
-    all_classes: dict[str, dict] = {}
-    for classes in provider_classes.values():
-        all_classes.update(classes)
-
-    combined_data = {
-        "generated_at": generated_at,
-        "version": "1.0",
-        "classes": all_classes,
-    }
-
-    # Write output to each output directory
+    # Write per-provider files to versions/{pid}/{version}/parameters.json
     for output_dir in OUTPUT_DIRS:
         if not output_dir.parent.exists():
             continue
 
-        params_dir = output_dir / "parameters"
-        params_dir.mkdir(parents=True, exist_ok=True)
-
-        # Per-provider files (used by 11ty data cascade as parameters.{provider_id})
+        written = 0
         for pid, classes in provider_classes.items():
+            version = provider_versions.get(pid)
+            if not version:
+                print(f"  WARN: no version found for {pid}, skipping")
+                continue
+
+            version_dir = output_dir / "versions" / pid / version
+            version_dir.mkdir(parents=True, exist_ok=True)
+
             provider_data = {
                 "provider_id": pid,
                 "provider_name": provider_names.get(pid, pid),
+                "version": version,
                 "generated_at": generated_at,
                 "classes": classes,
             }
-            with open(params_dir / f"{pid}.json", "w") as f:
+            with open(version_dir / "parameters.json", "w") as f:
                 json.dump(provider_data, f, separators=(",", ":"))
+            written += 1
 
-        # Combined file at a separate name to avoid 11ty data cascade conflict
-        # with the parameters/ directory. Accessible as `parametersAll` in templates.
-        with open(output_dir / "parametersAll.json", "w") as f:
-            json.dump(combined_data, f, separators=(",", ":"))
-
-        print(f"Wrote {len(provider_classes)} provider files + combined to {output_dir}")
+        print(f"Wrote {written} provider parameter files to {output_dir}/versions/")
 
     print("\nDone!")
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

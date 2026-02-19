@@ -520,8 +520,6 @@ def main():
             continue
 
         print(f"\n{pid}: extracting {len(versions_to_extract)} version(s)")
-        provider_output_dir = OUTPUT_DIR / pid
-        provider_output_dir.mkdir(parents=True, exist_ok=True)
 
         for version in versions_to_extract:
             print(f"  {version}...", end=" ", flush=True)
@@ -530,8 +528,9 @@ def main():
                 total_skipped += 1
                 continue
 
-            output_path = provider_output_dir / f"{version}.json"
-            with open(output_path, "w") as f:
+            version_dir = OUTPUT_DIR / pid / version
+            version_dir.mkdir(parents=True, exist_ok=True)
+            with open(version_dir / "metadata.json", "w") as f:
                 json.dump(data, f, separators=(",", ":"))
 
             n_modules = len(data["modules"])

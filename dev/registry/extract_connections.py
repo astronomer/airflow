@@ -29,12 +29,9 @@ Usage:
     breeze run python dev/registry/extract_connections.py
 
 Output:
-    - dev/registry/output/connections/{provider_id}.json  (per-provider)
-    - dev/registry/output/connectionsAll.json              (combined)
-    - registry-11ty/src/_data/connections/{provider_id}.json
-    - registry-11ty/src/_data/connectionsAll.json
-    - registry/src/data/connections/{provider_id}.json
-    - registry/src/data/connectionsAll.json
+    - registry-11ty/src/_data/versions/{provider_id}/{version}/connections.json
+    - registry/src/data/versions/{provider_id}/{version}/connections.json
+    - dev/registry/output/versions/{provider_id}/{version}/connections.json
 """
 
 from __future__ import annotations
@@ -51,6 +48,12 @@ import yaml
 AIRFLOW_ROOT = Path(__file__).parent.parent.parent
 SCRIPT_DIR = Path(__file__).parent
 PROVIDERS_DIR = AIRFLOW_ROOT / "providers"
+
+PROVIDERS_JSON_CANDIDATES = [
+    SCRIPT_DIR / "providers.json",
+    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "providers.json",
+    AIRFLOW_ROOT / "registry" / "src" / "data" / "providers.json",
+]
 
 OUTPUT_DIRS = [
     SCRIPT_DIR / "output",
@@ -319,6 +322,24 @@ def main():
     print("Airflow Registry Connection Metadata Extractor")
     print("=" * 50)
 
+    # Load providers.json for provider_id -> latest_version mapping
+    providers_json_path = None
+    for candidate in PROVIDERS_JSON_CANDIDATES:
+        if candidate.exists():
+            providers_json_path = candidate
+            break
+
+    if providers_json_path is None:
+        print("ERROR: providers.json not found. Run extract_metadata.py first.")
+        sys.exit(1)
+
+    with open(providers_json_path) as f:
+        providers_data = json.load(f)
+
+    provider_versions: dict[str, str] = {}
+    for p in providers_data.get("providers", []):
+        provider_versions[p["id"]] = p["version"]
+
     provider_yamls = discover_provider_yamls()
     print(f"Found {len(provider_yamls)} provider.yaml files")
 
@@ -360,39 +381,33 @@ def main():
     print(f"  {total_with_custom} have custom fields")
     print(f"  {total_with_ui} have UI field customisation")
 
-    # Build combined data
-    all_connection_types: dict[str, list[dict]] = {}
-    for pid, conns in sorted(provider_connections.items()):
-        all_connection_types[pid] = conns
-
-    combined_data = {
-        "version": "1.0",
-        "generated_at": generated_at,
-        "providers": all_connection_types,
-    }
-
-    # Write output
+    # Write per-provider files to versions/{pid}/{version}/connections.json
     for output_dir in OUTPUT_DIRS:
         if not output_dir.parent.exists():
             continue
 
-        conns_dir = output_dir / "connections"
-        conns_dir.mkdir(parents=True, exist_ok=True)
-
+        written = 0
         for pid, conns in provider_connections.items():
+            version = provider_versions.get(pid)
+            if not version:
+                print(f"  WARN: no version found for {pid}, skipping")
+                continue
+
+            version_dir = output_dir / "versions" / pid / version
+            version_dir.mkdir(parents=True, exist_ok=True)
+
             provider_data = {
                 "provider_id": pid,
                 "provider_name": provider_names.get(pid, pid),
+                "version": version,
                 "generated_at": generated_at,
                 "connection_types": conns,
             }
-            with open(conns_dir / f"{pid}.json", "w") as f:
+            with open(version_dir / "connections.json", "w") as f:
                 json.dump(provider_data, f, separators=(",", ":"))
+            written += 1
 
-        with open(output_dir / "connectionsAll.json", "w") as f:
-            json.dump(combined_data, f, separators=(",", ":"))
-
-        print(f"Wrote {len(provider_connections)} provider files + combined to {output_dir}")
+        print(f"Wrote {written} provider connection files to {output_dir}/versions/")
 
     print("\nDone!")
 

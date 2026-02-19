@@ -6,8 +6,8 @@ pagination:
 permalink: "/api/providers/{{ provider.id }}/parameters.json"
 eleventyExcludeFromCollections: true
 ---
-{%- if parameters[provider.id] -%}
-{{ parameters[provider.id] | dump | safe }}
+{%- if latestVersionData[provider.id].parameters -%}
+{{ latestVersionData[provider.id].parameters | dump | safe }}
 {%- else -%}
-{"provider_id":"{{ provider.id }}","provider_name":"{{ provider.name }}","generated_at":null,"classes":{}}
+{"provider_id":"{{ provider.id }}","provider_name":"{{ provider.name }}","version":"{{ provider.version }}","generated_at":null,"classes":{}}
 {%- endif -%}

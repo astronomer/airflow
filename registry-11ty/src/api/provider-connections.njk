@@ -6,8 +6,8 @@ pagination:
 permalink: "/api/providers/{{ provider.id }}/connections.json"
 eleventyExcludeFromCollections: true
 ---
-{%- if connections[provider.id] -%}
-{{ connections[provider.id] | dump | safe }}
+{%- if latestVersionData[provider.id].connections -%}
+{{ latestVersionData[provider.id].connections | dump | safe }}
 {%- else -%}
-{"provider_id":"{{ provider.id }}","provider_name":"{{ provider.name }}","generated_at":null,"connection_types":[]}
+{"provider_id":"{{ provider.id }}","provider_name":"{{ provider.name }}","version":"{{ provider.version }}","generated_at":null,"connection_types":[]}
 {%- endif -%}

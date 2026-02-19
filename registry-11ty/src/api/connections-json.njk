@@ -1,9 +1,0 @@
----
-permalink: "/api/connections.json"
-eleventyExcludeFromCollections: true
----
-{%- if connectionsAll -%}
-{{ connectionsAll | dump | safe }}
-{%- else -%}
-{"version":"1.0","generated_at":null,"providers":{},"error":"Connection data not generated yet. Run: breeze run python dev/registry/extract_connections.py"}
-{%- endif -%}
