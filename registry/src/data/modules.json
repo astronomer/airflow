@@ -5396,6 +5396,19 @@
       "provider_name": "Amazon"
     },
     {
+      "id": "amazon-s3-S3DagBundle",
+      "name": "S3DagBundle",
+      "type": "bundle",
+      "import_path": "airflow.providers.amazon.aws.bundles.s3.S3DagBundle",
+      "module_path": "airflow.providers.amazon.aws.bundles.s3",
+      "short_description": "S3 DAG bundle - exposes a directory in S3 as a DAG bundle.",
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-amazon/stable/_api/airflow/providers/amazon/aws/bundles/s3/index.html#airflow.providers.amazon.aws.bundles.s3.S3DagBundle",
+      "source_url": "https://github.com/apache/airflow/blob/providers-amazon/9.22.0/providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py#L30",
+      "category": "amazon-simple-storage-service-s3",
+      "provider_id": "amazon",
+      "provider_name": "Amazon"
+    },
+    {
       "id": "amazon-notifier-ChimeNotifier",
       "name": "ChimeNotifier",
       "type": "notifier",
@@ -16212,6 +16225,19 @@
       "provider_name": "Google"
     },
     {
+      "id": "google-gcs-GCSDagBundle",
+      "name": "GCSDagBundle",
+      "type": "bundle",
+      "import_path": "airflow.providers.google.cloud.bundles.gcs.GCSDagBundle",
+      "module_path": "airflow.providers.google.cloud.bundles.gcs",
+      "short_description": "GCS Dag bundle - exposes a directory in GCS as a Dag bundle.",
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-google/stable/_api/airflow/providers/google/cloud/bundles/gcs/index.html#airflow.providers.google.cloud.bundles.gcs.GCSDagBundle",
+      "source_url": "https://github.com/apache/airflow/blob/providers-google/20.0.0/providers/google/src/airflow/providers/google/cloud/bundles/gcs.py#L31",
+      "category": "google-cloud-storage-gcs",
+      "provider_id": "google",
+      "provider_name": "Google"
+    },
+    {
       "id": "google-secret-CloudSecretManagerBackend",
       "name": "CloudSecretManagerBackend",
       "type": "secret",
@@ -19535,6 +19561,19 @@
       "short_description": "Hook for git repositories.",
       "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-git/stable/_api/airflow/providers/git/hooks/git/index.html#airflow.providers.git.hooks.git.GitHook",
       "source_url": "https://github.com/apache/airflow/blob/providers-git/0.2.3/providers/git/src/airflow/providers/git/hooks/git.py#L32",
+      "category": "git-git",
+      "provider_id": "git",
+      "provider_name": "GIT"
+    },
+    {
+      "id": "git-git-GitDagBundle",
+      "name": "GitDagBundle",
+      "type": "bundle",
+      "import_path": "airflow.providers.git.bundles.git.GitDagBundle",
+      "module_path": "airflow.providers.git.bundles.git",
+      "short_description": "git DAG bundle - exposes a git repository as a DAG bundle.",
+      "docs_url": "https://airflow.apache.org/docs/apache-airflow-providers-git/stable/_api/airflow/providers/git/bundles/git/index.html#airflow.providers.git.bundles.git.GitDagBundle",
+      "source_url": "https://github.com/apache/airflow/blob/providers-git/0.2.3/providers/git/src/airflow/providers/git/bundles/git.py#L37",
       "category": "git-git",
       "provider_id": "git",
       "provider_name": "GIT"

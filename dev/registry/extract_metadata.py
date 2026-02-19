@@ -165,6 +165,9 @@ def get_module_type_base_classes() -> dict[str, set[str]]:
         "transfer": {
             "BaseOperator",  # Transfers are operators
         },
+        "bundle": {
+            "BaseDagBundle",
+        },
     }
 
 
@@ -194,6 +197,7 @@ class Provider:
             "secret": 0,
             "logging": 0,
             "executor": 0,
+            "bundle": 0,
             "decorator": 0,
         }
     )
@@ -327,6 +331,7 @@ def count_modules_by_type(provider_yaml: dict[str, Any]) -> dict[str, int]:
         "secret": 0,
         "logging": 0,
         "executor": 0,
+        "bundle": 0,
         "decorator": 0,
     }
 
@@ -355,6 +360,10 @@ def count_modules_by_type(provider_yaml: dict[str, Any]) -> dict[str, int]:
 
     # Count executors
     counts["executor"] = len(provider_yaml.get("executors", []))
+
+    # Count bundle backends
+    for bundle_group in provider_yaml.get("bundles", []):
+        counts["bundle"] += len(bundle_group.get("python-modules", []))
 
     # Count task decorators
     counts["decorator"] = len(provider_yaml.get("task-decorators", []))
@@ -440,6 +449,7 @@ def extract_modules_from_yaml(
             "sensor": ["Sensor"],
             "trigger": ["Trigger"],
             "transfer": ["Operator", "Transfer"],
+            "bundle": ["Bundle"],
         }
         patterns = type_patterns.get(module_type, [])
 
@@ -544,6 +554,13 @@ def extract_modules_from_yaml(
                     module_path, "transfer", source, get_category(source), transfer_desc
                 )
             )
+
+    # Extract bundle backends
+    for bundle_group in provider_yaml.get("bundles", []):
+        integration = bundle_group.get("integration-name", "")
+        category = get_category(integration)
+        for module_path in bundle_group.get("python-modules", []):
+            modules.extend(extract_classes_for_module(module_path, "bundle", integration, category))
 
     # Extract notifiers (notifications)
     for notifier_path in provider_yaml.get("notifications", []):
@@ -1054,6 +1071,7 @@ def main():
             "secret": 0,
             "logging": 0,
             "executor": 0,
+            "bundle": 0,
             "decorator": 0,
         }
     )

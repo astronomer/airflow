@@ -6089,6 +6089,19 @@
   },
   {
     "type": "module",
+    "id": "amazon-s3-S3DagBundle",
+    "name": "S3DagBundle",
+    "className": "S3DagBundle",
+    "description": "S3 DAG bundle - exposes a directory in S3 as a DAG bundle.",
+    "url": "https://airflow.apache.org/docs/apache-airflow-providers-amazon/stable/_api/airflow/providers/amazon/aws/bundles/s3/index.html#airflow.providers.amazon.aws.bundles.s3.S3DagBundle",
+    "importPath": "airflow.providers.amazon.aws.bundles.s3.S3DagBundle",
+    "modulePath": "airflow.providers.amazon.aws.bundles.s3",
+    "moduleType": "bundle",
+    "providerName": "Amazon",
+    "providerId": "amazon"
+  },
+  {
+    "type": "module",
     "id": "amazon-notifier-ChimeNotifier",
     "name": "ChimeNotifier",
     "className": "ChimeNotifier",
@@ -16905,6 +16918,19 @@
   },
   {
     "type": "module",
+    "id": "google-gcs-GCSDagBundle",
+    "name": "GCSDagBundle",
+    "className": "GCSDagBundle",
+    "description": "GCS Dag bundle - exposes a directory in GCS as a Dag bundle.",
+    "url": "https://airflow.apache.org/docs/apache-airflow-providers-google/stable/_api/airflow/providers/google/cloud/bundles/gcs/index.html#airflow.providers.google.cloud.bundles.gcs.GCSDagBundle",
+    "importPath": "airflow.providers.google.cloud.bundles.gcs.GCSDagBundle",
+    "modulePath": "airflow.providers.google.cloud.bundles.gcs",
+    "moduleType": "bundle",
+    "providerName": "Google",
+    "providerId": "google"
+  },
+  {
+    "type": "module",
     "id": "google-secret-CloudSecretManagerBackend",
     "name": "CloudSecretManagerBackend",
     "className": "CloudSecretManagerBackend",
@@ -20228,6 +20254,19 @@
     "importPath": "airflow.providers.git.hooks.git.GitHook",
     "modulePath": "airflow.providers.git.hooks.git",
     "moduleType": "hook",
+    "providerName": "GIT",
+    "providerId": "git"
+  },
+  {
+    "type": "module",
+    "id": "git-git-GitDagBundle",
+    "name": "GitDagBundle",
+    "className": "GitDagBundle",
+    "description": "git DAG bundle - exposes a git repository as a DAG bundle.",
+    "url": "https://airflow.apache.org/docs/apache-airflow-providers-git/stable/_api/airflow/providers/git/bundles/git/index.html#airflow.providers.git.bundles.git.GitDagBundle",
+    "importPath": "airflow.providers.git.bundles.git.GitDagBundle",
+    "modulePath": "airflow.providers.git.bundles.git",
+    "moduleType": "bundle",
     "providerName": "GIT",
     "providerId": "git"
   },

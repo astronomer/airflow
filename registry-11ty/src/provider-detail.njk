@@ -19,7 +19,7 @@ eleventyComputed:
 {% endfor %}
 
 {% set moduleCounts = provider.module_counts or {} %}
-{% set totalModules = (moduleCounts.operator or 0) + (moduleCounts.hook or 0) + (moduleCounts.sensor or 0) + (moduleCounts.trigger or 0) + (moduleCounts.transfer or 0) + (moduleCounts.notifier or 0) + (moduleCounts.secret or 0) + (moduleCounts.logging or 0) + (moduleCounts.executor or 0) + (moduleCounts.decorator or 0) %}
+{% set totalModules = (moduleCounts.operator or 0) + (moduleCounts.hook or 0) + (moduleCounts.sensor or 0) + (moduleCounts.trigger or 0) + (moduleCounts.transfer or 0) + (moduleCounts.bundle or 0) + (moduleCounts.notifier or 0) + (moduleCounts.secret or 0) + (moduleCounts.logging or 0) + (moduleCounts.executor or 0) + (moduleCounts.decorator or 0) %}
 
 <div class="container">
   <!-- Breadcrumb -->
@@ -108,6 +108,15 @@ eleventyComputed:
           <span class="count">{{ moduleCounts.transfer }}</span>
         </div>
         <span class="label">Transfers</span>
+      </div>
+      {% endif %}
+      {% if moduleCounts.bundle > 0 %}
+      <div class="stat bundle">
+        <div class="stat-row">
+          <span class="icon">B</span>
+          <span class="count">{{ moduleCounts.bundle }}</span>
+        </div>
+        <span class="label">Bundles</span>
       </div>
       {% endif %}
       <div class="stat total">
@@ -279,6 +288,11 @@ eleventyComputed:
     {% if moduleCounts.transfer > 0 %}
     <button class="module-tab" data-type="transfer">
       <span class="tab-icon transfer">X</span> Transfers ({{ moduleCounts.transfer }})
+    </button>
+    {% endif %}
+    {% if moduleCounts.bundle > 0 %}
+    <button class="module-tab" data-type="bundle">
+      <span class="tab-icon bundle">B</span> Bundles ({{ moduleCounts.bundle }})
     </button>
     {% endif %}
     {% if moduleCounts.notifier > 0 %}

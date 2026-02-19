@@ -2568,6 +2568,10 @@ main {
   border: 1px solid rgb(from var(--color-transfer) r g b / 0.2);
 }
 
+.provider-detail-page header .stat.bundle {
+  border: 1px solid rgb(from var(--color-bundle) r g b / 0.2);
+}
+
 .provider-detail-page header .stat.total {
   border: 1px solid rgb(from var(--accent-primary) r g b / 0.2);
 }
@@ -2608,6 +2612,11 @@ main {
   color: var(--color-transfer);
 }
 
+.provider-detail-page header .stat.bundle .icon {
+  background: rgb(from var(--color-bundle) r g b / 0.2);
+  color: var(--color-bundle);
+}
+
 .provider-detail-page header .stat.total .icon {
   background: rgb(from var(--accent-primary) r g b / 0.2);
   color: var(--accent-primary);
@@ -2636,6 +2645,10 @@ main {
 
 .provider-detail-page header .stat.transfer .count {
   color: var(--color-transfer);
+}
+
+.provider-detail-page header .stat.bundle .count {
+  color: var(--color-bundle);
 }
 
 .provider-detail-page header .stat.total .count {
@@ -2928,6 +2941,7 @@ main {
 .tab-icon.secret { background: rgb(from var(--color-secret) r g b / 0.2); color: var(--color-secret); }
 .tab-icon.logging { background: rgb(from var(--color-logging) r g b / 0.2); color: var(--color-logging); }
 .tab-icon.executor { background: rgb(from var(--color-executor) r g b / 0.2); color: var(--color-executor); }
+.tab-icon.bundle { background: rgb(from var(--color-bundle) r g b / 0.2); color: var(--color-bundle); }
 .tab-icon.decorator { background: rgb(from var(--color-decorator) r g b / 0.2); color: var(--color-decorator); }
 
 /* Modules Layout (sidebar + content) */
@@ -3096,6 +3110,12 @@ main {
   background: rgb(from var(--color-transfer) r g b / 0.2);
   color: var(--color-transfer);
   border: 1px solid rgb(from var(--color-transfer) r g b / 0.3);
+}
+
+.provider-detail-page .modules .module .icon.bundle {
+  background: rgb(from var(--color-bundle) r g b / 0.2);
+  color: var(--color-bundle);
+  border: 1px solid rgb(from var(--color-bundle) r g b / 0.3);
 }
 
 .provider-detail-page .modules .module .content {
@@ -3597,6 +3617,12 @@ main {
   border: 1px solid rgb(from var(--color-transfer) r g b / 0.3);
 }
 
+#search-results .badge.bundle {
+  background: rgb(from var(--color-bundle) r g b / 0.2);
+  color: var(--color-bundle);
+  border: 1px solid rgb(from var(--color-bundle) r g b / 0.3);
+}
+
 #search-results .badge.notifier {
   background: rgb(from var(--color-notifier) r g b / 0.2);
   color: var(--color-notifier);
@@ -3637,6 +3663,12 @@ main {
   background: rgb(from var(--color-transfer) r g b / 0.2);
   color: var(--color-transfer);
   border-color: rgb(from var(--color-transfer) r g b / 0.3);
+}
+
+#search-results .bundle > span:first-child {
+  background: rgb(from var(--color-bundle) r g b / 0.2);
+  color: var(--color-bundle);
+  border-color: rgb(from var(--color-bundle) r g b / 0.3);
 }
 
 #search-results .notifier > span:first-child {
