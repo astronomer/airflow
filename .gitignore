@@ -292,3 +292,9 @@ registry/src/data/parametersAll.json
 registry/src/data/parameters/
 dev/registry/output/
 dev/registry/modules.json
+
+# Generated registry connection data (regenerate with: breeze run python dev/registry/extract_connections.py)
+registry-11ty/src/_data/connectionsAll.json
+registry-11ty/src/_data/connections/
+registry/src/data/connectionsAll.json
+registry/src/data/connections/
