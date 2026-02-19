@@ -1,0 +1,9 @@
+---
+permalink: "/api/parameters.json"
+eleventyExcludeFromCollections: true
+---
+{%- if parametersAll -%}
+{{ parametersAll | dump | safe }}
+{%- else -%}
+{"version":"1.0","generated_at":null,"classes":{},"error":"Parameter data not generated yet. Run: breeze run python dev/registry/extract_parameters.py"}
+{%- endif -%}

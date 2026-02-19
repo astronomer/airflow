@@ -284,3 +284,11 @@ _e2e_test_report.json
 
 # Allow logs folder in task-sdk-integration-tests (they logs folders are ignored above in general)
 !/task-sdk-integration-tests/logs/
+
+# Generated registry parameter data (regenerate with: breeze run python dev/registry/extract_parameters.py)
+registry-11ty/src/_data/parametersAll.json
+registry-11ty/src/_data/parameters/
+registry/src/data/parametersAll.json
+registry/src/data/parameters/
+dev/registry/output/
+dev/registry/modules.json
