@@ -298,3 +298,7 @@ registry-11ty/src/_data/connectionsAll.json
 registry-11ty/src/_data/connections/
 registry/src/data/connectionsAll.json
 registry/src/data/connections/
+
+# Generated registry version data (regenerate with: python dev/registry/extract_versions.py)
+registry-11ty/src/_data/versions/
+registry/src/data/versions/

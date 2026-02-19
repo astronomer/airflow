@@ -2854,6 +2854,33 @@ main {
 }
 
 /* Extra Dependencies Info Box */
+.version-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  margin-bottom: var(--space-6);
+  background: rgba(245, 158, 11, 0.1);
+  background: rgb(from var(--color-warning, #f59e0b) r g b / 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-color: rgb(from var(--color-warning, #f59e0b) r g b / 0.25);
+  border-radius: var(--radius-md, 0.5rem);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.version-banner > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  color: var(--color-warning, #f59e0b);
+}
+
+.version-banner a {
+  color: var(--accent-primary);
+  text-decoration: underline;
+}
+
 .extra-deps-info {
   display: flex;
   align-items: flex-start;
