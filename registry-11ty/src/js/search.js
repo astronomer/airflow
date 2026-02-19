@@ -56,9 +56,11 @@
     return results;
   }
 
-  function renderResults(results) {
+  function renderResults(results, resetSelection) {
     currentResults = results;
-    selectedIndex = 0;
+    if (resetSelection) {
+      selectedIndex = 0;
+    }
 
     if (results.length === 0) {
       resultsContainer.innerHTML = `
@@ -164,7 +166,7 @@
       const results = await Promise.all(search.results.map(r => r.data()));
 
       if (thisSearchId === searchId) {
-        renderResults(results);
+        renderResults(results, true);
       }
     }
   });
@@ -178,7 +180,7 @@
       const query = input.value;
       if (query.trim()) {
         const results = await performSearch(query);
-        renderResults(results);
+        renderResults(results, true);
       }
     });
   });
@@ -226,6 +228,7 @@
       e.preventDefault();
       const selected = currentResults[selectedIndex];
       if (selected) {
+        closeModal();
         window.location.href = selected.url;
       }
     }
