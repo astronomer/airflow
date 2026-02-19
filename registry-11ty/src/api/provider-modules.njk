@@ -12,4 +12,4 @@ eleventyExcludeFromCollections: true
     {%- set providerModules = (providerModules.push(module), providerModules) -%}
   {%- endif -%}
 {%- endfor -%}
-{{ { "provider_id": provider.id, "provider_name": provider.name, "modules": providerModules } | dump | safe }}
+{{ { "provider_id": provider.id, "provider_name": provider.name, "version": provider.version, "modules": providerModules } | dump | safe }}
