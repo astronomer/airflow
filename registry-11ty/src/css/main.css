@@ -3387,10 +3387,11 @@ main {
   color: var(--text-secondary);
 }
 
-.provider-detail-page .technical .connections a {
+.provider-detail-page .technical .connections .conn-type {
   font-size: var(--text-xs);
   font-family: var(--font-mono);
   padding: var(--space-1) var(--space-2);
+  margin: 0 var(--space-1) var(--space-1) 0;
   border-radius: var(--radius-sm);
   background: rgb(from var(--color-green-500) r g b / 0.1);
   color: var(--color-green-400);
@@ -3402,7 +3403,7 @@ main {
   margin-bottom: var(--space-2);
 }
 
-.provider-detail-page .technical .connections a:hover {
+.provider-detail-page .technical .connections .conn-type:hover {
   background: rgb(from var(--color-green-500) r g b / 0.2);
   border-color: rgb(from var(--color-green-500) r g b / 0.3);
 }

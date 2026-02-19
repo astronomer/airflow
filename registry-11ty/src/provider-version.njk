@@ -254,7 +254,11 @@ eleventyComputed:
         </h3>
         {% if conns.length > 0 %}
           {% for conn in conns %}
-          <span class="conn-type">{{ conn.conn_type }}</span>
+          {% if conn.docs_url %}
+          <a href="{{ conn.docs_url }}" class="conn-type" target="_blank" rel="noopener">{{ conn.conn_type or conn.connection_type }}</a>
+          {% else %}
+          <span class="conn-type">{{ conn.conn_type or conn.connection_type }}</span>
+          {% endif %}
           {% endfor %}
         {% else %}
         <span>No connections</span>
