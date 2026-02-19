@@ -22,19 +22,19 @@
       <span class="count">{{ totalMods }} modules</span>
       <div class="breakdown">
         {% if counts.operator %}
-        <div class="operator" style="width:{{ (counts.operator / totalMods * 100) }}%"></div>
+        <div class="operator" style="width:{{ (counts.operator / totalMods * 100) }}%" data-tooltip="{{ counts.operator }} Operators"></div>
         {% endif %}
         {% if counts.hook %}
-        <div class="hook" style="width:{{ (counts.hook / totalMods * 100) }}%"></div>
+        <div class="hook" style="width:{{ (counts.hook / totalMods * 100) }}%" data-tooltip="{{ counts.hook }} Hooks"></div>
         {% endif %}
         {% if counts.sensor %}
-        <div class="sensor" style="width:{{ (counts.sensor / totalMods * 100) }}%"></div>
+        <div class="sensor" style="width:{{ (counts.sensor / totalMods * 100) }}%" data-tooltip="{{ counts.sensor }} Sensors"></div>
         {% endif %}
         {% if counts.trigger %}
-        <div class="trigger" style="width:{{ (counts.trigger / totalMods * 100) }}%"></div>
+        <div class="trigger" style="width:{{ (counts.trigger / totalMods * 100) }}%" data-tooltip="{{ counts.trigger }} Triggers"></div>
         {% endif %}
         {% if counts.transfer %}
-        <div class="transfer" style="width:{{ (counts.transfer / totalMods * 100) }}%"></div>
+        <div class="transfer" style="width:{{ (counts.transfer / totalMods * 100) }}%" data-tooltip="{{ counts.transfer }} Transfers"></div>
         {% endif %}
       </div>
     </div>

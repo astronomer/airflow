@@ -744,10 +744,66 @@ footer a:hover {
 .provider-card .modules .breakdown,
 #featured-providers .modules .breakdown {
   display: flex;
-  height: 4px;
+  height: 8px;
   border-radius: var(--radius-full);
-  overflow: hidden;
+  overflow: visible;
   background: var(--bg-secondary);
+  position: relative;
+}
+
+.provider-card .modules .breakdown > div,
+#featured-providers .modules .breakdown > div {
+  position: relative;
+  cursor: default;
+  transition: filter 0.15s;
+}
+
+.provider-card .modules .breakdown > div:first-child,
+#featured-providers .modules .breakdown > div:first-child {
+  border-radius: var(--radius-full) 0 0 var(--radius-full);
+}
+
+.provider-card .modules .breakdown > div:last-child,
+#featured-providers .modules .breakdown > div:last-child {
+  border-radius: 0 var(--radius-full) var(--radius-full) 0;
+}
+
+.provider-card .modules .breakdown > div:only-child,
+#featured-providers .modules .breakdown > div:only-child {
+  border-radius: var(--radius-full);
+}
+
+.provider-card .modules .breakdown > div:hover,
+#featured-providers .modules .breakdown > div:hover {
+  filter: brightness(1.25);
+}
+
+.provider-card .modules .breakdown > div::after,
+#featured-providers .modules .breakdown > div::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s, visibility 0.15s;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.provider-card .modules .breakdown > div:hover::after,
+#featured-providers .modules .breakdown > div:hover::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 .provider-card .modules .operator,
