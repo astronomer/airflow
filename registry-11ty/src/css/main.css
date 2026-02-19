@@ -744,7 +744,7 @@ footer a:hover {
 .provider-card .modules .breakdown,
 #featured-providers .modules .breakdown {
   display: flex;
-  height: 8px;
+  height: var(--space-2);
   border-radius: var(--radius-full);
   overflow: visible;
   background: var(--bg-secondary);
@@ -755,7 +755,7 @@ footer a:hover {
 #featured-providers .modules .breakdown > div {
   position: relative;
   cursor: default;
-  transition: filter 0.15s;
+  transition: filter var(--transition-fast);
 }
 
 .provider-card .modules .breakdown > div:first-child,
@@ -782,10 +782,10 @@ footer a:hover {
 #featured-providers .modules .breakdown > div::after {
   content: attr(data-tooltip);
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + var(--space-2));
   left: 50%;
   transform: translateX(-50%);
-  padding: 4px 10px;
+  padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
   font-weight: var(--font-semibold);
   white-space: nowrap;
@@ -795,8 +795,8 @@ footer a:hover {
   color: var(--text-primary);
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.15s, visibility 0.15s;
-  z-index: 50;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  z-index: 10;
   pointer-events: none;
 }
 

@@ -12,12 +12,17 @@ async function buildPagefindIndex() {
     writePlayground: true
   });
 
+  const providerVersionMap = {};
+  for (const provider of providers.providers) {
+    providerVersionMap[provider.id] = provider.version;
+  }
+
   let providersAdded = 0;
   let modulesAdded = 0;
 
   for (const provider of providers.providers) {
     await index.addCustomRecord({
-      url: `/providers/${provider.id}/`,
+      url: `/providers/${provider.id}/${provider.version}/`,
       content: `${provider.name} ${provider.description}`,
       language: 'en',
       meta: {
@@ -35,7 +40,10 @@ async function buildPagefindIndex() {
   }
 
   for (const module of modules.modules) {
-    const url = `/providers/${module.provider_id}/#${module.id}`;
+    const version = providerVersionMap[module.provider_id] || '';
+    const url = version
+      ? `/providers/${module.provider_id}/${version}/#${module.id}`
+      : `/providers/${module.provider_id}/#${module.id}`;
 
     const content = `${module.name} ${module.name} ${module.name} ${module.short_description} ${module.provider_name} ${module.import_path}`;
 
