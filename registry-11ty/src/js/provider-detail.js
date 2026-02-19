@@ -154,30 +154,19 @@
     });
   }
 
-  // Module highlight from URL hash or query param
+  // Module highlight from URL hash
   function highlightModule() {
-    var params = new URLSearchParams(window.location.search);
-    var highlight = params.get('highlight');
     var hash = window.location.hash ? window.location.hash.slice(1) : null;
-    var target = highlight || (hash ? decodeURIComponent(hash) : null);
-
+    var target = hash ? decodeURIComponent(hash) : null;
     if (!target) return;
 
-    var found = false;
-    moduleItems.forEach(function(card) {
-      if (found) return;
-      var name = card.dataset.name || '';
-      if (name.includes(target.toLowerCase()) || target.toLowerCase().includes(name)) {
-        found = true;
-        card.classList.add('highlighted');
-        setTimeout(function() {
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
-        setTimeout(function() {
-          card.classList.remove('highlighted');
-        }, 5000);
-      }
-    });
+    var card = document.getElementById(target);
+    if (card && card.classList.contains('module')) {
+      card.classList.add('highlighted');
+      setTimeout(function() {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    }
   }
 
   highlightModule();
