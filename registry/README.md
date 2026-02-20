@@ -181,19 +181,17 @@ Providers are assigned to categories at build time by checking if any keyword in
 category matches (substring) the provider's ID. A provider can belong to multiple
 categories.
 
-### Homepage "Newly Added" Section
+### Homepage "New Providers" and "Recently Updated" Sections
 
-The "Newly Added" section on the homepage displays the first 4 modules from
-`modules.json`. The module ordering is determined by the extraction script:
+The homepage has two recency-based sections, both powered by dates fetched from the
+PyPI JSON API during extraction:
 
-1. Providers are sorted by quality score (descending)
-2. Within each provider, modules are appended in the order integrations appear in
-   `provider.yaml`
-
-This means the section shows modules from the highest-quality providers first, not
-necessarily the most recently created modules. To show truly recent additions, the
-extraction script would need to track module creation dates (e.g., via git history or
-PyPI release dates).
+- **New Providers** — shows providers sorted by `first_released` (the upload date of
+  their earliest PyPI release) descending. Highlights providers that are new to the
+  ecosystem.
+- **Recently Updated** — shows providers sorted by `last_updated` (the upload date of
+  their latest PyPI release) descending. Providers already shown in "New Providers" are
+  excluded to avoid duplication. Highlights recent activity from established providers.
 
 ### API Endpoints
 
@@ -259,13 +257,6 @@ provider appears well in the registry:
   keyword substring matching in `exploreCategories.js`, which is fragile and leaves ~45%
   of providers uncategorized. Adding an explicit `categories` field to `provider.yaml`
   would be more accurate, maintainable, and let provider authors self-classify.
-
-- [ ] **Compute "Newly Added" from actual dates** — The homepage "Newly Added" section
-  currently shows the first 4 modules from `modules.json`, ordered by directory-walk
-  sequence, not by recency. Options to fix:
-  - Use `git log --diff-filter=A` to detect when modules were first added
-  - Use PyPI release dates for the provider version that introduced each module
-  - Maintain a persistent "seen modules" manifest and flag genuinely new entries
 
 - [ ] **Compute homepage stats dynamically** — The "293M+ Monthly Downloads" and "229+
   Integrations" counters on the homepage are hardcoded. These should be computed from

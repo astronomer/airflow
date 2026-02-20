@@ -842,30 +842,17 @@ footer a:hover {
   visibility: visible;
 }
 
-.provider-card .modules .operator,
-#featured-providers .modules .operator {
-  background: var(--color-operator);
-}
-
-.provider-card .modules .hook,
-#featured-providers .modules .hook {
-  background: var(--color-hook);
-}
-
-.provider-card .modules .sensor,
-#featured-providers .modules .sensor {
-  background: var(--color-sensor);
-}
-
-.provider-card .modules .trigger,
-#featured-providers .modules .trigger {
-  background: var(--color-trigger);
-}
-
-.provider-card .modules .transfer,
-#featured-providers .modules .transfer {
-  background: var(--color-transfer);
-}
+.provider-card .modules .operator { background: var(--color-operator); }
+.provider-card .modules .hook { background: var(--color-hook); }
+.provider-card .modules .sensor { background: var(--color-sensor); }
+.provider-card .modules .trigger { background: var(--color-trigger); }
+.provider-card .modules .transfer { background: var(--color-transfer); }
+.provider-card .modules .executor { background: var(--color-executor); }
+.provider-card .modules .notifier { background: var(--color-notifier); }
+.provider-card .modules .secret { background: var(--color-secret); }
+.provider-card .modules .logging { background: var(--color-logging); }
+.provider-card .modules .bundle { background: var(--color-bundle); }
+.provider-card .modules .decorator { background: var(--color-decorator); }
 
 .provider-card .meta,
 #featured-providers .meta {
@@ -1139,33 +1126,42 @@ footer a:hover {
   color: var(--text-secondary);
 }
 
-/* Featured Providers */
-#featured-providers {
+/* Featured / New / Recently Updated Provider Sections */
+#featured-providers,
+#new-providers,
+#recently-updated {
   padding: var(--space-20) 0;
   background: var(--bg-secondary-light);
   background: light-dark(var(--bg-secondary-light), transparent);
 }
 
-#featured-providers header {
+#featured-providers header,
+#new-providers header,
+#recently-updated header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: var(--space-8);
 }
 
-#featured-providers h2 {
+#featured-providers h2,
+#new-providers h2,
+#recently-updated h2 {
   font-size: var(--text-3xl);
   font-weight: var(--font-bold);
   color: var(--text-primary);
   margin-bottom: var(--space-2);
 }
 
-#featured-providers header p {
+#featured-providers header p,
+#new-providers header p,
+#recently-updated header p {
   color: var(--text-secondary);
   font-size: var(--text-base);
 }
 
-#featured-providers .view-all {
+#featured-providers .view-all,
+#new-providers .view-all {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -1182,19 +1178,23 @@ footer a:hover {
   transition: all var(--transition-base);
 }
 
-#featured-providers .view-all:hover {
+#featured-providers .view-all:hover,
+#new-providers .view-all:hover {
   border-color: var(--color-gray-300);
   border-color: light-dark(var(--color-gray-300), rgba(6, 182, 212, 0.5));
   background: var(--color-gray-200);
   background: light-dark(var(--color-gray-200), rgba(15, 23, 42, 0.8));
 }
 
-#featured-providers .view-all .icon {
+#featured-providers .view-all .icon,
+#new-providers .view-all .icon {
   width: 1rem;
   height: 1rem;
 }
 
-#featured-providers .providers {
+#featured-providers .providers,
+#new-providers .providers,
+#recently-updated .providers {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -1204,7 +1204,9 @@ footer a:hover {
 }
 
 @media (min-width: 768px) {
-  #featured-providers .providers {
+  #featured-providers .providers,
+  #new-providers .providers,
+  #recently-updated .providers {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -1261,27 +1263,7 @@ footer a:hover {
   border-color: light-dark(var(--color-gray-300), var(--color-navy-500));
 }
 
-/* Newly Added Section */
-#newly-added {
-  padding: var(--space-16) 0;
-  background: var(--bg-secondary-light);
-  background: light-dark(var(--color-gray-50), var(--bg-secondary-dark));
-}
-
-#newly-added header {
-  margin-bottom: var(--space-8);
-}
-
-#newly-added h2 {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-}
-
-#newly-added header p {
-  color: var(--text-secondary);
-}
+/* (legacy #newly-added removed — replaced by #new-providers + #recently-updated) */
 
 .new-modules {
   list-style: none;

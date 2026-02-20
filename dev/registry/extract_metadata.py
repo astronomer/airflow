@@ -59,6 +59,35 @@ def fetch_pypi_downloads(package_name: str) -> dict[str, int]:
         return {"weekly": 0, "monthly": 0, "total": 0}
 
 
+def fetch_pypi_dates(package_name: str) -> dict[str, str]:
+    """Fetch first release and latest release dates from PyPI JSON API."""
+    try:
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        with urllib.request.urlopen(url, timeout=10) as response:
+            data = json.loads(response.read().decode())
+
+        earliest = None
+        latest = None
+        for version_files in data.get("releases", {}).values():
+            for file_info in version_files:
+                upload = file_info.get("upload_time_iso_8601") or file_info.get("upload_time")
+                if not upload:
+                    continue
+                ts = upload[:10]
+                if earliest is None or ts < earliest:
+                    earliest = ts
+                if latest is None or ts > latest:
+                    latest = ts
+
+        return {
+            "first_released": earliest or "",
+            "last_updated": latest or "",
+        }
+    except Exception as e:
+        print(f"    Warning: Could not fetch PyPI dates for {package_name}: {e}")
+        return {"first_released": "", "last_updated": ""}
+
+
 # Base paths
 AIRFLOW_ROOT = Path(__file__).parent.parent.parent
 PROVIDERS_DIR = AIRFLOW_ROOT / "providers"
@@ -209,6 +238,7 @@ class Provider:
     docs_url: str = ""
     source_url: str = ""
     pypi_url: str = ""
+    first_released: str = ""
     last_updated: str = ""
 
 
@@ -987,8 +1017,9 @@ def main():
                     }
                 )
 
-        # Fetch PyPI download statistics
+        # Fetch PyPI download statistics and release dates
         pypi_downloads = fetch_pypi_downloads(package_name)
+        pypi_dates = fetch_pypi_dates(package_name)
 
         # Parse pyproject.toml for requires-python and dependencies
         pyproject_path = provider_path / "pyproject.toml"
@@ -1015,7 +1046,8 @@ def main():
             docs_url=f"https://airflow.apache.org/docs/{package_name}/stable/",
             source_url=f"https://github.com/apache/airflow/tree/providers-{provider_id}/{version}/providers/{provider_id}",
             pypi_url=f"https://pypi.org/project/{package_name}/",
-            last_updated="",  # Could be populated from git or release dates
+            first_released=pypi_dates["first_released"],
+            last_updated=pypi_dates["last_updated"],
         )
 
         all_providers.append(provider)
@@ -1064,6 +1096,11 @@ def main():
 
     # Sort providers by quality score (descending)
     all_providers.sort(key=lambda p: p.quality_score, reverse=True)
+
+    # Sort modules by provider's last_updated date (newest first) so the
+    # homepage "Recently Updated" section shows genuinely recent modules.
+    date_by_provider = {p.id: p.last_updated for p in all_providers}
+    all_modules.sort(key=lambda m: date_by_provider.get(m.provider_id, ""), reverse=True)
 
     # Convert to JSON-serializable format
     providers_json = {"providers": [asdict(p) for p in all_providers]}
