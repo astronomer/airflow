@@ -33,6 +33,17 @@ mainClass: providers-page
         </div>
       </div>
 
+      <!-- Category Filter -->
+      <div class="filter-group">
+        <label for="category-filter">Category:</label>
+        <select id="category-filter" aria-label="Filter by category">
+          <option value="all">All Categories</option>
+          {% for cat in exploreCategories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
       <!-- Sort Dropdown -->
       <div class="filter-group">
         <label for="provider-sort">Sort:</label>
@@ -50,12 +61,14 @@ mainClass: providers-page
       {% for provider in providers.providers %}
       {% set lc = provider.lifecycle or "production" %}
       {% set lcDisplay = "incubation" if lc == "incubation" else ("deprecated" if lc == "deprecated" else "stable") %}
+      {% set cats = providerCategoryMap[provider.id] or [] %}
       <li class="provider-item"
           data-lifecycle="{{ lcDisplay }}"
           data-name="{{ provider.name | lower }}"
           data-downloads="{{ provider.pypi_downloads.monthly }}"
           data-score="{{ provider.quality_score or 0 }}"
-          data-updated="{{ provider.last_updated or '' }}">
+          data-updated="{{ provider.last_updated or '' }}"
+          data-categories="{{ cats | join(',') }}">
         {% include "provider-card.njk" %}
       </li>
       {% endfor %}

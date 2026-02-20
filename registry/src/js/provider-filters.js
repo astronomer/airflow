@@ -17,11 +17,10 @@
  * under the License.
  */
 
-// Provider Filtering and Sorting - Progressive Enhancement
 (function() {
-  // Elements
   const searchInput = document.getElementById('provider-search');
   const lifecycleButtons = document.querySelectorAll('.lifecycle-btn');
+  const categorySelect = document.getElementById('category-filter');
   const sortSelect = document.getElementById('provider-sort');
   const providerGrid = document.getElementById('provider-grid');
   const emptyState = document.getElementById('empty-state');
@@ -30,6 +29,7 @@
   if (!searchInput || !providerGrid || !emptyState) return;
 
   let currentLifecycle = 'all';
+  let currentCategory = 'all';
   let currentSearch = '';
 
   function filterProviders() {
@@ -38,11 +38,14 @@
     providerItems.forEach(item => {
       const lifecycle = item.dataset.lifecycle;
       const name = item.dataset.name || '';
+      const categories = item.dataset.categories || '';
 
       const matchesLifecycle = currentLifecycle === 'all' || lifecycle === currentLifecycle;
       const matchesSearch = name.includes(currentSearch.toLowerCase());
+      const matchesCategory = currentCategory === 'all' ||
+        categories.split(',').includes(currentCategory);
 
-      if (matchesLifecycle && matchesSearch) {
+      if (matchesLifecycle && matchesSearch && matchesCategory) {
         item.style.display = 'block';
         visibleCount++;
       } else {
@@ -56,6 +59,42 @@
     } else {
       emptyState.style.display = 'none';
       providerGrid.style.display = 'grid';
+    }
+
+    updateURL();
+  }
+
+  function updateURL() {
+    const params = new URLSearchParams();
+    if (currentCategory !== 'all') params.set('category', currentCategory);
+    if (currentLifecycle !== 'all') params.set('lifecycle', currentLifecycle);
+    if (currentSearch) params.set('q', currentSearch);
+    const qs = params.toString();
+    const newURL = window.location.pathname + (qs ? '?' + qs : '');
+    history.replaceState(null, '', newURL);
+  }
+
+  function readURLParams() {
+    const params = new URLSearchParams(window.location.search);
+    const cat = params.get('category');
+    const lc = params.get('lifecycle');
+    const q = params.get('q');
+
+    if (cat && categorySelect) {
+      currentCategory = cat;
+      categorySelect.value = cat;
+    }
+    if (lc) {
+      currentLifecycle = lc;
+      lifecycleButtons.forEach(btn => {
+        const isMatch = btn.dataset.lifecycle === lc;
+        btn.classList.toggle('active', isMatch);
+        btn.setAttribute('aria-pressed', isMatch ? 'true' : 'false');
+      });
+    }
+    if (q) {
+      currentSearch = q;
+      searchInput.value = q;
     }
   }
 
@@ -77,7 +116,13 @@
     });
   });
 
-  // Sort handler
+  if (categorySelect) {
+    categorySelect.addEventListener('change', () => {
+      currentCategory = categorySelect.value;
+      filterProviders();
+    });
+  }
+
   if (sortSelect) {
     sortSelect.addEventListener('change', () => {
       const sortBy = sortSelect.value;
@@ -98,8 +143,12 @@
         }
       });
 
-      // Re-append in sorted order
       items.forEach(item => providerGrid.appendChild(item));
     });
+  }
+
+  readURLParams();
+  if (currentCategory !== 'all' || currentLifecycle !== 'all' || currentSearch) {
+    filterProviders();
   }
 })();
