@@ -49,7 +49,7 @@ mainClass: explore-page
           {% for provider in categoryProviders | slice(0, 6) %}
           <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-badge">
             {% if provider.logo %}
-            <img src="{{ provider.logo | url }}" alt="">
+            <img src="{{ provider.logo | url }}" alt="{{ provider.name }}">
             {% endif %}
             <span>{{ provider.name }}</span>
           </a>
@@ -166,8 +166,12 @@ mainClass: explore-page
   const openSearchBtn = document.getElementById('open-search');
   if (openSearchBtn) {
     openSearchBtn.addEventListener('click', () => {
-      // TODO: Implement search
-      console.log('Search not yet implemented');
+      const modal = document.getElementById('search-modal');
+      const input = document.getElementById('search-input');
+      if (modal) {
+        modal.classList.add('active');
+        if (input) input.focus();
+      }
     });
   }
 </script>

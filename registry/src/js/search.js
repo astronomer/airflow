@@ -38,6 +38,12 @@
     decorator: 'Decorator',
   };
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(str));
+    return div.innerHTML;
+  }
+
   const modal = document.getElementById('search-modal');
   const input = document.getElementById('search-input');
   const resultsContainer = document.getElementById('search-results');
@@ -87,6 +93,10 @@
         </div>
       `;
       updateCountsFromResults([]);
+      const statusEl = document.getElementById('search-status');
+      if (statusEl) {
+        statusEl.textContent = 'No results found';
+      }
       return;
     }
 
@@ -100,16 +110,16 @@
       const resultType = type === 'provider' ? 'provider' : moduleType;
 
       return `
-        <a href="${result.url}" class="${resultType}${index === selectedIndex ? ' selected' : ''}" data-index="${index}">
+        <a href="${escapeHtml(result.url)}" class="${escapeHtml(resultType)}${index === selectedIndex ? ' selected' : ''}" data-index="${index}">
           <span>${icon}</span>
           <div>
             <div>
-              ${name}
-              ${moduleType ? `<span class="badge ${moduleType}">${typeLabels[moduleType] || moduleType}</span>` : ''}
+              ${escapeHtml(name)}
+              ${moduleType ? `<span class="badge ${escapeHtml(moduleType)}">${escapeHtml(typeLabels[moduleType] || moduleType)}</span>` : ''}
             </div>
             <div>
-              ${providerName ? `<span><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg> ${providerName}</span>` : ''}
-              ${description ? `<span>${description}</span>` : ''}
+              ${providerName ? `<span><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg> ${escapeHtml(providerName)}</span>` : ''}
+              ${description ? `<span>${escapeHtml(description)}</span>` : ''}
             </div>
           </div>
           ${index === selectedIndex ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>' : ''}
@@ -119,6 +129,10 @@
 
     resultsContainer.innerHTML = html;
     updateCountsFromResults(results);
+    const statusEl = document.getElementById('search-status');
+    if (statusEl) {
+      statusEl.textContent = results.length + ' result' + (results.length !== 1 ? 's' : '') + ' found';
+    }
 
     const selected = resultsContainer.querySelector('a.selected');
     if (selected) {
@@ -165,6 +179,10 @@
         </div>
       `;
       currentResults = [];
+      const statusEl = document.getElementById('search-status');
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
       return;
     }
 
@@ -239,6 +257,21 @@
       e.preventDefault();
       selectedIndex = Math.max(selectedIndex - 1, 0);
       renderResults(currentResults);
+    } else if (e.key === 'Tab') {
+      const focusable = modal.querySelectorAll('input, button, a[href]');
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     } else if (e.key === 'Enter' && currentResults.length > 0) {
       e.preventDefault();
       const selected = currentResults[selectedIndex];

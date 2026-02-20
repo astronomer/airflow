@@ -61,6 +61,13 @@
       providerGrid.style.display = 'grid';
     }
 
+    const filterStatus = document.getElementById('filter-status');
+    if (filterStatus) {
+      filterStatus.textContent = visibleCount === 0
+        ? 'No providers match your filters'
+        : visibleCount + ' provider' + (visibleCount !== 1 ? 's' : '') + ' shown';
+    }
+
     updateURL();
   }
 

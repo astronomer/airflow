@@ -1,6 +1,6 @@
 ---
 layout: base.njk
-title: Home
+title: Discover Providers, Operators & Hooks for Apache Airflow
 ---
 
 {% set totalProviders = providers.providers.length %}
@@ -62,11 +62,11 @@ title: Home
         <dd>Modules</dd>
       </div>
       <div>
-        <dt>293M+</dt>
+        <dt>{{ statsData.totalDownloads | formatDownloads }}+</dt>
         <dd>Monthly Downloads</dd>
       </div>
       <div>
-        <dt>229+</dt>
+        <dt>{{ statsData.totalConnectionTypes }}+</dt>
         <dd>Integrations</dd>
       </div>
     </dl>

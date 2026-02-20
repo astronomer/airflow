@@ -122,6 +122,22 @@ module.exports = function() {
     };
   });
 
+  // Total monthly downloads across all providers
+  const totalDownloads = providers.reduce((sum, p) => {
+    return sum + ((p.pypi_downloads && p.pypi_downloads.monthly) || 0);
+  }, 0);
+
+  // Total unique connection types across all providers
+  const allConnectionTypes = new Set();
+  providers.forEach(p => {
+    if (p.connection_types) {
+      p.connection_types.forEach(ct => {
+        allConnectionTypes.add(ct.conn_type || ct.connection_type);
+      });
+    }
+  });
+  const totalConnectionTypes = allConnectionTypes.size;
+
   // Enriched provider list with totals
   const enrichedProviders = [...providers].map(p => ({
     ...p,
@@ -148,6 +164,8 @@ module.exports = function() {
   return {
     totalProviders,
     totalModules,
+    totalDownloads,
+    totalConnectionTypes,
     lifecycleCounts,
     lifecycleStats,
     moduleTypeStats,

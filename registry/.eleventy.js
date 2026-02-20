@@ -91,6 +91,8 @@ module.exports = function(eleventyConfig) {
     return JSON.stringify(obj);
   });
 
+  eleventyConfig.addShortcode("year", () => `${new Date().getFullYear()}`);
+
   return {
     pathPrefix: process.env.REGISTRY_PATH_PREFIX || "/registry/",
     dir: {

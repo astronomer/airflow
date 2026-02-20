@@ -55,7 +55,13 @@
   }
 
   if (versionSelect) {
-    versionSelect.addEventListener('change', updateInstallCommand);
+    versionSelect.addEventListener('change', function() {
+      updateInstallCommand();
+      var providerUrl = versionSelect.dataset.providerUrl;
+      if (providerUrl) {
+        window.location.href = providerUrl + versionSelect.value + '/';
+      }
+    });
   }
 
   if (extrasSelect) {
