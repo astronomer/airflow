@@ -112,12 +112,17 @@ mainClass: statistics-page
       </section>
     </div>
 
-    <!-- Provider Ranking -->
+    <!-- Provider Rankings -->
     <section class="provider-ranking">
       <header>
-        <h2>Top 10 Providers by Module Count</h2>
+        <nav class="ranking-tabs">
+          <button class="ranking-tab active" data-target="downloads-table">Top 10 by Downloads</button>
+          <button class="ranking-tab" data-target="modules-table">Top 10 by Module Count</button>
+        </nav>
       </header>
-      <div class="card">
+
+      {# Module Count Table #}
+      <div id="modules-table" class="ranking-panel card" hidden>
         <table class="ranking-table">
           <thead class="ranking-header">
             <tr>
@@ -173,5 +178,53 @@ mainClass: statistics-page
           </tbody>
         </table>
       </div>
+
+      {# Downloads Table #}
+      <div id="downloads-table" class="ranking-panel active card">
+        <table class="ranking-table">
+          <thead class="ranking-header">
+            <tr>
+              <th class="rank-column">#</th>
+              <th class="provider-column">Provider</th>
+              <th class="downloads-column">Monthly</th>
+              <th class="downloads-column">Weekly</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for provider in statsData.topByDownloads %}
+            <tr class="ranking-row">
+              <td class="rank-cell">{{ loop.index }}</td>
+              <td class="provider-cell">
+                <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-link">
+                  <div class="provider-logo">
+                    {% if provider.logo %}
+                    <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+                    {% else %}
+                    <span class="initial">{{ provider.name | first }}</span>
+                    {% endif %}
+                  </div>
+                  <span class="provider-name">{{ provider.name }}</span>
+                </a>
+              </td>
+              <td class="downloads-count">{{ provider.monthlyDownloads | formatDownloads }}</td>
+              <td class="downloads-count">{{ provider.weeklyDownloads | formatDownloads }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </section>
+
+    <script>
+    document.querySelectorAll('.ranking-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.ranking-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.ranking-panel').forEach(p => { p.hidden = true; p.classList.remove('active'); });
+        tab.classList.add('active');
+        const panel = document.getElementById(tab.dataset.target);
+        panel.hidden = false;
+        panel.classList.add('active');
+      });
+    });
+    </script>
 </div>

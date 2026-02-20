@@ -122,15 +122,27 @@ module.exports = function() {
     };
   });
 
+  // Enriched provider list with totals
+  const enrichedProviders = [...providers].map(p => ({
+    ...p,
+    totalModules: p.module_counts
+      ? Object.values(p.module_counts).reduce((a, b) => a + b, 0)
+      : 0,
+    monthlyDownloads: (p.pypi_downloads && p.pypi_downloads.monthly) || 0,
+    weeklyDownloads: (p.pypi_downloads && p.pypi_downloads.weekly) || 0
+  }));
+
+  // Exclude zero-module providers from rankings
+  const withModules = enrichedProviders.filter(p => p.totalModules > 0);
+
   // Top 10 providers by module count
-  const topProviders = [...providers]
-    .map(p => ({
-      ...p,
-      totalModules: p.module_counts
-        ? Object.values(p.module_counts).reduce((a, b) => a + b, 0)
-        : 0
-    }))
+  const topProviders = [...withModules]
     .sort((a, b) => b.totalModules - a.totalModules)
+    .slice(0, 10);
+
+  // Top 10 providers by monthly downloads
+  const topByDownloads = [...withModules]
+    .sort((a, b) => b.monthlyDownloads - a.monthlyDownloads)
     .slice(0, 10);
 
   return {
@@ -139,6 +151,7 @@ module.exports = function() {
     lifecycleCounts,
     lifecycleStats,
     moduleTypeStats,
-    topProviders
+    topProviders,
+    topByDownloads
   };
 };

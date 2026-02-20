@@ -2419,6 +2419,49 @@ main {
   color: var(--text-primary);
 }
 
+.ranking-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ranking-tab {
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.ranking-tab:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.ranking-tab.active {
+  color: var(--color-cyan-400);
+  border-color: var(--color-cyan-400);
+  background: color-mix(in srgb, var(--color-cyan-400) 10%, transparent);
+}
+
+.ranking-panel[hidden] {
+  display: none;
+}
+
+.downloads-column {
+  text-align: right;
+}
+
+.downloads-count {
+  text-align: right;
+  font-weight: var(--font-medium);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
 .ranking-table {
   width: 100%;
   border-collapse: collapse;
@@ -3036,6 +3079,37 @@ main {
 .version-banner a {
   color: var(--accent-primary);
   text-decoration: underline;
+}
+
+.no-modules-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+}
+
+.no-modules-banner > svg {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  margin-top: 0.125rem;
+}
+
+.no-modules-banner h3 {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.no-modules-banner p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .extra-deps-info {

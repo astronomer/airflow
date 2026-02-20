@@ -51,7 +51,6 @@ mainClass: providers-page
           <option value="downloads">Most Downloads</option>
           <option value="name">Name A-Z</option>
           <option value="updated">Recently Updated</option>
-          <option value="score">Quality Score</option>
         </select>
       </div>
     </div>
@@ -66,7 +65,6 @@ mainClass: providers-page
           data-lifecycle="{{ lcDisplay }}"
           data-name="{{ provider.name | lower }}"
           data-downloads="{{ provider.pypi_downloads.monthly }}"
-          data-score="{{ provider.quality_score or 0 }}"
           data-updated="{{ provider.last_updated or '' }}"
           data-categories="{{ cats | join(',') }}">
         {% include "provider-card.njk" %}

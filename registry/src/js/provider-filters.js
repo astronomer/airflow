@@ -136,8 +136,6 @@
             return (a.dataset.name || '').localeCompare(b.dataset.name || '');
           case 'updated':
             return (b.dataset.updated || '').localeCompare(a.dataset.updated || '');
-          case 'score':
-            return Number(b.dataset.score || 0) - Number(a.dataset.score || 0);
           default:
             return 0;
         }

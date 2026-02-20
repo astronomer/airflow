@@ -297,6 +297,7 @@ eleventyComputed:
     </div>
   </section>
 
+  {% if totalModules > 0 %}
   {# Module Type Tabs #}
   <nav class="module-tabs">
     <button class="module-tab active" data-type="all">All ({{ totalModules }})</button>
@@ -376,6 +377,42 @@ eleventyComputed:
           {% endfor %}
         </nav>
       </div>
+      {% else %}
+      <div class="sidebar-section card">
+        <h3>Module Types</h3>
+        <nav class="category-nav">
+          {% if moduleCounts.operator > 0 %}
+          <button class="category-btn" data-type="operator"><span class="tab-icon operator">O</span> <span>Operators</span> <span class="count">{{ moduleCounts.operator }}</span></button>
+          {% endif %}
+          {% if moduleCounts.hook > 0 %}
+          <button class="category-btn" data-type="hook"><span class="tab-icon hook">H</span> <span>Hooks</span> <span class="count">{{ moduleCounts.hook }}</span></button>
+          {% endif %}
+          {% if moduleCounts.sensor > 0 %}
+          <button class="category-btn" data-type="sensor"><span class="tab-icon sensor">S</span> <span>Sensors</span> <span class="count">{{ moduleCounts.sensor }}</span></button>
+          {% endif %}
+          {% if moduleCounts.trigger > 0 %}
+          <button class="category-btn" data-type="trigger"><span class="tab-icon trigger">T</span> <span>Triggers</span> <span class="count">{{ moduleCounts.trigger }}</span></button>
+          {% endif %}
+          {% if moduleCounts.transfer > 0 %}
+          <button class="category-btn" data-type="transfer"><span class="tab-icon transfer">X</span> <span>Transfers</span> <span class="count">{{ moduleCounts.transfer }}</span></button>
+          {% endif %}
+          {% if moduleCounts.executor > 0 %}
+          <button class="category-btn" data-type="executor"><span class="tab-icon executor">E</span> <span>Executors</span> <span class="count">{{ moduleCounts.executor }}</span></button>
+          {% endif %}
+          {% if moduleCounts.bundle > 0 %}
+          <button class="category-btn" data-type="bundle"><span class="tab-icon bundle">B</span> <span>Bundles</span> <span class="count">{{ moduleCounts.bundle }}</span></button>
+          {% endif %}
+          {% if moduleCounts.notifier > 0 %}
+          <button class="category-btn" data-type="notifier"><span class="tab-icon notifier">N</span> <span>Notifiers</span> <span class="count">{{ moduleCounts.notifier }}</span></button>
+          {% endif %}
+          {% if moduleCounts.secret > 0 %}
+          <button class="category-btn" data-type="secret"><span class="tab-icon secret">K</span> <span>Secrets</span> <span class="count">{{ moduleCounts.secret }}</span></button>
+          {% endif %}
+          {% if moduleCounts.logging > 0 %}
+          <button class="category-btn" data-type="logging"><span class="tab-icon logging">L</span> <span>Log Handlers</span> <span class="count">{{ moduleCounts.logging }}</span></button>
+          {% endif %}
+        </nav>
+      </div>
       {% endif %}
 
       {% if pv.provider.related_providers and pv.provider.related_providers.length > 0 %}
@@ -443,6 +480,19 @@ eleventyComputed:
       </div>
     </section>
   </div>
+
+  {% else %}
+  {# Zero-module provider: show info banner instead of empty grid #}
+  <div class="no-modules-banner card">
+    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+    </svg>
+    <div>
+      <h3>Configuration-only provider</h3>
+      <p>This provider extends Airflow through configuration, authentication, or runtime services rather than operators, hooks, or sensors. Install it as a dependency to enable its functionality.</p>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 <script src="{{ '/js/provider-detail.js' | url }}"></script>
