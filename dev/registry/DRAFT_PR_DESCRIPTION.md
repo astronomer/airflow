@@ -41,10 +41,10 @@
 ## Summary
 
 Add an official, auto-generated **Provider Registry** to the Apache Airflow project,
-replacing the [Astronomer Registry](https://registry.astronomer.io) with a
-community-owned alternative deployed at `airflow.apache.org/registry/`.
+deployed at `airflow.apache.org/registry/`.
 
-- Built with Eleventy (11ty), auto-generates from existing `provider.yaml` files
+- Built with Eleventy (11ty) — thanks to Ash Berlin-Taylor for suggesting and prototyping the approach
+- Auto-generates from existing `provider.yaml` files; no manual curation
 - Full-text search (Pagefind), category browsing, AIP-95 lifecycle badges, statistics
 - JSON API endpoints for programmatic access (useful for AI agents and tooling)
 - CI/CD workflow integrated with existing docs publish pipeline
@@ -52,21 +52,30 @@ community-owned alternative deployed at `airflow.apache.org/registry/`.
 
 ## Motivation
 
-The Astronomer Registry at `registry.astronomer.io` has served as the primary discovery
-hub for Airflow providers for several years. As we roll out the **new provider governance
-model** (AIP-95 lifecycle stages), the project needs proper tooling under Apache's
-umbrella to:
+With AIP-95 approved, Airflow now has a formal provider lifecycle (incubation,
+production, mature, deprecated). That opens the door for accepting more community-built
+providers and giving them an official home, while setting clear expectations about
+maturity and support. But lifecycle stages only work if users can actually see them.
+Right now there's no place on `airflow.apache.org` where someone can browse providers,
+check their lifecycle stage, or discover what modules they ship.
 
-1. **Surface governance visibly** — lifecycle stages (incubation/stable/deprecated) need
-   to be first-class citizens in the discovery experience, not an afterthought
-2. **Stay in sync automatically** — the registry generates directly from `provider.yaml`
-   files in the repo, eliminating manual curation and data staleness
-3. **Be community-owned** — an official Apache project resource, not a third-party
-   dependency
+This registry fills that gap:
+
+1. **Surface governance visibly** — AIP-95 lifecycle stages are first-class citizens
+   in the discovery experience (badges, filters, explore by stage)
+2. **Stay in sync automatically** — generates directly from `provider.yaml` files in
+   the repo, no separate data pipeline or manual curation
+3. **Community-owned** — an official Apache project resource on `airflow.apache.org`
+
+Many of you know the [Astronomer Registry](https://registry.astronomer.io), which has
+been the go-to for discovering providers for years. Big thanks to Astronomer and Josh
+Fell for building and maintaining it. This new registry is designed to be a
+community-owned successor, with the eventual goal of redirecting
+`registry.astronomer.io` traffic here once it's stable.
 
 The registry is designed as a **discovery mechanism** — it acts as the front door for
 finding providers and modules, then links out to API reference docs and user guides
-rather than trying to host everything in one place.
+rather than hosting everything in one place.
 
 Airflow has 99 provider packages with 845 operators, 343 hooks, 161 triggers, 157 sensors,
 90 transfers, and dozens of other module types across 7 categories.
@@ -154,10 +163,9 @@ provider.yaml files ──► extract_metadata.py ──► JSON data files ─�
 1. **Static site, not a service** — no runtime dependencies, just HTML/CSS/JS served
    from S3 via CloudFront
 2. **Auto-generated from `provider.yaml`** — no manual curation needed; adding a new
-   provider automatically includes it (unlike the Astronomer Registry which required
-   separate data management)
+   provider automatically includes it in the next build
 3. **Discovery-focused** — acts as a discovery mechanism and links out to API reference
-   and user guides, rather than trying to host all documentation in one place
+   and user guides rather than hosting all documentation in one place
 4. **Governance-first** — AIP-95 lifecycle stages are surfaced throughout (badges,
    filters, explore sections) to give the provider governance model immediate visibility
 5. **Progressive enhancement** — the site works without JavaScript; search and filters
@@ -212,7 +220,7 @@ provider.yaml files ──► extract_metadata.py ──► JSON data files ─�
 
 - [ ] `apache/airflow-site` PR for `.htaccess` rewrite and nav link
 - [ ] LLM-friendly exports (`llms.txt`) and "Copy for AI" buttons for MCP/AI tooling
-- [ ] Deprecate/sunset the Astronomer Registry once the official registry is live
+- [ ] Redirect `registry.astronomer.io` traffic once the official registry is stable
 - [ ] Dark mode CSS polish
 - [ ] Explicit categories in `provider.yaml` (replacing keyword matching)
 - [ ] Dynamic homepage stats (currently some are hardcoded)
