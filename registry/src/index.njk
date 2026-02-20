@@ -133,44 +133,6 @@ title: Home
 </section>
 {% endif %}
 
-<!-- Recently Updated — providers sorted by last_updated, excluding those already in New Providers -->
-{% set newProviderIds = [] %}
-{% for p in newProviders %}
-  {% set newProviderIds = (newProviderIds.push(p.id), newProviderIds) %}
-{% endfor %}
-{% set allByUpdated = [] %}
-{% for provider in providers.providers %}
-  {% if provider.last_updated %}
-    {% set isNew = false %}
-    {% for nid in newProviderIds %}
-      {% if nid === provider.id %}{% set isNew = true %}{% endif %}
-    {% endfor %}
-    {% if not isNew %}
-      {% set allByUpdated = (allByUpdated.push(provider), allByUpdated) %}
-    {% endif %}
-  {% endif %}
-{% endfor %}
-{% set recentProviders = allByUpdated | sort(false, false, 'last_updated') | reverse | slice(0, 4) %}
-{% if recentProviders.length > 0 %}
-<section id="recently-updated">
-  <div class="container">
-    <header>
-      <div>
-        <h2>Recently Updated</h2>
-        <p>Latest releases from active providers</p>
-      </div>
-    </header>
-
-    <ul class="providers">
-      {% for provider in recentProviders %}
-      <li>
-        {% include "provider-card.njk" %}
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-</section>
-{% endif %}
 
 <section id="categories">
   <div class="container">

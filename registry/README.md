@@ -181,17 +181,12 @@ Providers are assigned to categories at build time by checking if any keyword in
 category matches (substring) the provider's ID. A provider can belong to multiple
 categories.
 
-### Homepage "New Providers" and "Recently Updated" Sections
+### Homepage "New Providers" Section
 
-The homepage has two recency-based sections, both powered by dates fetched from the
-PyPI JSON API during extraction:
-
-- **New Providers** — shows providers sorted by `first_released` (the upload date of
-  their earliest PyPI release) descending. Highlights providers that are new to the
-  ecosystem.
-- **Recently Updated** — shows providers sorted by `last_updated` (the upload date of
-  their latest PyPI release) descending. Providers already shown in "New Providers" are
-  excluded to avoid duplication. Highlights recent activity from established providers.
+The homepage has a "New Providers" section powered by dates fetched from the PyPI JSON
+API during extraction. It shows providers sorted by `first_released` (the upload date
+of their earliest PyPI release) descending, highlighting providers that are new to the
+ecosystem.
 
 ### API Endpoints
 

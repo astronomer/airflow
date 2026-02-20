@@ -1126,18 +1126,16 @@ footer a:hover {
   color: var(--text-secondary);
 }
 
-/* Featured / New / Recently Updated Provider Sections */
+/* Featured / New Provider Sections */
 #featured-providers,
-#new-providers,
-#recently-updated {
+#new-providers {
   padding: var(--space-20) 0;
   background: var(--bg-secondary-light);
   background: light-dark(var(--bg-secondary-light), transparent);
 }
 
 #featured-providers header,
-#new-providers header,
-#recently-updated header {
+#new-providers header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -1145,8 +1143,7 @@ footer a:hover {
 }
 
 #featured-providers h2,
-#new-providers h2,
-#recently-updated h2 {
+#new-providers h2 {
   font-size: var(--text-3xl);
   font-weight: var(--font-bold);
   color: var(--text-primary);
@@ -1154,8 +1151,7 @@ footer a:hover {
 }
 
 #featured-providers header p,
-#new-providers header p,
-#recently-updated header p {
+#new-providers header p {
   color: var(--text-secondary);
   font-size: var(--text-base);
 }
@@ -1193,8 +1189,7 @@ footer a:hover {
 }
 
 #featured-providers .providers,
-#new-providers .providers,
-#recently-updated .providers {
+#new-providers .providers {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -1205,8 +1200,7 @@ footer a:hover {
 
 @media (min-width: 768px) {
   #featured-providers .providers,
-  #new-providers .providers,
-  #recently-updated .providers {
+  #new-providers .providers {
     grid-template-columns: repeat(2, 1fr);
   }
 }
@@ -1263,7 +1257,7 @@ footer a:hover {
   border-color: light-dark(var(--color-gray-300), var(--color-navy-500));
 }
 
-/* (legacy #newly-added removed — replaced by #new-providers + #recently-updated) */
+/* (legacy #newly-added removed — replaced by #new-providers) */
 
 .new-modules {
   list-style: none;
