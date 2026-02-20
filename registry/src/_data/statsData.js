@@ -25,15 +25,16 @@ module.exports = function() {
   // Total providers count
   const totalProviders = providers.length;
 
-  // Count by tier
-  const tierCounts = providers.reduce((acc, p) => {
-    acc[p.tier] = (acc[p.tier] || 0) + 1;
+  // Count by lifecycle stage (AIP-95)
+  const lifecycleCounts = providers.reduce((acc, p) => {
+    const lc = p.lifecycle || 'production';
+    const display = lc === 'incubation' ? 'incubation' : (lc === 'deprecated' ? 'deprecated' : 'stable');
+    acc[display] = (acc[display] || 0) + 1;
     return acc;
   }, {});
 
-  // Tier display data with percentages
-  const tierStats = Object.entries(tierCounts).map(([tier, count]) => ({
-    tier,
+  const lifecycleStats = Object.entries(lifecycleCounts).map(([stage, count]) => ({
+    stage,
     count,
     percentage: (count / totalProviders * 100).toFixed(1)
   }));
@@ -135,8 +136,8 @@ module.exports = function() {
   return {
     totalProviders,
     totalModules,
-    tierCounts,
-    tierStats,
+    lifecycleCounts,
+    lifecycleStats,
     moduleTypeStats,
     topProviders
   };

@@ -287,15 +287,27 @@ footer {
 footer .container {
   display: flex;
   flex-direction: column;
+  gap: var(--space-6);
+}
+
+footer .footer-top {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-4);
 }
 
 @media (min-width: 768px) {
-  footer .container {
+  footer .footer-top {
     flex-direction: row;
+    justify-content: space-between;
   }
+}
+
+footer .footer-bottom {
+  border-top: 1px solid var(--border-primary);
+  padding-top: var(--space-4);
+  text-align: center;
 }
 
 footer p {
@@ -304,10 +316,26 @@ footer p {
   margin: 0;
 }
 
+footer .trademark {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+  max-width: 60rem;
+  margin-inline: auto;
+}
+
 footer .links {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  footer .links {
+    gap: var(--space-6);
+  }
 }
 
 footer a {
@@ -343,24 +371,6 @@ footer a:hover {
   border: 1px solid;
 }
 
-.badge-community,
-.tier-community {
-  background: rgba(107, 114, 128, 0.15);
-  background: light-dark(rgba(107, 114, 128, 0.15), rgba(107, 114, 128, 0.2));
-  color: #6b7280;
-  color: light-dark(#6b7280, #9ca3af);
-  border-color: rgba(107, 114, 128, 0.4);
-  border-color: light-dark(rgba(107, 114, 128, 0.4), rgba(107, 114, 128, 0.3));
-}
-
-.badge-official,
-.tier-official {
-  background: rgba(6, 182, 212, 0.15);
-  background: light-dark(rgba(6, 182, 212, 0.15), rgba(6, 182, 212, 0.2));
-  color: var(--color-cyan-400);
-  border-color: rgba(6, 182, 212, 0.4);
-  border-color: light-dark(rgba(6, 182, 212, 0.4), rgba(6, 182, 212, 0.3));
-}
 
 /* Lifecycle badges (AIP-95) */
 .lifecycle-incubation {
@@ -1021,7 +1031,6 @@ footer a:hover {
   white-space: nowrap;
 }
 
-.tier-buttons,
 .lifecycle-buttons {
   display: flex;
   gap: var(--space-1);
@@ -1034,7 +1043,6 @@ footer a:hover {
   outline: none;
 }
 
-.tier-btn,
 .lifecycle-btn {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
@@ -1048,19 +1056,16 @@ footer a:hover {
   cursor: pointer;
 }
 
-.tier-btn:hover,
 .lifecycle-btn:hover {
   color: var(--text-primary);
   background: var(--bg-secondary);
 }
 
-.tier-btn:focus-visible,
 .lifecycle-btn:focus-visible {
   outline: 2px solid var(--color-cyan-500);
   outline-offset: 2px;
 }
 
-.tier-btn.active,
 .lifecycle-btn.active {
   background: var(--color-cyan-500);
   color: var(--color-navy-900);
@@ -1816,7 +1821,6 @@ main {
   color: var(--text-primary);
 }
 
-.tier-badge,
 .lifecycle-badge {
   padding: var(--space-1) var(--space-3);
   font-size: var(--text-xs);
@@ -1824,15 +1828,10 @@ main {
   border-radius: var(--radius-lg);
 }
 
-.tier-badge.tier-official {
+.lifecycle-badge.lifecycle-stable {
   background: rgba(6, 182, 212, 0.15);
   background: light-dark(rgba(6, 182, 212, 0.15), rgba(6, 182, 212, 0.1));
   color: var(--color-cyan-400);
-}
-
-.tier-badge.tier-community {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
 }
 
 .lifecycle-badge.lifecycle-incubation {
@@ -2231,57 +2230,61 @@ main {
 }
 
 /* Tier Distribution */
-.tier-distribution {
+.lifecycle-distribution {
   padding: var(--space-6);
 }
 
-.tier-distribution header {
+.lifecycle-distribution header {
   margin-bottom: var(--space-6);
 }
 
-.tier-distribution h2 {
+.lifecycle-distribution h2 {
   font-size: var(--text-xl);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
 }
 
-.tier-stats {
+.lifecycle-stats {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.tier-stat {
+.lifecycle-stat {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.tier-info {
+.lifecycle-info {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.tier-name {
+.lifecycle-name {
   font-weight: var(--font-medium);
   text-transform: capitalize;
 }
 
-.tier-name.tier-official {
+.lifecycle-name.lifecycle-stable {
   color: var(--color-cyan-400);
 }
 
-.tier-name.tier-community {
+.lifecycle-name.lifecycle-incubation {
+  color: light-dark(var(--color-amber-600), var(--color-amber-400));
+}
+
+.lifecycle-name.lifecycle-deprecated {
   color: var(--text-secondary);
 }
 
-.tier-count {
+.lifecycle-count {
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
-.tier-bar {
+.lifecycle-bar {
   width: 100%;
   height: 0.75rem;
   border-radius: var(--radius-full);
@@ -2292,29 +2295,33 @@ main {
   background: var(--bg-secondary);
 }
 
-.tier-bar::-webkit-meter-bar {
+.lifecycle-bar::-webkit-meter-bar {
   background: var(--bg-secondary);
   border-radius: var(--radius-full);
   border: none;
 }
 
-.tier-bar::-webkit-meter-optimum-value {
+.lifecycle-bar::-webkit-meter-optimum-value {
   background: var(--meter-color, var(--color-gray-500));
   border-radius: var(--radius-full);
   transition: width var(--transition-base);
 }
 
-.tier-bar::-moz-meter-bar {
+.lifecycle-bar::-moz-meter-bar {
   background: var(--meter-color, var(--color-gray-500));
   border-radius: var(--radius-full);
   border: none;
 }
 
-.tier-bar.tier-official {
+.lifecycle-bar.lifecycle-stable {
   --meter-color: var(--color-cyan-500);
 }
 
-.tier-bar.tier-community {
+.lifecycle-bar.lifecycle-incubation {
+  --meter-color: var(--color-amber-500);
+}
+
+.lifecycle-bar.lifecycle-deprecated {
   --meter-color: var(--color-gray-500);
 }
 

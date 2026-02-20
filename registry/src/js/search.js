@@ -46,7 +46,8 @@
 
   async function initPagefind() {
     if (pagefind === null) {
-      pagefind = await import('/pagefind/pagefind.js');
+      const base = window.__REGISTRY_BASE__ || '/';
+      pagefind = await import(base + 'pagefind/pagefind.js');
     }
     return pagefind;
   }

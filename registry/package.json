@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Apache Airflow Provider Registry",
   "scripts": {
-    "dev": "pnpm build && eleventy --serve --port=8080",
+    "dev": "REGISTRY_PATH_PREFIX=/ pnpm build && REGISTRY_PATH_PREFIX=/ eleventy --serve --port=8080",
     "build": "eleventy",
     "postbuild": "node scripts/build-pagefind-index.mjs"
   },

@@ -440,6 +440,35 @@ Key files in the project:
 
 Local development server runs at http://localhost:8080
 
+## Deployment Architecture
+
+The registry is built in the `apache/airflow` repo and served at `airflow.apache.org/registry/`.
+
+### How it works
+
+1. **Build**: The `registry-build.yml` workflow extracts metadata, builds the 11ty site, and syncs to S3
+2. **S3 buckets**: `{live|staging}-docs-airflow-apache-org/registry/` (same bucket as docs, different prefix)
+3. **Serving**: Apache HTTPD at `airflow.apache.org` rewrites `/registry/*` to CloudFront, which serves from S3
+
+### Path prefix
+
+- Production: `REGISTRY_PATH_PREFIX=/registry/` (default)
+- Local dev: `REGISTRY_PATH_PREFIX=/` (set automatically by `pnpm dev`)
+- All internal links use 11ty's `| url` filter, which prepends the prefix
+
+### Changes needed in `apache/airflow-site` repo (separate PR)
+
+1. **`.htaccess` rewrite rule** - Add a rule to proxy `/registry/*` through CloudFront:
+
+```apache
+RewriteRule ^registry/(.*)$ https://<cloudfront-distribution>.cloudfront.net/registry/$1 [P,L]
+```
+
+2. **Navigation link** - Add a "Registry" entry to the site header/nav in the Hugo templates,
+   pointing to `/registry/`.
+
+These changes mirror the existing `/docs/*` rewrite pattern.
+
 ## Troubleshooting
 
 ### Screenshots show different things than browser

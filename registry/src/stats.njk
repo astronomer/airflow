@@ -24,12 +24,12 @@ mainClass: statistics-page
           <dd>Total Modules</dd>
         </div>
         <div>
-          <dt>{{ statsData.tierCounts.official or 0 }}</dt>
-          <dd>Official Providers</dd>
+          <dt>{{ statsData.lifecycleCounts.stable or 0 }}</dt>
+          <dd>Stable Providers</dd>
         </div>
         <div>
-          <dt>{{ statsData.tierCounts.community or 0 }}</dt>
-          <dd>Community Providers</dd>
+          <dt>{{ statsData.lifecycleCounts.incubation or 0 }}</dt>
+          <dd>Incubating Providers</dd>
         </div>
       </dl>
     </section>
@@ -67,23 +67,23 @@ mainClass: statistics-page
     <!-- Two Column Section -->
     <div class="stats-columns">
       <!-- Tier Distribution -->
-      <section class="tier-distribution card">
+      <section class="lifecycle-distribution card">
         <header>
-          <h2>Providers by Tier</h2>
+          <h2>Providers by Lifecycle</h2>
         </header>
-        <div class="tier-stats">
-          {% for tierStat in statsData.tierStats %}
-          <div class="tier-stat">
-            <div class="tier-info">
-              <span class="tier-name tier-{{ tierStat.tier }}">{{ tierStat.tier | capitalize }}</span>
-              <span class="tier-count">{{ tierStat.count }} providers ({{ tierStat.percentage }}%)</span>
+        <div class="lifecycle-stats">
+          {% for lc in statsData.lifecycleStats %}
+          <div class="lifecycle-stat">
+            <div class="lifecycle-info">
+              <span class="lifecycle-name lifecycle-{{ lc.stage }}">{{ lc.stage | capitalize }}</span>
+              <span class="lifecycle-count">{{ lc.count }} providers ({{ lc.percentage }}%)</span>
             </div>
-            <meter class="tier-bar tier-{{ tierStat.tier }}"
-                   value="{{ tierStat.percentage }}"
+            <meter class="lifecycle-bar lifecycle-{{ lc.stage }}"
+                   value="{{ lc.percentage }}"
                    min="0"
                    max="100"
-                   aria-label="{{ tierStat.tier }} providers: {{ tierStat.percentage }}%">
-              {{ tierStat.percentage }}%
+                   aria-label="{{ lc.stage }} providers: {{ lc.percentage }}%">
+              {{ lc.percentage }}%
             </meter>
           </div>
           {% endfor %}
@@ -96,20 +96,14 @@ mainClass: statistics-page
           <h2>Quick Links</h2>
         </header>
         <nav class="access-links">
-          <a href="/providers" class="access-link">
+          <a href="{{ '/providers/' | url }}" class="access-link">
             <span>Browse All Providers</span>
             <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
           </a>
-          <a href="/providers?tier=official" class="access-link">
-            <span>Official Providers Only</span>
-            <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-            </svg>
-          </a>
-          <a href="/explore" class="access-link">
-            <span>Explore Provider Graph</span>
+          <a href="{{ '/explore/' | url }}" class="access-link">
+            <span>Explore by Category</span>
             <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
             </svg>
@@ -157,7 +151,7 @@ mainClass: statistics-page
             <tr class="ranking-row">
               <td class="rank-cell">{{ loop.index }}</td>
               <td class="provider-cell">
-                <a href="/providers/{{ provider.id }}" class="provider-link">
+                <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-link">
                   <div class="provider-logo">
                     {% if provider.logo %}
                     <img src="{{ provider.logo }}" alt="{{ provider.name }}">
@@ -166,7 +160,6 @@ mainClass: statistics-page
                     {% endif %}
                   </div>
                   <span class="provider-name">{{ provider.name }}</span>
-                  <span class="badge badge-{{ provider.tier }}">{{ provider.tier }}</span>
                 </a>
               </td>
               <td class="module-count operator">{{ provider.module_counts.operator or 0 }}</td>

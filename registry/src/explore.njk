@@ -47,7 +47,7 @@ mainClass: explore-page
         <p class="category-description">{{ category.description }}</p>
         <div class="provider-badges">
           {% for provider in categoryProviders | slice(0, 6) %}
-          <a href="/providers/{{ provider.id }}" class="provider-badge">
+          <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-badge">
             {% if provider.logo %}
             <img src="{{ provider.logo }}" alt="">
             {% endif %}
@@ -55,7 +55,7 @@ mainClass: explore-page
           </a>
           {% endfor %}
         </div>
-        <a href="/providers?category={{ category.id }}">
+        <a href="{{ '/providers/' | url }}?category={{ category.id }}">
           View all in {{ category.name }}
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
@@ -67,24 +67,24 @@ mainClass: explore-page
 
     <!-- Two Column Layout -->
     <div class="featured-sections">
-      <!-- Official Providers -->
+      <!-- Top Providers -->
       <section class="featured-section">
         <div class="section-header">
-          <h2>Official Providers</h2>
-          <span class="tier-badge tier-official">Pre-installed</span>
+          <h2>Top Providers</h2>
+          <span class="lifecycle-badge lifecycle-stable">Stable</span>
         </div>
         <div class="provider-list">
-          {% set officialProviders = [] %}
+          {% set topProviders = [] %}
           {% for provider in providers.providers %}
-            {% if provider.tier === 'official' %}
-              {% set counts = provider.module_counts or {} %}
-              {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
-              {% set officialProviders = (officialProviders.push({provider: provider, total: totalMods}), officialProviders) %}
+            {% set counts = provider.module_counts or {} %}
+            {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
+            {% if totalMods > 0 %}
+              {% set topProviders = (topProviders.push({provider: provider, total: totalMods}), topProviders) %}
             {% endif %}
           {% endfor %}
-          {% for item in officialProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
+          {% for item in topProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
           {% set provider = item.provider %}
-          <a href="/providers/{{ provider.id }}" class="provider-row">
+          <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-row">
             <div class="provider-logo">
               {% if provider.logo %}
               <img src="{{ provider.logo }}" alt="{{ provider.name }}">
@@ -100,31 +100,31 @@ mainClass: explore-page
           </a>
           {% endfor %}
         </div>
-        <a href="/providers?tier=official">
-          View all official providers →
+        <a href="{{ '/providers/' | url }}">
+          View all providers →
         </a>
       </section>
 
-      <!-- Community Highlights -->
+      <!-- Incubating Providers -->
       <section class="featured-section">
         <div class="section-header">
-          <h2>Community Highlights</h2>
-          <span class="tier-badge tier-community">Community</span>
+          <h2>Incubating Providers</h2>
+          <span class="lifecycle-badge lifecycle-incubation">Incubation</span>
         </div>
         <div class="provider-list">
-          {% set communityProviders = [] %}
+          {% set incubatingProviders = [] %}
           {% for provider in providers.providers %}
-            {% if provider.tier === 'community' %}
+            {% set lc = provider.lifecycle or "production" %}
+            {% if lc === 'incubation' %}
               {% set counts = provider.module_counts or {} %}
               {% set totalMods = (counts.operator or 0) + (counts.hook or 0) + (counts.sensor or 0) + (counts.trigger or 0) + (counts.transfer or 0) %}
-              {% if totalMods > 5 %}
-                {% set communityProviders = (communityProviders.push({provider: provider, total: totalMods}), communityProviders) %}
-              {% endif %}
+              {% set incubatingProviders = (incubatingProviders.push({provider: provider, total: totalMods}), incubatingProviders) %}
             {% endif %}
           {% endfor %}
-          {% for item in communityProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
+          {% if incubatingProviders.length > 0 %}
+          {% for item in incubatingProviders | sort(false, false, 'total') | reverse | slice(0, 4) %}
           {% set provider = item.provider %}
-          <a href="/providers/{{ provider.id }}" class="provider-row">
+          <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-row">
             <div class="provider-logo">
               {% if provider.logo %}
               <img src="{{ provider.logo }}" alt="{{ provider.name }}">
@@ -139,10 +139,10 @@ mainClass: explore-page
             <div class="module-count">{{ item.total }} {% if item.total === 1 %}module{% else %}modules{% endif %}</div>
           </a>
           {% endfor %}
+          {% else %}
+          <p class="empty-section">No incubating providers at this time.</p>
+          {% endif %}
         </div>
-        <a href="/providers?tier=community">
-          View all community providers →
-        </a>
       </section>
     </div>
 
@@ -150,8 +150,8 @@ mainClass: explore-page
     <div class="quick-links">
       <p>Looking for something specific?</p>
       <div class="link-buttons">
-        <a href="/providers">All Providers</a>
-        <a href="/stats">View Statistics</a>
+        <a href="{{ '/providers/' | url }}">All Providers</a>
+        <a href="{{ '/stats/' | url }}">View Statistics</a>
         <button id="open-search">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

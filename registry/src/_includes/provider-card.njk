@@ -1,4 +1,4 @@
-<a href="/providers/{{ provider.id }}" class="provider-card">
+<a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-card">
   <div class="logo">
     {% if provider.logo %}
     <img src="{{ provider.logo }}" alt="{{ provider.name }}">

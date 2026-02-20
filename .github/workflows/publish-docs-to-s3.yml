@@ -376,3 +376,13 @@ jobs:
           breeze release-management publish-docs-to-s3 --source-dir-path ${SOURCE_DIR_PATH} \
           --destination-location ${DESTINATION_LOCATION} --stable-versions \
           --exclude-docs "${EXCLUDE_DOCS}" --overwrite ${SKIP_WRITE_TO_STABLE_FOLDER}
+
+  build-and-publish-registry:
+    needs: [publish-docs-to-s3, build-info]
+    name: "Build & Publish Registry"
+    uses: ./.github/workflows/registry-build.yml
+    secrets:
+      DOCS_AWS_ACCESS_KEY_ID: ${{ secrets.DOCS_AWS_ACCESS_KEY_ID }}
+      DOCS_AWS_SECRET_ACCESS_KEY: ${{ secrets.DOCS_AWS_SECRET_ACCESS_KEY }}
+    with:
+      destination: ${{ needs.build-info.outputs.destination }}

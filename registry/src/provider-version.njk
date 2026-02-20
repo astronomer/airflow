@@ -39,15 +39,15 @@ eleventyComputed:
 <div class="container">
   {# Breadcrumb #}
   <nav class="breadcrumb">
-    <a href="/">Home</a>
+    <a href="{{ '/' | url }}">Home</a>
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
     </svg>
-    <a href="/providers">Providers</a>
+    <a href="{{ '/providers/' | url }}">Providers</a>
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
     </svg>
-    <a href="/providers/{{ pv.provider.id }}/">{{ pv.provider.name }}</a>
+    <a href="{{ '/providers/' | url }}{{ pv.provider.id }}/">{{ pv.provider.name }}</a>
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
     </svg>
@@ -59,7 +59,7 @@ eleventyComputed:
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
-    <span>You are viewing version <strong>{{ currentVersion }}</strong>. <a href="/providers/{{ pv.provider.id }}/{{ pv.provider.version }}/">View latest ({{ pv.provider.version }})</a></span>
+    <span>You are viewing version <strong>{{ currentVersion }}</strong>. <a href="{{ '/providers/' | url }}{{ pv.provider.id }}/{{ pv.provider.version }}/">View latest ({{ pv.provider.version }})</a></span>
   </div>
   {% endif %}
 
@@ -206,7 +206,7 @@ eleventyComputed:
       {% if pv.availableVersions.length > 1 %}
       <div class="install-option">
         <label for="version-select">Version:</label>
-        <select id="version-select" onchange="window.location.href='/providers/{{ pv.provider.id }}/' + this.value + '/'">
+        <select id="version-select" onchange="window.location.href='{{ '/providers/' | url }}{{ pv.provider.id }}/' + this.value + '/'">
           {% for v in pv.availableVersions %}
           <option value="{{ v }}"{% if v == currentVersion %} selected{% endif %}>{{ v }}{% if v == pv.provider.version %} (latest){% endif %}</option>
           {% endfor %}
@@ -385,7 +385,7 @@ eleventyComputed:
           {% for relatedId in pv.provider.related_providers %}
             {% for p in providers.providers %}
               {% if p.id === relatedId %}
-              <a href="/providers/{{ p.id }}/">{{ p.name }}</a>
+              <a href="{{ '/providers/' | url }}{{ p.id }}/">{{ p.name }}</a>
               {% endif %}
             {% endfor %}
           {% endfor %}
@@ -445,4 +445,4 @@ eleventyComputed:
   </div>
 </div>
 
-<script src="/js/provider-detail.js"></script>
+<script src="{{ '/js/provider-detail.js' | url }}"></script>

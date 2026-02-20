@@ -177,7 +177,6 @@ class Provider:
     name: str
     package_name: str
     description: str
-    tier: str = "community"  # core, partner, community
     lifecycle: str = "production"  # AIP-95: incubation, production, mature, deprecated
     logo: str | None = None
     version: str = ""
@@ -211,27 +210,6 @@ class Provider:
     source_url: str = ""
     pypi_url: str = ""
     last_updated: str = ""
-
-
-# Official providers (pre-installed with Airflow - from airflow-core/pyproject.toml)
-# These are the only providers bundled by default with Apache Airflow
-OFFICIAL_PROVIDERS = {
-    "common-compat",
-    "common-io",
-    "common-sql",
-    "smtp",
-    "standard",
-}
-
-# Partner providers (third-party maintained but verified)
-PARTNER_PROVIDERS: set[str] = set()
-
-
-def get_provider_tier(provider_id: str) -> str:
-    """Determine the tier of a provider."""
-    if provider_id in OFFICIAL_PROVIDERS:
-        return "official"
-    return "community"
 
 
 def parse_provider_yaml(yaml_path: Path) -> dict[str, Any]:
@@ -1021,7 +999,6 @@ def main():
             name=name,
             package_name=package_name,
             description=description,
-            tier=get_provider_tier(provider_id),
             lifecycle=provider_yaml.get("lifecycle", "production"),
             logo=logo,
             version=version,

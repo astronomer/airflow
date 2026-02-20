@@ -5,6 +5,9 @@ import * as pagefind from "pagefind";
 async function buildPagefindIndex() {
   console.log('Building PageFind index with custom records...');
 
+  const rawPrefix = process.env.REGISTRY_PATH_PREFIX || '/registry/';
+  const pathPrefix = rawPrefix.endsWith('/') ? rawPrefix : rawPrefix + '/';
+
   const providers = JSON.parse(fs.readFileSync('src/_data/providers.json', 'utf-8'));
   const modules = JSON.parse(fs.readFileSync('src/_data/modules.json', 'utf-8'));
 
@@ -22,7 +25,7 @@ async function buildPagefindIndex() {
 
   for (const provider of providers.providers) {
     await index.addCustomRecord({
-      url: `/providers/${provider.id}/${provider.version}/`,
+      url: `${pathPrefix}providers/${provider.id}/${provider.version}/`,
       content: `${provider.name} ${provider.description}`,
       language: 'en',
       meta: {
@@ -42,8 +45,8 @@ async function buildPagefindIndex() {
   for (const module of modules.modules) {
     const version = providerVersionMap[module.provider_id] || '';
     const url = version
-      ? `/providers/${module.provider_id}/${version}/#${module.id}`
-      : `/providers/${module.provider_id}/#${module.id}`;
+      ? `${pathPrefix}providers/${module.provider_id}/${version}/#${module.id}`
+      : `${pathPrefix}providers/${module.provider_id}/#${module.id}`;
 
     const content = `${module.name} ${module.name} ${module.name} ${module.short_description} ${module.provider_name} ${module.import_path}`;
 

@@ -92,6 +92,7 @@ module.exports = function(eleventyConfig) {
   });
 
   return {
+    pathPrefix: process.env.REGISTRY_PATH_PREFIX || "/registry/",
     dir: {
       input: "src",
       output: "_site",
