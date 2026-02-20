@@ -31,6 +31,7 @@
   let currentLifecycle = 'all';
   let currentCategory = 'all';
   let currentSearch = '';
+  let debounceTimer;
 
   function filterProviders() {
     let visibleCount = 0;
@@ -107,7 +108,8 @@
 
   searchInput.addEventListener('input', (e) => {
     currentSearch = e.target.value.trim();
-    filterProviders();
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filterProviders, 200);
   });
 
   lifecycleButtons.forEach(btn => {

@@ -15,24 +15,7 @@ mainClass: explore-page
     <!-- Category Cards -->
     <div class="category-grid">
       {% for category in exploreCategories %}
-      {% set categoryProviders = [] %}
-      {% for provider in providers.providers %}
-        {% if categoryProviders.length < 6 %}
-          {% for keyword in category.keywords %}
-            {% if (provider.id.includes(keyword) or keyword.includes(provider.id)) and categoryProviders.length < 6 %}
-              {% set alreadyAdded = false %}
-              {% for existing in categoryProviders %}
-                {% if existing.id === provider.id %}
-                  {% set alreadyAdded = true %}
-                {% endif %}
-              {% endfor %}
-              {% if not alreadyAdded %}
-                {% set categoryProviders = (categoryProviders.push(provider), categoryProviders) %}
-              {% endif %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      {% endfor %}
+      {% set categoryProviders = exploreCategoryProviders[category.id] or [] %}
 
       <article class="category-card color-{{ category.color }}">
         <div class="category-header">
