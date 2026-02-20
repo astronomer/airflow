@@ -42,7 +42,7 @@
         await navigator.clipboard.writeText(textToCopy);
 
         // Show success state
-        copyButton.innerHTML = '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" style="color:#4ade80"></path></svg>';
+        copyButton.innerHTML = '<svg class="icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" style="color:var(--color-green-400)"></path></svg>';
 
         // Reset after 2 seconds
         setTimeout(() => {

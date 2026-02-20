@@ -1619,7 +1619,7 @@ main {
   height: 1.5rem;
 }
 
-.category-card h3 {
+.category-card h2 {
   font-size: var(--text-base);
   font-weight: var(--font-semibold);
   color: var(--text-primary);

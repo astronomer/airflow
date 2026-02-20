@@ -17,20 +17,10 @@
  * under the License.
  */
 
-const fs = require("fs");
 const path = require("path");
 const providersData = require("./providers.json");
 const modulesData = require("./modules.json");
-
-function tryReadJson(filePath) {
-  if (!fs.existsSync(filePath)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
-  } catch (err) {
-    console.warn(`Skipping invalid ${filePath}: ${err.message}`);
-    return null;
-  }
-}
+const { tryReadJson } = require("./utils");
 
 module.exports = function () {
   const result = [];

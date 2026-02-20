@@ -17,18 +17,16 @@
  * under the License.
  */
 
-const path = require("path");
-const providersData = require("./providers.json");
-const { tryReadJson } = require("./utils");
+const fs = require("fs");
 
-module.exports = function () {
-  const result = {};
-  for (const provider of providersData.providers) {
-    const vDir = path.join(__dirname, "versions", provider.id, provider.version);
-    result[provider.id] = {
-      parameters: tryReadJson(path.join(vDir, "parameters.json")),
-      connections: tryReadJson(path.join(vDir, "connections.json")),
-    };
+function tryReadJson(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (err) {
+    console.warn(`Skipping invalid ${filePath}: ${err.message}`);
+    return null;
   }
-  return result;
-};
+}
+
+module.exports = { tryReadJson };
