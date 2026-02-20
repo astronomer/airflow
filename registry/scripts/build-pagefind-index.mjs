@@ -5,15 +5,13 @@ import * as pagefind from "pagefind";
 async function buildPagefindIndex() {
   console.log('Building PageFind index with custom records...');
 
-  const rawPrefix = process.env.REGISTRY_PATH_PREFIX || '/registry/';
-  const pathPrefix = rawPrefix.endsWith('/') ? rawPrefix : rawPrefix + '/';
-
   const providers = JSON.parse(fs.readFileSync('src/_data/providers.json', 'utf-8'));
   const modules = JSON.parse(fs.readFileSync('src/_data/modules.json', 'utf-8'));
 
-  const { index } = await pagefind.createIndex({
-    writePlayground: true
-  });
+  // URLs are stored WITHOUT the path prefix. Pagefind derives its basePath
+  // from its own import URL (e.g. /registry/pagefind/pagefind.js → /registry/)
+  // and prepends it to all result URLs automatically.
+  const { index } = await pagefind.createIndex({});
 
   const providerVersionMap = {};
   for (const provider of providers.providers) {
@@ -25,7 +23,7 @@ async function buildPagefindIndex() {
 
   for (const provider of providers.providers) {
     await index.addCustomRecord({
-      url: `${pathPrefix}providers/${provider.id}/${provider.version}/`,
+      url: `/providers/${provider.id}/${provider.version}/`,
       content: `${provider.name} ${provider.description}`,
       language: 'en',
       meta: {
@@ -45,8 +43,8 @@ async function buildPagefindIndex() {
   for (const module of modules.modules) {
     const version = providerVersionMap[module.provider_id] || '';
     const url = version
-      ? `${pathPrefix}providers/${module.provider_id}/${version}/#${module.id}`
-      : `${pathPrefix}providers/${module.provider_id}/#${module.id}`;
+      ? `/providers/${module.provider_id}/${version}/#${module.id}`
+      : `/providers/${module.provider_id}/#${module.id}`;
 
     const content = `${module.name} ${module.name} ${module.name} ${module.short_description} ${module.provider_name} ${module.import_path}`;
 

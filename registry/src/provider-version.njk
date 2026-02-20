@@ -68,7 +68,7 @@ eleventyComputed:
     <div class="top">
       <div class="logo">
         {% if pv.provider.logo %}
-        <img src="{{ pv.provider.logo }}" alt="{{ pv.provider.name }}" loading="lazy">
+        <img src="{{ pv.provider.logo | url }}" alt="{{ pv.provider.name }}" loading="lazy">
         {% else %}
         <span class="initial">{{ pv.provider.name[0] }}</span>
         {% endif %}

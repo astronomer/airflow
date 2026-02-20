@@ -49,7 +49,7 @@ mainClass: explore-page
           {% for provider in categoryProviders | slice(0, 6) %}
           <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-badge">
             {% if provider.logo %}
-            <img src="{{ provider.logo }}" alt="">
+            <img src="{{ provider.logo | url }}" alt="">
             {% endif %}
             <span>{{ provider.name }}</span>
           </a>
@@ -87,7 +87,7 @@ mainClass: explore-page
           <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-row">
             <div class="provider-logo">
               {% if provider.logo %}
-              <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+              <img src="{{ provider.logo | url }}" alt="{{ provider.name }}">
               {% else %}
               <span class="initial">{{ provider.name[0] }}</span>
               {% endif %}
@@ -127,7 +127,7 @@ mainClass: explore-page
           <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-row">
             <div class="provider-logo">
               {% if provider.logo %}
-              <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+              <img src="{{ provider.logo | url }}" alt="{{ provider.name }}">
               {% else %}
               <span class="initial">{{ provider.name[0] }}</span>
               {% endif %}

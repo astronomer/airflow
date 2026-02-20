@@ -159,7 +159,7 @@ mainClass: statistics-page
                 <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-link">
                   <div class="provider-logo">
                     {% if provider.logo %}
-                    <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+                    <img src="{{ provider.logo | url }}" alt="{{ provider.name }}">
                     {% else %}
                     <span class="initial">{{ provider.name | first }}</span>
                     {% endif %}
@@ -198,7 +198,7 @@ mainClass: statistics-page
                 <a href="{{ '/providers/' | url }}{{ provider.id }}/" class="provider-link">
                   <div class="provider-logo">
                     {% if provider.logo %}
-                    <img src="{{ provider.logo }}" alt="{{ provider.name }}">
+                    <img src="{{ provider.logo | url }}" alt="{{ provider.name }}">
                     {% else %}
                     <span class="initial">{{ provider.name | first }}</span>
                     {% endif %}
