@@ -111,6 +111,10 @@
     @apply bg-orange-500/20 text-orange-400 border border-orange-500/30;
   }
 
+  .badge-bundle {
+    @apply bg-sky-500/20 text-sky-400 border border-sky-500/30;
+  }
+
   .badge-decorator {
     @apply bg-fuchsia-500/20 text-fuchsia-400 border border-fuchsia-500/30;
   }
@@ -562,6 +566,11 @@ html.light .badge-trigger {
 html.light .badge-transfer {
   background-color: rgba(219, 39, 119, 0.15);
   border-color: rgba(219, 39, 119, 0.4);
+}
+
+html.light .badge-bundle {
+  background-color: rgba(14, 165, 233, 0.15);
+  border-color: rgba(14, 165, 233, 0.4);
 }
 
 html.light .badge-notifier {

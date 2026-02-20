@@ -337,12 +337,12 @@ eleventyComputed:
     {% endif %}
     {% if moduleCounts.secret > 0 %}
     <button class="module-tab" data-type="secret">
-      <span class="tab-icon secret">K</span> Secrets ({{ moduleCounts.secret }})
+      <span class="tab-icon secret">K</span> Secrets Backend ({{ moduleCounts.secret }})
     </button>
     {% endif %}
     {% if moduleCounts.logging > 0 %}
     <button class="module-tab" data-type="logging">
-      <span class="tab-icon logging">L</span> Log Handlers ({{ moduleCounts.logging }})
+      <span class="tab-icon logging">L</span> Log Handler ({{ moduleCounts.logging }})
     </button>
     {% endif %}
     {% if moduleCounts.executor > 0 %}

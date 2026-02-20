@@ -69,9 +69,10 @@ const typeLabels: Record<ModuleType, string> = {
   sensor: 'Sensors',
   trigger: 'Triggers',
   transfer: 'Transfers',
+  bundle: 'Bundles',
   notifier: 'Notifiers',
   secret: 'Secrets Backend',
-  logging: 'Log Handlers',
+  logging: 'Log Handler',
   executor: 'Executors',
   decorator: 'Decorators',
 };
@@ -85,6 +86,7 @@ const entityCounts = {
   sensor: provider.moduleCounts?.sensor || 0,
   trigger: provider.moduleCounts?.trigger || 0,
   transfer: provider.moduleCounts?.transfer || 0,
+  bundle: provider.moduleCounts?.bundle || 0,
   notifier: provider.moduleCounts?.notifier || 0,
   secret: provider.moduleCounts?.secret || 0,
   logging: provider.moduleCounts?.logging || 0,
@@ -193,6 +195,15 @@ const entityCounts = {
               <span class="text-xl font-bold text-pink-400">{entityCounts.transfer}</span>
             </div>
             <span class="text-xs text-gray-400">Transfers</span>
+          </div>
+        )}
+        {entityCounts.bundle > 0 && (
+          <div class="bg-navy-700/50 rounded-lg p-3 border border-sky-500/20">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="w-6 h-6 rounded bg-sky-500/20 text-sky-400 flex items-center justify-center text-xs font-bold">B</span>
+              <span class="text-xl font-bold text-sky-400">{entityCounts.bundle}</span>
+            </div>
+            <span class="text-xs text-gray-400">Bundles</span>
           </div>
         )}
         <!-- Total -->
@@ -435,6 +446,17 @@ const entityCounts = {
             </span>
           </button>
         )}
+        {entityCounts.bundle > 0 && (
+          <button
+            class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-sky-500/10 hover:text-sky-400 hover:border-sky-500/30"
+            data-type="bundle"
+          >
+            <span class="inline-flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded bg-sky-500/20 flex items-center justify-center text-xs font-bold text-sky-400">B</span>
+              Bundles ({entityCounts.bundle})
+            </span>
+          </button>
+        )}
         {entityCounts.notifier > 0 && (
           <button
             class="module-type-tab px-4 py-2 rounded-lg text-sm font-medium transition-all bg-navy-800 text-gray-400 border border-navy-600 hover:bg-indigo-500/10 hover:text-indigo-400 hover:border-indigo-500/30"
@@ -464,7 +486,7 @@ const entityCounts = {
           >
             <span class="inline-flex items-center gap-1.5">
               <span class="w-5 h-5 rounded bg-teal-500/20 flex items-center justify-center text-xs font-bold text-teal-400">L</span>
-              Log Handlers ({entityCounts.logging})
+              Log Handler ({entityCounts.logging})
             </span>
           </button>
         )}
@@ -628,6 +650,7 @@ const entityCounts = {
     sensor: { bg: 'bg-amber-500/20', text: 'text-amber-400', border: 'border-amber-500/30' },
     trigger: { bg: 'bg-purple-500/20', text: 'text-purple-400', border: 'border-purple-500/30' },
     transfer: { bg: 'bg-pink-500/20', text: 'text-pink-400', border: 'border-pink-500/30' },
+    bundle: { bg: 'bg-sky-500/20', text: 'text-sky-400', border: 'border-sky-500/30' },
     notifier: { bg: 'bg-indigo-500/20', text: 'text-indigo-400', border: 'border-indigo-500/30' },
     secret: { bg: 'bg-rose-500/20', text: 'text-rose-400', border: 'border-rose-500/30' },
     logging: { bg: 'bg-teal-500/20', text: 'text-teal-400', border: 'border-teal-500/30' },
@@ -644,7 +667,8 @@ const entityCounts = {
           'bg-blue-500/20', 'text-blue-400', 'border-blue-500/30',
           'bg-amber-500/20', 'text-amber-400', 'border-amber-500/30',
           'bg-purple-500/20', 'text-purple-400', 'border-purple-500/30',
-          'bg-pink-500/20', 'text-pink-400', 'border-pink-500/30');
+          'bg-pink-500/20', 'text-pink-400', 'border-pink-500/30',
+          'bg-sky-500/20', 'text-sky-400', 'border-sky-500/30');
         t.classList.add('bg-navy-800', 'text-gray-400', 'border-navy-600');
       });
 

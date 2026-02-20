@@ -41,7 +41,7 @@ export function getLifecycleDisplay(lifecycle: ProviderLifecycle): LifecycleDisp
 /**
  * Module type classification
  */
-export type ModuleType = 'operator' | 'hook' | 'sensor' | 'trigger' | 'transfer' | 'notifier' | 'secret' | 'logging' | 'executor' | 'decorator';
+export type ModuleType = 'operator' | 'hook' | 'sensor' | 'trigger' | 'transfer' | 'bundle' | 'notifier' | 'secret' | 'logging' | 'executor' | 'decorator';
 
 /**
  * Type icon mapping
@@ -52,6 +52,7 @@ export const MODULE_TYPE_ICONS: Record<ModuleType, string> = {
   sensor: 'S',
   trigger: 'T',
   transfer: 'X',
+  bundle: 'B',
   notifier: 'N',
   secret: 'K',  // Key
   logging: 'L',

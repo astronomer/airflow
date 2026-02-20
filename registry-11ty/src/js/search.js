@@ -24,6 +24,20 @@
   let currentResults = [];
   let searchId = 0;
 
+  const typeLabels = {
+    operator: 'Operator',
+    hook: 'Hook',
+    sensor: 'Sensor',
+    trigger: 'Trigger',
+    transfer: 'Transfer',
+    bundle: 'Bundle',
+    notifier: 'Notifier',
+    secret: 'Secrets Backend',
+    logging: 'Log Handler',
+    executor: 'Executor',
+    decorator: 'Decorator',
+  };
+
   const modal = document.getElementById('search-modal');
   const input = document.getElementById('search-input');
   const resultsContainer = document.getElementById('search-results');
@@ -90,7 +104,7 @@
           <div>
             <div>
               ${name}
-              ${moduleType ? `<span class="badge ${moduleType}">${moduleType}</span>` : ''}
+              ${moduleType ? `<span class="badge ${moduleType}">${typeLabels[moduleType] || moduleType}</span>` : ''}
             </div>
             <div>
               ${providerName ? `<span><svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg> ${providerName}</span>` : ''}
