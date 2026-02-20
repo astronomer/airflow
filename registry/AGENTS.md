@@ -344,49 +344,6 @@ The theme system uses the CSS `color-scheme` property and `light-dark()` functio
 1. First with light value as fallback for browsers without `light-dark()` support
 2. Then with `light-dark()` which overrides in supporting browsers
 
-## Screenshot Testing with shot-scraper
-
-### Installation & Usage
-
-```bash
-uvx shot-scraper shot <url> --width 1280 --height 2400 -o <output>.png
-uvx shot-scraper multi <config.yaml>
-```
-
-### Screenshot Directories
-
-```
-screenshots/
-├── baseline/        # Baseline screenshots for comparison
-│   ├── full-page-dark.png
-│   └── full-page-light.png
-└── current/        # Current version screenshots
-    ├── full-page-dark.png
-    └── full-page-light.png
-```
-
-### Light Mode Screenshots
-
-Light mode requires JavaScript to set the color-scheme property:
-
-```yaml
-- url: http://localhost:8080
-  output: current/full-page-light.png
-  width: 1280
-  height: 2400
-  javascript: |
-    new Promise(takeShot => {
-      document.documentElement.style.colorScheme = 'light';
-      setTimeout(() => {
-        takeShot();
-      }, 1000);
-    });
-```
-
-**Important**: The Promise pattern with `takeShot()` callback is required. The `wait` parameter doesn't work with JavaScript execution.
-
-## HTML Structure Examples
-
 ## Development Workflow
 
 ### Feature Development Checklist
@@ -397,15 +354,13 @@ When adding or modifying features:
 2. **Write semantic CSS** using cascade pattern
 3. **Add light/dark mode styles** for all elements
 4. **Test responsiveness** across different screen sizes
-5. **Take before/after screenshots** to document changes
-6. **Verify consistency** with existing design system
+5. **Verify consistency** with existing design system
 
 ### Common Issues
 
 - **Colors not switching in dark mode**: Ensure element uses computed theme variables like `var(--bg-primary)` or inline `light-dark()`
 - **Missing dark mode colors**: Check that theme variable has both `-light` and `-dark` variants defined in tokens.css
 - **Wrong border colors**: Check color tokens are indigo not gray
-- **Screenshot timing**: Use Promise pattern with 1000ms delay and set `colorScheme` property
 
 ## CSS Deletion Guidelines
 
@@ -470,14 +425,6 @@ RewriteRule ^registry/(.*)$ https://<cloudfront-distribution>.cloudfront.net/reg
 These changes mirror the existing `/docs/*` rewrite pattern.
 
 ## Troubleshooting
-
-### Screenshots show different things than browser
-
-This is a timing issue with shot-scraper:
-
-1. CSS transitions may be interfering - temporarily remove them
-2. Increase delay in Promise timeout
-3. Ensure wait happens AFTER class changes, not before
 
 ### Can't find where a class is used
 
