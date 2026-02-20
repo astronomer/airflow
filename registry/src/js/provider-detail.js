@@ -18,7 +18,9 @@
  */
 
 (function() {
-  var installText = document.getElementById('install-text');
+  var installPip = document.getElementById('install-pip');
+  var installUv = document.getElementById('install-uv');
+  var installReq = document.getElementById('install-requirements');
   var versionSelect = document.getElementById('version-select');
   var extrasSelect = document.getElementById('extras-select');
   var extraDepsInfo = document.getElementById('extra-deps-info');
@@ -30,9 +32,9 @@
   var moduleItems = document.querySelectorAll('.modules .module');
   var copyImportBtns = document.querySelectorAll('.copy-import');
 
-  if (!installText) return;
+  if (!installPip) return;
 
-  var packageName = installText.dataset.package;
+  var packageName = installPip.dataset.package;
 
   var extrasData = {};
   if (extrasDataEl) {
@@ -48,10 +50,31 @@
   var currentCategory = '';
   var currentSearch = '';
 
+  // Install tool tab persistence (shared key with homepage install-widget.js)
+  var installRadios = document.querySelectorAll('.install-tabs input[type="radio"][name="install-tool"]');
+  var savedTool = localStorage.getItem('installTool');
+  if (savedTool) {
+    var savedRadio = document.querySelector('.install-tabs input[value="' + savedTool + '"]');
+    if (savedRadio) {
+      savedRadio.checked = true;
+    }
+  }
+  installRadios.forEach(function(radio) {
+    radio.addEventListener('change', function() {
+      if (radio.checked) {
+        localStorage.setItem('installTool', radio.value);
+      }
+    });
+  });
+
   function updateInstallCommand() {
     var version = versionSelect ? versionSelect.value : '';
     var extraPart = currentExtra ? '[' + currentExtra + ']' : '';
-    installText.textContent = 'pip install ' + packageName + extraPart + (version ? '==' + version : '');
+    var versionPart = version ? '==' + version : '';
+    var pkg = packageName + extraPart + versionPart;
+    installPip.textContent = 'pip install ' + pkg;
+    installUv.textContent = 'uv pip install ' + pkg;
+    installReq.textContent = pkg;
   }
 
   if (versionSelect) {
@@ -141,24 +164,6 @@
       }
     });
   });
-
-  // Copy install command
-  var installCopy = document.querySelector('.install .copy');
-  if (installCopy) {
-    installCopy.addEventListener('click', async function() {
-      try {
-        await navigator.clipboard.writeText(installText.textContent);
-        var svg = installCopy.querySelector('svg');
-        var origHTML = svg.outerHTML;
-        svg.outerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:1rem;height:1rem"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
-        setTimeout(function() {
-          installCopy.querySelector('svg').outerHTML = origHTML;
-        }, 2000);
-      } catch (err) {
-        console.warn('Clipboard write failed:', err);
-      }
-    });
-  }
 
   // Module highlight from URL hash
   function highlightModule() {

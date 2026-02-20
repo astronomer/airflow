@@ -17,6 +17,11 @@
  * under the License.
  */
 
+/* Tokens & Base — @import must precede all style declarations */
+@import './tokens.css';
+@import './base/reset.css';
+@import './base/typography.css';
+
 /* Self-hosted fonts (previously loaded from Google Fonts CDN) */
 @font-face {
   font-family: 'Plus Jakarta Sans';
@@ -33,11 +38,6 @@
   font-display: swap;
   src: url('../fonts/jetbrains-mono-latin.woff2') format('woff2');
 }
-
-/* Tokens & Base */
-@import './tokens.css';
-@import './base/reset.css';
-@import './base/typography.css';
 
 /* Scrollbar */
 ::-webkit-scrollbar {
@@ -3002,15 +3002,32 @@ main {
   }
 }
 
-.provider-detail-page .install .label {
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+.provider-detail-page .install-tabs {
+  display: flex;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
+.provider-detail-page .install-tabs .tab {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.provider-detail-page .install-tabs .tab:hover {
+  color: var(--text-secondary);
+}
+
+.provider-detail-page .install-tabs .tab:has(input:checked) {
+  background: var(--bg-tertiary);
+  color: var(--color-cyan-400);
+}
+
+/* Base command box styles (before visibility rules so they don't override) */
 .provider-detail-page .install .command {
-  flex: 1;
-  display: flex;
   align-items: stretch;
   background: var(--bg-tertiary-light);
   background: light-dark(var(--bg-tertiary-light), var(--color-navy-900));
@@ -3018,6 +3035,19 @@ main {
   padding: 0;
   min-width: 0;
   overflow: hidden;
+  flex: 1;
+}
+
+/* Hide non-selected command boxes */
+.provider-detail-page .install .command[data-tool] {
+  display: none;
+}
+
+/* Show the command box matching the checked tab */
+.provider-detail-page .install-tabs:has([value="pip"]:checked) ~ .command[data-tool="pip"],
+.provider-detail-page .install-tabs:has([value="uv"]:checked) ~ .command[data-tool="uv"],
+.provider-detail-page .install-tabs:has([value="requirements"]:checked) ~ .command[data-tool="requirements"] {
+  display: flex;
 }
 
 .provider-detail-page .install .command code {

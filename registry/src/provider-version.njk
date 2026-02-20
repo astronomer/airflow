@@ -185,11 +185,30 @@ eleventyComputed:
     </div>
   </header>
 
-  {# Install Command with version and extras #}
+  {# Install Command with tool tabs, version and extras #}
   <section class="install card">
-    <span class="label">Install:</span>
-    <div class="command" data-copy-target="install-text">
-      <code id="install-text" data-package="{{ pv.provider.package_name }}">pip install {{ pv.provider.package_name }}=={{ currentVersion }}</code>
+    <div class="install-tabs">
+      <label class="tab">
+        <input type="radio" name="install-tool" value="pip" checked hidden>
+        <span>pip</span>
+      </label>
+      <label class="tab">
+        <input type="radio" name="install-tool" value="uv" hidden>
+        <span>uv</span>
+      </label>
+      <label class="tab">
+        <input type="radio" name="install-tool" value="requirements" hidden>
+        <span>requirements.txt</span>
+      </label>
+    </div>
+    <div class="command" data-tool="pip" data-copy-target="install-pip">
+      <code id="install-pip" data-package="{{ pv.provider.package_name }}">pip install {{ pv.provider.package_name }}=={{ currentVersion }}</code>
+    </div>
+    <div class="command" data-tool="uv" data-copy-target="install-uv">
+      <code id="install-uv">uv pip install {{ pv.provider.package_name }}=={{ currentVersion }}</code>
+    </div>
+    <div class="command" data-tool="requirements" data-copy-target="install-requirements">
+      <code id="install-requirements">{{ pv.provider.package_name }}=={{ currentVersion }}</code>
     </div>
     <div class="install-options">
       {% set extrasKeys = extras | keys %}

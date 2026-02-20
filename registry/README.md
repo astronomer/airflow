@@ -266,6 +266,11 @@ provider appears well in the registry:
   2. Add a "Registry" navigation link in the Hugo site header
   (Details documented in `AGENTS.md` under "Deployment Architecture")
 
+- [ ] **`robots.txt` for registry** — The registry needs a `robots.txt` allowing crawlers
+  to index `/registry/` pages. This must be configured in the
+  [airflow-site](https://github.com/apache/airflow-site) repo since it controls the
+  domain-level configuration at `airflow.apache.org`.
+
 ### UI / UX
 
 - [ ] **Wire up Explore page search button** — The "Search Modules" button on the
