@@ -21,174 +21,100 @@
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 **Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
 
-- [Draft Email: [DISCUSS] Apache Airflow Provider Registry](#draft-email-discuss-apache-airflow-provider-registry)
-  - [Background](#background)
-  - [The Problem](#the-problem)
-  - [The Solution](#the-solution)
-  - [Remaining Work](#remaining-work)
-  - [Try It Locally](#try-it-locally)
+- [Draft: dev list email](#draft-dev-list-email)
+  - [Why now](#why-now)
+  - [How it relates to the Astronomer Registry](#how-it-relates-to-the-astronomer-registry)
+  - [What it does](#what-it-does)
+  - [Remaining work](#remaining-work)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
-# Draft Email: [DISCUSS] Apache Airflow Provider Registry
+# Draft: dev list email
 
-**To:** dev@airflow.apache.org
-**Subject:** [DISCUSS] Apache Airflow Provider Registry — a searchable catalog of all providers and modules
+Subject: [DISCUSS] Apache Airflow Provider Registry: a searchable catalog of all providers and modules
+To: dev@airflow.apache.org
 
 ---
 
-Hi everyone,
+Hey all,
 
-I'd like to propose adding an official **Provider Registry** to the Apache Airflow
-project — a searchable, static catalog of all Airflow providers and their modules,
-deployed at `airflow.apache.org/registry/`.
+tl;dr: I'm proposing an official Provider Registry for the Airflow project,
+deployed at airflow.apache.org/registry/. Preview is up at TODO_STAGING_URL
+-- take a look and let me know what you think.
 
-## Background
+PR: TODO_PR_URL
 
-Many of you are familiar with the [Astronomer Registry](https://registry.astronomer.io),
-which has served as the primary discovery hub for Airflow providers for several years.
-As we roll out the new **provider governance model** (AIP-95 lifecycle stages —
-incubation, production, mature, deprecated), we need proper tooling under the Apache
-project to surface these stages and give the governance work immediate visibility.
+## Why now
 
-This new registry is designed to **replace the Astronomer Registry** with an
-official, community-owned alternative hosted on `airflow.apache.org`. The key
-differences from the Astronomer Registry:
+With AIP-95 approved, Airflow now has a formal provider lifecycle --
+incubation, production, mature, deprecated. That opens the door for
+accepting more community-built providers and giving them an official home,
+while setting clear expectations about maturity and support. But lifecycle
+stages only work if users can actually see them. Right now there's no place
+on airflow.apache.org where someone can browse providers, check their
+lifecycle stage, or discover what modules they ship.
 
-- **Owned by the Apache Airflow project** — not a third-party dependency
-- **Auto-generated from `provider.yaml`** — always in sync with the repo, no manual
-  curation or separate data pipeline
-- **Built to surface AIP-95 governance** — lifecycle stages are first-class citizens
-  in the UI (filter, badge, explore by stage)
-- **Discovery-focused** — acts as a discovery mechanism and links out to API reference
-  and user guides, rather than trying to host everything in one place
-- **Mobile-friendly** and progressively enhanced (works without JavaScript)
+This registry fills that gap. It gives the PMC a tool to communicate
+provider maturity to users, and it gives the community an official way
+to surface new providers -- clearly labeled with their lifecycle stage.
 
-## The Problem
+## How it relates to the Astronomer Registry
 
-Airflow has **99 provider packages** containing **1,648 modules** (operators, hooks,
-sensors, triggers, transfers, executors, notifiers, and more). Today, discovering what's
-available requires reading individual provider docs, searching PyPI, or browsing the
-source tree. There's no official Apache-hosted place to:
+Many of you know the Astronomer Registry (registry.astronomer.io), which
+has been the go-to for discovering Airflow providers for years. Big thanks
+to Astronomer and Josh Fell for building and maintaining it. This new
+registry is designed to be a community-owned successor on
+airflow.apache.org, with the eventual goal of redirecting
+registry.astronomer.io traffic here once it's stable.
 
-- Search across all providers and modules in one place
-- Compare providers by module count, download popularity, or lifecycle stage
-- Explore providers by category (Cloud, Databases, AI/ML, etc.)
-- See at a glance which providers are stable, incubating, or deprecated (AIP-95)
+## What it does
 
-## The Solution
+The registry currently catalogs 99 providers and 1,648 modules across all
+11 module types (operators, hooks, sensors, triggers, transfers, executors,
+notifiers, secret backends, logging handlers, DAG bundles, and decorators).
 
-The Provider Registry is a **static site** built with [Eleventy](https://www.11ty.dev/)
-that auto-generates from the existing `provider.yaml` files in the repo. No manual
-curation required — when a provider is added or updated, the registry picks it up
-automatically.
+It's built with Eleventy (thanks Ash for the suggestion and prototyping
+an approach with it) and auto-generated directly from the
+provider.yaml files in the repo -- no separate data pipeline, no manual
+curation. When a provider is added or updated, the next CI build picks it
+up automatically.
 
-### Key Features
+A few things you can do with it:
 
-| Feature | Description |
-|---------|-------------|
-| **Full-text search** | Cmd+K search across all providers and modules (powered by Pagefind) |
-| **Provider cards** | Each provider shows module counts, download stats, lifecycle stage, and a visual breakdown of module types |
-| **Category browsing** | Explore by use case: Cloud Platforms, Databases, AI & ML, Data Processing, Messaging, Orchestration, Data Warehouses |
-| **Statistics page** | Aggregate stats — module type distribution, lifecycle breakdown, top providers by module count |
-| **Provider detail pages** | Per-version pages with module listings, connection types, dependencies, install commands, and parameters |
-| **AIP-95 lifecycle badges** | Visual indicators for incubation/stable/deprecated status |
-| **JSON API endpoints** | Programmatic access at `/api/providers.json`, `/api/modules.json`, etc. — useful for AI agents and tooling |
-| **Dark/light mode** | Theme toggle with CSS custom properties |
-| **Zero JS requirement** | Works without JavaScript; search and filters are progressive enhancement |
+   - Search across all providers and modules (Cmd+K, powered by Pagefind)
+   - Browse by category (Cloud, Databases, AI & ML, etc.)
+   - Filter/sort by lifecycle stage, downloads, module count
+   - Explore provider detail pages with per-version module listings,
+     connection types, parameters, and install commands
+   - Access JSON API endpoints (/api/providers.json, /api/modules.json)
+     for programmatic access -- useful for AI agents and tooling
 
-### Module Types Tracked
+The design is deliberately discovery-first: it links out to the API
+reference docs and user guides rather than hosting everything itself. This
+avoids duplicating content between provider docs and registry entries.
 
-The registry extracts and displays all 11 module types from providers:
+CI/CD is integrated with our existing docs pipeline and syncs to S3
+automatically. Nothing in provider code, provider.yaml schemas, core
+Airflow, or the docs build is changed by this.
 
-- Operators (845), Hooks (343), Triggers (161), Sensors (157), Transfers (90)
-- Decorators (17), Notifiers (12), Logging handlers (9), Secret backends (6),
-  Executors (5), DAG Bundles (3)
+## Remaining work
 
-### How It Works
+Still to do after this lands:
 
-```
-provider.yaml files (providers/*/provider.yaml)
-        │
-        ▼
-extract_metadata.py     ← Parses YAML, introspects Python modules via AST,
-        │                  fetches PyPI stats/dates, resolves logos, computes
-        │                  quality scores, determines AIP-95 lifecycle
-        ▼
-registry/src/_data/     ← Generated JSON files
-        │
-        ▼
-Eleventy build          ← Generates static HTML + Pagefind search index
-        │
-        ▼
-S3 / CloudFront         ← Deployed to airflow.apache.org/registry/
-```
+   - apache/airflow-site PR for .htaccess rewrite and a "Registry" nav link
+   - Redirect registry.astronomer.io traffic once the official one is stable
 
-The extraction script:
+Future ideas (will create GH issues):
 
-1. Walks every `providers/*/provider.yaml`
-2. Introspects Python modules via AST parsing to extract class names and docstrings
-3. Fetches download stats from pypistats.org and release dates from PyPI
-4. Resolves provider logos from `docs/integration-logos/` directories
-5. Computes a quality score (weighted composite of module count, downloads, docs, breadth)
-6. Writes `providers.json`, `modules.json`, and `search-index.json`
+   - Explicit categories in provider.yaml (currently keyword-based matching)
+   - LLM-friendly exports (llms.txt, "Copy for AI" buttons, etc.)
+   - and many more – but I think the current state is valuable enough already
 
-### CI/CD Integration
+I'd appreciate feedback and reviews!
 
-- **Automated builds**: A reusable GitHub Actions workflow (`registry-build.yml`)
-  extracts metadata, builds the site, and syncs to S3
-- **Integrated with docs pipeline**: The existing `publish-docs-to-s3.yml` workflow
-  calls the registry build as a post-publish step
-- **Manual trigger**: Can be rebuilt independently via `workflow_dispatch`
-
-### What's in the PR
-
-The PR adds:
-
-- `registry/` — Eleventy site (templates, CSS, JS, config)
-- `dev/registry/extract_metadata.py` — Metadata extraction script
-- `.github/workflows/registry-build.yml` — CI/CD workflow
-- Provider logos in `providers/*/docs/integration-logos/`
-- Updates to `.github/workflows/publish-docs-to-s3.yml` for integration
-- Updates to `.gitignore` for generated data files
-
-### What's NOT Changed
-
-- No changes to any provider code, `provider.yaml` schemas, or core Airflow
-- No new Python dependencies for Airflow itself (extraction uses only `pyyaml`)
-- No changes to existing documentation build
-
-## Remaining Work
-
-A few items are tracked as future enhancements:
-
-- **`apache/airflow-site` PR** needed to add `.htaccess` rewrite for `/registry/*`
-  and a navigation link in the site header
-- **LLM-friendly exports** — `llms.txt` and "Copy for AI" buttons for use with MCP
-  servers, AI CLI tools, and IDEs
-- **Dark mode** CSS may need polish across all components
-- **Category definitions** in `provider.yaml` (currently keyword-based matching)
-- **Dynamic homepage stats** (some counters are currently hardcoded)
-- **Deprecate Astronomer Registry** — once the official registry is live, the
-  Astronomer Registry at `registry.astronomer.io` can be sunset
-
-## Try It Locally
-
-```bash
-# Extract metadata
-python dev/registry/extract_metadata.py
-
-# Install and run
-cd registry && pnpm install && pnpm dev
-# Open http://localhost:8080
-```
-
-I'd love to hear your thoughts on the approach, feature set, and any concerns before
-we merge this. Happy to set up a staging deployment for review.
-
-Thanks,
+Regards,
 Kaxil
 
 ---
 
-*This is a draft. Please review and adjust before sending.*
+*Draft -- adjust TODO_STAGING_URL and TODO_PR_URL before sending.*
