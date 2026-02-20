@@ -1,6 +1,6 @@
 ---
 import type { Provider } from '../types';
-import { formatDownloads } from '../types';
+import { formatDownloads, getLifecycleDisplay } from '../types';
 
 // Use Astro's base URL for all internal links
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -11,9 +11,12 @@ interface Props {
 
 const { provider } = Astro.props;
 
-const tierColors: Record<string, string> = {
-  core: 'badge-core',
-  community: 'badge-community',
+const lifecycleDisplay = getLifecycleDisplay(provider.lifecycle || 'production');
+const showLifecycleBadge = lifecycleDisplay !== 'stable';
+
+const lifecycleBadgeClass: Record<string, string> = {
+  incubation: 'badge-incubation',
+  deprecated: 'badge-deprecated',
 };
 
 // Calculate module type counts and total
@@ -52,9 +55,11 @@ const getPercent = (val: number) => totalModules > 0 ? (val / totalModules) * 10
       <!-- Header -->
       <div class="flex items-center gap-2 mb-1">
         <h3 class="font-semibold text-lg text-gray-100 truncate">{provider.name}</h3>
-        <span class={`px-2 py-0.5 text-xs font-medium rounded-full ${tierColors[provider.tier]}`}>
-          {provider.tier}
-        </span>
+        {showLifecycleBadge && (
+          <span class={`px-2 py-0.5 text-xs font-medium rounded-full ${lifecycleBadgeClass[lifecycleDisplay]}`}>
+            {lifecycleDisplay}
+          </span>
+        )}
       </div>
 
       <!-- Package name -->

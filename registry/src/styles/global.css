@@ -85,6 +85,15 @@
     @apply bg-gray-500/20 text-gray-400 border border-gray-500/30;
   }
 
+  /* Lifecycle badges (AIP-95) */
+  .badge-incubation {
+    @apply bg-amber-500/20 text-amber-400 border border-amber-500/30;
+  }
+
+  .badge-deprecated {
+    @apply bg-gray-500/20 text-gray-400 border border-gray-500/30;
+  }
+
   /* New module type badges */
   .badge-notifier {
     @apply bg-indigo-500/20 text-indigo-400 border border-indigo-500/30;

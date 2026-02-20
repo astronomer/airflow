@@ -180,6 +180,7 @@ class Provider:
     package_name: str
     description: str
     tier: str = "community"  # core, partner, community
+    lifecycle: str = "production"  # AIP-95: incubation, production, mature, deprecated
     logo: str | None = None
     version: str = ""
     versions: list[str] = field(default_factory=list)
@@ -1023,6 +1024,7 @@ def main():
             package_name=package_name,
             description=description,
             tier=get_provider_tier(provider_id),
+            lifecycle=provider_yaml.get("lifecycle", "production"),
             logo=logo,
             version=version,
             versions=versions[:10],  # Keep last 10 versions

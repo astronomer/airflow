@@ -23,6 +23,22 @@
 export type ProviderTier = 'official' | 'community';
 
 /**
+ * Provider lifecycle stage per AIP-95
+ */
+export type ProviderLifecycle = 'incubation' | 'production' | 'mature' | 'deprecated';
+
+/**
+ * Display lifecycle stage (collapses production + mature into "stable")
+ */
+export type LifecycleDisplay = 'stable' | 'incubation' | 'deprecated';
+
+export function getLifecycleDisplay(lifecycle: ProviderLifecycle): LifecycleDisplay {
+  if (lifecycle === 'incubation') return 'incubation';
+  if (lifecycle === 'deprecated') return 'deprecated';
+  return 'stable';
+}
+
+/**
  * Module type classification
  */
 export type ModuleType = 'operator' | 'hook' | 'sensor' | 'trigger' | 'transfer' | 'notifier' | 'secret' | 'logging' | 'executor' | 'decorator';
@@ -52,6 +68,7 @@ export interface Provider {
   packageName: string;
   description: string;
   tier: ProviderTier;
+  lifecycle: ProviderLifecycle;
   logo?: string;
 
   // Version info

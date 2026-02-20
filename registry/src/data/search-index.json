@@ -15,6 +15,13 @@
   },
   {
     "type": "provider",
+    "id": "standard",
+    "name": "Standard",
+    "description": "Airflow Standard Provider",
+    "url": "/providers/standard"
+  },
+  {
+    "type": "provider",
     "id": "microsoft-azure",
     "name": "Microsoft Azure",
     "description": "Microsoft Azure",
@@ -54,13 +61,6 @@
     "name": "Alibaba",
     "description": "Alibaba Cloud integration (including Alibaba Cloud).",
     "url": "/providers/alibaba"
-  },
-  {
-    "type": "provider",
-    "id": "standard",
-    "name": "Standard",
-    "description": "Airflow Standard Provider",
-    "url": "/providers/standard"
   },
   {
     "type": "provider",

@@ -1,6 +1,8 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProviderCard from '../../components/ProviderCard.astro';
+import { getLifecycleDisplay } from '../../types';
+import type { ProviderLifecycle } from '../../types';
 import providersData from '../../data/providers.json';
 
 // Transform snake_case keys to camelCase for the frontend
@@ -20,8 +22,7 @@ const transformProvider = (p: any) => ({
 
 const providers = providersData.providers.map(transformProvider);
 
-// Get unique tiers
-const tiers = ['all', 'official', 'community'] as const;
+const lifecycleFilters = ['all', 'stable', 'incubation', 'deprecated'] as const;
 ---
 
 <BaseLayout title="Providers" description="Browse all Apache Airflow providers">
@@ -49,18 +50,18 @@ const tiers = ['all', 'official', 'community'] as const;
         </div>
       </div>
 
-      <!-- Tier filter -->
+      <!-- Lifecycle filter -->
       <div class="flex items-center gap-2">
-        <span class="text-sm text-gray-500">Tier:</span>
+        <span class="text-sm text-gray-500">Lifecycle:</span>
         <div class="flex items-center gap-1 bg-navy-800 border border-navy-600 rounded-lg p-1">
-          {tiers.map((tier) => (
+          {lifecycleFilters.map((lf) => (
             <button
-              class={`tier-filter px-3 py-1.5 text-sm rounded-md transition-colors ${
-                tier === 'all' ? 'bg-cyan-500 text-navy-900 font-medium' : 'text-gray-400 hover:text-white'
+              class={`lifecycle-filter px-3 py-1.5 text-sm rounded-md transition-colors ${
+                lf === 'all' ? 'bg-cyan-500 text-navy-900 font-medium' : 'text-gray-400 hover:text-white'
               }`}
-              data-tier={tier}
+              data-lifecycle={lf}
             >
-              {tier.charAt(0).toUpperCase() + tier.slice(1)}
+              {lf.charAt(0).toUpperCase() + lf.slice(1)}
             </button>
           ))}
         </div>
@@ -81,7 +82,7 @@ const tiers = ['all', 'official', 'community'] as const;
     <!-- Provider grid -->
     <div id="provider-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
       {providers.map((provider) => (
-        <div class="provider-item" data-tier={provider.tier} data-name={provider.name.toLowerCase()} data-downloads={provider.pypiDownloads.monthly} data-score={provider.qualityScore}>
+        <div class="provider-item" data-lifecycle={getLifecycleDisplay((provider.lifecycle || 'production') as ProviderLifecycle)} data-name={provider.name.toLowerCase()} data-downloads={provider.pypiDownloads.monthly} data-score={provider.qualityScore}>
           <ProviderCard provider={provider} />
         </div>
       ))}
@@ -99,26 +100,26 @@ const tiers = ['all', 'official', 'community'] as const;
 
 <script>
   const searchInput = document.getElementById('provider-search') as HTMLInputElement;
-  const tierButtons = document.querySelectorAll('.tier-filter');
+  const lifecycleButtons = document.querySelectorAll('.lifecycle-filter');
   const sortSelect = document.getElementById('provider-sort') as HTMLSelectElement;
   const providerGrid = document.getElementById('provider-grid');
   const emptyState = document.getElementById('empty-state');
   const providerItems = document.querySelectorAll('.provider-item') as NodeListOf<HTMLElement>;
 
-  let currentTier = 'all';
+  let currentLifecycle = 'all';
   let currentSearch = '';
 
   function filterAndSort() {
     let visibleCount = 0;
 
     providerItems.forEach((item) => {
-      const tier = item.dataset.tier;
+      const lifecycle = item.dataset.lifecycle;
       const name = item.dataset.name || '';
 
-      const matchesTier = currentTier === 'all' || tier === currentTier;
+      const matchesLifecycle = currentLifecycle === 'all' || lifecycle === currentLifecycle;
       const matchesSearch = name.includes(currentSearch.toLowerCase());
 
-      if (matchesTier && matchesSearch) {
+      if (matchesLifecycle && matchesSearch) {
         item.style.display = 'block';
         visibleCount++;
       } else {
@@ -126,7 +127,6 @@ const tiers = ['all', 'official', 'community'] as const;
       }
     });
 
-    // Show/hide empty state
     if (emptyState && providerGrid) {
       if (visibleCount === 0) {
         emptyState.classList.remove('hidden');
@@ -138,23 +138,21 @@ const tiers = ['all', 'official', 'community'] as const;
     }
   }
 
-  // Search handler
   searchInput?.addEventListener('input', (e) => {
     currentSearch = (e.target as HTMLInputElement).value;
     filterAndSort();
   });
 
-  // Tier filter handler
-  tierButtons.forEach((btn) => {
+  lifecycleButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
-      tierButtons.forEach((b) => {
+      lifecycleButtons.forEach((b) => {
         b.classList.remove('bg-cyan-500', 'text-navy-900', 'font-medium');
         b.classList.add('text-gray-400');
       });
       btn.classList.add('bg-cyan-500', 'text-navy-900', 'font-medium');
       btn.classList.remove('text-gray-400');
 
-      currentTier = (btn as HTMLElement).dataset.tier || 'all';
+      currentLifecycle = (btn as HTMLElement).dataset.lifecycle || 'all';
       filterAndSort();
     });
   });

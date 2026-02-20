@@ -1,8 +1,8 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ModuleCard from '../../components/ModuleCard.astro';
-import { formatDownloads, MODULE_TYPE_ICONS } from '../../types';
-import type { ModuleType } from '../../types';
+import { formatDownloads, MODULE_TYPE_ICONS, getLifecycleDisplay } from '../../types';
+import type { ModuleType, ProviderLifecycle } from '../../types';
 import providersData from '../../data/providers.json';
 import modulesData from '../../data/modules.json';
 
@@ -55,9 +55,12 @@ if (!provider) {
   return Astro.redirect('/404');
 }
 
-const tierColors: Record<string, string> = {
-  official: 'badge-official',
-  community: 'badge-community',
+const lifecycleDisplay = getLifecycleDisplay((provider.lifecycle || 'production') as ProviderLifecycle);
+const showLifecycleBadge = lifecycleDisplay !== 'stable';
+
+const lifecycleBadgeClass: Record<string, string> = {
+  incubation: 'badge-incubation',
+  deprecated: 'badge-deprecated',
 };
 
 const typeLabels: Record<ModuleType, string> = {
@@ -124,9 +127,11 @@ const entityCounts = {
         <div class="flex-1">
           <div class="flex items-center gap-3 mb-2">
             <h1 class="text-2xl font-bold text-gray-100">{provider.name}</h1>
-            <span class={`px-2.5 py-1 text-sm font-medium rounded-full ${tierColors[provider.tier]}`}>
-              {provider.tier}
-            </span>
+            {showLifecycleBadge && (
+              <span class={`px-2.5 py-1 text-sm font-medium rounded-full ${lifecycleBadgeClass[lifecycleDisplay]}`}>
+                {lifecycleDisplay}
+              </span>
+            )}
           </div>
           <p class="text-sm text-gray-500 font-mono mb-2">{provider.packageName}</p>
           <p class="text-gray-400 max-w-3xl">{provider.description}</p>
