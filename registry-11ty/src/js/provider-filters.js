@@ -21,31 +21,28 @@
 (function() {
   // Elements
   const searchInput = document.getElementById('provider-search');
-  const tierButtons = document.querySelectorAll('.tier-btn');
+  const lifecycleButtons = document.querySelectorAll('.lifecycle-btn');
   const sortSelect = document.getElementById('provider-sort');
   const providerGrid = document.getElementById('provider-grid');
   const emptyState = document.getElementById('empty-state');
   const providerItems = document.querySelectorAll('.provider-item');
 
-  // Exit if elements don't exist (not on providers page)
   if (!searchInput || !providerGrid || !emptyState) return;
 
-  // State
-  let currentTier = 'all';
+  let currentLifecycle = 'all';
   let currentSearch = '';
 
-  // Filter and count visible providers
   function filterProviders() {
     let visibleCount = 0;
 
     providerItems.forEach(item => {
-      const tier = item.dataset.tier;
+      const lifecycle = item.dataset.lifecycle;
       const name = item.dataset.name || '';
 
-      const matchesTier = currentTier === 'all' || tier === currentTier;
+      const matchesLifecycle = currentLifecycle === 'all' || lifecycle === currentLifecycle;
       const matchesSearch = name.includes(currentSearch.toLowerCase());
 
-      if (matchesTier && matchesSearch) {
+      if (matchesLifecycle && matchesSearch) {
         item.style.display = 'block';
         visibleCount++;
       } else {
@@ -53,7 +50,6 @@
       }
     });
 
-    // Toggle empty state
     if (visibleCount === 0) {
       emptyState.style.display = 'block';
       providerGrid.style.display = 'none';
@@ -63,21 +59,20 @@
     }
   }
 
-  // Search handler
   searchInput.addEventListener('input', (e) => {
     currentSearch = e.target.value.trim();
     filterProviders();
   });
 
-  // Tier filter handler
-  tierButtons.forEach(btn => {
+  lifecycleButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      // Update active state
-      tierButtons.forEach(b => b.classList.remove('active'));
+      lifecycleButtons.forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-pressed', 'false');
+      });
       btn.classList.add('active');
-
-      // Update filter
-      currentTier = btn.dataset.tier;
+      btn.setAttribute('aria-pressed', 'true');
+      currentLifecycle = btn.dataset.lifecycle;
       filterProviders();
     });
   });

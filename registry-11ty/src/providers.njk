@@ -22,13 +22,14 @@ mainClass: providers-page
         <input id="provider-search" type="text" placeholder="Search providers..." aria-label="Search providers">
       </div>
 
-      <!-- Tier Filter -->
+      <!-- Lifecycle Filter -->
       <div class="filter-group">
-        <label>Tier:</label>
-        <div class="tier-buttons">
-          <button class="tier-btn active" data-tier="all">All</button>
-          <button class="tier-btn" data-tier="official">Official</button>
-          <button class="tier-btn" data-tier="community">Community</button>
+        <label id="lifecycle-label">Lifecycle:</label>
+        <div class="lifecycle-buttons" role="group" aria-labelledby="lifecycle-label">
+          <button class="lifecycle-btn active" data-lifecycle="all" aria-pressed="true">All</button>
+          <button class="lifecycle-btn" data-lifecycle="stable" aria-pressed="false">Stable</button>
+          <button class="lifecycle-btn" data-lifecycle="incubation" aria-pressed="false">Incubation</button>
+          <button class="lifecycle-btn" data-lifecycle="deprecated" aria-pressed="false">Deprecated</button>
         </div>
       </div>
 
@@ -47,8 +48,10 @@ mainClass: providers-page
     <!-- Provider Grid -->
     <ul id="provider-grid" class="provider-grid">
       {% for provider in providers.providers %}
+      {% set lc = provider.lifecycle or "production" %}
+      {% set lcDisplay = "incubation" if lc == "incubation" else ("deprecated" if lc == "deprecated" else "stable") %}
       <li class="provider-item"
-          data-tier="{{ provider.tier }}"
+          data-lifecycle="{{ lcDisplay }}"
           data-name="{{ provider.name | lower }}"
           data-downloads="{{ provider.pypi_downloads.monthly }}"
           data-score="{{ provider.quality_score or 0 }}"

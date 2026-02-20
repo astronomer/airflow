@@ -76,7 +76,11 @@ eleventyComputed:
       <div class="details">
         <div class="title-row">
           <h1>{{ pv.provider.name }}</h1>
-          <span class="tier-badge tier-{{ pv.provider.tier }}">{{ pv.provider.tier }}</span>
+          {% set lc = pv.provider.lifecycle or "production" %}
+          {% set lcDisplay = "incubation" if lc == "incubation" else ("deprecated" if lc == "deprecated" else "stable") %}
+          {% if lcDisplay != "stable" %}
+          <span class="lifecycle-badge lifecycle-{{ lcDisplay }}">{{ lcDisplay }}</span>
+          {% endif %}
         </div>
         <p class="package-name">{{ pv.provider.package_name }}</p>
         <p class="description">{{ pv.provider.description }}</p>
@@ -357,7 +361,7 @@ eleventyComputed:
   <div class="modules-layout">
     {# Sidebar #}
     <aside class="modules-sidebar">
-      {% if pv.isLatest and pv.provider.categories and pv.provider.categories.length > 0 %}
+      {% if pv.provider.categories and pv.provider.categories.length > 0 %}
       <div class="sidebar-section card">
         <h3>Categories</h3>
         <nav class="category-nav">
