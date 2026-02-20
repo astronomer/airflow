@@ -98,6 +98,35 @@
   height: 2rem;
 }
 
+#site-header .logo-dark {
+  display: none;
+}
+
+:root[style*="color-scheme: dark"] #site-header .logo-light {
+  display: none;
+}
+
+:root[style*="color-scheme: dark"] #site-header .logo-dark {
+  display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+  #site-header .logo-light {
+    display: none;
+  }
+  #site-header .logo-dark {
+    display: block;
+  }
+}
+
+:root[style*="color-scheme: light"] #site-header .logo-light {
+  display: block;
+}
+
+:root[style*="color-scheme: light"] #site-header .logo-dark {
+  display: none;
+}
+
 #site-header .wordmark::before {
   content: "|";
   margin-right: var(--space-2);
