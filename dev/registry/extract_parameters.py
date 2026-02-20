@@ -27,8 +27,7 @@ Usage:
     breeze run python dev/registry/extract_parameters.py
 
 Output:
-    - registry-11ty/src/_data/versions/{provider_id}/{version}/parameters.json
-    - registry/src/data/versions/{provider_id}/{version}/parameters.json
+    - registry/src/_data/versions/{provider_id}/{version}/parameters.json
     - dev/registry/output/versions/{provider_id}/{version}/parameters.json
 """
 
@@ -47,27 +46,24 @@ from pathlib import Path
 AIRFLOW_ROOT = Path(__file__).parent.parent.parent
 SCRIPT_DIR = Path(__file__).parent
 
-# When running inside breeze, registry-11ty/ is not mounted.
+# When running inside breeze, registry/ is not mounted.
 # The script reads modules.json from dev/registry/ (which IS mounted)
-# and writes output there too. A post-step copies to registry-11ty/_data/.
+# and writes output there too. A post-step copies to registry/_data/.
 MODULES_JSON_CANDIDATES = [
     SCRIPT_DIR / "modules.json",
-    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "modules.json",
-    AIRFLOW_ROOT / "registry" / "src" / "data" / "modules.json",
+    AIRFLOW_ROOT / "registry" / "src" / "_data" / "modules.json",
 ]
 
 PROVIDERS_JSON_CANDIDATES = [
     SCRIPT_DIR / "providers.json",
-    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "providers.json",
-    AIRFLOW_ROOT / "registry" / "src" / "data" / "providers.json",
+    AIRFLOW_ROOT / "registry" / "src" / "_data" / "providers.json",
 ]
 
 # Inside breeze, write to dev/registry/output/ (mounted).
-# On host, also write to the registry data directories.
+# On host, also write to the registry data directory.
 OUTPUT_DIRS = [
     SCRIPT_DIR / "output",
-    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data",
-    AIRFLOW_ROOT / "registry" / "src" / "data",
+    AIRFLOW_ROOT / "registry" / "src" / "_data",
 ]
 
 

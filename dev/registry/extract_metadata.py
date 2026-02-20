@@ -65,9 +65,7 @@ PROVIDERS_DIR = AIRFLOW_ROOT / "providers"
 GENERATED_DIR = AIRFLOW_ROOT / "generated"
 INVENTORY_CACHE = GENERATED_DIR / "_inventory_cache"
 REGISTRY_DIR = AIRFLOW_ROOT / "registry"
-OUTPUT_DIR = REGISTRY_DIR / "src" / "data"
-REGISTRY_11TY_DIR = AIRFLOW_ROOT / "registry-11ty"
-OUTPUT_DIR_11TY = REGISTRY_11TY_DIR / "src" / "_data"
+OUTPUT_DIR = REGISTRY_DIR / "src" / "_data"
 
 
 @dataclass
@@ -1140,27 +1138,6 @@ def main():
     with open(search_output, "w") as f:
         json.dump(search_data, f, indent=2)
     print(f"Wrote {len(search_data)} search entries to {search_output}")
-
-    # Also write to registry-11ty if it exists
-    if REGISTRY_11TY_DIR.exists():
-        OUTPUT_DIR_11TY.mkdir(parents=True, exist_ok=True)
-        for filename, data in [
-            ("providers.json", providers_json),
-            ("modules.json", modules_json),
-            ("search-index.json", search_data),
-        ]:
-            with open(OUTPUT_DIR_11TY / filename, "w") as f:
-                json.dump(data, f, indent=2)
-        print(f"Also wrote data to {OUTPUT_DIR_11TY}")
-
-        # Sync logos to 11ty public dir
-        logos_11ty_dir = REGISTRY_11TY_DIR / "public" / "logos"
-        logos_source = REGISTRY_DIR / "public" / "logos"
-        if logos_source.exists():
-            logos_11ty_dir.mkdir(parents=True, exist_ok=True)
-            for logo_file in logos_source.iterdir():
-                shutil.copy2(logo_file, logos_11ty_dir / logo_file.name)
-            print(f"Copied logos to {logos_11ty_dir}")
 
     print("\nDone!")
 

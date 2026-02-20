@@ -288,7 +288,6 @@ _e2e_test_report.json
 # Generated registry data (versions/{provider}/{version}/{metadata,parameters,connections}.json)
 # Regenerate with: python dev/registry/extract_versions.py, breeze run python dev/registry/extract_parameters.py,
 # breeze run python dev/registry/extract_connections.py
-registry-11ty/src/_data/versions/
-registry/src/data/versions/
+registry/src/_data/versions/
 dev/registry/output/
 dev/registry/modules.json

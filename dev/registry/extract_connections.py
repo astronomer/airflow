@@ -29,8 +29,7 @@ Usage:
     breeze run python dev/registry/extract_connections.py
 
 Output:
-    - registry-11ty/src/_data/versions/{provider_id}/{version}/connections.json
-    - registry/src/data/versions/{provider_id}/{version}/connections.json
+    - registry/src/_data/versions/{provider_id}/{version}/connections.json
     - dev/registry/output/versions/{provider_id}/{version}/connections.json
 """
 
@@ -51,14 +50,12 @@ PROVIDERS_DIR = AIRFLOW_ROOT / "providers"
 
 PROVIDERS_JSON_CANDIDATES = [
     SCRIPT_DIR / "providers.json",
-    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data" / "providers.json",
-    AIRFLOW_ROOT / "registry" / "src" / "data" / "providers.json",
+    AIRFLOW_ROOT / "registry" / "src" / "_data" / "providers.json",
 ]
 
 OUTPUT_DIRS = [
     SCRIPT_DIR / "output",
-    AIRFLOW_ROOT / "registry-11ty" / "src" / "_data",
-    AIRFLOW_ROOT / "registry" / "src" / "data",
+    AIRFLOW_ROOT / "registry" / "src" / "_data",
 ]
 
 STANDARD_FIELDS = ["host", "port", "login", "password", "schema", "extra", "description"]

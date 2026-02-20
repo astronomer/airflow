@@ -1,6 +1,0 @@
-site: _site
-exclude_selectors:
-  - nav
-  - header
-  - .install
-  - .technical

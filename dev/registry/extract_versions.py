@@ -51,8 +51,8 @@ except ImportError:
 
 AIRFLOW_ROOT = Path(__file__).parent.parent.parent
 PROVIDERS_DIR = AIRFLOW_ROOT / "providers"
-REGISTRY_11TY_DIR = AIRFLOW_ROOT / "registry-11ty"
-OUTPUT_DIR = REGISTRY_11TY_DIR / "src" / "_data" / "versions"
+REGISTRY_DIR = AIRFLOW_ROOT / "registry"
+OUTPUT_DIR = REGISTRY_DIR / "src" / "_data" / "versions"
 
 
 def build_provider_id_to_path_map() -> dict[str, str]:
@@ -478,7 +478,7 @@ def main():
     args = parser.parse_args()
 
     # Load providers.json
-    providers_path = REGISTRY_11TY_DIR / "src" / "_data" / "providers.json"
+    providers_path = REGISTRY_DIR / "src" / "_data" / "providers.json"
     if not providers_path.exists():
         print(f"ERROR: {providers_path} not found. Run extract_metadata.py first.")
         sys.exit(1)
