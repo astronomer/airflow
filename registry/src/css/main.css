@@ -2127,6 +2127,36 @@ main {
   color: var(--color-pink-400);
 }
 
+.type-icon.executor {
+  background: rgba(249, 115, 22, 0.2);
+  color: var(--color-executor);
+}
+
+.type-icon.notifier {
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--color-notifier);
+}
+
+.type-icon.secret {
+  background: rgba(244, 63, 94, 0.2);
+  color: var(--color-secret);
+}
+
+.type-icon.logging {
+  background: rgba(20, 184, 166, 0.2);
+  color: var(--color-logging);
+}
+
+.type-icon.bundle {
+  background: rgba(14, 165, 233, 0.2);
+  color: var(--color-bundle);
+}
+
+.type-icon.decorator {
+  background: rgba(217, 70, 239, 0.2);
+  color: var(--color-decorator);
+}
+
 
 .type-count {
   font-size: var(--text-2xl);
@@ -2189,6 +2219,30 @@ main {
 
 .share-bar.transfer {
   --meter-color: var(--color-transfer);
+}
+
+.share-bar.executor {
+  --meter-color: var(--color-executor);
+}
+
+.share-bar.notifier {
+  --meter-color: var(--color-notifier);
+}
+
+.share-bar.secret {
+  --meter-color: var(--color-secret);
+}
+
+.share-bar.logging {
+  --meter-color: var(--color-logging);
+}
+
+.share-bar.bundle {
+  --meter-color: var(--color-bundle);
+}
+
+.share-bar.decorator {
+  --meter-color: var(--color-decorator);
 }
 
 
