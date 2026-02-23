@@ -220,6 +220,17 @@ class BaseExecutor(LoggingMixin):
     def start(self):  # pragma: no cover
         """Executors may need to get things started."""
 
+    def on_worker_ready(self, worker_id: str) -> None:
+        """
+        Called when a worker becomes available.
+
+        Dispatches a RegisterWorkerProviders workload so the worker reports its
+        installed providers to the API server.  Subclasses should call this from
+        their executor-specific worker-discovery mechanism (e.g. Celery events,
+        K8s pod creation).
+        """
+        self.log.info("Worker ready: %s — dispatching provider registration", worker_id)
+
     def log_task_event(self, *, event: str, extra: str, ti_key: TaskInstanceKey):
         """Add an event to the log table."""
         self._task_event_logs.append(Log(event=event, task_instance=ti_key, extra=extra))

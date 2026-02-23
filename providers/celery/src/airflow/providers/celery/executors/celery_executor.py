@@ -139,59 +139,68 @@ class CeleryExecutor(BaseExecutor):
 
     def start(self) -> None:
         self.log.debug("Starting Celery Executor using %s processes for syncing", self._sync_parallelism)
-        # Dispatch provider registration workload to all workers
-        self._register_all_workers()
+        self._start_worker_event_listener()
 
-    def _register_all_workers(self):
-        """Discover and register all connected Celery workers."""
+    def _start_worker_event_listener(self) -> None:
+        """Spawn a daemon thread that captures Celery worker-online events."""
+        import threading
+
+        def _listen():
+            while True:
+                try:
+                    with self.celery_app.connection() as conn:
+                        recv = self.celery_app.events.Receiver(
+                            conn,
+                            handlers={"worker-online": self._on_celery_worker_online},
+                        )
+                        recv.capture(limit=None, timeout=None, wakeup=True)
+                except Exception:
+                    self.log.warning(
+                        "Celery event listener connection lost, reconnecting in 5s",
+                        exc_info=True,
+                    )
+                    time.sleep(5)
+
+        self._worker_event_thread = threading.Thread(
+            target=_listen,
+            name="celery-worker-event-listener",
+            daemon=True,
+        )
+        self._worker_event_thread.start()
+        self.log.info("Celery worker event listener started")
+
+    def _on_celery_worker_online(self, event: dict) -> None:
+        worker_id = event.get("hostname", "unknown")
+        self.log.info("Received worker-online event from: %s", worker_id)
+        self.on_worker_ready(worker_id)
+
+    def on_worker_ready(self, worker_id: str) -> None:
+        """Dispatch a RegisterWorkerProviders workload to the newly-ready worker."""
+        super().on_worker_ready(worker_id)
         try:
-            from celery.app.control import Inspect
-
             from airflow.executors import workloads
 
-            # Discover active Celery workers
-            inspector = Inspect(app=self.celery_app)
-            active_workers = inspector.active() or {}
+            registration_workload = workloads.RegisterWorkerProviders.make(
+                worker_id=worker_id,
+                executor_type="CeleryExecutor",
+                generator=self.jwt_generator,
+            )
 
-            if not active_workers:
-                self.log.info("No active Celery workers found for provider registration")
-                return
+            from airflow.providers.celery.executors.celery_executor_utils import (
+                register_worker_providers_task,
+            )
 
-            self.log.info(f"Discovered {len(active_workers)} active Celery workers for provider registration")
+            workload_json = registration_workload.model_dump_json()
+            queue = self.conf.get("celery", "default_queue", fallback="default")
 
-            # Dispatch registration workload to each worker
-            for worker_id in active_workers.keys():
-                try:
-                    registration_workload = workloads.RegisterWorkerProviders.make(
-                        worker_id=worker_id,
-                        executor_type="CeleryExecutor",
-                        generator=self.jwt_generator,
-                    )
+            register_worker_providers_task.apply_async(
+                args=[workload_json],
+                queue=queue,
+            )
 
-                    # Import the task handler
-                    from airflow.providers.celery.executors.celery_executor_utils import (
-                        register_worker_providers_task,
-                    )
-
-                    # Serialize workload to JSON using Pydantic
-                    workload_json = registration_workload.model_dump_json()
-
-                    # Extract queue name from worker_id (format: "queue_name@hostname")
-                    from airflow.configuration import conf
-
-                    queue = conf.get("celery", "default_queue", fallback="default")
-
-                    # Dispatch to specific worker queue
-                    register_worker_providers_task.apply_async(
-                        args=[workload_json],
-                        queue=queue,
-                    )
-
-                    self.log.info(f"Dispatched provider registration to worker: {worker_id}")
-                except Exception as e:
-                    self.log.warning(f"Failed to dispatch registration to {worker_id}: {e}", exc_info=True)
-        except Exception as e:
-            self.log.error(f"Error during worker provider registration: {e}", exc_info=True)
+            self.log.info("Dispatched provider registration to worker: %s", worker_id)
+        except Exception:
+            self.log.warning("Failed to dispatch registration to %s", worker_id, exc_info=True)
 
     def _num_tasks_per_send_process(self, to_send_count: int) -> int:
         """

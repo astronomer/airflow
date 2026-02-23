@@ -1555,12 +1555,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             self.adopt_or_reset_orphaned_tasks,
         )
 
-        # Periodically check for new workers and register them
-        timers.call_regular_interval(
-            conf.getfloat("scheduler", "worker_registration_interval", fallback=60.0),
-            self._register_workers_with_executor,
-        )
-
         timers.call_regular_interval(
             conf.getfloat("scheduler", "trigger_timeout_check_interval", fallback=15.0),
             self.check_trigger_timeouts,
@@ -2739,25 +2733,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         f"pool.scheduled_slots.{normalized_pool_name}": slot_stats["scheduled"],
                     }
                 )
-
-    def _register_workers_with_executor(self) -> None:
-        """
-        Periodically register workers with executor for provider discovery.
-
-        Calls executor's _register_all_workers() if available (e.g., CeleryExecutor).
-        This ensures workers that start after the scheduler are registered.
-        """
-        try:
-            # Check if executor has _register_all_workers method
-            if hasattr(self.executor, "_register_all_workers"):
-                self.log.debug("Checking for new workers to register")
-                self.executor._register_all_workers()
-            else:
-                self.log.debug(
-                    f"Executor {type(self.executor).__name__} does not support worker registration"
-                )
-        except Exception as e:
-            self.log.warning(f"Failed to register workers: {e}", exc_info=True)
 
     @provide_session
     def adopt_or_reset_orphaned_tasks(self, session: Session = NEW_SESSION) -> int:
