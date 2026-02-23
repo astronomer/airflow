@@ -204,6 +204,88 @@ def execute_workload(input: str) -> None:
     )
 
 
+def _discover_installed_providers() -> list[dict[str, str]]:
+    """
+    Discover all installed Airflow providers using importlib.metadata.
+
+    Returns list of dicts with 'name' and 'version' keys.
+    """
+    try:
+        from importlib.metadata import distributions
+
+        providers = []
+        for dist in distributions():
+            # Only include packages that start with apache-airflow-providers-
+            if dist.name.startswith("apache-airflow-providers-"):
+                providers.append(
+                    {
+                        "name": dist.name,
+                        "version": dist.version,
+                    }
+                )
+
+        log.info(f"Discovered {len(providers)} installed providers")
+        return providers
+    except Exception as e:
+        log.error(f"Failed to discover providers: {e}", exc_info=True)
+        return []
+
+
+@app.task(name="register_worker_providers")
+def register_worker_providers_task(workload_json: str) -> None:
+    """
+    Handle RegisterWorkerProviders workload.
+
+    Discovers installed providers and registers them with API server.
+    """
+    import httpx
+    from pydantic import TypeAdapter
+
+    from airflow.executors import workloads
+
+    try:
+        # Decode the workload
+        decoder = TypeAdapter[workloads.RegisterWorkerProviders](workloads.RegisterWorkerProviders)
+        workload = decoder.validate_json(workload_json)
+
+        log.info(f"[RegisterWorkerProviders] Processing registration for worker: {workload.worker_id}")
+
+        # Discover installed providers
+        providers = _discover_installed_providers()
+
+        if not providers:
+            log.warning(f"No providers found on worker {workload.worker_id}")
+            return
+
+        # Prepare API request
+        base_url = conf.get("api", "base_url", fallback="/")
+        if base_url.startswith("/"):
+            base_url = f"http://localhost:8080{base_url}"
+        api_url = f"{base_url.rstrip('/')}/execution/worker/register-providers"
+
+        payload = {
+            "worker_id": workload.worker_id,
+            "executor_type": workload.executor_type,
+            "providers": providers,
+        }
+
+        # Call API server with JWT token
+        headers = {"Authorization": f"Bearer {workload.token}"}
+
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+
+        log.info(
+            f"[RegisterWorkerProviders] Successfully registered {len(providers)} "
+            f"providers for worker {workload.worker_id}"
+        )
+
+    except Exception as e:
+        log.error(f"[RegisterWorkerProviders] Failed to register providers: {e}", exc_info=True)
+        raise
+
+
 if not AIRFLOW_V_3_0_PLUS:
 
     @app.task

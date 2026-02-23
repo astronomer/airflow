@@ -30,11 +30,15 @@ from airflow.api_fastapi.execution_api.routes import (
     task_instances,
     task_reschedules,
     variables,
+    worker,
     xcoms,
 )
 
 execution_api_router = APIRouter()
 execution_api_router.include_router(health.router, prefix="/health", tags=["Health"])
+
+# Worker registration endpoint - uses its own JWT validation (JWTBearerWorker) that accepts string subjects
+execution_api_router.include_router(worker.router, prefix="/worker", tags=["Worker"])
 
 # _Every_ single endpoint under here must be authenticated. Some do further checks on top of these
 authenticated_router = VersionedAPIRouter(dependencies=[JWTBearerDep])  # type: ignore[list-item]

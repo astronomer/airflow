@@ -189,6 +189,15 @@ class PreviousTIResponse(BaseModel):
     duration: Annotated[float | None, Field(title="Duration")] = None
 
 
+class ProviderInfo(BaseModel):
+    """
+    Schema for provider metadata.
+    """
+
+    name: Annotated[str, Field(title="Name")]
+    version: Annotated[str, Field(title="Version")]
+
+
 class TIDeferredStatePayload(BaseModel):
     """
     Schema for updating TaskInstance to a deferred state.
@@ -400,6 +409,16 @@ class VariableResponse(BaseModel):
     )
     key: Annotated[str, Field(title="Key")]
     value: Annotated[str | None, Field(title="Value")] = None
+
+
+class WorkerProviderRegistration(BaseModel):
+    """
+    Schema for worker provider registration request.
+    """
+
+    worker_id: Annotated[str, Field(title="Worker Id")]
+    executor_type: Annotated[str, Field(title="Executor Type")]
+    providers: Annotated[list[ProviderInfo], Field(title="Providers")]
 
 
 class XComResponse(BaseModel):

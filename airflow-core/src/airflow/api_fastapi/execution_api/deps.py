@@ -97,6 +97,48 @@ class JWTBearer(HTTPBearer):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Invalid auth token: {err}")
 
 
+class JWTBearerWorker(HTTPBearer):
+    """
+    JWT validation for worker registration endpoints.
+
+    Unlike JWTBearer, this accepts non-UUID subjects (worker IDs are strings).
+    Validates JWT signature and returns raw claims dict instead of TIToken.
+    """
+
+    def __init__(self, required_claims: dict[str, Any] | None = None):
+        super().__init__(auto_error=False)
+        self.required_claims = required_claims or {}
+
+    async def __call__(  # type: ignore[override]
+        self,
+        request: Request,
+        services=DepContainer,
+    ) -> dict[str, Any]:
+        """
+        Validate JWT token and return claims dict.
+
+        Returns:
+            dict with claims including 'sub' (worker ID as string)
+        """
+        creds = await super().__call__(request)
+        if not creds:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing auth token")
+
+        validator: JWTValidator = await services.aget(JWTValidator)
+
+        try:
+            # Validate signature and required claims, return raw claims dict
+            claims = await validator.avalidated_claims(creds.credentials, self.required_claims)
+            return claims
+        except Exception as err:
+            log.warning(
+                "Failed to validate worker JWT",
+                exc_info=True,
+                token=creds.credentials,
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"Invalid auth token: {err}")
+
+
 JWTBearerDep: TIToken = Depends(JWTBearer())
 
 # This checks that the UUID in the url matches the one in the token for us.

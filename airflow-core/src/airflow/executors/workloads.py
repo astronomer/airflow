@@ -178,6 +178,39 @@ class ExecuteCallback(BaseDagBundleWorkload):
         )
 
 
+class RegisterWorkerProviders(BaseWorkload):
+    """
+    Workload to register worker's installed providers with API server.
+
+    Dispatched by executor on worker boot (Celery) or per-pod (K8s).
+    Uses existing JWT token infrastructure.
+    """
+
+    worker_id: str
+    executor_type: str
+
+    type: Literal["RegisterWorkerProviders"] = Field(init=False, default="RegisterWorkerProviders")
+
+    @classmethod
+    def make(
+        cls,
+        worker_id: str,
+        executor_type: str,
+        generator: JWTGenerator | None = None,
+    ) -> RegisterWorkerProviders:
+        """
+        Create workload with JWT token where subject is worker_id.
+
+        Token will have subject format "worker:{worker_id}" to distinguish
+        from task tokens which use task_instance_id as subject.
+        """
+        return cls(
+            worker_id=worker_id,
+            executor_type=executor_type,
+            token=cls.generate_token(f"worker:{worker_id}", generator),
+        )
+
+
 class RunTrigger(BaseModel):
     """Execute an async "trigger" process that yields events."""
 
@@ -205,6 +238,6 @@ class RunTrigger(BaseModel):
 
 
 All = Annotated[
-    ExecuteTask | RunTrigger,
+    ExecuteTask | ExecuteCallback | RegisterWorkerProviders | RunTrigger,
     Field(discriminator="type"),
 ]

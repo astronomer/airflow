@@ -18,223 +18,124 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import MutableMapping
-from functools import cache
-from typing import TYPE_CHECKING, Literal
+from typing import Any
 
 from airflow.api_fastapi.core_api.datamodels.connections import (
     ConnectionHookFieldBehavior,
     ConnectionHookMetaData,
     StandardHookFields,
 )
-from airflow.serialization.definitions.param import SerializedParam
-
-if TYPE_CHECKING:
-    from airflow.providers_manager import ConnectionFormWidgetInfo, HookInfo
 
 log = logging.getLogger(__name__)
 
 
 class HookMetaService:
-    """Service for retrieving details about hooks to render UI."""
+    """
+    Service for retrieving hook / connection-type metadata to render the UI.
 
-    class MockOptional:
-        """Mock for wtforms.validators.Optional."""
-
-        def __init__(
-            self,
-            *args,
-            **kwargs,
-        ):
-            pass
-
-    class MockEnum:
-        """Mock for wtforms.validators.Optional."""
-
-        def __init__(self, allowed_values):
-            self.allowed_values = allowed_values
-
-    class MockBaseField:
-        """Mock of WTForms Field."""
-
-        param_type: str = "UNDEFINED"
-        param_format: str | None = None
-        widget = None
-
-        def __init__(
-            self,
-            label: str | None = None,
-            validators=None,
-            description: str = "",
-            default: str | None = None,
-            widget=None,
-            source: Literal["dag", "task"] | None = None,
-        ):
-            type: str | list[str] = [self.param_type, "null"]
-            enum = {}
-            format = {"format": self.param_format} if self.param_format else {}
-            if validators:
-                if any(isinstance(v, HookMetaService.MockOptional) for v in validators):
-                    type = [self.param_type, "null"]
-                for v in validators:
-                    if isinstance(v, HookMetaService.MockEnum):
-                        enum = {"enum": v.allowed_values}
-            self.param = SerializedParam(
-                default=default,
-                title=label,
-                description=description or None,
-                source=source or None,
-                type=type,
-                **format,
-                **enum,
-            )
-            self.widget = widget
-            self.field_class = self.__class__
-
-    class MockStringField(MockBaseField):
-        """Mock of WTForms StringField."""
-
-        param_type: str = "string"
-
-    class MockIntegerField(MockBaseField):
-        """Mock of WTForms IntegerField."""
-
-        param_type: str = "integer"
-
-    class MockPasswordField(MockBaseField):
-        """Mock of WTForms PasswordField."""
-
-        param_type: str = "string"
-        param_format: str | None = "password"
-
-    class MockBooleanField(MockBaseField):
-        """Mock of WTForms BooleanField."""
-
-        param_type: str = "boolean"
-
-    class MockAnyWidget:
-        """Mock any flask appbuilder widget."""
+    Reads from the ProviderMetadataFetcher cache which is populated when
+    workers register their installed providers.  No dependency on
+    ProvidersManager or locally installed provider packages.
+    """
 
     @staticmethod
-    def _get_hooks_with_mocked_fab() -> tuple[
-        MutableMapping[str, HookInfo | None], dict[str, ConnectionFormWidgetInfo], dict[str, dict]
-    ]:
-        """Get hooks with all details w/o FAB needing to be installed."""
-        from unittest import mock
+    def hook_meta_data() -> list[ConnectionHookMetaData]:
+        from airflow.api_fastapi.execution_api.services.provider_metadata_fetcher import (
+            provider_metadata_fetcher,
+        )
 
-        from airflow.providers_manager import ProvidersManager
+        remote_connection_types = provider_metadata_fetcher.get_all_connection_types()
 
-        def mock_lazy_gettext(txt: str) -> str:
-            """Mock for flask_babel.lazy_gettext."""
-            return txt
+        if not remote_connection_types:
+            log.debug("No remote provider metadata cached yet (no workers registered?)")
+            return []
 
-        def mock_any_of(allowed_values: list) -> HookMetaService.MockEnum:
-            """Mock for wtforms.validators.any_of."""
-            return HookMetaService.MockEnum(allowed_values)
+        seen: set[str] = set()
+        results: list[ConnectionHookMetaData] = []
+        for ct in remote_connection_types:
+            conn_type = ct.get("connection-type")
+            if not conn_type or conn_type in seen:
+                continue
+            hook_meta = HookMetaService._from_yaml_connection_type(ct)
+            if hook_meta:
+                results.append(hook_meta)
+                seen.add(conn_type)
 
-        # Before importing ProvidersManager, we need to mock all FAB and WTForms
-        # dependencies to avoid ImportErrors when FAB is not installed.
-        import sys
-        from importlib.util import find_spec
-        from unittest.mock import MagicMock
-
-        for mod_name in [
-            "wtforms",
-            "wtforms.csrf",
-            "wtforms.fields",
-            "wtforms.fields.simple",
-            "wtforms.validators",
-            "flask_babel",
-            "flask_appbuilder",
-            "flask_appbuilder.fieldwidgets",
-        ]:
-            try:
-                if not find_spec(mod_name):
-                    raise ModuleNotFoundError
-            except ModuleNotFoundError:
-                sys.modules[mod_name] = MagicMock()
-        with (
-            mock.patch("wtforms.StringField", HookMetaService.MockStringField),
-            mock.patch("wtforms.fields.StringField", HookMetaService.MockStringField),
-            mock.patch("wtforms.fields.simple.StringField", HookMetaService.MockStringField),
-            mock.patch("wtforms.IntegerField", HookMetaService.MockIntegerField),
-            mock.patch("wtforms.fields.IntegerField", HookMetaService.MockIntegerField),
-            mock.patch("wtforms.PasswordField", HookMetaService.MockPasswordField),
-            mock.patch("wtforms.BooleanField", HookMetaService.MockBooleanField),
-            mock.patch("wtforms.fields.BooleanField", HookMetaService.MockBooleanField),
-            mock.patch("wtforms.fields.simple.BooleanField", HookMetaService.MockBooleanField),
-            mock.patch("flask_babel.lazy_gettext", mock_lazy_gettext),
-            mock.patch("flask_appbuilder.fieldwidgets.BS3TextFieldWidget", HookMetaService.MockAnyWidget),
-            mock.patch("flask_appbuilder.fieldwidgets.BS3TextAreaFieldWidget", HookMetaService.MockAnyWidget),
-            mock.patch("flask_appbuilder.fieldwidgets.BS3PasswordFieldWidget", HookMetaService.MockAnyWidget),
-            mock.patch("wtforms.validators.Optional", HookMetaService.MockOptional),
-            mock.patch("wtforms.validators.any_of", mock_any_of),
-        ):
-            pm = ProvidersManager()
-            return pm.hooks, pm.connection_form_widgets, pm.field_behaviours  # Will init providers hooks
+        log.info("Serving %d connection type(s) from worker-discovered providers", len(results))
+        return results
 
     @staticmethod
-    def _make_standard_fields(field_behaviour: dict | None) -> StandardHookFields | None:
-        if not field_behaviour:
+    def _from_yaml_connection_type(ct: dict[str, Any]) -> ConnectionHookMetaData | None:
+        """
+        Convert a ``connection-types`` entry from provider.yaml into a
+        :class:`ConnectionHookMetaData`.
+        """
+        connection_type = ct.get("connection-type")
+        hook_class = ct.get("hook-class-name")
+        if not connection_type:
             return None
 
-        def make_field(field_name: str, field_behaviour: dict) -> ConnectionHookFieldBehavior | None:
-            hidden_fields = field_behaviour.get("hidden_fields", [])
-            relabeling = field_behaviour.get("relabeling", {}).get(field_name)
-            placeholder = field_behaviour.get("placeholders", {}).get(field_name)
-            if any([field_name in hidden_fields, relabeling, placeholder]):
-                return ConnectionHookFieldBehavior(
-                    hidden=field_name in hidden_fields,
-                    title=relabeling,
-                    placeholder=placeholder,
-                )
-            return None
+        hook_name = connection_type
 
-        return StandardHookFields(
-            description=make_field("description", field_behaviour),
-            url_schema=make_field("schema", field_behaviour),
-            host=make_field("host", field_behaviour),
-            port=make_field("port", field_behaviour),
-            login=make_field("login", field_behaviour),
-            password=make_field("password", field_behaviour),
+        ui_behaviour = ct.get("ui-field-behaviour", {})
+        standard_fields = HookMetaService._parse_ui_field_behaviour(ui_behaviour) if ui_behaviour else None
+
+        extra_fields = (
+            HookMetaService._parse_conn_fields(ct["conn-fields"]) if ct.get("conn-fields") else None
+        )
+
+        return ConnectionHookMetaData(
+            connection_type=connection_type,
+            hook_class_name=hook_class,
+            default_conn_name=None,
+            hook_name=hook_name,
+            standard_fields=standard_fields,
+            extra_fields=extra_fields,
         )
 
     @staticmethod
-    def _convert_extra_fields(form_widgets: dict[str, ConnectionFormWidgetInfo]) -> dict[str, MutableMapping]:
-        result: dict[str, MutableMapping] = {}
-        for key, form_widget in form_widgets.items():
-            hook_key = key.split("__")[1]
-            hook_widgets = result.get(hook_key, {})
+    def _parse_ui_field_behaviour(behaviour: dict[str, Any]) -> StandardHookFields:
+        hidden = behaviour.get("hidden-fields", [])
+        relabeling = behaviour.get("relabeling", {})
+        placeholders = behaviour.get("placeholders", {})
 
-            if isinstance(form_widget.field, dict):
-                # yaml path, form widgets read from yaml and already present in SerializedParam.dump() format
-                hook_widgets[form_widget.field_name] = form_widget.field
-            elif isinstance(form_widget.field, HookMetaService.MockBaseField):
-                # legacy path, form widgets created using mocked WTForms fields, need to convert to SerializedParam.dump()
-                hook_widgets[form_widget.field_name] = form_widget.field.param.dump()
-            else:
-                log.error("Unknown form widget in %s: %s", hook_key, form_widget)
-                continue
+        def _make(field_name: str) -> ConnectionHookFieldBehavior | None:
+            is_hidden = field_name in hidden
+            title = relabeling.get(field_name)
+            placeholder = placeholders.get(field_name)
+            if any([is_hidden, title, placeholder]):
+                return ConnectionHookFieldBehavior(hidden=is_hidden, title=title, placeholder=placeholder)
+            return None
 
-            result[hook_key] = hook_widgets
-        return result
+        return StandardHookFields(
+            description=_make("description"),
+            url_schema=_make("schema"),
+            host=_make("host"),
+            port=_make("port"),
+            login=_make("login"),
+            password=_make("password"),
+        )
 
     @staticmethod
-    @cache
-    def hook_meta_data() -> list[ConnectionHookMetaData]:
-        hooks, connection_form_widgets, field_behaviours = HookMetaService._get_hooks_with_mocked_fab()
-        result: list[ConnectionHookMetaData] = []
-        widgets = HookMetaService._convert_extra_fields(connection_form_widgets)
-        for hook_key, hook_info in hooks.items():
-            if not hook_info:
-                continue
-            hook_meta = ConnectionHookMetaData(
-                connection_type=hook_key,
-                hook_class_name=hook_info.hook_class_name,
-                default_conn_name=None,  # TODO: later
-                hook_name=hook_info.hook_name,
-                standard_fields=HookMetaService._make_standard_fields(field_behaviours.get(hook_key)),
-                extra_fields=widgets.get(hook_key),
-            )
-            result.append(hook_meta)
+    def _parse_conn_fields(conn_fields: dict[str, Any]) -> dict[str, Any]:
+        """
+        Convert conn-fields from provider.yaml into the extra_fields format
+        the UI expects.
+
+        Matches the output of ``ProvidersManager._to_api_format()``::
+
+            {"value": default, "schema": {"type": ..., "title": label}, "description": ..., "source": None}
+        """
+        result: dict[str, Any] = {}
+        for field_name, field_def in conn_fields.items():
+            schema_def = field_def.get("schema", {})
+            schema = schema_def.copy()
+            if "label" in field_def:
+                schema["title"] = field_def["label"]
+            result[field_name] = {
+                "value": schema_def.get("default"),
+                "schema": schema,
+                "description": field_def.get("description"),
+                "source": None,
+            }
         return result

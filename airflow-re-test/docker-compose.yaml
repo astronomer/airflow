@@ -1,0 +1,197 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Worker Provider Discovery POC
+#
+# Control plane = airflow-control-plane:latest (minimal providers, custom entrypoint)
+# Worker        = CI image (all providers, entrypoint overridden in compose)
+#
+# Usage:
+#   cd airflow-re-test
+#   docker build -f Dockerfile.control-plane -t airflow-control-plane:latest .
+#   docker compose up
+#
+---
+x-airflow-common-env:
+  &airflow-common-env
+  AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+  AIRFLOW__CORE__AUTH_MANAGER: 'airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager'
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: 'true'
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+  AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+  AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+  AIRFLOW__CORE__FERNET_KEY: 'ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg='
+  AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+  AIRFLOW__CORE__DAGS_FOLDER: '/opt/airflow/dags'
+  AIRFLOW__CORE__EXECUTION_API_SERVER_URL: 'http://airflow-apiserver:8080/execution/'
+  AIRFLOW__API__BASE_URL: 'http://airflow-apiserver:8080/'
+  AIRFLOW__API_AUTH__JWT_SECRET: 'test-secret-key-for-remote-exec-poc'
+  HOST_OS: ${HOST_OS:-linux}
+
+x-airflow-common-volumes:
+  &airflow-common-volumes
+  - ./dags:/opt/airflow/dags
+  - ./logs:/opt/airflow/logs
+  - ../airflow-core/src:/opt/airflow/airflow-core/src
+  - ../task-sdk/src:/opt/airflow/task-sdk/src
+  - ../shared:/opt/airflow/shared
+  - ../providers/celery/src:/opt/airflow/providers/celery/src
+  - ../providers/standard/src:/opt/airflow/providers/standard/src
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+
+  redis:
+    image: redis:7.2-bookworm
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
+
+  # INIT — DB migration + user creation, then exits
+  airflow-init:
+    image: airflow-control-plane:latest
+    command: version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # API SERVER — Control Plane (minimal providers)
+  airflow-apiserver:
+    image: airflow-control-plane:latest
+    command: api-server
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # SCHEDULER — Control Plane (minimal providers)
+  airflow-scheduler:
+    image: airflow-control-plane:latest
+    command: scheduler
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # DAG PROCESSOR — Control Plane (minimal providers)
+  airflow-dag-processor:
+    image: airflow-control-plane:latest
+    command: dag-processor
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # TRIGGERER — Control Plane (minimal providers)
+  airflow-triggerer:
+    image: airflow-control-plane:latest
+    command: triggerer
+    environment:
+      <<: *airflow-common-env
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # WORKER — Data Plane (FULL PROVIDERS from CI image)
+  # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
+  airflow-worker:
+    image: ghcr.io/apache/airflow/main/ci/python3.10:latest
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        chmod 1777 /tmp 2>/dev/null || true
+        exec airflow celery worker
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-apiserver:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully

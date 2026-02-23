@@ -139,6 +139,59 @@ class CeleryExecutor(BaseExecutor):
 
     def start(self) -> None:
         self.log.debug("Starting Celery Executor using %s processes for syncing", self._sync_parallelism)
+        # Dispatch provider registration workload to all workers
+        self._register_all_workers()
+
+    def _register_all_workers(self):
+        """Discover and register all connected Celery workers."""
+        try:
+            from celery.app.control import Inspect
+
+            from airflow.executors import workloads
+
+            # Discover active Celery workers
+            inspector = Inspect(app=self.celery_app)
+            active_workers = inspector.active() or {}
+
+            if not active_workers:
+                self.log.info("No active Celery workers found for provider registration")
+                return
+
+            self.log.info(f"Discovered {len(active_workers)} active Celery workers for provider registration")
+
+            # Dispatch registration workload to each worker
+            for worker_id in active_workers.keys():
+                try:
+                    registration_workload = workloads.RegisterWorkerProviders.make(
+                        worker_id=worker_id,
+                        executor_type="CeleryExecutor",
+                        generator=self.jwt_generator,
+                    )
+
+                    # Import the task handler
+                    from airflow.providers.celery.executors.celery_executor_utils import (
+                        register_worker_providers_task,
+                    )
+
+                    # Serialize workload to JSON using Pydantic
+                    workload_json = registration_workload.model_dump_json()
+
+                    # Extract queue name from worker_id (format: "queue_name@hostname")
+                    from airflow.configuration import conf
+
+                    queue = conf.get("celery", "default_queue", fallback="default")
+
+                    # Dispatch to specific worker queue
+                    register_worker_providers_task.apply_async(
+                        args=[workload_json],
+                        queue=queue,
+                    )
+
+                    self.log.info(f"Dispatched provider registration to worker: {worker_id}")
+                except Exception as e:
+                    self.log.warning(f"Failed to dispatch registration to {worker_id}: {e}", exc_info=True)
+        except Exception as e:
+            self.log.error(f"Error during worker provider registration: {e}", exc_info=True)
 
     def _num_tasks_per_send_process(self, to_send_count: int) -> int:
         """
