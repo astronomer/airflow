@@ -57,6 +57,8 @@ def get_merged_providers() -> list[ProviderResponse]:
     for pkg_name, info in worker_data.items():
         if pkg_name in local_providers:
             local_providers[pkg_name].workers = info["workers"]
+            if info.get("is_custom"):
+                local_providers[pkg_name].is_custom = True
         else:
             local_providers[pkg_name] = ProviderResponse(
                 package_name=pkg_name,
@@ -64,25 +66,30 @@ def get_merged_providers() -> list[ProviderResponse]:
                 version=info["version"],
                 documentation_url=None,
                 workers=info["workers"],
+                is_custom=info.get("is_custom", False),
             )
 
     return sorted(local_providers.values(), key=lambda p: p.package_name)
 
 
 def _get_worker_provider_data() -> dict[str, dict]:
-    """Return {package_name: {"version": str, "workers": [str]}} from the worker inventory."""
+    """Return {package_name: {"version": str, "workers": [str], "is_custom": bool}} from the worker inventory."""
     try:
         from airflow.api_fastapi.execution_api.services.worker_inventory import worker_inventory
 
         result: dict[str, dict] = {}
         for provider_name, versions in worker_inventory._provider_cache.items():
             workers: set[str] = set()
-            for worker_list in versions.values():
-                workers.update(worker_list)
+            is_custom = False
+            for version_entry in versions.values():
+                workers.update(version_entry["workers"])
+                if version_entry.get("is_custom"):
+                    is_custom = True
             latest_version = sorted(versions.keys())[-1] if versions else ""
             result[provider_name] = {
                 "version": latest_version,
                 "workers": sorted(workers),
+                "is_custom": is_custom,
             }
         return result
     except Exception:

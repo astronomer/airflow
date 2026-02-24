@@ -196,6 +196,8 @@ class ProviderInfo(BaseModel):
 
     name: Annotated[str, Field(title="Name")]
     version: Annotated[str, Field(title="Version")]
+    is_custom: Annotated[bool | None, Field(title="Is Custom")] = False
+    connection_types: Annotated[list[dict[str, Any]] | None, Field(title="Connection Types")] = None
 
 
 class TIDeferredStatePayload(BaseModel):

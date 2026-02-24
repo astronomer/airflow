@@ -37,6 +37,8 @@ class ProviderInfo(BaseModel):
 
     name: str
     version: str
+    is_custom: bool = False
+    connection_types: list[dict] | None = None
 
 
 class WorkerProviderRegistration(BaseModel):
@@ -85,18 +87,34 @@ def register_worker_providers(
 
         provider_dicts = [p.model_dump() for p in request.providers]
 
-        # Register providers in inventory
         worker_inventory.register(
             worker_id=request.worker_id,
             executor_type=request.executor_type,
             providers=provider_dicts,
         )
 
-        # Kick off background fetch of provider.yaml connection metadata
-        # for any providers not already cached at this version
-        provider_metadata_fetcher.fetch_many_in_background(provider_dicts)
+        # Custom providers send their connection metadata directly —
+        # store it in the fetcher cache so the UI can render their forms.
+        # Apache providers are fetched from the remote registry as before.
+        apache_providers = []
+        custom_count = 0
+        for p in request.providers:
+            if p.is_custom and p.connection_types:
+                provider_metadata_fetcher.store(p.name, p.version, p.connection_types)
+                custom_count += 1
+            elif not p.is_custom:
+                apache_providers.append({"name": p.name, "version": p.version})
 
-        log.info(f"Successfully registered {len(request.providers)} providers for worker {request.worker_id}")
+        if apache_providers:
+            provider_metadata_fetcher.fetch_many_in_background(apache_providers)
+
+        log.info(
+            "Registered %d providers for worker %s (%d custom with metadata, %d apache for remote fetch)",
+            len(request.providers),
+            request.worker_id,
+            custom_count,
+            len(apache_providers),
+        )
 
         return {
             "status": "success",

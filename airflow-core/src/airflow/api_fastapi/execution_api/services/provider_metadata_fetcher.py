@@ -180,6 +180,24 @@ class ProviderMetadataFetcher:
             result.extend(conn_types)
         return result
 
+    def store(self, package_name: str, version: str, connection_types: list[dict[str, Any]]) -> None:
+        """
+        Directly store connection-type metadata (e.g. from a custom provider
+        that reported its own metadata during worker registration).
+        """
+        key = (package_name, version)
+        with self._lock:
+            for cached_key in list(self._cache):
+                if cached_key[0] == package_name and cached_key[1] != version:
+                    del self._cache[cached_key]
+            self._cache[key] = connection_types
+        log.info(
+            "Stored %d connection-type(s) for custom provider %s==%s",
+            len(connection_types),
+            package_name,
+            version,
+        )
+
     def get_connection_types_for(self, package_name: str, version: str) -> list[dict[str, Any]]:
         """Return cached connection-types for a specific provider version."""
         return self._cache.get((package_name, version), [])

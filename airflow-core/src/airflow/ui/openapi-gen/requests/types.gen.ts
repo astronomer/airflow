@@ -1261,6 +1261,7 @@ export type ProviderResponse = {
     version: string;
     documentation_url: string | null;
     workers?: Array<string>;
+    is_custom?: boolean;
 };
 
 /**

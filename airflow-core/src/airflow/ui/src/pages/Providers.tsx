@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Heading, Link, Text } from "@chakra-ui/react";
+import { Badge, Box, Heading, Link, Text } from "@chakra-ui/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,21 @@ const createColumns = (translate: TFunction): Array<ColumnDef<ProviderResponse>>
     cell: ({ row: { original } }) => original.version,
     enableSorting: false,
     header: translate("providers.columns.version"),
+  },
+  {
+    accessorKey: "is_custom",
+    cell: ({ row: { original } }) =>
+      original.is_custom ? (
+        <Badge colorPalette="purple" variant="subtle">
+          {translate("providers.source.custom")}
+        </Badge>
+      ) : (
+        <Badge colorPalette="blue" variant="subtle">
+          {translate("providers.source.builtin")}
+        </Badge>
+      ),
+    enableSorting: false,
+    header: translate("providers.source.title"),
   },
   {
     accessorKey: "workers",

@@ -204,27 +204,47 @@ def execute_workload(input: str) -> None:
     )
 
 
-def _discover_installed_providers() -> list[dict[str, str]]:
+def _discover_installed_providers() -> list[dict]:
     """
-    Discover all installed Airflow providers using importlib.metadata.
+    Discover all installed Airflow providers via the ``apache_airflow_provider`` entrypoint.
 
-    Returns list of dicts with 'name' and 'version' keys.
+    For custom (non-apache) providers, the ``connection-types`` metadata is
+    included in the response so the API server can render connection forms
+    without fetching from a remote registry.
     """
     try:
-        from importlib.metadata import distributions
+        from importlib.metadata import entry_points as _entry_points
 
         providers = []
-        for dist in distributions():
-            # Only include packages that start with apache-airflow-providers-
-            if dist.name.startswith("apache-airflow-providers-"):
-                providers.append(
-                    {
-                        "name": dist.name,
-                        "version": dist.version,
-                    }
-                )
+        for ep in _entry_points(group="apache_airflow_provider"):
+            dist = ep.dist
+            if dist is None:
+                continue
+            package_name = dist.name
+            is_custom = not package_name.startswith("apache-airflow-providers-")
 
-        log.info(f"Discovered {len(providers)} installed providers")
+            entry: dict = {
+                "name": package_name,
+                "version": dist.version,
+                "is_custom": is_custom,
+            }
+
+            if is_custom:
+                try:
+                    info = ep.load()()
+                    connection_types = info.get("connection-types", [])
+                    if connection_types:
+                        entry["connection_types"] = connection_types
+                except Exception:
+                    log.debug("Could not load provider info for %s", package_name, exc_info=True)
+
+            providers.append(entry)
+
+        log.info(
+            "Discovered %d installed providers (%d custom)",
+            len(providers),
+            sum(1 for p in providers if p.get("is_custom")),
+        )
         return providers
     except Exception as e:
         log.error(f"Failed to discover providers: {e}", exc_info=True)

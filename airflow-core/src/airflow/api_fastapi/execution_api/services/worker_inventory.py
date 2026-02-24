@@ -36,7 +36,7 @@ class WorkerInventory:
         self._inventory: dict[str, dict[str, Any]] = {}
         self._provider_cache: dict[str, dict[str, Any]] = {}
 
-    def register(self, worker_id: str, executor_type: str, providers: list[dict[str, str]]) -> None:
+    def register(self, worker_id: str, executor_type: str, providers: list[dict]) -> None:
         """
         Register or update worker's provider information.
 
@@ -51,20 +51,23 @@ class WorkerInventory:
             "last_updated": timestamp,
         }
 
-        # Update provider cache for fast lookups
         for provider in providers:
             provider_name = provider["name"]
             provider_version = provider["version"]
+            is_custom = provider.get("is_custom", False)
 
             if provider_name not in self._provider_cache:
                 self._provider_cache[provider_name] = {}
 
             if provider_version not in self._provider_cache[provider_name]:
-                self._provider_cache[provider_name][provider_version] = []
+                self._provider_cache[provider_name][provider_version] = {
+                    "workers": [],
+                    "is_custom": is_custom,
+                }
 
-            # Track which workers have this provider version
-            if worker_id not in self._provider_cache[provider_name][provider_version]:
-                self._provider_cache[provider_name][provider_version].append(worker_id)
+            version_entry = self._provider_cache[provider_name][provider_version]
+            if worker_id not in version_entry["workers"]:
+                version_entry["workers"].append(worker_id)
 
         log.info(f"Registered {len(providers)} providers for worker {worker_id} ({executor_type})")
 
@@ -80,43 +83,52 @@ class WorkerInventory:
         """
         Get all unique providers with worker counts.
 
-        Returns dict mapping provider_name to metadata including worker_count.
+        Returns dict mapping provider_name to metadata including worker_count and is_custom.
         """
         result = {}
         for provider_name, versions in self._provider_cache.items():
-            # Count unique workers across all versions
-            all_workers = set()
-            for workers_list in versions.values():
-                all_workers.update(workers_list)
+            all_workers: set[str] = set()
+            is_custom = False
+            for version_entry in versions.values():
+                all_workers.update(version_entry["workers"])
+                if version_entry.get("is_custom"):
+                    is_custom = True
 
             result[provider_name] = {
                 "name": provider_name,
                 "versions": list(versions.keys()),
                 "worker_count": len(all_workers),
+                "is_custom": is_custom,
             }
 
         return result
 
     def get_provider_version_workers(self, provider_name: str, version: str) -> list[str]:
         """Get list of worker IDs that have a specific provider version."""
-        return self._provider_cache.get(provider_name, {}).get(version, [])
+        entry = self._provider_cache.get(provider_name, {}).get(version)
+        if entry is None:
+            return []
+        return entry["workers"]
+
+    def is_custom_provider(self, provider_name: str) -> bool:
+        """Check whether any version of this provider is marked as custom."""
+        versions = self._provider_cache.get(provider_name, {})
+        return any(entry.get("is_custom") for entry in versions.values())
 
     def remove_worker(self, worker_id: str) -> None:
         """Remove worker from inventory (e.g., on worker shutdown)."""
         if worker_id in self._inventory:
-            # Clean up provider cache
             worker_info = self._inventory[worker_id]
             for provider in worker_info.get("providers", []):
                 provider_name = provider["name"]
                 provider_version = provider["version"]
 
                 if provider_name in self._provider_cache:
-                    if provider_version in self._provider_cache[provider_name]:
-                        workers = self._provider_cache[provider_name][provider_version]
+                    version_entry = self._provider_cache[provider_name].get(provider_version)
+                    if version_entry is not None:
+                        workers = version_entry["workers"]
                         if worker_id in workers:
                             workers.remove(worker_id)
-
-                        # Clean up empty entries
                         if not workers:
                             del self._provider_cache[provider_name][provider_version]
 

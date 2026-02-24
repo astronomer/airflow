@@ -137,6 +137,11 @@
       "packageName": "Package Name",
       "version": "Version",
       "workers": "Workers"
+    },
+    "source": {
+      "builtin": "Built-in",
+      "custom": "Custom",
+      "title": "Source"
     }
   },
   "variables": {

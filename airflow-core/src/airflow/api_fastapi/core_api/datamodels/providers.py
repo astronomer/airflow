@@ -30,6 +30,7 @@ class ProviderResponse(BaseModel):
     version: str
     documentation_url: str | None
     workers: list[str] = Field(default_factory=list)
+    is_custom: bool = False
 
 
 class ProviderCollectionResponse(BaseModel):
