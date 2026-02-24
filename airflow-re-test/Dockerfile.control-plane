@@ -34,7 +34,7 @@ WORKDIR /opt/airflow
 
 # Replace the CI entrypoint (which does `exec /bin/bash "$@"`) with one
 # that does `exec airflow "$@"` so subcommands like `scheduler` work.
-COPY entrypoint-service.sh /entrypoint-service.sh
+COPY airflow-re-test/entrypoint-service.sh /entrypoint-service.sh
 RUN chmod +x /entrypoint-service.sh
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--", "/entrypoint-service.sh"]
