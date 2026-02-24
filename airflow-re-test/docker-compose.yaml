@@ -140,8 +140,13 @@ services:
 
   # DAG PROCESSOR — Control Plane (minimal providers)
   airflow-dag-processor:
-    image: airflow-control-plane:latest
-    command: dag-processor
+    image: airflow-worker:latest
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        chmod 1777 /tmp 2>/dev/null || true
+        exec airflow dag-processor
     environment:
       <<: *airflow-common-env
     volumes: *airflow-common-volumes
@@ -170,10 +175,10 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # WORKER — Data Plane (FULL PROVIDERS from CI image)
+  # WORKER — Data Plane (FULL PROVIDERS from CI image + Pokemon provider)
   # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
   airflow-worker:
-    image: ghcr.io/apache/airflow/main/ci/python3.10:latest
+    image: airflow-worker:latest
     entrypoint: /bin/bash
     command:
       - -c
