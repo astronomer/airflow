@@ -384,10 +384,10 @@ consumers.
 
 The following example models a realistic player analytics flow with four assets:
 
-* ``incoming/player-stats/team_a.csv``
-* ``incoming/player-stats/team_b.csv``
-* ``curated/player-stats/combined.csv``
-* ``analytics/player-stats/computed-player-odds.csv``
+* ``file://incoming/player-stats/team_a.csv``
+* ``file://incoming/player-stats/team_b.csv``
+* ``file://curated/player-stats/combined.csv``
+* ``file://analytics/player-stats/computed-player-odds.csv``
 
 ``clean_and_combine_player_stats`` (DAG1) consumes raw partitioned assets and
 produces a combined cleaned asset. ``compute_player_odds`` (DAG2) then consumes
@@ -406,9 +406,9 @@ those partitioned combined stats and produces partitioned player odds.
         task,
     )
 
-    team_a_player_stats = Asset(uri="incoming/player-stats/team_a.csv")
-    team_b_player_stats = Asset(uri="incoming/player-stats/team_b.csv")
-    combined_player_stats = Asset(uri="curated/player-stats/combined.csv")
+    team_a_player_stats = Asset(uri="file://incoming/player-stats/team_a.csv")
+    team_b_player_stats = Asset(uri="file://incoming/player-stats/team_b.csv")
+    combined_player_stats = Asset(uri="file://curated/player-stats/combined.csv")
 
 
     with DAG(
@@ -458,7 +458,7 @@ those partitioned combined stats and produces partitioned player odds.
 
     # DAG2 consumes combined stats and computes player odds.
     @asset(
-        uri="analytics/player-stats/computed-player-odds.csv",
+        uri="file://analytics/player-stats/computed-player-odds.csv",
         schedule=PartitionedAssetTimetable(
             assets=combined_player_stats,
             default_partition_mapper=HourlyMapper(),
@@ -475,7 +475,7 @@ those partitioned combined stats and produces partitioned player odds.
         schedule=PartitionedAssetTimetable(
             assets=combined_player_stats & Asset.ref(name="compute_player_odds"),
             partition_mapper_config={
-                Asset(uri="curated/player-stats/combined.csv"): YearlyMapper(),
+                Asset(uri="file://curated/player-stats/combined.csv"): YearlyMapper(),
                 Asset.ref(name="compute_player_odds"): HourlyMapper(),
             },
         ),
