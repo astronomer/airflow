@@ -384,10 +384,10 @@ consumers.
 
 The following example models a realistic player analytics flow with four assets:
 
-* ``s3://incoming/player-stats/french.csv``
-* ``s3://incoming/player-stats/indian.csv``
-* ``s3://curated/player-stats/combined.csv``
-* ``s3://analytics/player-stats/computed-player-odds.csv``
+* ``incoming/player-stats/team_a.csv``
+* ``incoming/player-stats/team_b.csv``
+* ``curated/player-stats/combined.csv``
+* ``analytics/player-stats/computed-player-odds.csv``
 
 ``clean_and_combine_player_stats`` (DAG1) consumes raw partitioned assets and
 produces a combined cleaned asset. ``compute_player_odds`` (DAG2) then consumes
@@ -406,42 +406,42 @@ those partitioned combined stats and produces partitioned player odds.
         task,
     )
 
-    french_player_stats = Asset(uri="s3://incoming/player-stats/french.csv")
-    indian_player_stats = Asset(uri="s3://incoming/player-stats/indian.csv")
-    combined_player_stats = Asset(uri="s3://curated/player-stats/combined.csv")
+    team_a_player_stats = Asset(uri="incoming/player-stats/team_a.csv")
+    team_b_player_stats = Asset(uri="incoming/player-stats/team_b.csv")
+    combined_player_stats = Asset(uri="curated/player-stats/combined.csv")
 
 
     with DAG(
-        dag_id="ingest_french_player_stats",
+        dag_id="ingest_team_a_player_stats",
         schedule=CronPartitionTimetable("0 * * * *", timezone="UTC"),
         tags=["player-stats", "ingestion"],
     ):
 
-        @task(outlets=[french_player_stats])
-        def ingest_french_stats():
+        @task(outlets=[team_a_player_stats])
+        def ingest_team_a_stats():
             pass
 
-        ingest_french_stats()
+        ingest_team_a_stats()
 
 
     with DAG(
-        dag_id="ingest_indian_player_stats",
+        dag_id="ingest_team_b_player_stats",
         schedule=CronPartitionTimetable("0 * * * *", timezone="UTC"),
         tags=["player-stats", "ingestion"],
     ):
 
-        @task(outlets=[indian_player_stats])
-        def ingest_indian_stats():
+        @task(outlets=[team_b_player_stats])
+        def ingest_team_b_stats():
             pass
 
-        ingest_indian_stats()
+        ingest_team_b_stats()
 
 
     # DAG1 consumes raw assets and produces cleaned combined stats.
     with DAG(
         dag_id="clean_and_combine_player_stats",
         schedule=PartitionedAssetTimetable(
-            assets=french_player_stats & indian_player_stats,
+            assets=team_a_player_stats & team_b_player_stats,
             default_partition_mapper=HourlyMapper(),
         ),
         catchup=False,
@@ -458,7 +458,7 @@ those partitioned combined stats and produces partitioned player odds.
 
     # DAG2 consumes combined stats and computes player odds.
     @asset(
-        uri="s3://analytics/player-stats/computed-player-odds.csv",
+        uri="analytics/player-stats/computed-player-odds.csv",
         schedule=PartitionedAssetTimetable(
             assets=combined_player_stats,
             default_partition_mapper=HourlyMapper(),
@@ -475,7 +475,7 @@ those partitioned combined stats and produces partitioned player odds.
         schedule=PartitionedAssetTimetable(
             assets=combined_player_stats & Asset.ref(name="compute_player_odds"),
             partition_mapper_config={
-                Asset(uri="s3://curated/player-stats/combined.csv"): YearlyMapper(),
+                Asset(uri="curated/player-stats/combined.csv"): YearlyMapper(),
                 Asset.ref(name="compute_player_odds"): HourlyMapper(),
             },
         ),
