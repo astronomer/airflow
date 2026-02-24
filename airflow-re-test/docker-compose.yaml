@@ -44,7 +44,7 @@ x-airflow-common-env:
 
 x-airflow-common-volumes:
   &airflow-common-volumes
-  - ./dags:/opt/airflow/dags
+  - ./pokemon-dags:/opt/airflow/dags
   - ./logs:/opt/airflow/logs
   - ../airflow-core/src:/opt/airflow/airflow-core/src
   - ../task-sdk/src:/opt/airflow/task-sdk/src
