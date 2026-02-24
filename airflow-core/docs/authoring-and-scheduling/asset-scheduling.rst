@@ -375,6 +375,122 @@ For scenarios requiring more intricate conditions, such as triggering a Dag when
         ...
 
 
+Partitioned asset pipelines
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When each Dag run should process one partition key (for example one hour), use
+``CronPartitionTimetable`` for producers and ``PartitionedAssetTimetable`` for
+consumers.
+
+The following example models a realistic player analytics flow with four assets:
+
+* ``s3://incoming/player-stats/french.csv``
+* ``s3://incoming/player-stats/indian.csv``
+* ``s3://curated/player-stats/combined.csv``
+* ``s3://analytics/player-stats/computed-player-odds.csv``
+
+``clean_and_combine_player_stats`` (DAG1) consumes raw partitioned assets and
+produces a combined cleaned asset. ``compute_player_odds`` (DAG2) then consumes
+those partitioned combined stats and produces partitioned player odds.
+
+.. code-block:: python
+
+    from airflow.sdk import (
+        DAG,
+        Asset,
+        CronPartitionTimetable,
+        HourlyMapper,
+        PartitionedAssetTimetable,
+        YearlyMapper,
+        asset,
+        task,
+    )
+
+    french_player_stats = Asset(uri="s3://incoming/player-stats/french.csv")
+    indian_player_stats = Asset(uri="s3://incoming/player-stats/indian.csv")
+    combined_player_stats = Asset(uri="s3://curated/player-stats/combined.csv")
+
+
+    with DAG(
+        dag_id="ingest_french_player_stats",
+        schedule=CronPartitionTimetable("0 * * * *", timezone="UTC"),
+        tags=["player-stats", "ingestion"],
+    ):
+
+        @task(outlets=[french_player_stats])
+        def ingest_french_stats():
+            pass
+
+        ingest_french_stats()
+
+
+    with DAG(
+        dag_id="ingest_indian_player_stats",
+        schedule=CronPartitionTimetable("0 * * * *", timezone="UTC"),
+        tags=["player-stats", "ingestion"],
+    ):
+
+        @task(outlets=[indian_player_stats])
+        def ingest_indian_stats():
+            pass
+
+        ingest_indian_stats()
+
+
+    # DAG1 consumes raw assets and produces cleaned combined stats.
+    with DAG(
+        dag_id="clean_and_combine_player_stats",
+        schedule=PartitionedAssetTimetable(
+            assets=french_player_stats & indian_player_stats,
+            default_partition_mapper=HourlyMapper(),
+        ),
+        catchup=False,
+        tags=["player-stats", "cleanup"],
+    ):
+
+        @task(outlets=[combined_player_stats])
+        def combine_player_stats(dag_run=None):
+            if dag_run:
+                print(f"Cleaning partition: {dag_run.partition_key}")
+
+        combine_player_stats()
+
+
+    # DAG2 consumes combined stats and computes player odds.
+    @asset(
+        uri="s3://analytics/player-stats/computed-player-odds.csv",
+        schedule=PartitionedAssetTimetable(
+            assets=combined_player_stats,
+            default_partition_mapper=HourlyMapper(),
+        ),
+        tags=["player-stats", "odds"],
+    )
+    def compute_player_odds():
+        pass
+
+
+    # Mapper mismatch example: this DAG is intentionally unlikely to trigger.
+    with DAG(
+        dag_id="player_odds_quality_check_wont_be_triggered",
+        schedule=PartitionedAssetTimetable(
+            assets=combined_player_stats & Asset.ref(name="compute_player_odds"),
+            partition_mapper_config={
+                Asset(uri="s3://curated/player-stats/combined.csv"): YearlyMapper(),
+                Asset.ref(name="compute_player_odds"): HourlyMapper(),
+            },
+        ),
+        catchup=False,
+        tags=["player-stats", "odds"],
+    ):
+
+        @task
+        def check_partition_alignment(dag_run=None):
+            if dag_run:
+                print(dag_run.partition_key)
+
+        check_partition_alignment()
+
+
 Scheduling based on asset aliases
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Since asset events added to an alias are just simple asset events, a downstream Dag depending on the actual asset can read asset events of it normally, without considering the associated aliases. A downstream Dag can also depend on an asset alias. The authoring syntax is referencing the ``AssetAlias`` by name, and the associated asset events are picked up for scheduling. Note that a Dag can be triggered by a task with ``outlets=AssetAlias("xxx")`` if and only if the alias is resolved into ``Asset("s3://bucket/my-task")``. The Dag runs whenever a task with outlet ``AssetAlias("out")`` gets associated with at least one asset at runtime, regardless of the asset's identity. The downstream Dag is not triggered if no assets are associated to the alias for a particular given task run. This also means we can do conditional asset-triggering.
