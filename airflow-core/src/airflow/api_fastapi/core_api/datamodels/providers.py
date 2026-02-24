@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from pydantic import Field
+
 from airflow.api_fastapi.core_api.base import BaseModel
 
 
@@ -27,6 +29,7 @@ class ProviderResponse(BaseModel):
     description: str
     version: str
     documentation_url: str | None
+    workers: list[str] = Field(default_factory=list)
 
 
 class ProviderCollectionResponse(BaseModel):

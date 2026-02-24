@@ -24,8 +24,7 @@ from airflow.api_fastapi.common.parameters import QueryLimit, QueryOffset
 from airflow.api_fastapi.common.router import AirflowRouter
 from airflow.api_fastapi.core_api.datamodels.providers import ProviderCollectionResponse
 from airflow.api_fastapi.core_api.security import requires_access_view
-from airflow.api_fastapi.core_api.services.public.providers import _provider_mapper
-from airflow.providers_manager import ProvidersManager
+from airflow.api_fastapi.core_api.services.public.providers import get_merged_providers
 
 providers_router = AirflowRouter(tags=["Provider"], prefix="/providers")
 
@@ -39,9 +38,7 @@ def get_providers(
     offset: QueryOffset,
 ) -> ProviderCollectionResponse:
     """Get providers."""
-    providers = sorted(
-        [_provider_mapper(d) for d in ProvidersManager().providers.values()], key=lambda x: x.package_name
-    )
+    providers = get_merged_providers()
     total_entries = len(providers)
 
     if limit.value is not None and offset.value is not None:

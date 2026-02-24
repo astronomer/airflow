@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Heading, Link } from "@chakra-ui/react";
+import { Box, Heading, Link, Text } from "@chakra-ui/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -53,6 +53,12 @@ const createColumns = (translate: TFunction): Array<ColumnDef<ProviderResponse>>
     cell: ({ row: { original } }) => original.version,
     enableSorting: false,
     header: translate("providers.columns.version"),
+  },
+  {
+    accessorKey: "workers",
+    cell: ({ row: { original } }) => <Text fontSize="sm">{original.workers?.join(", ") ?? ""}</Text>,
+    enableSorting: false,
+    header: translate("providers.columns.workers"),
   },
   {
     accessorKey: "description",

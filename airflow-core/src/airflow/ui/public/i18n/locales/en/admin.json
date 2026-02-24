@@ -135,7 +135,8 @@
   "providers": {
     "columns": {
       "packageName": "Package Name",
-      "version": "Version"
+      "version": "Version",
+      "workers": "Workers"
     }
   },
   "variables": {

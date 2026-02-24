@@ -1260,6 +1260,7 @@ export type ProviderResponse = {
     description: string;
     version: string;
     documentation_url: string | null;
+    workers?: Array<string>;
 };
 
 /**
