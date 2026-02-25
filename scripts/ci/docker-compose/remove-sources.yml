@@ -100,6 +100,8 @@ services:
       - ../../../empty:/opt/airflow/providers/papermill/src
       - ../../../empty:/opt/airflow/providers/pgvector/src
       - ../../../empty:/opt/airflow/providers/pinecone/src
+      - ../../../empty:/opt/airflow/providers/pokemon-v2/src/pokemon/src
+      - ../../../empty:/opt/airflow/providers/pokemon/src/pokemon/src
       - ../../../empty:/opt/airflow/providers/postgres/src
       - ../../../empty:/opt/airflow/providers/presto/src
       - ../../../empty:/opt/airflow/providers/qdrant/src

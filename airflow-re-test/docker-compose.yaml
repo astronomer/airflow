@@ -140,13 +140,9 @@ services:
 
   # DAG PROCESSOR — Control Plane (minimal providers)
   airflow-dag-processor:
-    image: airflow-worker:latest
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        chmod 1777 /tmp 2>/dev/null || true
-        exec airflow dag-processor
+    image: airflow-worker-v1:latest
+    entrypoint: ["/usr/python/bin/python", "-m"]
+    command: ["airflow", "dag-processor"]
     environment:
       <<: *airflow-common-env
     volumes: *airflow-common-volumes
@@ -175,16 +171,58 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # WORKER — Data Plane (FULL PROVIDERS from CI image + Pokemon provider)
-  # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
-  airflow-worker:
-    image: airflow-worker:latest
-    entrypoint: /bin/bash
-    command:
-      - -c
-      - |
-        chmod 1777 /tmp 2>/dev/null || true
-        exec airflow celery worker
+#  # WORKER — Data Plane (FULL PROVIDERS from CI image + Pokemon provider)
+#  # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
+#  airflow-worker:
+#    image: airflow-worker:latest
+#    entrypoint: /bin/bash
+#    command:
+#      - -c
+#      - |
+#        chmod 1777 /tmp 2>/dev/null || true
+#        exec airflow celery worker
+#    environment:
+#      <<: *airflow-common-env
+#      DUMB_INIT_SETSID: "0"
+#    volumes: *airflow-common-volumes
+#    user: "0:0"
+#    restart: always
+#    depends_on:
+#      redis:
+#        condition: service_healthy
+#      postgres:
+#        condition: service_healthy
+#      airflow-apiserver:
+#        condition: service_healthy
+#      airflow-init:
+#        condition: service_completed_successfully
+
+  # WORKER 1 — Data Plane (Pokemon provider v1.0.0)
+  airflow-worker-v1:
+    image: airflow-worker-v1:latest
+    entrypoint: ["/usr/python/bin/python", "-m"]
+    command: ["airflow", "celery", "worker", "-H", "worker-v1"]
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+    volumes: *airflow-common-volumes
+    user: "0:0"
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      airflow-apiserver:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # WORKER 2 — Data Plane (Pokemon provider v2.0.0 with api_key field)
+  airflow-worker-v2:
+    image: airflow-worker-v2:latest
+    entrypoint: ["/usr/python/bin/python", "-m"]
+    command: ["airflow", "celery", "worker", "-H", "worker-v2"]
     environment:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"

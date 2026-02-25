@@ -15,13 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 
-FROM ghcr.io/apache/airflow/main/ci/python3.10:latest
-
-# Copy and install the pokemon provider
-COPY providers/pokemon /tmp/pokemon-provider
-
-RUN pip install /tmp/pokemon-provider && \
-    rm -rf /tmp/pokemon-provider
-
-USER root
-WORKDIR /opt/airflow
+"""Operators package."""

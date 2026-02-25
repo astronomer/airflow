@@ -23,6 +23,7 @@ import random
 from typing import Any
 
 import requests
+
 from airflow.hooks.base import BaseHook
 
 

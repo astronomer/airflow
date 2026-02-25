@@ -54,31 +54,30 @@ with DAG(
     - Favorite Generation: gen-i, gen-ii, etc.
     """,
 ) as dag:
-    
     # Fetch specific Pokémon
     fetch_pikachu = PokemonFetchOperator(
         task_id="fetch_pikachu",
         pokemon_name="pikachu",
         pokemon_conn_id="pokemon_default",
     )
-    
+
     fetch_charizard = PokemonFetchOperator(
         task_id="fetch_charizard",
         pokemon_name="charizard",
         pokemon_conn_id="pokemon_default",
     )
-    
+
     fetch_mew = PokemonFetchOperator(
         task_id="fetch_mew",
         pokemon_name="mew",
         pokemon_conn_id="pokemon_default",
     )
-    
+
     # Fetch random Pokémon from favorite generation
     fetch_random = PokemonFetchOperator(
         task_id="fetch_random_from_fav_gen",
         pokemon_conn_id="pokemon_default",
     )
-    
+
     # Define task dependencies
     [fetch_pikachu, fetch_charizard, fetch_mew] >> fetch_random

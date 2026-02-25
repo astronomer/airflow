@@ -15,25 +15,4 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Provider info entrypoint for Pokémon provider."""
-
-from __future__ import annotations
-
-from pathlib import Path
-
-import yaml
-
-
-def get_provider_info() -> dict:
-    """
-    Return provider information by reading provider.yaml.
-
-    This function is called by Airflow's provider discovery mechanism.
-    """
-    # provider.yaml should be in the package root (pokemon/)
-    provider_yaml_path = Path(__file__).parent.parent.parent / "provider.yaml"
-
-    with provider_yaml_path.open() as f:
-        provider_info = yaml.safe_load(f)
-
-    return provider_info
+"""Hooks package."""

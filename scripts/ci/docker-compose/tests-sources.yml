@@ -113,6 +113,8 @@ services:
       - ../../../providers/papermill/tests:/opt/airflow/providers/papermill/tests
       - ../../../providers/pgvector/tests:/opt/airflow/providers/pgvector/tests
       - ../../../providers/pinecone/tests:/opt/airflow/providers/pinecone/tests
+      - ../../../providers/pokemon-v2/src/pokemon/tests:/opt/airflow/providers/pokemon-v2/src/pokemon/tests
+      - ../../../providers/pokemon/src/pokemon/tests:/opt/airflow/providers/pokemon/src/pokemon/tests
       - ../../../providers/postgres/tests:/opt/airflow/providers/postgres/tests
       - ../../../providers/presto/tests:/opt/airflow/providers/presto/tests
       - ../../../providers/qdrant/tests:/opt/airflow/providers/qdrant/tests
