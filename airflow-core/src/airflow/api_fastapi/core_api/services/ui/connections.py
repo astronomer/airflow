@@ -79,7 +79,15 @@ class HookMetaService:
         if not connection_type:
             return None
 
-        hook_name = connection_type
+        # Include version in both connection_type (ID) and hook_name (display)
+        # for heterogeneous workers with different provider versions
+        version = ct.get("_provider_version", "")
+        if version:
+            connection_type_with_version = f"{connection_type}__v{version}"  # Use __ separator for ID
+            hook_name = f"{connection_type} (v{version})"
+        else:
+            connection_type_with_version = connection_type
+            hook_name = connection_type
 
         ui_behaviour = ct.get("ui-field-behaviour", {})
         standard_fields = HookMetaService._parse_ui_field_behaviour(ui_behaviour) if ui_behaviour else None
@@ -89,10 +97,10 @@ class HookMetaService:
         )
 
         return ConnectionHookMetaData(
-            connection_type=connection_type,
+            connection_type=connection_type_with_version,  # Unique ID with version
             hook_class_name=hook_class,
             default_conn_name=None,
-            hook_name=hook_name,
+            hook_name=hook_name,  # User-friendly display name
             standard_fields=standard_fields,
             extra_fields=extra_fields,
         )

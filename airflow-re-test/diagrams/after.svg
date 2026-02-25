@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow-after" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#334155"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="36" text-anchor="middle" font-size="22" font-weight="700" fill="#1e293b">After: Worker-Initiated Provider Discovery</text>
+  <text x="450" y="58" text-anchor="middle" font-size="13" fill="#64748b">Workers report installed providers on boot. API server renders forms from declarative YAML metadata.</text>
+
+  <!-- API Server Box -->
+  <rect x="270" y="85" width="360" height="175" rx="12" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="450" y="113" text-anchor="middle" font-size="16" font-weight="600" fill="#1e293b">API Server</text>
+  <text x="450" y="130" text-anchor="middle" font-size="11" fill="#64748b">No provider packages installed</text>
+
+  <!-- Inner: Worker Inventory -->
+  <rect x="295" y="145" width="150" height="45" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="370" y="165" text-anchor="middle" font-size="12" font-weight="500" fill="#166534">Worker Inventory</text>
+  <text x="370" y="179" text-anchor="middle" font-size="10" fill="#166534">(in-memory registry)</text>
+
+  <!-- Inner: Metadata Cache -->
+  <rect x="460" y="145" width="150" height="45" rx="8" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="535" y="165" text-anchor="middle" font-size="12" font-weight="500" fill="#166534">Metadata Cache</text>
+  <text x="535" y="179" text-anchor="middle" font-size="10" fill="#166534">(YAML conn fields)</text>
+
+  <!-- Inner: Execution API endpoint -->
+  <rect x="320" y="205" width="260" height="35" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+  <text x="450" y="227" text-anchor="middle" font-size="11" fill="#475569">POST /execution/worker/register-providers</text>
+
+  <!-- Worker 1 -->
+  <rect x="100" y="360" width="250" height="130" rx="12" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="225" y="388" text-anchor="middle" font-size="14" font-weight="600" fill="#1e293b">Worker 1 (celery@worker-v1)</text>
+
+  <rect x="120" y="400" width="100" height="30" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="170" y="420" text-anchor="middle" font-size="10" fill="#475569">Google v10.0</text>
+
+  <rect x="230" y="400" width="100" height="30" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="280" y="420" text-anchor="middle" font-size="10" fill="#475569">Amazon v8.0</text>
+
+  <rect x="120" y="440" width="210" height="35" rx="6" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="225" y="460" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">Custom Provider (Pokemon) v1.0.0</text>
+  <text x="225" y="472" text-anchor="middle" font-size="9" fill="#3b82f6">Fields: pokemon_name</text>
+
+  <!-- Worker 2 -->
+  <rect x="550" y="360" width="250" height="130" rx="12" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="675" y="388" text-anchor="middle" font-size="14" font-weight="600" fill="#1e293b">Worker 2 (celery@worker-v2)</text>
+
+  <rect x="570" y="400" width="100" height="30" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="620" y="420" text-anchor="middle" font-size="10" fill="#475569">Google v10.0</text>
+
+  <rect x="680" y="400" width="100" height="30" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="730" y="420" text-anchor="middle" font-size="10" fill="#475569">Amazon v8.0</text>
+
+  <rect x="570" y="440" width="210" height="35" rx="6" fill="#dbeafe" stroke="#60a5fa" stroke-width="1.5"/>
+  <text x="675" y="460" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">Custom Provider (Pokemon) v2.0.0</text>
+  <text x="675" y="472" text-anchor="middle" font-size="9" fill="#3b82f6">Fields: pokemon_name, api_key</text>
+
+  <!-- Arrows: Workers to API Server -->
+  <line x1="225" y1="360" x2="380" y2="245" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="240" y="310" font-size="10" font-weight="500" fill="#16a34a">On boot: sends</text>
+  <text x="240" y="322" font-size="10" font-weight="500" fill="#16a34a">provider YAML metadata</text>
+
+  <line x1="675" y1="360" x2="520" y2="245" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="595" y="310" font-size="10" font-weight="500" fill="#16a34a">On boot: sends</text>
+  <text x="595" y="322" font-size="10" font-weight="500" fill="#16a34a">provider YAML metadata</text>
+
+  <!-- Web UI -->
+  <rect x="700" y="110" width="170" height="80" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="785" y="138" text-anchor="middle" font-size="14" font-weight="600" fill="#1e293b">Web UI</text>
+  <text x="785" y="156" text-anchor="middle" font-size="10" fill="#64748b">Connection Type Dropdown:</text>
+  <text x="785" y="170" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">pokemon (v1.0.0)</text>
+  <text x="785" y="182" text-anchor="middle" font-size="10" font-weight="600" fill="#1e40af">pokemon (v2.0.0)</text>
+
+  <!-- Arrow: API Server to Web UI -->
+  <line x1="630" y1="150" x2="698" y2="150" stroke="#334155" stroke-width="1.5" marker-end="url(#arrow-after)"/>
+  <text x="640" y="140" font-size="10" fill="#64748b">Dynamic forms</text>
+
+  <!-- Benefits callout -->
+  <rect x="15" y="90" width="230" height="135" rx="10" fill="#f0fdf4" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="130" y="114" text-anchor="middle" font-size="13" font-weight="600" fill="#166534">Benefits</text>
+  <text x="27" y="136" font-size="11" fill="#14532d">- Zero provider code on API server</text>
+  <text x="27" y="154" font-size="11" fill="#14532d">- Heterogeneous worker versions</text>
+  <text x="27" y="172" font-size="11" fill="#14532d">- Declarative YAML metadata</text>
+  <text x="27" y="190" font-size="11" fill="#14532d">- Dynamic connection forms</text>
+  <text x="27" y="208" font-size="11" fill="#14532d">- Completes Airflow 3 decoupling</text>
+</svg>

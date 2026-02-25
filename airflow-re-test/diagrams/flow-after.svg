@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 680" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="fb" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#334155"/>
+    </marker>
+    <marker id="fg" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#1e293b">After: Worker-Initiated Provider Discovery Flow</text>
+
+  <!-- ===== ROW 1: Worker Boot ===== -->
+  <text x="50" y="75" font-size="14" font-weight="600" fill="#1e293b">Worker Boot Sequence</text>
+
+  <!-- Step 1 -->
+  <rect x="50" y="90" width="180" height="65" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="140" y="115" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">1. Worker Starts</text>
+  <text x="140" y="132" text-anchor="middle" font-size="10" fill="#64748b">Celery worker boots</text>
+  <text x="140" y="145" text-anchor="middle" font-size="10" fill="#64748b">and connects to broker</text>
+
+  <line x1="230" y1="122" x2="275" y2="122" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 2 -->
+  <rect x="280" y="90" width="180" height="65" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="370" y="115" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">2. Worker Ready</text>
+  <text x="370" y="132" text-anchor="middle" font-size="10" fill="#64748b">Celery fires</text>
+  <text x="370" y="145" text-anchor="middle" font-size="10" fill="#64748b">worker-online event</text>
+
+  <line x1="460" y1="122" x2="505" y2="122" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 3 -->
+  <rect x="510" y="90" width="180" height="65" rx="10" fill="#f0fdf4" stroke="#4ade80" stroke-width="2"/>
+  <text x="600" y="115" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">3. Discover Providers</text>
+  <text x="600" y="132" text-anchor="middle" font-size="10" fill="#166534">Scan importlib.metadata</text>
+  <text x="600" y="145" text-anchor="middle" font-size="10" fill="#166534">for installed providers</text>
+
+  <line x1="690" y1="122" x2="715" y2="122" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 4 -->
+  <rect x="720" y="90" width="160" height="65" rx="10" fill="#f0fdf4" stroke="#4ade80" stroke-width="2"/>
+  <text x="800" y="115" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">4. Read YAML</text>
+  <text x="800" y="132" text-anchor="middle" font-size="10" fill="#166534">Extract conn-fields</text>
+  <text x="800" y="145" text-anchor="middle" font-size="10" fill="#166534">from provider.yaml</text>
+
+  <!-- ===== ROW 2: Registration ===== -->
+  <text x="50" y="195" font-size="14" font-weight="600" fill="#1e293b">Registration</text>
+
+  <!-- Step 5 -->
+  <rect x="50" y="210" width="250" height="80" rx="10" fill="#f0fdf4" stroke="#4ade80" stroke-width="2"/>
+  <text x="175" y="235" text-anchor="middle" font-size="12" font-weight="600" fill="#166534">5. Send to API Server</text>
+  <text x="175" y="255" text-anchor="middle" font-size="10" fill="#166534">POST /execution/worker/register-providers</text>
+  <text x="175" y="270" text-anchor="middle" font-size="10" fill="#166534">JWT-authenticated, includes:</text>
+  <text x="175" y="283" text-anchor="middle" font-size="10" fill="#166534">worker_id, providers[], YAML metadata</text>
+
+  <line x1="300" y1="250" x2="345" y2="250" stroke="#16a34a" stroke-width="2" marker-end="url(#fg)"/>
+
+  <!-- Step 6 -->
+  <rect x="350" y="210" width="250" height="80" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="475" y="235" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">6. API Server Stores</text>
+  <text x="475" y="255" text-anchor="middle" font-size="10" fill="#64748b">Worker Inventory: tracks which</text>
+  <text x="475" y="268" text-anchor="middle" font-size="10" fill="#64748b">workers have which providers</text>
+  <text x="475" y="281" text-anchor="middle" font-size="10" fill="#64748b">Metadata Cache: stores conn fields</text>
+
+  <line x1="600" y1="250" x2="645" y2="250" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 7 -->
+  <rect x="650" y="210" width="230" height="80" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="765" y="235" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">7. Apache Providers</text>
+  <text x="765" y="255" text-anchor="middle" font-size="10" fill="#64748b">Fetch provider.yaml from</text>
+  <text x="765" y="268" text-anchor="middle" font-size="10" fill="#64748b">GitHub in background</text>
+  <text x="765" y="281" text-anchor="middle" font-size="10" fill="#64748b">(parallel thread pool)</text>
+
+  <!-- ===== ROW 3: UI Rendering ===== -->
+  <text x="50" y="335" font-size="14" font-weight="600" fill="#1e293b">UI Connection Form Rendering</text>
+
+  <!-- Step 8 -->
+  <rect x="50" y="350" width="200" height="60" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="150" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">8. User Opens UI</text>
+  <text x="150" y="392" text-anchor="middle" font-size="10" fill="#64748b">Connections > Add Connection</text>
+
+  <line x1="250" y1="380" x2="295" y2="380" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 9 -->
+  <rect x="300" y="350" width="250" height="60" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="425" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">9. Fetch Hook Metadata</text>
+  <text x="425" y="392" text-anchor="middle" font-size="10" fill="#64748b">Reads from in-memory metadata cache</text>
+
+  <line x1="550" y1="380" x2="595" y2="380" stroke="#334155" stroke-width="1.5" marker-end="url(#fb)"/>
+
+  <!-- Step 10 -->
+  <rect x="600" y="350" width="280" height="60" rx="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="740" y="375" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">10. Render Version-Aware Form</text>
+  <text x="740" y="392" text-anchor="middle" font-size="10" fill="#64748b">Shows pokemon (v1.0.0) and pokemon (v2.0.0)</text>
+
+  <!-- Separator -->
+  <line x1="50" y1="440" x2="850" y2="440" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="6,4"/>
+
+  <!-- What gets sent -->
+  <text x="450" y="470" text-anchor="middle" font-size="16" font-weight="600" fill="#1e293b">What Workers Send (YAML Metadata)</text>
+
+  <!-- Example payload -->
+  <rect x="100" y="490" width="310" height="160" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="255" y="514" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Worker 1: Pokemon v1.0.0</text>
+  <text x="120" y="538" font-size="11" font-family="monospace" fill="#475569">connection-types:</text>
+  <text x="120" y="554" font-size="11" font-family="monospace" fill="#475569">  - connection-type: pokemon</text>
+  <text x="120" y="570" font-size="11" font-family="monospace" fill="#475569">    conn-fields:</text>
+  <text x="120" y="586" font-size="11" font-family="monospace" fill="#475569">      pokemon_name:</text>
+  <text x="120" y="602" font-size="11" font-family="monospace" fill="#475569">        schema:</text>
+  <text x="120" y="618" font-size="11" font-family="monospace" fill="#475569">          type: string</text>
+  <text x="120" y="634" font-size="11" font-family="monospace" fill="#475569">          title: Pokemon Name</text>
+
+  <rect x="490" y="490" width="310" height="160" rx="10" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="645" y="514" text-anchor="middle" font-size="12" font-weight="600" fill="#334155">Worker 2: Pokemon v2.0.0</text>
+  <text x="510" y="538" font-size="11" font-family="monospace" fill="#475569">connection-types:</text>
+  <text x="510" y="554" font-size="11" font-family="monospace" fill="#475569">  - connection-type: pokemon</text>
+  <text x="510" y="570" font-size="11" font-family="monospace" fill="#475569">    conn-fields:</text>
+  <text x="510" y="586" font-size="11" font-family="monospace" fill="#475569">      pokemon_name: ...</text>
+  <text x="510" y="602" font-size="11" font-family="monospace" fill="#1e40af" font-weight="600">      api_key:</text>
+  <text x="510" y="618" font-size="11" font-family="monospace" fill="#1e40af" font-weight="600">        schema:</text>
+  <text x="510" y="634" font-size="11" font-family="monospace" fill="#1e40af" font-weight="600">          type: string</text>
+</svg>

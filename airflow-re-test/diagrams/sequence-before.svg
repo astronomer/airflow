@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 520" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <!-- Title -->
+  <text x="375" y="30" text-anchor="middle" font-size="18" font-weight="700" fill="#1e293b">Before: Connection Form Loading</text>
+
+  <!-- Actors -->
+  <rect x="60" y="55" width="100" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="110" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">Web UI</text>
+
+  <rect x="250" y="55" width="120" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="310" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">API Server</text>
+
+  <rect x="460" y="55" width="140" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="530" y="72" text-anchor="middle" font-size="11" font-weight="600" fill="#1e293b">ProvidersManager</text>
+  <text x="530" y="85" text-anchor="middle" font-size="9" fill="#64748b">(local imports)</text>
+
+  <!-- Lifelines -->
+  <line x1="110" y1="91" x2="110" y2="480" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="310" y1="91" x2="310" y2="480" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="530" y1="91" x2="530" y2="480" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+
+  <!-- Phase: Startup -->
+  <rect x="20" y="110" width="710" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="375" y="124" text-anchor="middle" font-size="11" font-weight="600" fill="#64748b">API Server Startup</text>
+
+  <!-- Msg 1: API Server -> ProvidersManager -->
+  <line x1="310" y1="150" x2="525" y2="150" stroke="#334155" stroke-width="1.5" marker-end="url(#sb)"/>
+  <text x="418" y="145" text-anchor="middle" font-size="10" fill="#334155">Import all hook classes</text>
+
+  <!-- Activation bar on ProvidersManager -->
+  <rect x="525" y="150" width="10" height="60" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+
+  <!-- Msg 2: ProvidersManager loads -->
+  <text x="620" y="175" font-size="9" fill="#64748b">pip install apache-airflow-providers-*</text>
+  <text x="620" y="188" font-size="9" fill="#64748b">Load 100+ hook classes into memory</text>
+  <text x="620" y="201" font-size="9" fill="#64748b">Execute get_ui_field_behaviour()</text>
+
+  <!-- Return -->
+  <line x1="525" y1="210" x2="315" y2="210" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#sb)"/>
+  <text x="418" y="225" text-anchor="middle" font-size="10" fill="#64748b">Hook metadata (fields, labels, placeholders)</text>
+
+  <!-- Store -->
+  <rect x="305" y="235" width="10" height="25" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="330" y="250" font-size="10" fill="#334155">Cache in memory</text>
+
+  <!-- Phase: User Request -->
+  <rect x="20" y="280" width="710" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="375" y="294" text-anchor="middle" font-size="11" font-weight="600" fill="#64748b">User Creates Connection</text>
+
+  <!-- Msg 3: UI -> API Server -->
+  <line x1="110" y1="320" x2="305" y2="320" stroke="#334155" stroke-width="1.5" marker-end="url(#sb)"/>
+  <text x="208" y="315" text-anchor="middle" font-size="10" fill="#334155">GET /ui/connections/hook-metadata</text>
+
+  <!-- Activation bar on API Server -->
+  <rect x="305" y="320" width="10" height="30" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+
+  <!-- Return -->
+  <line x1="305" y1="350" x2="115" y2="350" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#sb)"/>
+  <text x="208" y="365" text-anchor="middle" font-size="10" fill="#64748b">All connection types + form fields</text>
+
+  <!-- UI renders -->
+  <rect x="105" y="375" width="10" height="25" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="130" y="390" font-size="10" fill="#334155">Render form with fields</text>
+
+  <!-- Problem note -->
+  <rect x="55" y="425" width="640" height="45" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="375" y="448" text-anchor="middle" font-size="11" fill="#991b1b">API server must install all provider packages locally. Hook code runs on control plane.</text>
+  <text x="375" y="463" text-anchor="middle" font-size="11" fill="#991b1b">All workers must share the same provider versions. No heterogeneous support.</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="sb" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#334155"/>
+    </marker>
+  </defs>
+</svg>

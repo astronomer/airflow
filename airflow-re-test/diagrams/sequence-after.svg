@@ -1,0 +1,123 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="sa" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#334155"/>
+    </marker>
+    <marker id="sg" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="450" y="30" text-anchor="middle" font-size="18" font-weight="700" fill="#1e293b">After: Worker-Initiated Provider Discovery</text>
+
+  <!-- Actors -->
+  <rect x="30" y="55" width="90" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="75" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">Web UI</text>
+
+  <rect x="200" y="55" width="110" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="255" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">API Server</text>
+
+  <rect x="390" y="55" width="110" height="36" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+  <text x="445" y="78" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">Scheduler</text>
+
+  <rect x="570" y="55" width="130" height="36" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="635" y="72" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">Worker 1</text>
+  <text x="635" y="85" text-anchor="middle" font-size="9" fill="#3b82f6">Pokemon v1.0.0</text>
+
+  <rect x="760" y="55" width="130" height="36" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+  <text x="825" y="72" text-anchor="middle" font-size="11" font-weight="600" fill="#1e40af">Worker 2</text>
+  <text x="825" y="85" text-anchor="middle" font-size="9" fill="#3b82f6">Pokemon v2.0.0</text>
+
+  <!-- Lifelines -->
+  <line x1="75" y1="91" x2="75" y2="670" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="255" y1="91" x2="255" y2="670" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="445" y1="91" x2="445" y2="670" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="635" y1="91" x2="635" y2="670" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+  <line x1="825" y1="91" x2="825" y2="670" stroke="#cbd5e1" stroke-width="1.5" stroke-dasharray="6,4"/>
+
+  <!-- Phase 1: Worker 1 Boot -->
+  <rect x="15" y="110" width="875" height="20" rx="4" fill="#f0fdf4"/>
+  <text x="450" y="124" text-anchor="middle" font-size="11" font-weight="600" fill="#166534">Worker 1 Boot</text>
+
+  <!-- Worker 1 boots -->
+  <line x1="635" y1="148" x2="450" y2="148" stroke="#16a34a" stroke-width="1.5" marker-end="url(#sg)"/>
+  <text x="542" y="143" text-anchor="middle" font-size="10" fill="#16a34a">Celery worker-online event</text>
+
+  <!-- Scheduler dispatches registration task -->
+  <line x1="445" y1="170" x2="630" y2="170" stroke="#334155" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="538" y="165" text-anchor="middle" font-size="10" fill="#334155">Dispatch registration task</text>
+  <text x="538" y="184" text-anchor="middle" font-size="9" fill="#64748b">queue: registration-worker-v1</text>
+
+  <!-- Worker 1 activation -->
+  <rect x="630" y="195" width="10" height="55" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+
+  <!-- Worker 1 discovers providers -->
+  <text x="660" y="210" font-size="9" fill="#334155">Scan importlib.metadata</text>
+  <text x="660" y="222" font-size="9" fill="#334155">Read provider.yaml</text>
+  <text x="660" y="234" font-size="9" fill="#334155">Found: Pokemon v1.0.0</text>
+
+  <!-- Worker 1 calls API Server -->
+  <line x1="630" y1="250" x2="260" y2="250" stroke="#16a34a" stroke-width="1.5" marker-end="url(#sg)"/>
+  <text x="445" y="245" text-anchor="middle" font-size="10" fill="#16a34a">POST /execution/worker/register-providers</text>
+  <text x="445" y="265" text-anchor="middle" font-size="9" fill="#16a34a">JWT auth, worker_id, 100 providers + YAML metadata</text>
+
+  <!-- API Server activation -->
+  <rect x="250" y="275" width="10" height="40" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="275" y="290" font-size="9" fill="#334155">Store in Worker Inventory</text>
+  <text x="275" y="302" font-size="9" fill="#334155">Cache connection metadata</text>
+
+  <!-- Return to worker 1 -->
+  <line x1="260" y1="315" x2="630" y2="315" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#sa)"/>
+  <text x="445" y="328" text-anchor="middle" font-size="9" fill="#64748b">200 OK (100 providers registered)</text>
+
+  <!-- Phase 2: Worker 2 Boot -->
+  <rect x="15" y="345" width="875" height="20" rx="4" fill="#f0fdf4"/>
+  <text x="450" y="359" text-anchor="middle" font-size="11" font-weight="600" fill="#166534">Worker 2 Boot (15s later)</text>
+
+  <!-- Worker 2 boots -->
+  <line x1="825" y1="383" x2="450" y2="383" stroke="#16a34a" stroke-width="1.5" marker-end="url(#sg)"/>
+  <text x="638" y="378" text-anchor="middle" font-size="10" fill="#16a34a">Celery worker-online event</text>
+
+  <!-- Scheduler dispatches to worker 2 -->
+  <line x1="445" y1="403" x2="820" y2="403" stroke="#334155" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="633" y="398" text-anchor="middle" font-size="10" fill="#334155">Dispatch registration task</text>
+  <text x="633" y="417" text-anchor="middle" font-size="9" fill="#64748b">queue: registration-worker-v2</text>
+
+  <!-- Worker 2 activation -->
+  <rect x="820" y="425" width="10" height="45" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="845" y="440" font-size="9" fill="#334155">Scan providers</text>
+  <text x="845" y="452" font-size="9" fill="#334155">Found: Pokemon v2.0.0</text>
+  <text x="845" y="464" font-size="9" fill="#1e40af">(has api_key field)</text>
+
+  <!-- Worker 2 calls API Server -->
+  <line x1="820" y1="470" x2="260" y2="470" stroke="#16a34a" stroke-width="1.5" marker-end="url(#sg)"/>
+  <text x="540" y="465" text-anchor="middle" font-size="10" fill="#16a34a">POST /execution/worker/register-providers</text>
+
+  <!-- API Server stores -->
+  <rect x="250" y="480" width="10" height="25" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="275" y="495" font-size="9" fill="#334155">Store v2.0.0 alongside v1.0.0</text>
+
+  <!-- Return -->
+  <line x1="260" y1="505" x2="820" y2="505" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#sa)"/>
+
+  <!-- Phase 3: UI -->
+  <rect x="15" y="530" width="875" height="20" rx="4" fill="#f1f5f9"/>
+  <text x="450" y="544" text-anchor="middle" font-size="11" font-weight="600" fill="#64748b">User Creates Connection</text>
+
+  <!-- UI -> API Server -->
+  <line x1="75" y1="568" x2="250" y2="568" stroke="#334155" stroke-width="1.5" marker-end="url(#sa)"/>
+  <text x="163" y="563" text-anchor="middle" font-size="10" fill="#334155">GET hook-metadata</text>
+
+  <!-- API Server activation -->
+  <rect x="250" y="568" width="10" height="30" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+
+  <!-- Return with both versions -->
+  <line x1="250" y1="598" x2="80" y2="598" stroke="#334155" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#sa)"/>
+  <text x="163" y="612" text-anchor="middle" font-size="10" fill="#334155">pokemon (v1.0.0), pokemon (v2.0.0)</text>
+
+  <!-- UI renders -->
+  <rect x="70" y="620" width="10" height="25" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1"/>
+  <text x="95" y="632" font-size="9" fill="#334155">Dropdown shows both versions</text>
+  <text x="95" y="644" font-size="9" fill="#334155">Each with version-specific fields</text>
+</svg>
