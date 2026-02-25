@@ -400,6 +400,7 @@ those partitioned combined stats and produces partitioned player odds.
         Asset,
         CronPartitionTimetable,
         HourlyMapper,
+        IdentityMapper,
         PartitionedAssetTimetable,
         YearlyMapper,
         asset,
@@ -461,7 +462,8 @@ those partitioned combined stats and produces partitioned player odds.
         uri="file://analytics/player-stats/computed-player-odds.csv",
         schedule=PartitionedAssetTimetable(
             assets=combined_player_stats,
-            default_partition_mapper=HourlyMapper(),
+            # The upstream key is already hourly from DAG1, so preserve it.
+            default_partition_mapper=IdentityMapper(),
         ),
         tags=["player-stats", "odds"],
     )
@@ -476,7 +478,7 @@ those partitioned combined stats and produces partitioned player odds.
             assets=combined_player_stats & Asset.ref(name="compute_player_odds"),
             partition_mapper_config={
                 Asset(uri="file://curated/player-stats/combined.csv"): YearlyMapper(),
-                Asset.ref(name="compute_player_odds"): HourlyMapper(),
+                Asset.ref(name="compute_player_odds"): IdentityMapper(),
             },
         ),
         catchup=False,
