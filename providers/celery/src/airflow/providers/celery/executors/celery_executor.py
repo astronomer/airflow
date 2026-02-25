@@ -191,14 +191,20 @@ class CeleryExecutor(BaseExecutor):
             )
 
             workload_json = registration_workload.model_dump_json()
-            queue = self.conf.get("celery", "default_queue", fallback="default")
+            # Route registration to worker-specific queue so only the target worker processes it
+            # Extract hostname from worker_id (format: "celery@worker-v1" -> "worker-v1")
+            worker_hostname = worker_id.split("@")[-1] if "@" in worker_id else worker_id
+            worker_queue = f"registration-{worker_hostname}"
 
             register_worker_providers_task.apply_async(
                 args=[workload_json],
-                queue=queue,
+                queue=worker_queue,
+                routing_key=worker_queue,
             )
 
-            self.log.info("Dispatched provider registration to worker: %s", worker_id)
+            self.log.info(
+                "Dispatched provider registration to worker: %s on queue: %s", worker_id, worker_queue
+            )
         except Exception:
             self.log.warning("Failed to dispatch registration to %s", worker_id, exc_info=True)
 

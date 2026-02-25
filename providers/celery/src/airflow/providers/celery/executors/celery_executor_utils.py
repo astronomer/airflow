@@ -213,6 +213,7 @@ def _discover_installed_providers() -> list[dict]:
     without fetching from a remote registry.
     """
     try:
+        print("Loading provider information from entry points...")
         from importlib.metadata import entry_points as _entry_points
 
         providers = []
@@ -264,7 +265,6 @@ def register_worker_providers_task(workload_json: str) -> None:
     from airflow.executors import workloads
 
     try:
-        # Decode the workload
         decoder = TypeAdapter[workloads.RegisterWorkerProviders](workloads.RegisterWorkerProviders)
         workload = decoder.validate_json(workload_json)
 
@@ -291,6 +291,11 @@ def register_worker_providers_task(workload_json: str) -> None:
 
         # Call API server with JWT token
         headers = {"Authorization": f"Bearer {workload.token}"}
+
+        log.info(
+            f"[RegisterWorkerProviders] Calling API server at {api_url} "
+            f"with {len(providers)} providers from worker {workload.worker_id}"
+        )
 
         with httpx.Client(timeout=30.0) as client:
             response = client.post(api_url, json=payload, headers=headers)

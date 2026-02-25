@@ -155,10 +155,8 @@ class ProviderMetadataFetcher:
                     key = (package_name, version)
 
                     with self._lock:
-                        # Evict old versions of the same package
-                        for cached_key in list(self._cache):
-                            if cached_key[0] == package_name and cached_key[1] != version:
-                                del self._cache[cached_key]
+                        # Keep all versions - different workers may have different versions
+                        # of the same provider (both Apache and custom providers)
                         self._cache[key] = connection_types
 
                     if connection_types:
@@ -174,22 +172,28 @@ class ProviderMetadataFetcher:
         )
 
     def get_all_connection_types(self) -> list[dict[str, Any]]:
-        """Return all cached connection-types across all providers (flat list)."""
+        """Return all cached connection-types across all providers (flat list) with version info."""
         result: list[dict[str, Any]] = []
-        for conn_types in self._cache.values():
-            result.extend(conn_types)
+        for (package_name, version), conn_types in self._cache.items():
+            for ct in conn_types:
+                # Add version metadata to each connection-type for UI deduplication
+                ct_with_version = ct.copy()
+                ct_with_version["_provider_name"] = package_name
+                ct_with_version["_provider_version"] = version
+                result.append(ct_with_version)
         return result
 
     def store(self, package_name: str, version: str, connection_types: list[dict[str, Any]]) -> None:
         """
         Directly store connection-type metadata (e.g. from a custom provider
         that reported its own metadata during worker registration).
+
+        For custom providers, we keep all versions since different workers
+        may have different versions installed. No auto-eviction.
         """
         key = (package_name, version)
         with self._lock:
-            for cached_key in list(self._cache):
-                if cached_key[0] == package_name and cached_key[1] != version:
-                    del self._cache[cached_key]
+            # Don't evict other versions for custom providers - workers may have different versions
             self._cache[key] = connection_types
         log.info(
             "Stored %d connection-type(s) for custom provider %s==%s",

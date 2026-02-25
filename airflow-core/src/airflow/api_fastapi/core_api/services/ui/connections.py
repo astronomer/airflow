@@ -54,12 +54,16 @@ class HookMetaService:
         results: list[ConnectionHookMetaData] = []
         for ct in remote_connection_types:
             conn_type = ct.get("connection-type")
-            if not conn_type or conn_type in seen:
+            version = ct.get("_provider_version", "")
+            # Use (connection-type, version) as key to support heterogeneous workers
+            key = f"{conn_type}::{version}" if conn_type else None
+            
+            if not key or key in seen:
                 continue
             hook_meta = HookMetaService._from_yaml_connection_type(ct)
             if hook_meta:
                 results.append(hook_meta)
-                seen.add(conn_type)
+                seen.add(key)
 
         log.info("Serving %d connection type(s) from worker-discovered providers", len(results))
         return results

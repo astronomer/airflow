@@ -171,10 +171,10 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-#  # WORKER — Data Plane (FULL PROVIDERS from CI image + Pokemon provider)
-#  # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
+  # WORKER — Data Plane (FULL PROVIDERS from CI image + Pokemon provider)
+  # Override CI entrypoint since it does `exec /bin/bash "$@"` not `exec airflow "$@"`
 #  airflow-worker:
-#    image: airflow-worker:latest
+#    image: airflow-worker-v2:latest
 #    entrypoint: /bin/bash
 #    command:
 #      - -c
@@ -200,8 +200,13 @@ services:
   # WORKER 1 — Data Plane (Pokemon provider v1.0.0)
   airflow-worker-v1:
     image: airflow-worker-v1:latest
-    entrypoint: ["/usr/python/bin/python", "-m"]
-    command: ["airflow", "celery", "worker", "-H", "worker-v1"]
+    hostname: worker-v1
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        chmod 1777 /tmp 2>/dev/null || true
+        exec airflow celery worker -q default,registration-worker-v1 -c 1
     environment:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
@@ -221,8 +226,14 @@ services:
   # WORKER 2 — Data Plane (Pokemon provider v2.0.0 with api_key field)
   airflow-worker-v2:
     image: airflow-worker-v2:latest
-    entrypoint: ["/usr/python/bin/python", "-m"]
-    command: ["airflow", "celery", "worker", "-H", "worker-v2"]
+    hostname: worker-v2
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        sleep 15
+        chmod 1777 /tmp 2>/dev/null || true
+        exec airflow celery worker -q default,registration-worker-v2 -c 1
     environment:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
