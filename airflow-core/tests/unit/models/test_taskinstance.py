@@ -76,6 +76,7 @@ from airflow.sdk import (
     AssetAlias,
     BaseOperator,
     BaseSensorOperator,
+    HourlyMapper,
     IdentityMapper,
     Metadata,
     PartitionedAssetTimetable,
@@ -3120,6 +3121,36 @@ def test_when_dag_run_has_partition_and_downstreams_listening_then_tables_popula
     assert pakl.asset_partition_dag_run_id == apdr.id
     assert pakl.source_partition_key == "abc123"
     assert pakl.target_dag_id == "asset_event_listener"
+
+
+def test_when_partition_mapper_fails_error_contains_context(dag_maker, session):
+    asset = Asset(name="hello")
+    with dag_maker(dag_id="asset_event_tester", schedule=None, session=session):
+        EmptyOperator(task_id="hi", outlets=[asset])
+    dr = dag_maker.create_dagrun(partition_key="2026-02-10T14", session=session)
+    [ti] = dr.get_task_instances(session=session)
+    session.commit()
+
+    with dag_maker(
+        dag_id="asset_event_listener",
+        schedule=PartitionedAssetTimetable(
+            assets=Asset(name="hello"),
+            default_partition_mapper=HourlyMapper(),
+        ),
+        session=session,
+    ):
+        EmptyOperator(task_id="hi")
+    session.commit()
+
+    with pytest.raises(RuntimeError, match="Failed to map partition key for partitioned asset listener DAG") as err:
+        TaskInstance.register_asset_changes_in_db(
+            ti=ti,
+            task_outlets=[ensure_serialized_asset(asset).asprofile()],
+            outlet_events=[],
+            session=session,
+        )
+    assert "asset_event_listener" in str(err.value)
+    assert "source_partition_key='2026-02-10T14'" in str(err.value)
 
 
 async def empty_callback_for_deadline():

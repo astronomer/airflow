@@ -413,9 +413,32 @@ class AssetManager(LoggingMixin):
             if (asset_model := session.scalar(select(AssetModel).where(AssetModel.id == asset_id))) is None:
                 raise RuntimeError(f"Could not find asset for asset_id={asset_id}")
 
-            target_key = timetable.get_partition_mapper(
-                name=asset_model.name, uri=asset_model.uri
-            ).to_downstream(partition_key)
+            partition_mapper = timetable.get_partition_mapper(name=asset_model.name, uri=asset_model.uri)
+            try:
+                target_key = partition_mapper.to_downstream(partition_key)
+            except Exception as e:
+                mapper_name = type(partition_mapper).__name__
+                mapper_input_format = getattr(partition_mapper, "input_format", None)
+                mapper_output_format = getattr(partition_mapper, "output_format", None)
+                log.exception(
+                    "Failed to map partition key for partitioned asset listener DAG",
+                    target_dag_id=target_dag.dag_id,
+                    source_partition_key=partition_key,
+                    source_asset_name=asset_model.name,
+                    source_asset_uri=asset_model.uri,
+                    partition_mapper=mapper_name,
+                    partition_mapper_input_format=mapper_input_format,
+                    partition_mapper_output_format=mapper_output_format,
+                )
+                raise RuntimeError(
+                    "Failed to map partition key for partitioned asset listener DAG "
+                    f"{target_dag.dag_id!r} using mapper {mapper_name!r}. "
+                    f"source_partition_key={partition_key!r}, "
+                    f"source_asset_name={asset_model.name!r}, "
+                    f"source_asset_uri={asset_model.uri!r}, "
+                    f"mapper_input_format={mapper_input_format!r}, "
+                    f"mapper_output_format={mapper_output_format!r}"
+                ) from e
 
             apdr = cls._get_or_create_apdr(
                 target_key=target_key,
