@@ -282,24 +282,88 @@ class DagFileProcessorManager(LoggingMixin):
         self.log.info("Processing files using up to %s processes at a time ", self._parallelism)
         self.log.info("Process each file at most once every %s seconds", self._file_process_interval)
 
+        self.before_run()
+        try:
+            self.sync_bundles()
+
+            dag_bundles = self.get_all_bundles()
+            if self.bundle_names_to_parse:
+                dag_bundles = [b for b in dag_bundles if b.name in self.bundle_names_to_parse]
+            self._dag_bundles = dag_bundles
+
+            for bundle in self._dag_bundles:
+                self.log.info(
+                    "Checking for new files in bundle %s every %s seconds", bundle.name, bundle.refresh_interval
+                )
+
+            self._symlink_latest_log_directory()
+
+            # To prevent COW in forked process parsing dag file
+            gc.freeze()
+
+            return self._run_parsing_loop()
+        finally:
+            self.after_run()
+
+    def before_run(self) -> None:
+        """Run setup before parsing loop starts."""
+        return None
+
+    def after_run(self) -> None:
+        """Run cleanup after parsing loop ends."""
+        return None
+
+    def sync_bundles(self) -> None:
+        """DB hook to synchronize bundle records."""
         DagBundlesManager().sync_bundles_to_db()
 
-        dag_bundles = list(DagBundlesManager().get_all_dag_bundles())
-        if self.bundle_names_to_parse:
-            dag_bundles = [b for b in dag_bundles if b.name in self.bundle_names_to_parse]
-        self._dag_bundles = dag_bundles
+    def get_all_bundles(self) -> list[BaseDagBundle]:
+        """DB hook to list all bundles configured in the metadata DB."""
+        return list(DagBundlesManager().get_all_dag_bundles())
 
-        for bundle in self._dag_bundles:
-            self.log.info(
-                "Checking for new files in bundle %s every %s seconds", bundle.name, bundle.refresh_interval
-            )
+    def deactivate_stale_dags_from_db(self, last_parsed: dict[DagFileInfo, datetime | None]) -> None:
+        """DB hook for deactivating DAGs not present in files."""
+        self.deactivate_stale_dags(last_parsed=last_parsed)
 
-        self._symlink_latest_log_directory()
+    def cleanup_stale_bundle_versions(self) -> None:
+        """DB hook for removing stale bundle versions."""
+        BundleUsageTrackingManager().remove_stale_bundle_versions()
 
-        # To prevent COW in forked process parsing dag file
-        gc.freeze()
+    def deactivate_deleted_dags_from_db(self, bundle_name: str, present: set[DagFileInfo]) -> None:
+        """DB hook for deactivating DAGs removed from the bundle."""
+        self.deactivate_deleted_dags(bundle_name=bundle_name, present=present)
 
-        return self._run_parsing_loop()
+    def clear_orphaned_import_errors_from_db(
+        self, bundle_name: str, observed_filelocs: set[str]
+    ) -> None:
+        """DB hook for clearing import errors of deleted files."""
+        self.clear_orphaned_import_errors(bundle_name=bundle_name, observed_filelocs=observed_filelocs)
+
+    def purge_inactive_dag_warnings(self) -> None:
+        """DB hook for purging inactive DAG warnings."""
+        DagWarning.purge_inactive_dag_warnings()
+
+    def get_bundle_state(self, bundle_name: str) -> tuple[datetime | None, str | None] | None:
+        """DB hook for reading bundle refresh state."""
+        with self.create_db_session() as session:
+            bundle_model = session.get(DagBundleModel, bundle_name)
+            if bundle_model is None:
+                return None
+            return bundle_model.last_refreshed, bundle_model.version
+
+    def update_bundle_state(
+        self, bundle_name: str, *, last_refreshed: datetime, version: str | None, update_version: bool
+    ) -> None:
+        """DB hook for writing bundle refresh state."""
+        with create_session() as session:
+            bundle_model = session.get(DagBundleModel, bundle_name)
+            if bundle_model is None:
+                self.log.warning("Bundle model not found for %s", bundle_name)
+                return
+            bundle_model.last_refreshed = last_refreshed
+            if update_version:
+                bundle_model.version = version
+
 
     def _scan_stale_dags(self):
         """Scan and deactivate DAGs which are no longer present in files."""
@@ -311,7 +375,7 @@ class DagFileProcessorManager(LoggingMixin):
                 for file_info, stat in self._file_stats.items()
                 if stat.last_finish_time
             }
-            self.deactivate_stale_dags(last_parsed=last_parsed)
+            self.handle_stale_dags(last_parsed=last_parsed)
             self._last_deactivate_stale_dags_time = time.monotonic()
 
     def _cleanup_stale_bundle_versions(self):
@@ -322,7 +386,7 @@ class DagFileProcessorManager(LoggingMixin):
         if elapsed_time_since_cleanup < self.stale_bundle_cleanup_interval:
             return
         try:
-            BundleUsageTrackingManager().remove_stale_bundle_versions()
+            self.cleanup_stale_bundle_versions()
         except Exception:
             self.log.exception("Error removing stale bundle versions")
         finally:
@@ -405,11 +469,11 @@ class DagFileProcessorManager(LoggingMixin):
 
             self._collect_results()
 
-            for callback in self._fetch_callbacks():
+            for callback in self.fetch_callbacks():
                 self._add_callback_to_queue(callback)
             self._scan_stale_dags()
             self._cleanup_stale_bundle_versions()
-            DagWarning.purge_inactive_dag_warnings()
+            self.purge_inactive_dag_warnings()
 
             # Update number of loop iteration.
             self._num_run += 1
@@ -454,7 +518,11 @@ class DagFileProcessorManager(LoggingMixin):
 
     def _queue_requested_files_for_parsing(self) -> None:
         """Queue any files requested for parsing as requested by users via UI/API."""
-        files = self._get_priority_files()
+        self.queue_requested_files()
+
+    def queue_requested_files(self) -> None:
+        """Queue files requested for parsing."""
+        files = self.get_priority_files()
         bundles_to_refresh: set[str] = set()
         for file in files:
             # Try removing the file if already present
@@ -469,7 +537,7 @@ class DagFileProcessorManager(LoggingMixin):
             self.log.info("Bundles being force refreshed: %s", ", ".join(self._force_refresh_bundles))
 
     @provide_session
-    def _get_priority_files(self, session: Session = NEW_SESSION) -> list[DagFileInfo]:
+    def get_priority_files(self, session: Session = NEW_SESSION) -> list[DagFileInfo]:
         files: list[DagFileInfo] = []
         bundles = {b.name: b for b in self._dag_bundles}
         requests = session.scalars(
@@ -487,7 +555,7 @@ class DagFileProcessorManager(LoggingMixin):
 
     @provide_session
     @retry_db_transaction
-    def _fetch_callbacks(
+    def fetch_callbacks(
         self,
         session: Session = NEW_SESSION,
     ) -> list[CallbackRequest]:
@@ -520,22 +588,11 @@ class DagFileProcessorManager(LoggingMixin):
 
     def _add_callback_to_queue(self, request: CallbackRequest):
         self.log.debug("Queuing %s CallbackRequest: %s", type(request).__name__, request)
-        try:
-            bundle = DagBundlesManager().get_bundle(name=request.bundle_name, version=request.bundle_version)
-        except ValueError:
-            # Bundle no longer configured
-            self.log.error("Bundle %s no longer configured, skipping callback", request.bundle_name)
+        bundle = self.resolve_callback_bundle(request)
+        if not bundle:
             return None
-        if bundle.supports_versioning and request.bundle_version:
-            try:
-                bundle.initialize()
-            except Exception:
-                self.log.exception(
-                    "Error initializing bundle %s version %s for callback, skipping",
-                    request.bundle_name,
-                    request.bundle_version,
-                )
-                return None
+        if not self.initialize_callback_bundle(bundle, request):
+            return None
 
         file_info = DagFileInfo(
             rel_path=Path(request.filepath),
@@ -546,6 +603,30 @@ class DagFileProcessorManager(LoggingMixin):
         self._callback_to_execute[file_info].append(request)
         self._add_files_to_queue([file_info], True)
         Stats.incr("dag_processing.other_callback_count")
+
+    def resolve_callback_bundle(self, request: CallbackRequest) -> BaseDagBundle | None:
+        """Resolve the DAG bundle for a callback request."""
+        try:
+            return DagBundlesManager().get_bundle(name=request.bundle_name, version=request.bundle_version)
+        except ValueError:
+            # Bundle no longer configured
+            self.log.error("Bundle %s no longer configured, skipping callback", request.bundle_name)
+            return None
+
+    def initialize_callback_bundle(self, bundle: BaseDagBundle, request: CallbackRequest) -> bool:
+        """Initialize a bundle before callback execution."""
+        if not (bundle.supports_versioning and request.bundle_version):
+            return True
+        try:
+            bundle.initialize()
+        except Exception:
+            self.log.exception(
+                "Error initializing bundle %s version %s for callback, skipping",
+                request.bundle_name,
+                request.bundle_version,
+            )
+            return False
+        return True
 
     def _refresh_dag_bundles(self, known_files: dict[str, set[DagFileInfo]]):
         """Refresh DAG bundles, if required."""
@@ -575,67 +656,70 @@ class DagFileProcessorManager(LoggingMixin):
                     self.log.exception("Error initializing bundle %s: %s", bundle.name, e)
                     continue
             # TODO: AIP-66 test to make sure we get a fresh record from the db and it's not cached
-            with create_session() as session:
-                bundle_model = session.get(DagBundleModel, bundle.name)
-                if bundle_model is None:
-                    self.log.warning("Bundle model not found for %s", bundle.name)
-                    continue
-                elapsed_time_since_refresh = (
-                    now - (bundle_model.last_refreshed or utc_epoch())
-                ).total_seconds()
-                if bundle.supports_versioning:
-                    # we will also check the version of the bundle to see if another DAG processor has seen
-                    # a new version
-                    pre_refresh_version = (
-                        self._bundle_versions.get(bundle.name) or bundle.get_current_version()
+            bundle_state = self.get_bundle_state(bundle.name)
+            if bundle_state is None:
+                self.log.warning("Bundle model not found for %s", bundle.name)
+                continue
+            bundle_last_refreshed, bundle_version = bundle_state
+            elapsed_time_since_refresh = (now - (bundle_last_refreshed or utc_epoch())).total_seconds()
+            if bundle.supports_versioning:
+                # we will also check the version of the bundle to see if another DAG processor has seen
+                # a new version
+                pre_refresh_version = self._bundle_versions.get(bundle.name) or bundle.get_current_version()
+                current_version_matches_db = pre_refresh_version == bundle_version
+            else:
+                # With no versioning, it always "matches"
+                current_version_matches_db = True
+
+            previously_seen = bundle.name in self._bundle_versions
+            if not self.should_refresh_bundle(
+                bundle=bundle,
+                elapsed_time_since_refresh=elapsed_time_since_refresh,
+                current_version_matches_db=current_version_matches_db,
+                previously_seen=previously_seen,
+            ):
+                self.log.info("Not time to refresh bundle %s", bundle.name)
+                continue
+
+            self.log.info("Refreshing bundle %s", bundle.name)
+
+            try:
+                bundle.refresh()
+                any_refreshed = True
+            except Exception:
+                self.log.exception("Error refreshing bundle %s", bundle.name)
+                continue
+
+            self.update_bundle_state(
+                bundle.name, last_refreshed=now, version=None, update_version=False
+            )
+            self._force_refresh_bundles.discard(bundle.name)
+
+            if bundle.supports_versioning:
+                # We can short-circuit the rest of this if (1) bundle was seen before by
+                # this dag processor and (2) the version of the bundle did not change
+                # after refreshing it
+                version_after_refresh = bundle.get_current_version()
+                if previously_seen and pre_refresh_version == version_after_refresh:
+                    self.log.debug(
+                        "Bundle %s version not changed after refresh: %s",
+                        bundle.name,
+                        version_after_refresh,
                     )
-                    current_version_matches_db = pre_refresh_version == bundle_model.version
-                else:
-                    # With no versioning, it always "matches"
-                    current_version_matches_db = True
-
-                previously_seen = bundle.name in self._bundle_versions
-                if (
-                    elapsed_time_since_refresh < bundle.refresh_interval
-                    and current_version_matches_db
-                    and previously_seen
-                    and bundle.name not in self._force_refresh_bundles
-                ):
-                    self.log.info("Not time to refresh bundle %s", bundle.name)
                     continue
 
-                self.log.info("Refreshing bundle %s", bundle.name)
+                self.update_bundle_state(
+                    bundle.name,
+                    last_refreshed=now,
+                    version=version_after_refresh,
+                    update_version=True,
+                )
 
-                try:
-                    bundle.refresh()
-                    any_refreshed = True
-                except Exception:
-                    self.log.exception("Error refreshing bundle %s", bundle.name)
-                    continue
-
-                bundle_model.last_refreshed = now
-                self._force_refresh_bundles.discard(bundle.name)
-
-                if bundle.supports_versioning:
-                    # We can short-circuit the rest of this if (1) bundle was seen before by
-                    # this dag processor and (2) the version of the bundle did not change
-                    # after refreshing it
-                    version_after_refresh = bundle.get_current_version()
-                    if previously_seen and pre_refresh_version == version_after_refresh:
-                        self.log.debug(
-                            "Bundle %s version not changed after refresh: %s",
-                            bundle.name,
-                            version_after_refresh,
-                        )
-                        continue
-
-                    bundle_model.version = version_after_refresh
-
-                    self.log.info(
-                        "Version changed for %s, new version: %s", bundle.name, version_after_refresh
-                    )
-                else:
-                    version_after_refresh = None
+                self.log.info(
+                    "Version changed for %s, new version: %s", bundle.name, version_after_refresh
+                )
+            else:
+                version_after_refresh = None
 
             self._bundle_versions[bundle.name] = version_after_refresh
 
@@ -646,8 +730,8 @@ class DagFileProcessorManager(LoggingMixin):
 
             known_files[bundle.name] = found_files
 
-            self.deactivate_deleted_dags(bundle_name=bundle.name, present=found_files)
-            self.clear_orphaned_import_errors(
+            self.handle_deleted_dags_from_bundle(bundle_name=bundle.name, present=found_files)
+            self.handle_orphaned_import_errors(
                 bundle_name=bundle.name,
                 observed_filelocs={str(x.rel_path) for x in found_files},  # todo: make relative
             )
@@ -697,16 +781,67 @@ class DagFileProcessorManager(LoggingMixin):
                     rel_sub_path = Path(abs_sub_path).relative_to(info.bundle_path)
                     rel_filelocs.append(str(rel_sub_path))
 
+        self.handle_deleted_dags(
+            bundle_name=bundle_name,
+            rel_filelocs=rel_filelocs,
+        )
+
+
+    def handle_deleted_dags(self, *, bundle_name: str, rel_filelocs: list[str]) -> None:
+        """Handle deleted DAGs for a bundle."""
         with create_session() as session:
-            any_deactivated = DagModel.deactivate_deleted_dags(
+            any_deactivated = self.deactivate_deleted_dags_in_db(
                 bundle_name=bundle_name,
                 rel_filelocs=rel_filelocs,
                 session=session,
             )
-            # Only run cleanup if we actually deactivated any DAGs
-            # This avoids unnecessary DELETE queries in the common case where no DAGs were deleted
-            if any_deactivated:
-                remove_references_to_deleted_dags(session=session)
+            self.after_deactivate_deleted_dags(
+                bundle_name=bundle_name,
+                rel_filelocs=rel_filelocs,
+                session=session,
+                any_deactivated=any_deactivated,
+            )
+
+    def handle_deleted_dags_from_bundle(self, *, bundle_name: str, present: set[DagFileInfo]) -> None:
+        """Handle deleted DAGs for a bundle with the observed files."""
+        self.deactivate_deleted_dags(bundle_name=bundle_name, present=present)
+
+    def handle_stale_dags(self, *, last_parsed: dict[DagFileInfo, datetime | None]) -> None:
+        """Handle stale DAGs based on last parsed timestamps."""
+        self.deactivate_stale_dags_from_db(last_parsed=last_parsed)
+
+    def handle_orphaned_import_errors(
+        self, *, bundle_name: str, observed_filelocs: set[str]
+    ) -> None:
+        """Handle import errors for files no longer present."""
+        self.clear_orphaned_import_errors_from_db(
+            bundle_name=bundle_name,
+            observed_filelocs=observed_filelocs,
+        )
+
+    def deactivate_deleted_dags_in_db(
+        self, *, bundle_name: str, rel_filelocs: list[str], session: Session
+    ) -> bool:
+        """Deactivate deleted DAGs in the DB."""
+        return DagModel.deactivate_deleted_dags(
+            bundle_name=bundle_name,
+            rel_filelocs=rel_filelocs,
+            session=session,
+        )
+
+    def after_deactivate_deleted_dags(
+        self,
+        *,
+        bundle_name: str,
+        rel_filelocs: list[str],
+        session: Session,
+        any_deactivated: bool,
+    ) -> None:
+        """Run cleanup after deactivating deleted DAGs."""
+        # Only run cleanup if we actually deactivated any DAGs
+        # This avoids unnecessary DELETE queries in the common case where no DAGs were deleted
+        if any_deactivated:
+            remove_references_to_deleted_dags(session=session)
 
     def print_stats(self, known_files: dict[str, set[DagFileInfo]]):
         """Occasionally print out stats about how fast the files are getting processed."""
@@ -901,7 +1036,7 @@ class DagFileProcessorManager(LoggingMixin):
                 self.log.debug("Detected callback-only processing for %s", file)
 
             # Collect the DAGS and import errors into the DB, emit metrics etc.
-            self._file_stats[file] = process_parse_results(
+            self._file_stats[file] = self.process_parse_results(
                 run_duration=time.monotonic() - proc.start_time,
                 finish_time=timezone.utcnow(),
                 run_count=self._file_stats[file].run_count,
@@ -912,6 +1047,12 @@ class DagFileProcessorManager(LoggingMixin):
                 is_callback_only=is_callback_only,
                 relative_fileloc=str(file.rel_path),
             )
+            self.handle_parsing_result(
+                file,
+                proc.parsing_result,
+                stats=self._file_stats[file],
+                is_callback_only=is_callback_only,
+            )
 
         for file in finished:
             processor = self._processors.pop(file)
@@ -919,6 +1060,59 @@ class DagFileProcessorManager(LoggingMixin):
 
     def _get_log_dir(self) -> str:
         return os.path.join(self.base_log_dir, timezone.utcnow().strftime("%Y-%m-%d"))
+
+    def should_refresh_bundle(
+        self,
+        *,
+        bundle: BaseDagBundle,
+        elapsed_time_since_refresh: float,
+        current_version_matches_db: bool,
+        previously_seen: bool,
+    ) -> bool:
+        """Determine whether a bundle should be refreshed."""
+        return not (
+            elapsed_time_since_refresh < bundle.refresh_interval
+            and current_version_matches_db
+            and previously_seen
+            and bundle.name not in self._force_refresh_bundles
+        )
+
+    def handle_parsing_result(
+        self,
+        dag_file: DagFileInfo,
+        parsing_result: DagFileParsingResult | None,
+        *,
+        stats: DagFileStat,
+        is_callback_only: bool,
+    ) -> None:
+        """Handle parsing results after they are processed."""
+        return None
+
+    def process_parse_results(
+        self,
+        run_duration: float,
+        finish_time: datetime,
+        run_count: int,
+        bundle_name: str,
+        bundle_version: str | None,
+        parsing_result: DagFileParsingResult | None,
+        session: Session,
+        *,
+        is_callback_only: bool = False,
+        relative_fileloc: str | None = None,
+    ) -> DagFileStat:
+        """DB hook for persisting parsing results."""
+        return process_parse_results(
+            run_duration=run_duration,
+            finish_time=finish_time,
+            run_count=run_count,
+            bundle_name=bundle_name,
+            bundle_version=bundle_version,
+            parsing_result=parsing_result,
+            session=session,
+            is_callback_only=is_callback_only,
+            relative_fileloc=relative_fileloc,
+        )
 
     def _symlink_latest_log_directory(self):
         """
