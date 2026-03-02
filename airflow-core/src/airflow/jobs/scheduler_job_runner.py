@@ -2030,8 +2030,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         session: Session,
     ) -> None:
         """For DAGs that are triggered by assets, create dag runs."""
-        evaluator = AssetEvaluator(session)
-
         for dag_model in dag_models:
             if dag_model.dag_id not in triggered_date_by_dag:
                 continue
@@ -2061,18 +2059,6 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             if not queued_asset_records:
                 self.log.debug(
                     "Skipping asset-triggered DagRun creation for DAG '%s'; no queued assets remain.",
-                    dag.dag_id,
-                )
-                continue
-
-            queued_asset_ids = {record.asset_id for record in queued_asset_records}
-            statuses: dict[SerializedAssetUniqueKey, bool] = {
-                SerializedAssetUniqueKey.from_asset(asset): True
-                for asset in session.scalars(select(AssetModel).where(AssetModel.id.in_(queued_asset_ids)))
-            }
-            if not evaluator.run(dag.timetable.asset_condition, statuses=statuses):
-                self.log.debug(
-                    "Skipping asset-triggered DagRun creation for DAG '%s'; asset condition no longer met.",
                     dag.dag_id,
                 )
                 continue
