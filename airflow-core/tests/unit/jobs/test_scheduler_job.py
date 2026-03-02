@@ -4947,6 +4947,71 @@ class TestSchedulerJob:
         assert session.scalars(select(DagRun).where(DagRun.dag_id == dag_model.dag_id)).one_or_none() is None
 
     @pytest.mark.need_serialized_dag
+    def test_create_dag_runs_asset_triggered_deletes_only_selected_adrq_rows(self, session, dag_maker):
+        asset = Asset(uri="test://asset-delete-selected")
+        with dag_maker(dag_id="asset-consumer-delete-selected", schedule=[asset], session=session):
+            pass
+        dag_model = dag_maker.dag_model
+        selected_asset_id = dag_model.schedule_assets[0].id
+
+        extra_asset = AssetModel(
+            uri="test://asset-delete-selected-extra",
+            name="test://asset-delete-selected-extra",
+        )
+        session.add(extra_asset)
+        session.flush()
+
+        session.add_all(
+            [
+                AssetDagRunQueue(
+                    asset_id=selected_asset_id,
+                    target_dag_id=dag_model.dag_id,
+                    created_at=timezone.utcnow(),
+                ),
+                AssetDagRunQueue(
+                    asset_id=extra_asset.id,
+                    target_dag_id=dag_model.dag_id,
+                    created_at=timezone.utcnow(),
+                ),
+            ]
+        )
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+
+        def _lock_only_selected_asset(query, **_):
+            # Simulate SKIP LOCKED behavior where this scheduler can only consume one ADRQ row.
+            return query.where(AssetDagRunQueue.asset_id == selected_asset_id)
+
+        with patch("airflow.jobs.scheduler_job_runner.with_row_locks", side_effect=_lock_only_selected_asset):
+            self.job_runner._create_dag_runs_asset_triggered(
+                dag_models=[dag_model],
+                triggered_date_by_dag={dag_model.dag_id: timezone.utcnow()},
+                session=session,
+            )
+
+        assert session.scalars(select(DagRun).where(DagRun.dag_id == dag_model.dag_id)).one_or_none() is not None
+        assert (
+            session.scalars(
+                select(AssetDagRunQueue).where(
+                    AssetDagRunQueue.target_dag_id == dag_model.dag_id,
+                    AssetDagRunQueue.asset_id == selected_asset_id,
+                )
+            ).one_or_none()
+            is None
+        )
+        assert (
+            session.scalars(
+                select(AssetDagRunQueue).where(
+                    AssetDagRunQueue.target_dag_id == dag_model.dag_id,
+                    AssetDagRunQueue.asset_id == extra_asset.id,
+                )
+            ).one_or_none()
+            is not None
+        )
+
+    @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):
         """
         Test Dag Run trigger on AssetAlias includes the corresponding AssetEvent in `consumed_asset_events`.
