@@ -2030,12 +2030,11 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         session: Session,
     ) -> None:
         """For DAGs that are triggered by assets, create dag runs."""
-        triggered_dates: dict[str, DateTime] = {
-            dag_id: timezone.coerce_datetime(last_asset_event_time)
-            for dag_id, last_asset_event_time in triggered_date_by_dag.items()
-        }
+        evaluator = AssetEvaluator(session)
 
         for dag_model in dag_models:
+            if dag_model.dag_id not in triggered_date_by_dag:
+                continue
             dag = self._get_current_dag(dag_id=dag_model.dag_id, session=session)
             if not dag:
                 self.log.error("DAG '%s' not found in serialized_dag table", dag_model.dag_id)
@@ -2048,7 +2047,39 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
                 continue
 
-            triggered_date = triggered_dates[dag.dag_id]
+            queued_asset_records = list(
+                session.scalars(
+                    with_row_locks(
+                        select(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag.dag_id),
+                        of=AssetDagRunQueue,
+                        skip_locked=True,
+                        key_share=False,
+                        session=session,
+                    )
+                )
+            )
+            if not queued_asset_records:
+                self.log.debug(
+                    "Skipping asset-triggered DagRun creation for DAG '%s'; no queued assets remain.",
+                    dag.dag_id,
+                )
+                continue
+
+            queued_asset_ids = {record.asset_id for record in queued_asset_records}
+            statuses: dict[SerializedAssetUniqueKey, bool] = {
+                SerializedAssetUniqueKey.from_asset(asset): True
+                for asset in session.scalars(select(AssetModel).where(AssetModel.id.in_(queued_asset_ids)))
+            }
+            if not evaluator.run(dag.timetable.asset_condition, statuses=statuses):
+                self.log.debug(
+                    "Skipping asset-triggered DagRun creation for DAG '%s'; asset condition no longer met.",
+                    dag.dag_id,
+                )
+                continue
+
+            triggered_date: DateTime = timezone.coerce_datetime(
+                max(record.created_at for record in queued_asset_records)
+            )
             cte = (
                 select(func.max(DagRun.run_after).label("previous_dag_run_run_after"))
                 .where(
@@ -2097,7 +2128,12 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
             )
             Stats.incr("asset.triggered_dagruns")
             dag_run.consumed_asset_events.extend(asset_events)
-            session.execute(delete(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag_run.dag_id))
+            adrq_pks = [(record.asset_id, record.target_dag_id) for record in queued_asset_records]
+            session.execute(
+                delete(AssetDagRunQueue).where(
+                    tuple_(AssetDagRunQueue.asset_id, AssetDagRunQueue.target_dag_id).in_(adrq_pks)
+                )
+            )
 
     def _lock_backfills(self, dag_runs: Collection[DagRun], session: Session) -> dict[int, Backfill]:
         """

@@ -4918,6 +4918,65 @@ class TestSchedulerJob:
         assert created_run.creating_job_id == scheduler_job.id
 
     @pytest.mark.need_serialized_dag
+    def test_create_dag_runs_asset_triggered_skips_stale_triggered_date(self, session, dag_maker):
+        asset = Asset(uri="test://asset-for-stale-trigger-date", name="asset-for-stale-trigger-date")
+        with dag_maker(dag_id="asset-consumer-stale-trigger-date", schedule=[asset], session=session):
+            pass
+        dag_model = dag_maker.dag_model
+        asset_id = dag_model.schedule_assets[0].id
+
+        queued_at = timezone.utcnow()
+        session.add(
+            AssetDagRunQueue(asset_id=asset_id, target_dag_id=dag_model.dag_id, created_at=queued_at)
+        )
+        session.flush()
+
+        triggered_date_by_dag = {dag_model.dag_id: queued_at}
+        # Simulate another scheduler consuming ADRQ rows after we computed triggered_date_by_dag.
+        session.execute(delete(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag_model.dag_id))
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+        self.job_runner._create_dag_runs_asset_triggered(
+            dag_models=[dag_model],
+            triggered_date_by_dag=triggered_date_by_dag,
+            session=session,
+        )
+
+        assert session.scalars(select(DagRun).where(DagRun.dag_id == dag_model.dag_id)).one_or_none() is None
+
+    @pytest.mark.need_serialized_dag
+    def test_create_dag_runs_asset_triggered_rechecks_asset_condition(self, session, dag_maker):
+        asset1 = Asset(uri="test://asset-recheck-1")
+        asset2 = Asset(uri="test://asset-recheck-2")
+        with dag_maker(dag_id="asset-consumer-recheck-condition", schedule=[asset1, asset2], session=session):
+            pass
+        dag_model = dag_maker.dag_model
+
+        asset1_id = next(model.id for model in dag_model.schedule_assets if model.uri == asset1.uri)
+        session.add(
+            AssetDagRunQueue(asset_id=asset1_id, target_dag_id=dag_model.dag_id, created_at=timezone.utcnow())
+        )
+        session.flush()
+
+        scheduler_job = Job()
+        self.job_runner = SchedulerJobRunner(job=scheduler_job, executors=[self.null_exec])
+        self.job_runner._create_dag_runs_asset_triggered(
+            dag_models=[dag_model],
+            triggered_date_by_dag={dag_model.dag_id: timezone.utcnow()},
+            session=session,
+        )
+
+        assert session.scalars(select(DagRun).where(DagRun.dag_id == dag_model.dag_id)).one_or_none() is None
+        assert (
+            session.scalars(
+                select(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag_model.dag_id)
+            ).one_or_none()
+            is not None
+        )
+
+    @pytest.mark.need_serialized_dag
     def test_create_dag_runs_asset_alias_with_asset_event_attached(self, session, dag_maker):
         """
         Test Dag Run trigger on AssetAlias includes the corresponding AssetEvent in `consumed_asset_events`.
