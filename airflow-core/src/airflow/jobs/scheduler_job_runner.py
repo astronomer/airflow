@@ -2030,6 +2030,24 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         session: Session,
     ) -> None:
         """For DAGs that are triggered by assets, create dag runs."""
+        candidate_dag_ids = list(
+            {dag_model.dag_id for dag_model in dag_models if dag_model.dag_id in triggered_date_by_dag}
+        )
+        if not candidate_dag_ids:
+            return
+
+        queued_asset_records_by_dag: defaultdict[str, list[AssetDagRunQueue]] = defaultdict(list)
+        for record in session.scalars(
+            with_row_locks(
+                select(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id.in_(candidate_dag_ids)),
+                of=AssetDagRunQueue,
+                skip_locked=True,
+                key_share=False,
+                session=session,
+            )
+        ):
+            queued_asset_records_by_dag[record.target_dag_id].append(record)
+
         for dag_model in dag_models:
             if dag_model.dag_id not in triggered_date_by_dag:
                 continue
@@ -2045,17 +2063,7 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                 )
                 continue
 
-            queued_asset_records = list(
-                session.scalars(
-                    with_row_locks(
-                        select(AssetDagRunQueue).where(AssetDagRunQueue.target_dag_id == dag.dag_id),
-                        of=AssetDagRunQueue,
-                        skip_locked=True,
-                        key_share=False,
-                        session=session,
-                    )
-                )
-            )
+            queued_asset_records = queued_asset_records_by_dag.get(dag.dag_id, [])
             if not queued_asset_records:
                 self.log.debug(
                     "Skipping asset-triggered DagRun creation for DAG '%s'; no queued assets remain.",
