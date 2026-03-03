@@ -1480,9 +1480,14 @@ api:
     theme:
       description: |
         JSON config to customize the Chakra UI theme.
-        Currently only supports ``brand`` color customization and ``globalCss``.
+        Supports ``brand`` color customization, ``globalCss``, and ``logo_url``.
 
-        Must supply ``50``-``950`` OKLCH color values for ``brand`` color.
+        To replace the default Airflow logo, set ``logo_url`` to a URL pointing to
+        an image file (SVG, PNG, or JPG). The logo appears in the top-left navigation
+        area. If the image fails to load, the default Airflow logo is shown as fallback.
+        ``logo_url`` can be used alone or combined with color and CSS customization.
+
+        When customizing colors, supply ``50``-``950`` OKLCH color values for ``brand`` color.
 
         For usage see :ref:`customizing-ui-theme`
 
@@ -1500,6 +1505,7 @@ api:
       type: string
       example: >
         {
+              "logo_url": "https://example.com/my-logo.svg",
               "tokens": {
                 "colors": {
                   "brand": {

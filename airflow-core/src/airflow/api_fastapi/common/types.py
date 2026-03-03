@@ -169,14 +169,18 @@ class OklchColor(BaseModel):
 class Theme(BaseModel):
     """JSON to modify Chakra's theme."""
 
-    tokens: dict[
-        Literal["colors"],
+    tokens: (
         dict[
-            Literal["brand"],
+            Literal["colors"],
             dict[
-                Literal["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"],
-                dict[Literal["value"], OklchColor],
+                Literal["brand"],
+                dict[
+                    Literal["50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950"],
+                    dict[Literal["value"], OklchColor],
+                ],
             ],
-        ],
-    ]
+        ]
+        | None
+    ) = None
     globalCss: dict[str, dict] | None = None
+    logo_url: str | None = None

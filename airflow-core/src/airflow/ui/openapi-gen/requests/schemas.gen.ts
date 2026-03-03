@@ -8868,31 +8868,38 @@ export const $TeamResponse = {
 export const $Theme = {
     properties: {
         tokens: {
-            additionalProperties: {
-                additionalProperties: {
+            anyOf: [
+                {
                     additionalProperties: {
                         additionalProperties: {
-                            '$ref': '#/components/schemas/OklchColor'
+                            additionalProperties: {
+                                additionalProperties: {
+                                    '$ref': '#/components/schemas/OklchColor'
+                                },
+                                propertyNames: {
+                                    const: 'value'
+                                },
+                                type: 'object'
+                            },
+                            propertyNames: {
+                                enum: ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950']
+                            },
+                            type: 'object'
                         },
                         propertyNames: {
-                            const: 'value'
+                            const: 'brand'
                         },
                         type: 'object'
                     },
                     propertyNames: {
-                        enum: ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950']
+                        const: 'colors'
                     },
                     type: 'object'
                 },
-                propertyNames: {
-                    const: 'brand'
-                },
-                type: 'object'
-            },
-            propertyNames: {
-                const: 'colors'
-            },
-            type: 'object',
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Tokens'
         },
         globalCss: {
@@ -8909,10 +8916,20 @@ export const $Theme = {
                 }
             ],
             title: 'Globalcss'
+        },
+        logo_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Logo Url'
         }
     },
     type: 'object',
-    required: ['tokens'],
     title: 'Theme',
     description: "JSON to modify Chakra's theme."
 } as const;

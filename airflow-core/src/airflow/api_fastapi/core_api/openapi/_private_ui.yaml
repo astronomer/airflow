@@ -3201,34 +3201,36 @@ components:
     Theme:
       properties:
         tokens:
-          additionalProperties:
-            additionalProperties:
+          anyOf:
+          - additionalProperties:
               additionalProperties:
                 additionalProperties:
-                  $ref: '#/components/schemas/OklchColor'
+                  additionalProperties:
+                    $ref: '#/components/schemas/OklchColor'
+                  propertyNames:
+                    const: value
+                  type: object
                 propertyNames:
-                  const: value
+                  enum:
+                  - '50'
+                  - '100'
+                  - '200'
+                  - '300'
+                  - '400'
+                  - '500'
+                  - '600'
+                  - '700'
+                  - '800'
+                  - '900'
+                  - '950'
                 type: object
               propertyNames:
-                enum:
-                - '50'
-                - '100'
-                - '200'
-                - '300'
-                - '400'
-                - '500'
-                - '600'
-                - '700'
-                - '800'
-                - '900'
-                - '950'
+                const: brand
               type: object
             propertyNames:
-              const: brand
+              const: colors
             type: object
-          propertyNames:
-            const: colors
-          type: object
+          - type: 'null'
           title: Tokens
         globalCss:
           anyOf:
@@ -3238,9 +3240,12 @@ components:
             type: object
           - type: 'null'
           title: Globalcss
+        logo_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Logo Url
       type: object
-      required:
-      - tokens
       title: Theme
       description: JSON to modify Chakra's theme.
     TriggerResponse:

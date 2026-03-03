@@ -61,6 +61,33 @@ After
 
 .. image:: ../img/change-site-title/example_instance_name_configuration.png
 
+.. _customizing-ui-logo:
+
+Customizing the Logo
+--------------------
+
+The default Apache Airflow logo in the navigation sidebar can be replaced with a custom logo
+using the ``logo_url`` field in the ``theme`` configuration. Supported image formats are SVG, PNG, and JPG.
+If the custom logo fails to load, the default Airflow logo is displayed as a fallback.
+
+1. Add ``logo_url`` to the ``theme`` configuration under the ``[api]`` section in ``airflow.cfg``:
+
+.. code-block::
+
+  [api]
+
+  theme = {
+      "logo_url": "https://example.com/my-logo.svg"
+    }
+
+2. Alternatively, use the environment variable:
+
+.. code-block::
+
+  AIRFLOW__API__THEME='{ "logo_url": "https://example.com/my-logo.svg" }'
+
+``logo_url`` can be combined with color and CSS customization in the same theme configuration (see below).
+
 .. _customizing-ui-theme:
 
 Customizing UI theme
@@ -70,7 +97,7 @@ We can provide a JSON configuration to customize the UI.
 
 .. important::
 
-  - Currently only the ``brand`` color palette and ``globalCss`` can be customized.
+  - The ``brand`` color palette, ``globalCss``, and ``logo_url`` can be customized.
   - You must supply ``50``-``950`` OKLCH color values for ``brand`` color.
   - OKLCH colors must have next format ``oklch(l c h)`` For more info see :ref:`config:api__theme`
   - There is also the ability to provide custom global CSS for a fine grained theme control.

@@ -409,7 +409,7 @@ export const createTheme = (userTheme?: Theme) => {
   const userConfig = defineConfig(
     userTheme
       ? {
-          theme: { tokens: userTheme.tokens },
+          theme: userTheme.tokens ? { tokens: userTheme.tokens } : {},
           globalCss: userTheme.globalCss as Record<string, SystemStyleObject>,
         }
       : {},
