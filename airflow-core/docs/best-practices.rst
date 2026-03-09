@@ -303,7 +303,8 @@ Maintaining high code quality is essential for the reliability and maintainabili
 The following points summarize how this relates to Ruff:
 
 1. This page documents Airflow best practices. Some of those practices are also supported by Ruff ``AIR`` rules,
-   which help detect deprecated patterns and migration issues. The full list is available in
+   which help detect and enforce Airflow-specific best practices, including deprecated patterns and migration issues.
+   The full list is available in
    `Airflow (AIR) <https://docs.astral.sh/ruff/rules/#airflow-air>`_.
 2. If you want to suggest a new Airflow best practice and add a matching Ruff ``AIR`` rule, follow the contributor
    process described in
