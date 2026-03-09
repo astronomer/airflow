@@ -50,6 +50,23 @@ In general, your contribution includes the following stages:
 
 5. Ping @ #contributors slack, comment @people. Be annoying. Be considerate.
 
+Submitting new AIR rules to Ruff
+--------------------------------
+
+If you want to add or change a Ruff ``AIR`` rule, follow this process:
+
+1. Start a discussion on the devlist and reach agreement through Lazy Consensus or a formal vote for the
+   migration/deprecation/change you want to encode as a rule. If there are objections, continue the discussion
+   and seek consensus before proceeding.
+2. Once the decision is approved, open a PR and update Airflow contributor documentation to describe the planned
+   rule and migration guidance. Rule implementation work can proceed in parallel.
+3. After the Ruff PR is merged, finalize and align the relevant Airflow documentation so it reflects the newly
+   available ``AIR`` rule behavior.
+
+For community communication and voting details, see
+`How to communicate <02_how_to_communicate.rst>`__ and
+`ASF Voting Process <https://www.apache.org/foundation/voting.html>`__.
+
 Step 1: Fork the Apache Airflow Repo
 ------------------------------------
 From the `apache/airflow <https://github.com/apache/airflow>`_ repo,

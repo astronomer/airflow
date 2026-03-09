@@ -28,23 +28,6 @@ You can also run the checks via `Breeze <../dev/breeze/doc/README.rst>`_ environ
 
 **The outline for this document in GitHub is available at top-right corner button (with 3-dots and 3 lines).**
 
-Submitting new AIR rules to Ruff
---------------------------------
-
-If you want to add or change a Ruff ``AIR`` rule, follow this process:
-
-1. Start a discussion on the devlist and reach agreement through Lazy Consensus or a formal vote for the
-   migration/deprecation/change you want to encode as a rule. If there are objections, continue the discussion
-   and seek consensus before proceeding.
-2. Once the decision is approved, open a PR and update Airflow contributor documentation to describe the planned
-   rule and migration guidance. Rule implementation work can proceed in parallel.
-3. After the Ruff PR is merged, finalize and align the relevant Airflow documentation so it reflects the newly
-   available ``AIR`` rule behavior.
-
-For community communication and voting details, see
-`How to communicate <02_how_to_communicate.rst>`__ and
-`ASF Voting Process <https://www.apache.org/foundation/voting.html>`__.
-
 Prek hooks
 ----------
 
