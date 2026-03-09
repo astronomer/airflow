@@ -83,6 +83,9 @@ To learn how to setup your environment for development and how to develop and te
 
 * `Static code checks <08_static_code_checks.rst>`__ describes the static code checks used in Airflow.
 
+* `Proposing best practices and AIR rules <24_proposing_best_practices_and_air_rules.rst>`__ describes how to
+  suggest new Airflow best practices and propose matching Ruff ``AIR`` rules.
+
 * `Testing <09_testing.rst>`__ describes what kind of tests we have and how to run them.
 
 * `Working with Git <10_working_with_git.rst>`__ describes the Git branches used in Airflow,

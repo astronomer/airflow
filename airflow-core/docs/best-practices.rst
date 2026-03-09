@@ -308,7 +308,7 @@ The following points summarize how this relates to Ruff:
    `Airflow (AIR) <https://docs.astral.sh/ruff/rules/#airflow-air>`_.
 2. If you want to suggest a new Airflow best practice and add a matching Ruff ``AIR`` rule, follow the contributor
    process described in
-   `Contribution Workflow <https://github.com/apache/airflow/blob/main/contributing-docs/18_contribution_workflow.rst#submitting-new-air-rules-to-ruff>`_.
+   `Proposing Airflow Best Practices and Ruff AIR Rules <https://github.com/apache/airflow/blob/main/contributing-docs/24_proposing_best_practices_and_air_rules.rst>`_.
 
 Installing and Using ruff
 -------------------------
