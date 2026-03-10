@@ -209,18 +209,69 @@ def _patch_providers_json(providers_json_path: Path, provider_id: str, version: 
     raise click.ClickException(f"Provider '{provider_id}' not found in {providers_json_path}")
 
 
-# TODO: The backfill command processes versions sequentially because extract_parameters.py
-# and extract_connections.py write to shared files (modules.json, providers.json).
-# To parallelize, each provider would need its own isolated output directory so that
-# concurrent runs don't clobber each other. See also the registry-backfill.yml workflow
-# which uses a GitHub Actions matrix to run providers in parallel CI jobs.
+def _create_isolated_providers_json(provider_id: str, package_name: str, version: str, tmp_dir: Path) -> Path:
+    """Create a temp providers.json with only the target provider/version.
+
+    This allows multiple providers to run in parallel without conflicting over
+    the shared dev/registry/providers.json file.
+    """
+    tmp_providers = tmp_dir / f"providers-{provider_id}.json"
+    data = {"providers": [{"id": provider_id, "package_name": package_name, "version": version}]}
+    with open(tmp_providers, "w") as f:
+        json.dump(data, f, indent=2)
+    return tmp_providers
+
+
+def _run_extract_script(
+    script: Path,
+    pip_spec: str,
+    base_spec: str,
+    provider_id: str,
+    providers_json_path: Path,
+) -> int:
+    """Run an extraction script with --provider and --providers-json flags.
+
+    Falls back to running without extras if the full spec fails.
+    Returns the exit code.
+    """
+    base_cmd = [
+        "uv",
+        "run",
+        "--with",
+        pip_spec,
+        "python",
+        str(script),
+        "--provider",
+        provider_id,
+        "--providers-json",
+        str(providers_json_path),
+    ]
+    result = run_command(base_cmd, check=False, cwd=str(AIRFLOW_ROOT_PATH))
+    if result.returncode != 0 and pip_spec != base_spec:
+        click.echo(f"Retrying {script.name} without extras...")
+        fallback_cmd = [
+            "uv",
+            "run",
+            "--with",
+            base_spec,
+            "python",
+            str(script),
+            "--provider",
+            provider_id,
+            "--providers-json",
+            str(providers_json_path),
+        ]
+        result = run_command(fallback_cmd, check=False, cwd=str(AIRFLOW_ROOT_PATH))
+    return result.returncode
 
 
 @registry_group.command(
     name="backfill",
     help="Extract runtime parameters and connections for older provider versions. "
     "Uses 'uv run --with' to install the specific version in a temporary environment "
-    "and runs extract_parameters.py + extract_connections.py. No Docker needed.",
+    "and runs extract_parameters.py + extract_connections.py. No Docker needed. "
+    "Each version uses an isolated providers.json, so multiple providers can be "
+    "backfilled in parallel from separate terminal sessions.",
 )
 @click.option(
     "--provider",
@@ -237,8 +288,9 @@ def _patch_providers_json(providers_json_path: Path, provider_id: str, version: 
 @option_verbose
 @option_dry_run
 def backfill(provider: str, versions: tuple[str, ...]):
+    import tempfile
+
     package_name, extras = _read_provider_yaml_info(provider)
-    providers_json_path = _ensure_providers_json(provider, package_name)
 
     click.echo(f"Provider: {provider} ({package_name})")
     click.echo(f"Versions: {', '.join(versions)}")
@@ -248,35 +300,26 @@ def backfill(provider: str, versions: tuple[str, ...]):
 
     failed: list[str] = []
 
-    for version in versions:
-        click.echo(f"{'=' * 60}")
-        click.echo(f"Extracting {provider} {version}")
-        click.echo(f"{'=' * 60}")
+    with tempfile.TemporaryDirectory(prefix=f"backfill-{provider}-") as tmp_dir:
+        tmp_path = Path(tmp_dir)
 
-        original_version = _patch_providers_json(providers_json_path, provider, version)
+        for version in versions:
+            click.echo(f"{'=' * 60}")
+            click.echo(f"Extracting {provider} {version}")
+            click.echo(f"{'=' * 60}")
 
-        try:
+            # Each version gets its own isolated providers.json — no shared state
+            providers_json = _create_isolated_providers_json(provider, package_name, version, tmp_path)
+
             pip_spec = _build_pip_spec(package_name, extras, version)
             base_spec = f"{package_name}=={version}"
+
             for script in EXTRACT_SCRIPTS:
                 click.echo(f"\nRunning {script.name} with {pip_spec}...")
-                result = run_command(
-                    ["uv", "run", "--with", pip_spec, "python", str(script)],
-                    check=False,
-                    cwd=str(AIRFLOW_ROOT_PATH),
-                )
-                if result.returncode != 0 and pip_spec != base_spec:
-                    click.echo(f"Retrying {script.name} without extras...")
-                    result = run_command(
-                        ["uv", "run", "--with", base_spec, "python", str(script)],
-                        check=False,
-                        cwd=str(AIRFLOW_ROOT_PATH),
-                    )
-                if result.returncode != 0:
-                    click.echo(f"WARNING: {script.name} failed for {version} (exit {result.returncode})")
+                returncode = _run_extract_script(script, pip_spec, base_spec, provider, providers_json)
+                if returncode != 0:
+                    click.echo(f"WARNING: {script.name} failed for {version} (exit {returncode})")
                     failed.append(f"{version}/{script.name}")
-        finally:
-            _patch_providers_json(providers_json_path, provider, original_version)
 
     click.echo(f"\n{'=' * 60}")
     if failed:
