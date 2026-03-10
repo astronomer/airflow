@@ -401,3 +401,89 @@ As mentioned in :ref:`Fetching information from previously emitted asset events<
         def consume_asset_alias_events(*, inlet_events):
             events = inlet_events[AssetAlias("example-alias")]
             last_row_count = events[-1].extra["row_count"]
+
+
+Asset partitions
+----------------
+
+.. versionadded:: 3.2.0
+
+Asset events can include a ``partition_key``. This lets you model the same
+asset at partition granularity (for example, ``2026-03-10T09:00:00`` for an
+hourly partition, or ``us|2026-03-10T09:00:00`` for a composite key).
+
+To produce partitioned events on a schedule, use
+``CronPartitionTimetable`` in the producer Dag (or ``@asset``):
+
+.. code-block:: python
+
+    from airflow.sdk import CronPartitionTimetable, asset
+
+
+    @asset(
+        uri="file://incoming/player-stats/team_b.csv",
+        schedule=CronPartitionTimetable("15 * * * *", timezone="UTC"),
+    )
+    def team_b_player_stats():
+        pass
+
+For downstream partition-aware scheduling, use ``PartitionedAssetTimetable``:
+
+.. code-block:: python
+
+    from airflow.sdk import DAG, HourlyMapper, PartitionedAssetTimetable
+
+    with DAG(
+        dag_id="clean_and_combine_player_stats",
+        schedule=PartitionedAssetTimetable(
+            assets=team_a_player_stats & team_b_player_stats & team_c_player_stats,
+            default_partition_mapper=HourlyMapper(),
+        ),
+        catchup=False,
+    ):
+        ...
+
+``default_partition_mapper`` is used for every upstream asset unless you
+override it via ``partition_mapper_config``. The default mapper is
+``IdentityMapper`` (no key transformation).
+
+Partition mappers define how upstream partition keys are transformed to the
+downstream Dag partition key:
+
+* ``IdentityMapper`` keeps keys unchanged.
+* Temporal mappers such as ``HourlyMapper``, ``DailyMapper``, and
+  ``YearlyMapper`` normalize time keys to a chosen grain.
+* ``ProductMapper`` maps composite keys segment-by-segment.
+* ``AllowedKeyMapper`` validates that keys are in a fixed allow-list.
+
+Example of per-asset mapper configuration and composite-key mapping:
+
+.. code-block:: python
+
+    from airflow.sdk import (
+        Asset,
+        DailyMapper,
+        IdentityMapper,
+        PartitionedAssetTimetable,
+        ProductMapper,
+    )
+
+    regional_sales = Asset(uri="file://incoming/sales/regional.csv", name="regional_sales")
+
+    with DAG(
+        dag_id="aggregate_regional_sales",
+        schedule=PartitionedAssetTimetable(
+            assets=regional_sales,
+            default_partition_mapper=ProductMapper(IdentityMapper(), DailyMapper()),
+        ),
+    ):
+        ...
+
+If transformed partition keys from all required upstream assets do not align,
+the downstream Dag will not be triggered for that partition.
+
+Inside partitioned Dag runs, access the resolved partition through
+``dag_run.partition_key``.
+
+For complete runnable examples, see
+``airflow-core/src/airflow/example_dags/example_asset_partition.py``.
