@@ -460,7 +460,12 @@ downstream Dag partition key:
 
 * ``IdentityMapper`` keeps keys unchanged.
 * Temporal mappers such as ``HourlyMapper``, ``DailyMapper``, and
-  ``YearlyMapper`` normalize time keys to a chosen grain.
+  ``YearlyMapper`` normalize time keys to a chosen grain. For input key
+  ``2026-03-10T09:37:51``, the default outputs are:
+
+  * ``HourlyMapper`` -> ``2026-03-10T09``
+  * ``DailyMapper`` -> ``2026-03-10``
+  * ``YearlyMapper`` -> ``2026``
 * ``ProductMapper`` maps composite keys segment-by-segment.
   It applies one mapper per segment and then rejoins the mapped segments.
   For example, with key ``us|2026-03-10T09:00:00``,
@@ -494,8 +499,38 @@ Example of per-asset mapper configuration and composite-key mapping:
     ):
         ...
 
+You can also override mappers for specific upstream assets with
+``partition_mapper_config``:
+
+.. code-block:: python
+
+    from airflow.sdk import Asset, DAG, DailyMapper, IdentityMapper, PartitionedAssetTimetable
+
+    hourly_sales = Asset(uri="file://incoming/sales/hourly.csv", name="hourly_sales")
+    daily_targets = Asset(uri="file://incoming/sales/targets.csv", name="daily_targets")
+
+    with DAG(
+        dag_id="join_sales_and_targets",
+        schedule=PartitionedAssetTimetable(
+            assets=hourly_sales & daily_targets,
+            # Default behavior: map timestamp-like keys to daily keys.
+            default_partition_mapper=DailyMapper(),
+            # Override for assets that already emit daily partition keys.
+            partition_mapper_config={
+                daily_targets: IdentityMapper(),
+            },
+        ),
+    ):
+        ...
+
 If transformed partition keys from all required upstream assets do not align,
 the downstream Dag will not be triggered for that partition.
+
+The same applies when a mapper cannot transform a key. For example, if an
+upstream event has ``partition_key="random-text"`` and the downstream mapping
+uses ``DailyMapper`` (which expects a timestamp-like key), no downstream
+partition match can be produced, so the downstream Dag is not triggered for
+that key.
 
 Inside partitioned Dag runs, access the resolved partition through
 ``dag_run.partition_key``.
