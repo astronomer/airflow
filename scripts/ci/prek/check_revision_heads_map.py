@@ -48,13 +48,14 @@ EDGE3_MIGRATION_PATH = EDGE3_PROVIDER_SRC_PATH / "airflow" / "providers" / "edge
 def revision_heads_map(migration_path):
     rh_map = {}
     pattern = r'revision = "[a-fA-F0-9]+"'
-    version_pattern = None
-    if migration_path == MIGRATION_PATH:
-        version_pattern = r'airflow_version = "\d+\.\d+\.\d+"'
-    elif migration_path == FAB_MIGRATION_PATH:
-        version_pattern = r'fab_version = "\d+\.\d+\.\d+"'
-    elif migration_path == EDGE3_MIGRATION_PATH:
-        version_pattern = r'edge3_version = "\d+\.\d+\.\d+"'
+    version_patterns = {
+        MIGRATION_PATH: r'airflow_version = "\d+\.\d+\.\d+"',
+        FAB_MIGRATION_PATH: r'fab_version = "\d+\.\d+\.\d+"',
+        EDGE3_MIGRATION_PATH: r'edge3_version = "\d+\.\d+\.\d+"',
+    }
+    version_pattern = version_patterns.get(Path(migration_path))
+    if version_pattern is None:
+        raise ValueError(f"Unsupported migration path: {migration_path}")
     filenames = os.listdir(migration_path)
 
     def sorting_key(filen):
