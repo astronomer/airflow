@@ -30,227 +30,471 @@ Airflow 3.2.0b1 (2026-03-03)
 Significant Changes
 ^^^^^^^^^^^^^^^^^^^
 
-- Move task-level exception imports into the Task SDK
+Asset Partitioning (AIP-76)
+"""""""""""""""""""""""""""
 
-  Airflow now sources task-facing exceptions (``AirflowSkipException``, ``TaskDeferred``, etc.) from
-  ``airflow.sdk.exceptions``. ``airflow.exceptions`` still exposes the same exceptions, but they are
-  proxies that emit ``DeprecatedImportWarning`` so Dag authors can migrate before the shim is removed.
+Airflow 3.2 introduces asset partitioning, allowing DAGs to be triggered and scheduled based on
+specific partitions of assets rather than entire assets. This enables more granular data-aware
+scheduling where only the relevant slice of data triggers downstream processing.
 
-  **What changed:**
+- Partition-driven scheduling for DAGs (#59115)
+- Partitioned asset timetables with per-asset partitions (#60966)
+- Temporal and range partition mappers (#61522, #55247)
+- Backfill for partitioned DAGs (#61464)
+- Multiple asset support for asset partitions (#60577)
+- Partition key in DAG run asset references (#61725)
 
-  - Runtime code now consistently raises the SDK versions of task-level exceptions.
-  - The Task SDK redefines these classes so workers no longer depend on ``airflow-core`` at runtime.
-  - ``airflow.providers.common.compat.sdk`` centralizes compatibility imports for providers.
+For usage details and examples, see ``example_asset_partition.py`` and the Task SDK API docs
+for ``PartitionedAssetTimetable``, ``CronPartitionTimetable``, and partition mappers.
 
-  **Behaviour changes:**
+Deadline Alerts Improvements (AIP-86)
+"""""""""""""""""""""""""""""""""""""
 
-  - Sensors and other helpers that validate user input now raise ``ValueError`` (instead of
-    ``AirflowException``) when ``poke_interval``/ ``timeout`` arguments are invalid.
-  - Importing deprecated exception names from ``airflow.exceptions`` logs a warning directing users to
-    the SDK import path.
+Building on the Deadline Alerts system introduced in Airflow 3.1, this release adds synchronous
+callback support and several other improvements.
 
-  **Exceptions now provided by ``airflow.sdk.exceptions``:**
+**Key changes:**
 
-  - ``AirflowException`` and ``AirflowNotFoundException``
-  - ``AirflowRescheduleException`` and ``AirflowSensorTimeout``
-  - ``AirflowSkipException``, ``AirflowFailException``, ``AirflowTaskTimeout``, ``AirflowTaskTerminated``
-  - ``TaskDeferred``, ``TaskDeferralTimeout``, ``TaskDeferralError``
-  - ``DagRunTriggerException`` and ``DownstreamTasksSkipped``
-  - ``AirflowDagCycleException`` and ``AirflowInactiveAssetInInletOrOutletException``
-  - ``ParamValidationError``, ``DuplicateTaskIdFound``, ``TaskAlreadyInTaskGroup``, ``TaskNotFound``, ``XComNotFound``
-  - ``AirflowOptionalProviderFeatureException``
+- Add synchronous callback support (``SyncCallback``) for Deadline Alerts (#61153). Synchronous
+  callbacks are executed by the executor (rather than the triggerer), and can optionally target a
+  specific executor via the ``executor`` parameter. This removes the 3.1 limitation where only
+  ``AsyncCallback`` was supported.
+- Support multiple Deadline Alerts per DAG by passing a list to the ``deadline`` parameter.
+- Add deadline alerts table for UI integration (#58248)
+- Add DAG run missed-deadline metadata to Grid API (#62189)
+- Improve UX for adding custom ``DeadlineReferences`` (#57222)
+- Add average runtime as a deadline reference (#55088)
 
-  **Backward compatibility:**
+.. warning::
 
-  - Existing Dags/operators that still import from ``airflow.exceptions`` continue to work, though
-    they log warnings.
-  - Providers can rely on ``airflow.providers.common.compat.sdk`` to keep one import path that works
-    across supported Airflow versions.
+  Deadline Alerts remain :ref:`experimental <experimental>` and may change in future versions
+  without warning based on user feedback.
 
-  **Migration:**
+For configuration details and examples, see :doc:`/howto/deadline-alerts`.
 
-  - Update custom operators, sensors, and extensions to import exception classes from
-    ``airflow.sdk.exceptions`` (or from the provider compat shim).
-  - Adjust custom validation code to expect ``ValueError`` for invalid sensor arguments if it
-    previously caught ``AirflowException``.
+Multi-team Deployment of Airflow Components (AIP-67)
+""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-- Support numeric multiplier values for retry_exponential_backoff parameter
+Airflow 3.2 introduces multi-team support, allowing organizations to run multiple isolated teams
+within a single Airflow deployment. Each team can have its own DAGs, connections, variables, pools,
+and executor configuration.
 
-  The ``retry_exponential_backoff`` parameter now accepts numeric values to specify custom exponential backoff multipliers for task retries. Previously, this parameter only accepted boolean values (``True`` or ``False``), with ``True`` using a hardcoded multiplier of ``2.0``.
+.. warning::
 
-  **New behavior:**
+  Multi-Team is an :ref:`experimental <experimental>`/incomplete feature currently in preview.
+  The feature will not be fully complete until Airflow 3.3 and may be subject to changes without
+  warning based on user feedback. See :doc:`/core-concepts/multi-team` for details on current
+  limitations.
 
-  - Numeric values (e.g., ``2.0``, ``3.5``) directly specify the exponential backoff multiplier
-  - ``retry_exponential_backoff=2.0`` doubles the delay between each retry attempt
-  - ``retry_exponential_backoff=0`` or ``False`` disables exponential backoff (uses fixed ``retry_delay``)
+**Key changes:**
 
-  **Backwards compatibility:**
+- Enable via ``[core] multi_team = True`` or ``AIRFLOW__CORE__MULTI_TEAM=True``
+- Multi-team task scheduling with per-team executor configuration (#57837, #57910)
+- Multi-team support in Celery, Batch, Lambda, and Local executors (#60675, #60920, #61321, #59021)
+- Team-scoped authorization in Keycloak and Simple auth managers (#61351, #61861)
+- CLI commands for multi-team management (#55283)
+- Team selector in connection, variable, and pool forms (#60237, #60474, #61082)
+- ``team_name`` added to Connection, Variable, and Pool APIs (#59336, #57102, #60952)
+- Team-scoped secrets via environment variables (``AIRFLOW_VAR__{TEAM}___{KEY}``) (#62588)
 
-  Existing DAGs using boolean values continue to work:
+For full documentation, see :doc:`/core-concepts/multi-team`.
 
-  - ``retry_exponential_backoff=True`` → converted to ``2.0`` (maintains original behavior)
-  - ``retry_exponential_backoff=False`` → converted to ``0.0`` (no exponential backoff)
+Gunicorn API Server with Zero-Downtime Worker Recycling
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""
 
-  **API changes:**
+The API server now supports gunicorn as an alternative server with rolling worker restarts
+to prevent memory accumulation in long-running processes.
 
-  The REST API schema for ``retry_exponential_backoff`` has changed from ``type: boolean`` to ``type: number``. API clients must use numeric values (boolean values will be rejected).
+**Key Benefits:**
 
-  **Migration:**
+* **Rolling worker restarts**: New workers spawn and pass health checks before old workers
+  are killed, ensuring zero downtime during worker recycling.
 
-  While boolean values in Python DAGs are automatically converted for backwards compatibility, we recommend updating to explicit numeric values for clarity:
+* **Memory sharing**: Gunicorn uses preload + fork, so workers share memory via
+  copy-on-write. This significantly reduces total memory usage compared to uvicorn's
+  multiprocess mode where each worker loads everything independently.
 
-  - Change ``retry_exponential_backoff=True`` → ``retry_exponential_backoff=2.0``
-  - Change ``retry_exponential_backoff=False`` → ``retry_exponential_backoff=0``
+* **Correct FIFO signal handling**: Gunicorn's SIGTTOU kills the oldest worker (FIFO),
+  not the newest (LIFO), which is correct for rolling restarts.
 
-- Move serialization/deserialization (serde) logic into Task SDK
+**Configuration:**
 
-  Airflow now sources serde logic from ``airflow.sdk.serde`` instead of
-  ``airflow.serialization.serde``. Serializer modules have moved from ``airflow.serialization.serializers.*``
-  to ``airflow.sdk.serde.serializers.*``. The old import paths still work but emit ``DeprecatedImportWarning``
-  to guide migration. The backward compatibility layer will be removed in Airflow 4.
+.. code-block:: ini
 
-  **What changed:**
+    [api]
+    # Use gunicorn instead of uvicorn
+    server_type = gunicorn
 
-  - Serialization/deserialization code moved from ``airflow-core`` to ``task-sdk`` package
-  - Serializer modules moved from ``airflow.serialization.serializers.*`` to ``airflow.sdk.serde.serializers.*``
-  - New serializers should be added to ``airflow.sdk.serde.serializers.*`` namespace
+    # Enable rolling worker restarts every 12 hours
+    worker_refresh_interval = 43200
 
-  **Code interface changes:**
+    # Restart workers one at a time
+    worker_refresh_batch_size = 1
 
-  - Import serializers from ``airflow.sdk.serde.serializers.*`` instead of ``airflow.serialization.serializers.*``
-  - Import serialization functions from ``airflow.sdk.serde`` instead of ``airflow.serialization.serde``
+Or via environment variables:
 
-  **Backward compatibility:**
+.. code-block:: bash
 
-  - Existing serializers importing from ``airflow.serialization.serializers.*`` continue to work with deprecation warnings
-  - All existing serializers (builtin, datetime, pandas, numpy, etc.) are available at the new location
+    export AIRFLOW__API__SERVER_TYPE=gunicorn
+    export AIRFLOW__API__WORKER_REFRESH_INTERVAL=43200
 
-  **Migration:**
+**Requirements:**
 
-  - **For existing custom serializers**: Update imports to use ``airflow.sdk.serde.serializers.*``
-  - **For new serializers**: Add them to ``airflow.sdk.serde.serializers.*`` namespace (e.g., create ``task-sdk/src/airflow/sdk/serde/serializers/your_serializer.py``)
+Install the gunicorn extra: ``pip install 'apache-airflow-core[gunicorn]'``
 
-- Methods removed from PriorityWeightStrategy and TaskInstance
+**Note on uvicorn (default):**
+
+The default uvicorn mode does not support rolling worker restarts because:
+
+1. With workers=1, there is no master process to send signals to
+2. uvicorn's SIGTTOU kills the newest worker (LIFO), defeating rolling restart purposes
+3. Each uvicorn worker loads everything independently with no memory sharing
+
+If you need worker recycling or memory-efficient multi-worker deployment, use gunicorn. (#60921)
+
+Operator-level ``render_template_as_native_obj`` Override
+"""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Operators can now override the DAG-level ``render_template_as_native_obj`` setting,
+enabling fine-grained control over whether templates are rendered as native Python
+types or strings on a per-task basis. Set ``render_template_as_native_obj=True`` or
+``False`` on any operator to override the DAG setting, or leave as ``None`` (default)
+to inherit from the DAG.
+
+Numeric ``retry_exponential_backoff`` Multiplier
+""""""""""""""""""""""""""""""""""""""""""""""""
+
+The ``retry_exponential_backoff`` parameter now accepts numeric values to specify custom exponential
+backoff multipliers for task retries. Previously, this parameter only accepted boolean values
+(``True`` or ``False``), with ``True`` using a hardcoded multiplier of ``2.0``.
+
+**New behavior:**
+
+- Numeric values (e.g., ``2.0``, ``3.5``) directly specify the exponential backoff multiplier
+- ``retry_exponential_backoff=2.0`` doubles the delay between each retry attempt
+- ``retry_exponential_backoff=0`` or ``False`` disables exponential backoff (uses fixed ``retry_delay``)
+
+**Backwards compatibility:**
+
+Existing DAGs using boolean values continue to work:
+
+- ``retry_exponential_backoff=True`` → converted to ``2.0`` (maintains original behavior)
+- ``retry_exponential_backoff=False`` → converted to ``0.0`` (no exponential backoff)
+
+**API changes:**
+
+The REST API schema for ``retry_exponential_backoff`` has changed from ``type: boolean`` to ``type: number``.
+API clients must use numeric values (boolean values will be rejected).
+
+**Migration:**
+
+While boolean values in Python DAGs are automatically converted for backwards compatibility, we recommend
+updating to explicit numeric values for clarity:
+
+- Change ``retry_exponential_backoff=True`` → ``retry_exponential_backoff=2.0``
+- Change ``retry_exponential_backoff=False`` → ``retry_exponential_backoff=0``
+
+Pluggable Config Sources
+""""""""""""""""""""""""
+
+- Make ``conf.as_dict`` extendable via pluggable config sources (#58268)
+- Rewrite config parser ``get()`` with modular lookup sequence (#57970)
+
+Upgrade to SQLAlchemy 2.0
+"""""""""""""""""""""""""
+
+Airflow core has been upgraded to use SQLAlchemy 2.0 APIs. Custom code that interacts directly with
+Airflow's database models may need to be updated. (#59218)
+
+Rendered Task Instance Fields Cleanup (~42x Faster)
+"""""""""""""""""""""""""""""""""""""""""""""""""""
+
+Improved performance of rendered task instance fields cleanup for DAGs with many mapped tasks.
+
+The config ``max_num_rendered_ti_fields_per_task`` is renamed to ``num_dag_runs_to_retain_rendered_fields``
+(old name still works with deprecation warning).
+
+Retention is now based on the N most recent dag runs rather than N most recent task executions,
+which may result in fewer records retained for conditional/sparse tasks. (#60951)
+
+Task SDK Decoupling
+"""""""""""""""""""
+
+Airflow 3.2 continues moving components from ``airflow-core`` into the Task SDK to enable independent
+upgrades and client-server separation. Old import paths continue to work with deprecation warnings.
+
+- **Exceptions**: Task-facing exceptions (``AirflowSkipException``, ``TaskDeferred``, etc.) now live in
+  ``airflow.sdk.exceptions``. Importing from ``airflow.exceptions`` still works but emits
+  ``DeprecatedImportWarning``. (#59780, #59835)
+
+- **Serde**: Serialization logic moved from ``airflow.serialization.serde`` to ``airflow.sdk.serde``.
+  Serializer modules moved from ``airflow.serialization.serializers.*`` to
+  ``airflow.sdk.serde.serializers.*``. (#58900)
+
+- **SkipMixin / BranchMixIn**: Moved to Task SDK. Existing imports work via ``common-compat``. (#62749, #62776)
+
+- **Lineage module**: Moved to Task SDK for client-server separation. (#60968, #61157)
+
+- **Listeners module**: Moved to shared library for client-server separation. (#59883)
+
+- **XCom API**: Decoupled from ``XcomEncoder``. (#58900)
+
+**Migration:** Update custom operators, sensors, and extensions to import from ``airflow.sdk``
+(or from the ``airflow.providers.common.compat.sdk`` provider compat shim).
+
+Other Breaking Changes
+""""""""""""""""""""""
+
+- Methods removed from ``PriorityWeightStrategy`` and ``TaskInstance``.
 
   On (experimental) class ``PriorityWeightStrategy``, functions ``serialize()``
-  and ``deserialize()`` were never used anywhere, and have been removed. They
-  should not be relied on in user code.
+  and ``deserialize()`` have been removed. On class ``TaskInstance``, functions ``run()``,
+  ``render_templates()``, ``get_template_context()``, and private members related to them have
+  been removed. The class has been considered internal since 3.0. (#59780, #59835)
 
-  On class ``TaskInstance``, functions ``run()``, ``render_templates()``, and
-  private members related to them have been removed. The class has been
-  considered internal since 3.0, and should not be relied on in user code. (#59780)
-- Modify the information returned by ``DagBag``
+- ``DagBag`` now uses ``Path.relative_to`` for consistent cross-platform behavior.
+  ``FileLoadStat`` has two new nullable fields: ``bundle_path`` and ``bundle_name``.
+  Paths no longer begin with ``/`` relative to the dags folder. (#59785)
 
-  **New behavior:**
-  - ``DagBag`` now uses ``Path.relative_to`` for consistent cross-platform behavior.
-  - ``FileLoadStat`` now has two additional nullable fields: ``bundle_path`` and ``bundle_name``.
+- Removed the redundant ``--conn-id`` option from ``airflow connections list``.
+  Use ``airflow connections get`` instead. (#59855)
 
-  **Backward compatibility:**
-  ``FileLoadStat`` will no longer produce paths beginning with ``/`` with the meaning of "relative to the dags folder".
-  This is a breaking change for any custom code that performs string-based path manipulations relying on this behavior.
-  Users are advised to update such code to use ``pathlib.Path``. (#59785)
-- Methods removed from TaskInstance
+- Deprecate ``api.page_size`` config in favor of ``api.fallback_page_limit``. (#61067)
 
-  On class ``TaskInstance``, functions ``run()``, ``render_templates()``,
-  ``get_template_context()``, and private members related to them have been
-  removed. The class has been considered internal since 3.0, and should not be
-  relied on in user code. (#59835)
-- Removed the redundant ``--conn-id`` option from the ``airflow connections list`` CLI command. Use ``airflow connections get`` instead. (#59855)
-- Add operator-level ``render_template_as_native_obj`` override
-
-  Operators can now override the DAG-level ``render_template_as_native_obj`` setting,
-  enabling fine-grained control over whether templates are rendered as native Python
-  types or strings on a per-task basis. Set ``render_template_as_native_obj=True`` or
-  ``False`` on any operator to override the DAG setting, or leave as ``None`` (default)
-  to inherit from the DAG.
-
-- Add gunicorn support for API server with zero-downtime worker recycling
-
-  The API server now supports gunicorn as an alternative server with rolling worker restarts
-  to prevent memory accumulation in long-running processes.
-
-  **Key Benefits:**
-
-  * **Rolling worker restarts**: New workers spawn and pass health checks before old workers
-    are killed, ensuring zero downtime during worker recycling.
-
-  * **Memory sharing**: Gunicorn uses preload + fork, so workers share memory via
-    copy-on-write. This significantly reduces total memory usage compared to uvicorn's
-    multiprocess mode where each worker loads everything independently.
-
-  * **Correct FIFO signal handling**: Gunicorn's SIGTTOU kills the oldest worker (FIFO),
-    not the newest (LIFO), which is correct for rolling restarts.
-
-  **Configuration:**
-
-  .. code-block:: ini
-
-      [api]
-      # Use gunicorn instead of uvicorn
-      server_type = gunicorn
-
-      # Enable rolling worker restarts every 12 hours
-      worker_refresh_interval = 43200
-
-      # Restart workers one at a time
-      worker_refresh_batch_size = 1
-
-  Or via environment variables:
-
-  .. code-block:: bash
-
-      export AIRFLOW__API__SERVER_TYPE=gunicorn
-      export AIRFLOW__API__WORKER_REFRESH_INTERVAL=43200
-
-  **Requirements:**
-
-  Install the gunicorn extra: ``pip install 'apache-airflow-core[gunicorn]'``
-
-  **Note on uvicorn (default):**
-
-  The default uvicorn mode does not support rolling worker restarts because:
-
-  1. With workers=1, there is no master process to send signals to
-  2. uvicorn's SIGTTOU kills the newest worker (LIFO), defeating rolling restart purposes
-  3. Each uvicorn worker loads everything independently with no memory sharing
-
-  If you need worker recycling or memory-efficient multi-worker deployment, use gunicorn. (#60921)
-- Improved performance of rendered task instance fields cleanup for DAGs with many mapped tasks (~42x faster).
-
-  The config ``max_num_rendered_ti_fields_per_task`` is renamed to ``num_dag_runs_to_retain_rendered_fields``
-  (old name still works with deprecation warning).
-
-  Retention is now based on the N most recent dag runs rather than N most recent task executions,
-  which may result in fewer records retained for conditional/sparse tasks. (#60951)
-- AuthManager Backfill permissions are now handled by the ``requires_access_dag`` on the ``DagAccessEntity.Run``
-
-  ``is_authorized_backfill`` of the ``BaseAuthManager`` interface has been removed. Core will no longer call this method and their
-  provider counterpart implementation will be marked as deprecated.
-  Permissions for backfill operations are now checked against the ``DagAccessEntity.Run`` permission using the existing
-  ``requires_access_dag`` decorator. In other words, if a user has permission to run a DAG, they can perform backfill operations on it.
-
-  Please update your security policies to ensure that users who need to perform backfill operations have the appropriate ``DagAccessEntity.Run`` permissions. (Users
-  having the Backfill permissions without having the DagRun ones will no longer be able to perform backfill operations without any update)
+- Remove ``dagReports`` API endpoint. (#56609)
 
 
 Features
 ^^^^^^^^
 
-- Enable FIPS Support by making Python LTO configurable via ``PYTHON_LTO`` build argument (#58337)
-- Support for task queue-based Trigger assignment to specific Triggerer hosts via the new ``--queues`` CLI option for the ``trigger`` command. (#59239)
+- Add ``PythonOperator`` support for async callables (#60268)
+- Enable FIPS support by making Python LTO configurable via ``PYTHON_LTO`` build argument (#58337)
+- Support for task queue-based Trigger assignment to specific Triggerer hosts via the new ``--queues`` CLI option (#59239)
+- Add support to create connections via URI in SDK (#62211)
+- Add partition key support to execution API trigger DAG run endpoint (#61301)
+- Add CronPartitionTimetable to Task SDK (#61247)
+- Implement timetables in Task SDK (#58669)
+- Add DagRunType for asset materializations (#62276)
+- Add ``allowed_run_types`` to whitelist specific DAG run types (#61833)
+- Add date range filter for DAG executions (#60772)
+- Add JWT token revocation for logout invalidation (AIP-84) (#61339)
+- Add ``source`` to Param (#58615)
+- Add data interval override option for manual DAG runs (#57342)
+- Add DAG bundles to ``airflow info`` command (#59124)
+- Introduce generic callbacks to support running callbacks on executors (#54796)
+- Introduce named asset watchers (#55643)
+- Create HttpEventTrigger for AssetWatcher library (#51253)
+- Add lazy filtering for inlet events by time range, ordering, and limit (#54891)
+- Add asset event emission listener event (#61718)
+- Add ``on_task_instance_skipped`` listener hookspec (#59467)
+- Add listener notification in API endpoint when task is skipped (#60585)
+- Add deadline alerts table for UI integration (#58248)
+- Add DAG run missed-deadline metadata to Grid API (#62189)
+- Add HITL detail history UI (#56760, #55952)
+- Add ``fail_on_reject`` to ApprovalOperator (#55255)
+- Add ability to add, edit, and delete XComs from UI (#58921)
+- Add ability to get previous TaskInstance on RuntimeTaskInstance (#59712)
+- Add data redaction of sensitive fields via Public API and UI (#59873)
+- Expose ``literal`` and ``ParamsDict`` at SDK top level (#59782)
+- Expose macros module in ``airflow.sdk`` public API (#60808)
+- Expose Stats in SDK API and handle core backcompat (#61810)
+- Add support for client-side certificates using task-sdk (#62105)
+- Add ``max_trigger_to_select_per_loop`` config for Triggerer HA (#58803)
+- Allow virtualenv code to access connections/variables and send logs (#58148)
+- Add support for "reconnecting" Supervisor comms and logs in task processes (#57212)
+- Add support for URL params to pre-fill Trigger and Backfill forms (#59231)
+- Make example DAG import timeout configurable (#59664)
+- Implement ``get_config`` in LocalFilesystemBackend (#59062)
+- Add new arguments to ``db_clean`` to include or exclude DAGs (#56663)
+- Add ``working_directory`` parameter (#58210)
+- Add ``poll_interval`` attribute to HttpEventTrigger (#57583)
+- Add list teams API (#57168)
+- Add per-team executor config (AIP-67) (#57910)
+- Add Executor Synchronous callback workload (#61153)
+- Add YAML-first discovery for connection form metadata (#60410)
+- Add ``resize`` function to DAG run / TI notes (#57897)
+- Add required context messages to all DagRun state change notifications (#56272)
+- Add correlation-id support to Execution API for request tracing (#57458)
+- Add ``executor.running_dags`` gauge to expose count of running DAGs (#52815)
+- Add remote handlers support for log file size handling (#55455)
 
 
 Improvements
 ^^^^^^^^^^^^
 
-- The ``PythonOperator`` parameter ``python_callable`` now also supports async callables in Airflow 3.2, allowing users to run async def functions without manually managing an event loop. (#60268)
+- Improve performance of task dequeuing (#61376)
+- Improve performance of rendered templates cleanup (~42x faster for DAGs with many mapped tasks) (#60951)
+- Improve grid view refresh pressure on the API (#62085)
+- Flatten grid structure endpoint memory consumption (#61273)
+- Add virtualization to grid view (#60241)
+- Reduce API server memory usage by eliminating ``SerializedDAG`` loads on task start (#60803)
+- Fix N+1 query: add joinedload for asset in ``dags_needing_dagruns()`` (#60957)
+- Remove scheduler memory issue from eager loading of all TIs (#60956)
+- Include ``max_active_tasks`` limit in query fetching TIs to be queued (#54103)
+- Add TTL-enabled LRU cache for StatsD metrics aggregation (#60933)
+- Re-enable missing metric: ``dag_processing.last_duration.<dag_file>`` (#61079)
+- Add ``run_after`` metrics for DAG run delay (#59585)
+- Use regular OTel environment variables for configuring traces and metrics (#56150)
+- Option to disable exporting of legacy metric names (#53722)
+- Customize statsd DAG processor labels (#55832)
+- Separate "next DAG run" from "max active runs" (#60006)
+- Add depth level parameter to grid and structure endpoint (#60314)
+- Add depth level filter to DAG partial subset (#58582)
+- Make weight_rule independent of airflow-core priority_strategy (#62210)
+- Make ``conn_type`` optional in task SDK Connection datamodel (#61728)
+- Make ``start_date`` in Context nullable (#58175)
+- Make ``pause``/``unpause`` commands positional (#59936)
+- Don't validate team existence during DAG validation (#62596)
+- Allow ``to_downstream()`` to return more than one key (#62346)
+- Change ``dag_bundle.signed_url_template`` from varchar(200) to text (#61041)
+- Convert ``external_executor_id`` to TEXT from varchar(250) (#61189)
+- Replace pickle with JSON serialization for HTTP triggers (#61662)
+- Replace node-sql-parser with sqlparser-ts (#61111)
+- Improve xcom value handling in extra links API (#61641)
+- Remove N+1 DB queries for team names (#61471)
+- Unify grid and graph view tooltips with dates, duration, and child states (#62119)
+- Add segmented state bar for collapsed task groups and mapped tasks (#61854)
+- Update ``dagrun_queued_at`` any time a run is restarted (#60848)
+- Add ``task_display_name`` to GanttTaskInstance (#61438)
+- Display all task tries in Gantt chart (#61058)
+- Add filename display to DAG Code tab for file identification (#60759)
+- Add copy button to logs (#61185)
+- Persist table columns visibility in local storage (#61858)
+- Unify datetime format in the UI (#55572)
+- Use ISO dates in Gantt chart for cross-browser consistency (#61250)
+- Add tooltip for task filter traversal (#61401)
+- Respect deprecated options in default config parser (#61289)
+- Respect ``default_args`` when set to falsy values in DAG (#57853)
+- Add depth filter to TaskStreamFilter in UI (#60549)
+- Convert Tasks Table from card to table mode (#60830)
+- Improve DAGs Filter UI (#60346)
+- Add timezone selector button in Navbar (#60391)
+- Inherit core UI theme in React plugins (#60256)
+- Add support for ``globalCss`` in custom theme (#61161)
+- Add theme config (#58411)
+- Add ``uvicorn_logging_level`` config option (#56062)
+- Improve UX for adding custom DeadlineReferences (#57222)
+- Use average runtime as deadline reference (#55088)
+- Add filters to Task Instances tab (#56920)
+- Add task upstream/downstream filter to Graph and Grid (#57237)
+- Disable Variable export via UI and document how to export (#57594)
+- Display static asset metadata (extra) in Asset details page (#57710)
+- Add Consuming Tasks in asset header (#58060)
+- API: Add support for OR operator in search parameters (#60008)
+- API: Add support for filtering DAGs by timetable type (#58852)
+- CLI: Add ``--dev`` flag for hot-reload support (#57741)
+- CLI: Add XCom commands to airflowctl (#61021)
+- CLI: Default ``logical_date`` to now in airflowctl dagrun trigger (#61047)
+- CLI: Add auth ``list-envs`` command (#61426)
+- CLI: Add ``airflowctl`` headless environment support (#62217)
+- Optimize fail-fast check to avoid loading SerializedDAG (#56694)
+- Use JSONB for ``serialized_dag`` data column in PostgreSQL (#55979)
+- Remove experimental flag and add docs for pre/post-execute (#59656)
+- Clarify behavior of ``ALL_DONE_MIN_ONE_SUCCESS`` rule (#59954)
 
 
 Bug Fixes
 ^^^^^^^^^
 
 - Always mask sensitive configuration values in public config APIs and treat the deprecated ``non-sensitive-only`` value as ``True``. (#59880)
-- Pool names with invalid characters for stats reporting are now automatically normalized (invalid characters replaced with underscores) when emitting metrics, preventing ``InvalidStatsNameException``. A warning is logged when normalization occurs, suggesting the pool be renamed. (#59938)
+- Pool names with invalid characters for stats reporting are now automatically normalized (invalid characters replaced with underscores) when emitting metrics, preventing ``InvalidStatsNameException``. (#59938)
+- Fix backward compatibility for workloads TaskInstance import (#62714)
+- Fix Trigger UI form rendering for null enum values (#62060)
+- Fix team-scoped auth check for POST variables, connections, and pools in multi-team mode (#62511)
+- Fix ``airflowctl connections import`` failure when JSON omits ``extra`` field (#62662)
+- Fix XCom migration failing for NaN/Infinity float values (#62686)
+- Fix deadline alert hashing bug (#61702)
+- Protect supervisor memory from being read by sibling task processes (#62523)
+- Fix manual trigger failure with CronPartitionedTimetable (#62441)
+- Sanitize password in logs when parsing connection from URI (#62180)
+- Fix Admin team dropdown showing "no option" when creating Connections (#62368)
+- Fix paused filter not showing all DAGs (#62269)
+- Fix race condition in auth manager initialization (#62214)
+- Fix grid view crash when task converted to TaskGroup (#61208)
+- Fix MySQL sort buffer overflow in deadline alert migration (#61806)
+- Fix asset events for partitioned DagRun (#61433)
+- Fix variable import for list values (#61508)
+- Fix DepContext mutation leak and restore reschedule-mode guard (#62089)
+- Fix broken ``dag_processing.total_parse_time`` metric (#62128)
+- Fix recursion depth error in ``_redact_exception_with_context`` (#61776)
+- Fix plugin registration returning early on duplicate names (#60498)
+- Fix scheduler crash when enqueuing TI with null dag_version_id (#61813)
+- Fix scheduler heartbeat misses caused by slow reschedule dependency check (#61983)
+- Fix scheduler using stale ``max_active_runs`` from SerializedDAG (#57619)
+- Fix DAG processor OOM by avoiding loading all TaskInstances when checking DagVersion (#60937)
+- Fix LocalExecutor memory spike by applying ``gc.freeze`` (#58365)
+- Fix deferrable sensors not respecting soft_fail on timeout (#61132)
+- Fix middleware order to prevent chunked FastAPI responses (#61043)
+- Fix GZipMiddleware with correct comment placement (#61538)
+- Fix OAuth session race condition causing false 401 errors during login (#61287)
+- Fix connection test API to restore masked password/extra from existing connections (#59643)
+- Fix logout when refresh token is invalid (#60781)
+- Fix slots negative infinity (#61140)
+- Fix API: disable uvloop when ``PYTHONASYNCIODEBUG=1`` to prevent segfault (#61281)
+- Fix Gantt chart crash on null task datetime (#61552)
+- Fix operator template fields via callable causing unstable DAG serialization (#60065)
+- Fix operator extra links not appearing on failed tasks (#58227)
+- Fix backfill ``max_active_runs`` race with concurrent schedulers (#58807)
+- Fix airflowignore negation in subfolders (#58740)
+- Redact secrets in rendered templates so they are not exposed in UI (#58767)
+- Fix assets used only as inlets being incorrectly orphaned (#58303)
+- Preserve ``Asset.extra`` when using ``AssetAlias`` (#58038)
+- Fix async connection retrieval in triggerer context (#55812)
+- Fix circular import when using ``XComObjectStorageBackend`` (#55805)
+- Fix memory leak in Client from SSL context creation (#57334)
+- Fix out-of-memory errors during UI build (#60671)
+- Fix Git corruption recovery by moving fetch into retry context (#56913)
+- Fix public repository access in GitDagBundle (#61343)
+- Fix DAG deserialization failure with non-default weight_rule (#55906)
+- Fix FileTrigger walking through wildcarded directories (#57155)
+- Fix NotMapped exception when clearing task instances with downstream/upstream (#58922)
+- Fix HITL params not validating (#57547)
+- Fix HITL operators failing when using notifiers (#57494)
+- Fix duplicated SQLAlchemy sessions that cause transactions to fail to close (#57815)
+- Fix ``conf.getint`` handling of float type value from airflow.cfg (#60925)
+- Fix upgrade failure when XCom contains NaN in string values (#57614)
+- Fix PK constraint and nullable mismatch in callback migration (#57836)
+- Fix DAG bundle retrieval from S3 (#57178)
+- Fix DAG processor crash by ignoring callbacks from other bundles (#57192)
+- Fix DAG processor crash when renaming DAG tag case on MySQL (#57113)
+- Fix execution failures with NULL ``dag_run.conf`` during upgrades (#56729)
+- Fix corrupted bare Git repository recovery in DAG bundles (#56206)
+- Fix Triggerer crashing if Trigger uses builtin print function (#60258)
+- Prevent Triggerer from crashing when a trigger event is not serializable (#60152)
+- UI: Fix logs truncated after 50 lines (#62410)
+- UI: Fix log horizontal overflow (#62473)
+- UI: Fix DataTable overflow on narrow viewports (#62603)
+- UI: Fix Variable table long words breaking when expanded (#62416)
+- UI: Fix import errors not showing (#61163)
+- UI: Fix language selector state not updating on change (#61060)
+- UI: Fix grid view to handle long task name (#55332)
+- UI: Fix Grid for cleared runs when tasks were removed (#56085)
+- UI: Fix Gantt misalignment (#55995)
+- UI: Fix grid scrollbar overlapping on Firefox (#55960)
+- UI: Fix popup closing when a DAG is running (#57568)
+- UI: Fix state and run_type filter on Dag Runs page (#58093)
+- UI: Fix advanced search button overlap in DAG List view (#56588)
+- UI: Grey out trigger button on API 403 (#60648)
+- UI: Fix pale appearance of filter buttons when selected (#60346)
+
+
+Miscellaneous
+^^^^^^^^^^^^^
+
+- Move SkipMixin and BranchMixIn to Task SDK (#62749)
+- Consolidate SkipMixin imports through common-compat layer (#62776)
+- Move determine_kwargs and KeywordParameters to SDK DecoratedOperator (#62746)
+- Move lineage from airflow core to task sdk (#61157)
+- Move listeners module to shared library (#59883)
+- Decouple task sdk from airflow core for remote logging (#60826)
+- Remove Connection dependency from shared secrets backend (#61523)
+- Refactor airflow-core to use SQLA2 (#59918)
+- Use SQLA's native Uuid/JSON instead of sqlalchemy-utils' types (#61532)
+- Use native SQLA JSON instead of sqlalchemy-jsonfield (#61491)
+- Rework ProvidersManager to separate runtime and infrastructure focus (#60218)
+- Add React compiler (#59533)
+- Remove redundant debounce-promise dependency from UI (#61832)
+- Add base react plugin destination (#62530)
 
 
 Airflow 3.1.7 (2026-02-04)
