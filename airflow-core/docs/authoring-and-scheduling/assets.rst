@@ -413,7 +413,8 @@ asset at partition granularity (for example, ``2026-03-10T09:00:00`` for an
 hourly partition, or ``us|2026-03-10T09:00:00`` for a composite key).
 
 To produce partitioned events on a schedule, use
-``CronPartitionTimetable`` in the producer Dag (or ``@asset``):
+``CronPartitionTimetable`` in the producer Dag (or ``@asset``). This timetable
+creates asset events with a partition key on each run.
 
 .. code-block:: python
 
@@ -426,6 +427,9 @@ To produce partitioned events on a schedule, use
     )
     def team_b_player_stats():
         pass
+
+Partitioned events are intended for partition-aware downstream scheduling, and
+do not trigger non-partition-aware Dags.
 
 For downstream partition-aware scheduling, use ``PartitionedAssetTimetable``:
 
@@ -443,6 +447,10 @@ For downstream partition-aware scheduling, use ``PartitionedAssetTimetable``:
     ):
         ...
 
+``PartitionedAssetTimetable`` requires partitioned asset events. If an asset
+event does not contain a ``partition_key``, it will not trigger a downstream
+Dag that uses ``PartitionedAssetTimetable``.
+
 ``default_partition_mapper`` is used for every upstream asset unless you
 override it via ``partition_mapper_config``. The default mapper is
 ``IdentityMapper`` (no key transformation).
@@ -454,7 +462,14 @@ downstream Dag partition key:
 * Temporal mappers such as ``HourlyMapper``, ``DailyMapper``, and
   ``YearlyMapper`` normalize time keys to a chosen grain.
 * ``ProductMapper`` maps composite keys segment-by-segment.
-* ``AllowedKeyMapper`` validates that keys are in a fixed allow-list.
+  It applies one mapper per segment and then rejoins the mapped segments.
+  For example, with key ``us|2026-03-10T09:00:00``,
+  ``ProductMapper(IdentityMapper(), DailyMapper())`` produces
+  ``us|2026-03-10``.
+* ``AllowedKeyMapper`` validates that keys are in a fixed allow-list and
+  passes the key through unchanged if valid.
+  For example, ``AllowedKeyMapper(["us", "eu", "apac"])`` accepts only those
+  region keys and rejects all others.
 
 Example of per-asset mapper configuration and composite-key mapping:
 
@@ -484,6 +499,19 @@ the downstream Dag will not be triggered for that partition.
 
 Inside partitioned Dag runs, access the resolved partition through
 ``dag_run.partition_key``.
+
+You can also trigger a DagRun manually with a partition key (for example,
+through the Trigger Dag window in the UI, or through the REST API by
+including ``partition_key`` in the request body):
+
+.. code-block:: bash
+
+    curl -X POST "http://<airflow-host>/api/v2/dags/aggregate_regional_sales/dagRuns" \
+      -H "Content-Type: application/json" \
+      -d '{
+        "logical_date": "2026-03-10T00:00:00Z",
+        "partition_key": "us|2026-03-10T09:00:00"
+      }'
 
 For complete runnable examples, see
 ``airflow-core/src/airflow/example_dags/example_asset_partition.py``.
