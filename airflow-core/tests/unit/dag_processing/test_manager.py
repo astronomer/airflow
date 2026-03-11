@@ -1097,6 +1097,72 @@ class TestDagFileProcessorManager:
                 remaining_req = remaining[0].get_callback_request()
                 assert remaining_req.bundle_name == "other-bundle"
 
+    @conf_vars(
+        {
+            ("logging", "dag_processor_log_target"): "stdout",
+            ("logging", "dag_processor_log_format"): "[%(levelname)s] %(message)s",
+            ("logging", "colored_console_log"): "False",
+        }
+    )
+    @mock.patch("airflow.dag_processing.manager.structlog.wrap_logger")
+    @mock.patch("airflow.dag_processing.manager.logging_processors")
+    @mock.patch("airflow.dag_processing.manager.init_log_file")
+    def test_get_logger_for_dag_file_uses_stdout_target(
+        self, mock_init_log_file, mock_logging_processors, mock_wrap_logger
+    ):
+        manager = DagFileProcessorManager(max_runs=1)
+        mock_bound_logger = MagicMock()
+        mock_wrap_logger.return_value.bind.return_value = mock_bound_logger
+        mock_logging_processors.return_value = (mock.sentinel.processor,)
+
+        with mock.patch.object(manager, "_render_log_filename") as mock_render:
+            logger, logger_filehandle = manager._get_logger_for_dag_file(
+                DagFileInfo(bundle_name="testing", rel_path=Path("my_dag.py"), bundle_path=TEST_DAGS_FOLDER)
+            )
+
+        try:
+            assert logger is mock_bound_logger
+            mock_render.assert_not_called()
+            mock_init_log_file.assert_not_called()
+            mock_logging_processors.assert_called_once_with(
+                json_output=False, log_format="[%(levelname)s] %(message)s", colors=False
+            )
+        finally:
+            logger_filehandle.close()
+
+    @conf_vars(
+        {
+            ("logging", "dag_processor_log_target"): "file",
+            ("logging", "dag_processor_log_format"): "[%(levelname)s] %(message)s",
+        }
+    )
+    @mock.patch("airflow.dag_processing.manager.structlog.wrap_logger")
+    @mock.patch("airflow.dag_processing.manager.logging_processors")
+    @mock.patch("airflow.dag_processing.manager.init_log_file")
+    def test_get_logger_for_dag_file_uses_file_target(
+        self, mock_init_log_file, mock_logging_processors, mock_wrap_logger, tmp_path
+    ):
+        manager = DagFileProcessorManager(max_runs=1)
+        mock_bound_logger = MagicMock()
+        mock_wrap_logger.return_value.bind.return_value = mock_bound_logger
+        mock_logging_processors.return_value = (mock.sentinel.processor,)
+        expected_path = tmp_path / "dag_processor.log"
+        mock_init_log_file.return_value = expected_path
+
+        dag_file = DagFileInfo(bundle_name="testing", rel_path=Path("my_dag.py"), bundle_path=TEST_DAGS_FOLDER)
+        with mock.patch.object(manager, "_render_log_filename", return_value=str(expected_path)) as mock_render:
+            logger, logger_filehandle = manager._get_logger_for_dag_file(dag_file)
+
+        try:
+            assert logger is mock_bound_logger
+            mock_render.assert_called_once_with(dag_file)
+            mock_init_log_file.assert_called_once_with(str(expected_path))
+            mock_logging_processors.assert_called_once_with(
+                json_output=False, log_format="[%(levelname)s] %(message)s", colors=False
+            )
+        finally:
+            logger_filehandle.close()
+
     @mock.patch.object(DagFileProcessorManager, "_get_logger_for_dag_file")
     def test_callback_queue(self, mock_get_logger, configure_testing_dag_bundle):
         mock_logger = MagicMock()

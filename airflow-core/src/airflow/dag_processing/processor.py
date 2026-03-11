@@ -22,7 +22,7 @@ import os
 import traceback
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, BinaryIO, ClassVar, Literal
+from typing import TYPE_CHECKING, Annotated, BinaryIO, ClassVar, Literal, TextIO
 
 import attrs
 from pydantic import BaseModel, Field, TypeAdapter
@@ -505,7 +505,7 @@ class DagFileProcessorProcess(WatchedSubprocess):
     in core Airflow.
     """
 
-    logger_filehandle: BinaryIO
+    logger_filehandle: BinaryIO | TextIO
     parsing_result: DagFileParsingResult | None = None
     decoder: ClassVar[TypeAdapter[ToManager]] = TypeAdapter[ToManager](ToManager)
     had_callbacks: bool = False  # Track if this process was started with callbacks to prevent stale DAG detection false positives

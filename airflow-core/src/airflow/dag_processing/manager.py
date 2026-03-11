@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from operator import attrgetter, itemgetter
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple, TextIO, cast
 
 import attrs
 import structlog
@@ -222,6 +222,13 @@ class DagFileProcessorManager(LoggingMixin):
     base_log_dir: str = attrs.field(
         factory=_config_get_factory("logging", "dag_processor_child_process_log_directory")
     )
+    dag_processor_log_target: str = attrs.field(
+        factory=_config_get_factory("logging", "dag_processor_log_target")
+    )
+    dag_processor_log_format: str = attrs.field(
+        factory=_config_get_factory("logging", "dag_processor_log_format")
+    )
+    colored_console_log: bool = attrs.field(factory=_config_bool_factory("logging", "colored_console_log"))
     _latest_log_symlink_date: datetime = attrs.field(factory=datetime.today, init=False)
 
     bundle_refresh_check_interval: int = attrs.field(
@@ -974,11 +981,34 @@ class DagFileProcessorManager(LoggingMixin):
         return os.path.join(self._get_log_dir(), bundle.name, f"{relative_path}.log")
 
     def _get_logger_for_dag_file(self, dag_file: DagFileInfo):
-        log_filename = self._render_log_filename(dag_file)
-        log_file = init_log_file(log_filename)
-        logger_filehandle = log_file.open("ab")
-        underlying_logger = structlog.BytesLogger(logger_filehandle)
-        processors = logging_processors(json_output=True)
+        log_target = self.dag_processor_log_target.lower()
+        if log_target == "stdout":
+            stdout = sys.stdout
+            try:
+                stdout_fd = stdout.fileno() if stdout is not None else None
+            except (AttributeError, OSError, ValueError):
+                stdout_fd = None
+            if stdout_fd is None:
+                stdout = sys.__stdout__
+                if stdout is None:
+                    raise RuntimeError("Unable to configure stdout for dag processor logs")
+                stdout_fd = stdout.fileno()
+
+            stdout_encoding = getattr(stdout, "encoding", None) or "utf-8"
+            # Use a dup of stdout so closing this handle doesn't close process stdout.
+            logger_filehandle = os.fdopen(
+                os.dup(stdout_fd), "w", buffering=1, encoding=stdout_encoding, errors="replace"
+            )
+            colors = self.colored_console_log
+        else:
+            log_filename = self._render_log_filename(dag_file)
+            log_file = init_log_file(log_filename)
+            logger_filehandle = log_file.open("a", buffering=1, encoding="utf-8")
+            colors = False
+        underlying_logger = structlog.WriteLogger(cast("TextIO", logger_filehandle))
+        processors = logging_processors(
+            json_output=False, log_format=self.dag_processor_log_format, colors=colors
+        )
         return structlog.wrap_logger(
             underlying_logger, processors=processors, logger_name="processor"
         ).bind(), logger_filehandle
