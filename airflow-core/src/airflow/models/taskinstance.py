@@ -317,15 +317,13 @@ def clear_task_instances(
     """
     Clear a set of task instances, but make sure the running ones get killed.
 
-    Also sets Dagrun's `state` to QUEUED and `start_date` to the time of execution.
-    But only for finished DRs (SUCCESS and FAILED).
-    Doesn't clear DR's `state` and `start_date`for running
-    DRs (QUEUED and RUNNING) because clearing the state for already
-    running DR is redundant and clearing `start_date` affects DR's duration.
+    Also sets DagRun's ``state`` to QUEUED and resets ``start_date``,
+    ``end_date``, and ``last_scheduling_decision`` so the run is
+    properly re-queued for the scheduler.
 
     :param tis: a list of task instances
     :param session: current session
-    :param dag_run_state: state to set finished DagRuns to.
+    :param dag_run_state: state to set DagRuns to.
         If set to False, DagRuns state will not be changed.
     :param run_on_latest_version: whether to run on latest serialized DAG and Bundle version
 
@@ -394,37 +392,32 @@ def clear_task_instances(
         ).all()
         dag_run_state = DagRunState(dag_run_state)  # Validate the state value.
         for dr in drs:
-            # Always update clear_number and queued_at when clearing tasks, regardless of state
             dr.clear_number += 1
             dr.queued_at = timezone.utcnow()
 
             _recalculate_dagrun_queued_at_deadlines(dr, dr.queued_at, session)
 
-            if dr.state in State.finished_dr_states:
-                dr.state = dag_run_state
-                dr.start_date = timezone.utcnow()
-                if run_on_latest_version:
-                    dr_dag = scheduler_dagbag.get_latest_version_of_dag(dr.dag_id, session=session)
-                    dag_version = DagVersion.get_latest_version(dr.dag_id, session=session)
-                    if dag_version:
-                        # Change the dr.created_dag_version_id so the scheduler doesn't reject this
-                        # version when it sets the dag_run.dag
-                        dr.created_dag_version_id = dag_version.id
-                        dr.dag = dr_dag
-                        dr.verify_integrity(session=session, dag_version_id=dag_version.id)
-                        for ti in dr.task_instances:
-                            ti.dag_version_id = dag_version.id
-                else:
-                    dr_dag = scheduler_dagbag.get_dag_for_run(dag_run=dr, session=session)
-                if not dr_dag:
-                    log.warning("No serialized dag found for dag '%s'", dr.dag_id)
-                if dr_dag and not dr_dag.disable_bundle_versioning and run_on_latest_version:
-                    bundle_version = dr.dag_model.bundle_version
-                    if bundle_version is not None and run_on_latest_version:
-                        dr.bundle_version = bundle_version
-                if dag_run_state == DagRunState.QUEUED:
-                    dr.last_scheduling_decision = None
-                    dr.start_date = None
+            dr.state = dag_run_state
+            if run_on_latest_version:
+                dr_dag = scheduler_dagbag.get_latest_version_of_dag(dr.dag_id, session=session)
+                dag_version = DagVersion.get_latest_version(dr.dag_id, session=session)
+                if dag_version:
+                    dr.created_dag_version_id = dag_version.id
+                    dr.dag = dr_dag
+                    dr.verify_integrity(session=session, dag_version_id=dag_version.id)
+                    for ti in dr.task_instances:
+                        ti.dag_version_id = dag_version.id
+            else:
+                dr_dag = scheduler_dagbag.get_dag_for_run(dag_run=dr, session=session)
+            if not dr_dag:
+                log.warning("No serialized dag found for dag '%s'", dr.dag_id)
+            if dr_dag and not dr_dag.disable_bundle_versioning and run_on_latest_version:
+                bundle_version = dr.dag_model.bundle_version
+                if bundle_version is not None and run_on_latest_version:
+                    dr.bundle_version = bundle_version
+            if dag_run_state == DagRunState.QUEUED:
+                dr.last_scheduling_decision = None
+                dr.start_date = None
     session.flush()
 
 

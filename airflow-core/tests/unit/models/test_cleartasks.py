@@ -199,9 +199,8 @@ class TestClearTasks:
     @pytest.mark.parametrize("state", [DagRunState.QUEUED, DagRunState.RUNNING])
     def test_clear_task_instances_on_running_dr(self, state, dag_maker):
         """
-        Test that DagRun state, start_date and last_scheduling_decision
-        are not changed after clearing TI in an unfinished DagRun.
-        However, queued_at and clear_number should still be updated.
+        Test that DagRun state is reset to QUEUED after clearing TI
+        in an unfinished DagRun, keeping task and dagrun states in sync.
         """
         # Explicitly needs catchup as True as test is creating history runs
         with dag_maker(
@@ -209,6 +208,7 @@ class TestClearTasks:
             start_date=DEFAULT_DATE,
             end_date=DEFAULT_DATE + datetime.timedelta(days=10),
             catchup=True,
+            serialized=True,
         ) as dag:
             EmptyOperator(task_id="0")
             EmptyOperator(task_id="1", retries=2)
@@ -223,28 +223,19 @@ class TestClearTasks:
         session = dag_maker.session
         session.flush()
 
-        # Store original values to verify they're updated
         original_queued_at = dr.queued_at
         original_clear_number = dr.clear_number
 
-        # we use order_by(task_id) here because for the test DAG structure of ours
-        # this is equivalent to topological sort. It would not work in general case
-        # but it works for our case because we specifically constructed test DAGS
-        # in the way that those two sort methods are equivalent
         qry = session.scalars(select(TI).where(TI.dag_id == dag.dag_id).order_by(TI.task_id)).all()
         clear_task_instances(qry, session)
         session.flush()
 
         session.refresh(dr)
 
-        assert dr.state == state
-        if state == DagRunState.QUEUED:
-            assert dr.start_date is None
-        if state == DagRunState.RUNNING:
-            assert dr.start_date
-        assert dr.last_scheduling_decision == DEFAULT_DATE
+        assert dr.state == DagRunState.QUEUED
+        assert dr.start_date is None
+        assert dr.last_scheduling_decision is None
 
-        # Verify queued_at and clear_number are updated even for running/queued dag runs
         assert dr.queued_at is not None
         assert dr.queued_at != original_queued_at
         assert dr.clear_number == original_clear_number + 1
