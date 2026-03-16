@@ -37,7 +37,7 @@ export const TaskInstance = () => {
   const { t: translate } = useTranslation(["dag", "common", "hitl"]);
   const { dagId = "", mapIndex = "-1", runId = "", taskId = "" } = useParams();
   // Get external views with task_instance destination
-  const externalTabs = usePluginTabs("task_instance");
+  const externalTabs = usePluginTabs("task_instance", { dagId, mapIndex, runId, taskId });
 
   const tabs = [
     { icon: <MdReorder />, label: translate("tabs.logs"), value: "" },

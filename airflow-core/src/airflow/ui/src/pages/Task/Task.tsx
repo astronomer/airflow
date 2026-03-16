@@ -38,7 +38,7 @@ export const Task = () => {
   const { dagId = "", groupId, runId, taskId } = useParams();
 
   // Get external views with task destination
-  const externalTabs = usePluginTabs("task");
+  const externalTabs = usePluginTabs("task", { dagId, taskId: groupId ?? taskId });
 
   const tabs = [
     { icon: <LuChartColumn />, label: translate("tabs.overview"), value: "" },

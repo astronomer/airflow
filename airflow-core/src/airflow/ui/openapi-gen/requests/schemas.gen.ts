@@ -4996,6 +4996,17 @@ export const $ReactAppResponse = {
             ],
             title: 'Icon Dark Mode'
         },
+        visibility_check_url: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Visibility Check Url'
+        },
         url_route: {
             anyOf: [
                 {

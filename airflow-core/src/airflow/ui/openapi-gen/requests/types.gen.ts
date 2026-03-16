@@ -1291,6 +1291,7 @@ export type ReactAppResponse = {
     name: string;
     icon?: string | null;
     icon_dark_mode?: string | null;
+    visibility_check_url?: string | null;
     url_route?: string | null;
     category?: string | null;
     bundle_url: string;

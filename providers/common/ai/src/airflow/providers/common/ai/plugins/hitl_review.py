@@ -246,6 +246,26 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@hitl_review_app.get("/check-visibility")
+async def check_visibility(
+    db: SessionDep,
+    dag_id: str,
+    task_id: str,
+    run_id: str,
+    map_index: MapIndexDep,
+) -> dict[str, bool]:
+    """Return whether this task instance has a HITL review session."""
+    raw = _read_xcom(
+        db,
+        dag_id=dag_id,
+        run_id=run_id,
+        task_id=task_id,
+        map_index=map_index,
+        key=XCOM_AGENT_SESSION,
+    )
+    return {"visible": raw is not None}
+
+
 @hitl_review_app.get(
     "/sessions/find",
     response_model=HITLReviewResponse,
@@ -521,5 +541,6 @@ class HITLReviewPlugin(AirflowPlugin):
             "bundle_url": _get_bundle_url(),
             "destination": "task_instance",
             "url_route": "hitl-review",
+            "visibility_check_url": _get_base_url_path(f"{_PLUGIN_PREFIX}/check-visibility"),
         }
     ]

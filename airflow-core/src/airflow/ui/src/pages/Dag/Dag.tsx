@@ -42,7 +42,7 @@ export const Dag = () => {
   const { dagId = "" } = useParams();
 
   // Get external views with dag destination
-  const externalTabs = usePluginTabs("dag");
+  const externalTabs = usePluginTabs("dag", { dagId });
 
   const tabs = [
     { icon: <LuChartColumn />, label: translate("tabs.overview"), value: "" },

@@ -724,6 +724,7 @@ class ReactAppResponse(BaseModel):
     name: Annotated[str, Field(title="Name")]
     icon: Annotated[str | None, Field(title="Icon")] = None
     icon_dark_mode: Annotated[str | None, Field(title="Icon Dark Mode")] = None
+    visibility_check_url: Annotated[str | None, Field(title="Visibility Check Url")] = None
     url_route: Annotated[str | None, Field(title="Url Route")] = None
     category: Annotated[str | None, Field(title="Category")] = None
     bundle_url: Annotated[str, Field(title="Bundle Url")]

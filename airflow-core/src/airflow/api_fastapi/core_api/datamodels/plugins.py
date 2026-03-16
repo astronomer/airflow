@@ -100,6 +100,7 @@ class ReactAppResponse(BaseUIResponse):
 
     bundle_url: str
     destination: Literal[BaseDestinationLiteral, "dashboard"] = "nav"
+    visibility_check_url: str | None = None
 
 
 class PluginResponse(BaseModel):

@@ -35,7 +35,7 @@ export const Run = () => {
   const { dagId = "", runId = "" } = useParams();
 
   // Get external views with dag_run destination
-  const externalTabs = usePluginTabs("dag_run");
+  const externalTabs = usePluginTabs("dag_run", { dagId, runId });
 
   const tabs = [
     { icon: <MdOutlineTask />, label: translate("tabs.taskInstances"), value: "" },
