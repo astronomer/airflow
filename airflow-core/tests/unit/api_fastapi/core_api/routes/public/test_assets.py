@@ -1408,6 +1408,13 @@ class TestPostAssetMaterialize(TestAssets):
             "note": None,
         }
 
+    @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
+    def test_should_respond_200_with_partition_key(self, test_client):
+        partition_key = "2026-03-23"
+        response = test_client.post("/assets/1/materialize", json={"partition_key": partition_key})
+        assert response.status_code == 200
+        assert response.json()["partition_key"] == partition_key
+
     def test_should_respond_401(self, unauthenticated_test_client):
         response = unauthenticated_test_client.post("/assets/2/materialize")
         assert response.status_code == 401

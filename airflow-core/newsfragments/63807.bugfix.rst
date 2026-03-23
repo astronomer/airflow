@@ -1,0 +1,1 @@
+UI: Added partition key input to Asset materialization and pass it to the ``/assets/{asset_id}/materialize`` API.

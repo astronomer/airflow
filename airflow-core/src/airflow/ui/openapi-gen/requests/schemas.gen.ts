@@ -4461,6 +4461,26 @@ export const $LastAssetEventResponse = {
     description: 'Last asset event response serializer.'
 } as const;
 
+export const $MaterializeAssetBody = {
+    properties: {
+        partition_key: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Partition Key'
+        }
+    },
+    additionalProperties: false,
+    type: 'object',
+    title: 'MaterializeAssetBody',
+    description: 'Materialize asset request.'
+} as const;
+
 export const $PatchTaskInstanceBody = {
     properties: {
         new_state: {

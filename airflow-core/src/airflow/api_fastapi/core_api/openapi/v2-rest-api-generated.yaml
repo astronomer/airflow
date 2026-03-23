@@ -484,6 +484,14 @@ paths:
         schema:
           type: integer
           title: Asset Id
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/MaterializeAssetBody'
+              - type: 'null'
+              title: Body
       responses:
         '200':
           description: Successful Response
@@ -11943,6 +11951,17 @@ components:
       type: object
       title: LastAssetEventResponse
       description: Last asset event response serializer.
+    MaterializeAssetBody:
+      properties:
+        partition_key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Partition Key
+      additionalProperties: false
+      type: object
+      title: MaterializeAssetBody
+      description: Materialize asset request.
     PatchTaskInstanceBody:
       properties:
         new_state:

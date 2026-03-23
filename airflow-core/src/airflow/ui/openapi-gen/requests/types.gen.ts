@@ -1134,6 +1134,13 @@ export type LastAssetEventResponse = {
 };
 
 /**
+ * Materialize asset request.
+ */
+export type MaterializeAssetBody = {
+    partition_key?: string | null;
+};
+
+/**
  * Request body for Clear Task Instances endpoint.
  */
 export type PatchTaskInstanceBody = {
@@ -2306,6 +2313,7 @@ export type CreateAssetEventResponse = AssetEventResponse;
 
 export type MaterializeAssetData = {
     assetId: number;
+    requestBody?: MaterializeAssetBody | null;
 };
 
 export type MaterializeAssetResponse = DAGRunResponse;

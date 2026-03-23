@@ -185,3 +185,11 @@ class CreateAssetEventsBody(StrictBaseModel):
         return v
 
     model_config = ConfigDict(extra="forbid")
+
+
+class MaterializeAssetBody(StrictBaseModel):
+    """Materialize asset request."""
+
+    partition_key: str | None = None
+
+    model_config = ConfigDict(extra="forbid")

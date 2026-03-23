@@ -54,6 +54,7 @@ from airflow.api_fastapi.core_api.datamodels.assets import (
     AssetEventResponse,
     AssetResponse,
     CreateAssetEventsBody,
+    MaterializeAssetBody,
     QueuedEventCollectionResponse,
     QueuedEventResponse,
 )
@@ -387,6 +388,7 @@ def materialize_asset(
     dag_bag: DagBagDep,
     user: GetUserDep,
     session: SessionDep,
+    body: MaterializeAssetBody | None = None,
 ) -> DAGRunResponse:
     """Materialize an asset by triggering a DAG run that produces it."""
     dag_id_it = iter(
@@ -436,6 +438,7 @@ def materialize_asset(
         triggered_by=DagRunTriggeredByType.REST_API,
         triggering_user_name=user.get_name(),
         state=DagRunState.QUEUED,
+        partition_key=body.partition_key if body else None,
         session=session,
     )
 

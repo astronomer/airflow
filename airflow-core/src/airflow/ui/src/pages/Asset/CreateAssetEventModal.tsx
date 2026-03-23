@@ -93,6 +93,7 @@ export const CreateAssetEventModal = ({ asset, onClose, open }: Props) => {
   const onSuccess = async (response: AssetEventResponse | DAGRunResponse) => {
     setExtra("{}");
     setExtraError(undefined);
+    setPartitionKey(undefined);
     onClose();
 
     let queryKeys = [UseAssetServiceGetAssetEventsKeyFn({ assetId: asset.id }, [{ assetId: asset.id }])];
@@ -152,7 +153,12 @@ export const CreateAssetEventModal = ({ asset, onClose, open }: Props) => {
           },
         });
       }
-      materializeAsset({ assetId: asset.id });
+      materializeAsset({
+        assetId: asset.id,
+        requestBody: {
+          partition_key: partitionKey ?? null,
+        },
+      });
     } else {
       createAssetEvent({
         requestBody: {
@@ -204,19 +210,16 @@ export const CreateAssetEventModal = ({ asset, onClose, open }: Props) => {
             </HStack>
           </RadioCardRoot>
           {eventType === "manual" ? (
-            <>
-              <Field.Root mt={6}>
-                <Field.Label fontSize="md">{translate("createEvent.manual.extra")}</Field.Label>
-                <JsonEditor onChange={validateAndPrettifyJson} value={extra} />
-                <Text color="fg.error">{extraError}</Text>
-              </Field.Root>
-              <Field.Root mt={6}>
-                <Field.Label fontSize="md">{translate("common:dagRun.partitionKey")}</Field.Label>
-                <JsonEditor onChange={setPartitionKey} value={partitionKey} />
-                <Text color="fg.error">{extraError}</Text>
-              </Field.Root>
-            </>
+            <Field.Root mt={6}>
+              <Field.Label fontSize="md">{translate("createEvent.manual.extra")}</Field.Label>
+              <JsonEditor onChange={validateAndPrettifyJson} value={extra} />
+              <Text color="fg.error">{extraError}</Text>
+            </Field.Root>
           ) : undefined}
+          <Field.Root mt={6}>
+            <Field.Label fontSize="md">{translate("common:dagRun.partitionKey")}</Field.Label>
+            <JsonEditor onChange={setPartitionKey} value={partitionKey} />
+          </Field.Root>
           {eventType === "materialize" && dag?.is_paused ? (
             <Checkbox checked={unpause} colorPalette="brand" onChange={() => setUnpause(!unpause)}>
               {translate("createEvent.materialize.unpauseDag", { dagName: dag.dag_display_name })}
