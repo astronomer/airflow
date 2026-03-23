@@ -895,6 +895,50 @@ def test_decode_product_mapper():
     assert core_pm.to_downstream("2024-06-15T10:30:00|2024-06-15T10:30:00") == "2024-06-15T10|2024-06-15"
 
 
+def test_encode_sequence_mapper():
+    from airflow.sdk import SequenceMapper, ToDailyMapper, ToHourlyMapper
+    from airflow.serialization.encoders import encode_partition_mapper
+
+    partition_mapper = SequenceMapper(ToHourlyMapper(), ToDailyMapper(input_format="%Y-%m-%dT%H"))
+    assert encode_partition_mapper(partition_mapper) == {
+        Encoding.TYPE: "airflow.partition_mappers.sequence.SequenceMapper",
+        Encoding.VAR: {
+            "mappers": [
+                {
+                    Encoding.TYPE: "airflow.partition_mappers.temporal.ToHourlyMapper",
+                    Encoding.VAR: {
+                        "input_format": "%Y-%m-%dT%H:%M:%S",
+                        "output_format": "%Y-%m-%dT%H",
+                    },
+                },
+                {
+                    Encoding.TYPE: "airflow.partition_mappers.temporal.ToDailyMapper",
+                    Encoding.VAR: {
+                        "input_format": "%Y-%m-%dT%H",
+                        "output_format": "%Y-%m-%d",
+                    },
+                },
+            ]
+        },
+    }
+
+
+def test_decode_sequence_mapper():
+    from airflow.partition_mappers.sequence import SequenceMapper as CoreSequenceMapper
+    from airflow.sdk import SequenceMapper, ToDailyMapper, ToHourlyMapper
+    from airflow.serialization.decoders import decode_partition_mapper
+    from airflow.serialization.encoders import encode_partition_mapper
+
+    partition_mapper = SequenceMapper(ToHourlyMapper(), ToDailyMapper(input_format="%Y-%m-%dT%H"))
+    encoded_pm = encode_partition_mapper(partition_mapper)
+
+    core_pm = decode_partition_mapper(encoded_pm)
+
+    assert isinstance(core_pm, CoreSequenceMapper)
+    assert len(core_pm.mappers) == 2
+    assert core_pm.to_downstream("2024-06-15T10:30:00") == "2024-06-15"
+
+
 def test_encode_allowed_key_mapper():
     from airflow.sdk import AllowedKeyMapper
     from airflow.serialization.encoders import encode_partition_mapper
