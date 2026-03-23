@@ -1,1 +1,1 @@
-UI: Asset materialization now uses the full Trigger DAG form and passes trigger options (including partition key, conf, run id, dates, and note) to the ``/assets/{asset_id}/materialize`` API.
+UI: Asset materialization now uses the full Trigger Dag form and passes trigger options (including partition key, conf, run id, dates, and note) to the ``/assets/{asset_id}/materialize`` API.
