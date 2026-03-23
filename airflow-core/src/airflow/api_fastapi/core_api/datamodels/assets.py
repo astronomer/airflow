@@ -19,11 +19,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from pydantic import AliasPath, ConfigDict, Field, JsonValue, NonNegativeInt, field_validator
 
 from airflow._shared.secrets_masker import redact
+from airflow._shared.timezones import timezone
 from airflow.api_fastapi.core_api.base import BaseModel, StrictBaseModel
+from airflow.api_fastapi.core_api.datamodels.dag_run import TriggerDAGRunPostBody
+from airflow.utils.types import DagRunType
+
+if TYPE_CHECKING:
+    from airflow.serialization.definitions.dag import SerializedDAG
 
 
 class DagScheduleAssetReference(StrictBaseModel):
@@ -187,9 +194,19 @@ class CreateAssetEventsBody(StrictBaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class MaterializeAssetBody(StrictBaseModel):
+class MaterializeAssetBody(TriggerDAGRunPostBody):
     """Materialize asset request."""
 
-    partition_key: str | None = None
+    logical_date: datetime | None = None
+
+    def validate_context(self, dag: SerializedDAG) -> dict:
+        params = super().validate_context(dag)
+        if self.dag_run_id is None:
+            params["run_id"] = dag.timetable.generate_run_id(
+                run_type=DagRunType.ASSET_MATERIALIZATION,
+                run_after=timezone.coerce_datetime(params["run_after"]),
+                data_interval=params["data_interval"],
+            )
+        return params
 
     model_config = ConfigDict(extra="forbid")

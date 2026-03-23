@@ -28,23 +28,24 @@ import { useParamStore } from "src/queries/useParamStore";
 import { useTogglePause } from "src/queries/useTogglePause";
 import { useTrigger } from "src/queries/useTrigger";
 import { DEFAULT_DATETIME_FORMAT } from "src/utils/datetimeUtils";
-
 import ConfigForm from "../ConfigForm";
 import { DateTimeInput } from "../DateTimeInput";
 import { ErrorAlert, type ExpandedApiError } from "../ErrorAlert";
 import { Checkbox } from "../ui/Checkbox";
 import { RadioCardItem, RadioCardRoot } from "../ui/RadioCard";
 import TriggerDAGAdvancedOptions from "./TriggerDAGAdvancedOptions";
-import type { DagRunTriggerParams } from "./types";
-import { dataIntervalModeOptions } from "./types";
+import { dataIntervalModeOptions, type DagRunTriggerParams } from "./types";
 
 type TriggerDAGFormProps = {
   readonly dagDisplayName: string;
   readonly dagId: string;
+  readonly error?: unknown;
   readonly hasSchedule: boolean;
   readonly isPartitioned: boolean;
   readonly isPaused: boolean;
+  readonly isPending?: boolean;
   readonly onClose: () => void;
+  readonly onSubmitTrigger?: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
   readonly prefillConfig?:
     | {
@@ -58,10 +59,13 @@ type TriggerDAGFormProps = {
 const TriggerDAGForm = ({
   dagDisplayName,
   dagId,
+  error: submitErrorOverride,
   hasSchedule,
   isPartitioned,
   isPaused,
+  isPending: isPendingOverride,
   onClose,
+  onSubmitTrigger,
   open,
   prefillConfig,
 }: TriggerDAGFormProps) => {
@@ -69,10 +73,12 @@ const TriggerDAGForm = ({
   const [errors, setErrors] = useState<{ conf?: string; date?: unknown }>({});
   const [formError, setFormError] = useState(false);
   const initialParamsDict = useDagParams(dagId, open);
-  const { error: errorTrigger, isPending, triggerDagRun } = useTrigger({ dagId, onSuccessConfirm: onClose });
+  const { error: triggerError, isPending: isTriggerPending, triggerDagRun } = useTrigger({ dagId, onSuccessConfirm: onClose });
   const { conf, initialParamDict, setConf, setInitialParamDict } = useParamStore();
   const [unpause, setUnpause] = useState(true);
-
+  const submitError = submitErrorOverride ?? triggerError;
+  const submitPending = isPendingOverride ?? isTriggerPending;
+  const submitTrigger = onSubmitTrigger ?? triggerDagRun;
   const { mutate: togglePause } = useTogglePause({ dagId });
 
   const { control, handleSubmit, reset, watch } = useForm<DagRunTriggerParams>({
@@ -82,16 +88,12 @@ const TriggerDAGForm = ({
       dataIntervalEnd: "",
       dataIntervalMode: "auto",
       dataIntervalStart: "",
-      // Default logical date to now, show it in the selected timezone.
-      // For partitioned Dags, logical date is not applicable.
       logicalDate: isPartitioned ? "" : dayjs().format(DEFAULT_DATETIME_FORMAT),
       note: "",
       partitionKey: undefined,
     },
   });
 
-  // Pre-fill form when prefillConfig is provided (priority over conf)
-  // Only restore 'conf' (parameters), not logicalDate, runId, or partitionKey to avoid 409 conflicts
   useEffect(() => {
     if (prefillConfig && open) {
       const confString = prefillConfig.conf ? JSON.stringify(prefillConfig.conf, undefined, 2) : "";
@@ -106,9 +108,6 @@ const TriggerDAGForm = ({
         note: "",
         partitionKey: undefined,
       });
-
-      // Also update the param store to keep it in sync.
-      // Wait until we have the initial params so section ordering stays consistent.
       if (confString && Object.keys(initialParamsDict.paramsDict).length > 0) {
         if (Object.keys(initialParamDict).length === 0) {
           setInitialParamDict(initialParamsDict.paramsDict);
@@ -127,7 +126,6 @@ const TriggerDAGForm = ({
     isPartitioned,
   ]);
 
-  // Automatically reset form when conf is fetched (only if no prefillConfig)
   useEffect(() => {
     if (conf && !prefillConfig && open) {
       reset((prevValues) => ({
@@ -137,9 +135,7 @@ const TriggerDAGForm = ({
     }
   }, [conf, prefillConfig, open, reset]);
 
-  const resetDateError = () => {
-    setErrors((prev) => ({ ...prev, date: undefined }));
-  };
+  const resetDateError = () => setErrors((prev) => ({ ...prev, date: undefined }));
 
   const dataIntervalMode = watch("dataIntervalMode");
   const dataIntervalStart = watch("dataIntervalStart");
@@ -150,19 +146,14 @@ const TriggerDAGForm = ({
     (noDataInterval || dayjs(dataIntervalStart).isAfter(dayjs(dataIntervalEnd)));
   const onSubmit = (data: DagRunTriggerParams) => {
     if (unpause && isPaused) {
-      togglePause({
-        dagId,
-        requestBody: {
-          is_paused: false,
-        },
-      });
+      togglePause({ dagId, requestBody: { is_paused: false } });
     }
-    triggerDagRun(data);
+    submitTrigger(data);
   };
 
   return (
     <>
-      <ErrorAlert error={errors.date ?? errorTrigger} />
+      <ErrorAlert error={errors.date ?? submitError} />
       <VStack alignItems="stretch" gap={2} pt={4}>
         {isPartitioned ? undefined : (
           <>
@@ -270,9 +261,9 @@ const TriggerDAGForm = ({
               Boolean(errors.conf) ||
               Boolean(errors.date) ||
               formError ||
-              isPending ||
+              submitPending ||
               dataIntervalInvalid ||
-              (Boolean(errorTrigger) && (errorTrigger as ExpandedApiError).status === 403)
+              (Boolean(submitError) && (submitError as ExpandedApiError).status === 403)
             }
             onClick={() => void handleSubmit(onSubmit)()}
           >
