@@ -22,6 +22,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import functools
+import inspect
 import os
 import sys
 import time
@@ -173,6 +174,7 @@ class detail_span:
             with self._make_ctx():
                 return f(*inner_args, **inner_kwargs)
 
+        wrapper.__signature__ = inspect.signature(f)
         return wrapper
 
 
