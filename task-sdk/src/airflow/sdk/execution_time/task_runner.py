@@ -1859,7 +1859,7 @@ def finalize(
     if state == TaskInstanceState.SUCCESS:
         with detail_span("success_callback"):
             _run_task_state_change_callbacks(task, "on_success_callback", context, log)
-        with detail_span("listener.success_callback"):
+        with detail_span("listener.on_task_instance_success"):
             try:
                 get_listener_manager().hook.on_task_instance_success(
                     previous_state=TaskInstanceState.RUNNING, task_instance=ti
