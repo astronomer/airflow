@@ -1,0 +1,54 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+# Spark Standalone cluster for SparkStandaloneExecutor POC
+# Exposes the Spark Master REST API on port 6066 for task submission
+# and the Spark UI on port 8080.
+#
+# Uses a custom image (Dockerfile in this directory) that extends `spark:python3`
+# with apache-airflow-task-sdk installed — the same SDK that KubernetesExecutor
+# uses inside its pods to run real Airflow tasks.
+#
+# Build and start:  docker compose up --build -d
+
+version: "3.8"
+
+x-spark-worker: &spark-worker
+  build: .
+  depends_on:
+    - spark-master
+  # Run the worker process in the foreground (spark-class keeps it alive).
+  # -c 2 -m 2g: 2 cores and 2 GB RAM per worker.
+  command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 -c 2 -m 2g
+
+services:
+  spark-master:
+    build: .
+    # Run the master in the foreground and enable the REST Submission API (port 6066).
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    environment:
+      - SPARK_MASTER_OPTS=-Dspark.master.rest.enabled=true -Dspark.master.rest.port=6066
+    ports:
+      - "7077:7077"   # Spark master (cluster comms)
+      - "6066:6066"   # REST Submission API
+      - "8080:8080"   # Spark Master UI
+
+  spark-worker-1:
+    <<: *spark-worker
+
+  spark-worker-2:
+    <<: *spark-worker

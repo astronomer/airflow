@@ -131,4 +131,7 @@ def get_provider_info():
                 "name": "pyspark",
             }
         ],
+        "executors": [
+            "airflow.providers.apache.spark.executors.spark_standalone_executor.SparkStandaloneExecutor"
+        ],
     }

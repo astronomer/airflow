@@ -207,3 +207,6 @@ connection-types:
 task-decorators:
   - class-name: airflow.providers.apache.spark.decorators.pyspark.pyspark_task
     name: pyspark
+
+executors:
+  - airflow.providers.apache.spark.executors.spark_standalone_executor.SparkStandaloneExecutor
