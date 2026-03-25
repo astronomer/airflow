@@ -277,8 +277,6 @@ class SparkStandaloneExecutor(BaseExecutor):
 
     def _build_env(self, workload: Any) -> dict[str, str]:
         """Build the environment variables dict injected into the Spark driver process."""
-        from airflow.configuration import conf
-
         # Serialize the full workload as JSON — identical to what KubernetesExecutor passes
         # to the pod via `python -m airflow.sdk.execution_time.execute_workload --json-string`.
         env: dict[str, str] = {
@@ -286,25 +284,73 @@ class SparkStandaloneExecutor(BaseExecutor):
             # Script path for AirflowDriverLauncher (the JVM shim) to invoke.
             "AIRFLOW_TASK_RUNNER_SCRIPT": self._task_runner_script,
             # Spark worker images may run as a system user with HOME=/nonexistent.
-            # Airflow's logging init tries to mkdir under HOME, so point it somewhere writable.
+            # Airflow's logging init tries to mkdir under $HOME/airflow/logs; use a
+            # path that doesn't collide with any volume mounts under /tmp/airflow.
             "HOME": "/tmp",
+            "AIRFLOW__LOGGING__BASE_LOG_FOLDER": "/tmp/airflow-driver-logs",
         }
 
+        import os
+
         # Execution API URL so the task runner can communicate back to Airflow.
-        execution_api_url = conf.get("execution_api", "url", fallback="")
+        # The Task SDK reads AIRFLOW__CORE__EXECUTION_API_SERVER_URL via
+        # conf.get("core", "execution_api_server_url"). Read from os.environ
+        # directly so we pick it up regardless of which env var the operator set.
+        execution_api_url = os.environ.get("AIRFLOW__CORE__EXECUTION_API_SERVER_URL") or os.environ.get(
+            "AIRFLOW__EXECUTION_API__URL"
+        )
         if execution_api_url:
-            env["AIRFLOW__EXECUTION_API__URL"] = execution_api_url
+            env["AIRFLOW__CORE__EXECUTION_API_SERVER_URL"] = execution_api_url
+
+        # Ensure pip-installed packages (pyspark, airflow-sdk) are importable inside
+        # the python3 subprocess spawned by AirflowDriverLauncher.  The Spark Worker
+        # starts the driver JVM with a minimal environment (SPARK_HOME + PATH only),
+        # so site.py may not resolve /usr/local/lib/python3.10/dist-packages unless
+        # PYTHONPATH is set explicitly.  Preserve any existing value from the image.
+        if "PYTHONPATH" not in env:
+            env["PYTHONPATH"] = "/usr/local/lib/python3.10/dist-packages:/opt/spark/python"
+
+        # Propagate remote-logging configuration so Spark driver processes upload
+        # task logs to the same remote store (e.g. MinIO) that the Airflow UI reads.
+        for key in (
+            "AIRFLOW__LOGGING__REMOTE_LOGGING",
+            "AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER",
+            "AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID",
+        ):
+            val = os.environ.get(key)
+            if val:
+                env[key] = val
+
+        # Propagate any AIRFLOW_CONN_* env vars so the remote logging connection
+        # (e.g. minio_logs) is available inside the driver process.
+        for key, val in os.environ.items():
+            if key.startswith("AIRFLOW_CONN_"):
+                env[key] = val
 
         return env
 
     def _get_driver_state(self, submission_id: str) -> str:
-        """Return the driverState string for the given submission."""
+        """
+        Return the driverState string for the given submission.
+
+        When Spark cannot find the submission (master restarted, driver cleaned
+        up after completion, etc.) it returns a response with ``success=false``
+        and no ``driverState`` key.  Fall back to ``"UNKNOWN"`` in that case,
+        which is already mapped to terminal failure.
+        """
         resp = requests.get(
             f"{self._rest_url}/status/{submission_id}",
             timeout=10,
         )
         resp.raise_for_status()
-        return resp.json()["driverState"]
+        data = resp.json()
+        if "driverState" not in data:
+            self.log.warning(
+                "Spark REST API response for %s has no driverState — treating as UNKNOWN. Response: %s",
+                submission_id,
+                data,
+            )
+        return data.get("driverState", "UNKNOWN")
 
     def _kill_all_submissions(self) -> None:
         for key, submission_id in list(self._submissions.items()):

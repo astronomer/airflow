@@ -19,6 +19,10 @@
 # Exposes the Spark Master REST API on port 6066 for task submission
 # and the Spark UI on port 8080.
 #
+# Also runs a MinIO instance (S3-compatible) for remote task log storage,
+# so the Airflow UI can read logs written by Spark driver processes without
+# needing a serve-logs daemon on each worker.
+#
 # Uses a custom image (Dockerfile in this directory) that extends `spark:python3`
 # with apache-airflow-task-sdk installed — the same SDK that KubernetesExecutor
 # uses inside its pods to run real Airflow tasks.
@@ -31,9 +35,15 @@ x-spark-worker: &spark-worker
   build: .
   depends_on:
     - spark-master
+    - minio
   # Run the worker process in the foreground (spark-class keeps it alive).
   # -c 2 -m 2g: 2 cores and 2 GB RAM per worker.
   command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077 -c 2 -m 2g
+  volumes:
+    # Mount the host DAG files so the Airflow Task SDK can load task code.
+    # In production this would be git-sync or shared storage; for the POC we
+    # bind-mount the same directory Breeze reads from.
+    - ../../files/test_dags:/tmp/airflow/dags:ro
 
 services:
   spark-master:
@@ -52,3 +62,41 @@ services:
 
   spark-worker-2:
     <<: *spark-worker
+
+  # MinIO — S3-compatible object store for remote task log storage.
+  # Breeze (Airflow scheduler/API server) and Spark workers both reach it via
+  # host.docker.internal:9000.  The UI console is at http://localhost:9001.
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO console UI
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # One-shot service that creates the airflow-logs bucket on first start.
+  # Waits for MinIO to pass its healthcheck before running.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        /usr/bin/mc alias set local http://minio:9000 minioadmin minioadmin &&
+        /usr/bin/mc mb --ignore-existing local/airflow-logs &&
+        echo 'Bucket airflow-logs ready.'
+      "
+
+volumes:
+  minio-data:
