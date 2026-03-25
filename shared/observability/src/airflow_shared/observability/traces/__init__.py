@@ -90,7 +90,7 @@ def new_task_run_carrier(dag_run_context_carrier):
 
 def build_trace_state_entries(task_span_detail_level) -> list[tuple[str, str]]:
     trace_state_entries = []
-    if task_span_detail_level:
+    if task_span_detail_level is not None:
         try:
             level = int(task_span_detail_level)
         except Exception:
