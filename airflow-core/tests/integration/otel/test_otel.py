@@ -86,7 +86,7 @@ def wait_for_otel_collector(host: str, port: int, timeout: int = 120) -> None:
     )
 
 
-def unpause_trigger_dag_and_get_run_id(dag_id: str) -> str:
+def unpause_trigger_dag_and_get_run_id(dag_id: str, conf: dict | None = None) -> str:
     unpause_command = ["airflow", "dags", "unpause", dag_id]
 
     # Unpause the dag using the cli.
@@ -105,6 +105,11 @@ def unpause_trigger_dag_and_get_run_id(dag_id: str) -> str:
         "--logical-date",
         execution_date.isoformat(),
     ]
+
+    if conf:
+        import json
+
+        trigger_command += ["--conf", json.dumps(conf)]
 
     # Trigger the dag using the cli.
     subprocess.run(trigger_command, check=True, env=os.environ.copy())
@@ -452,7 +457,9 @@ class TestOtelIntegration:
 
             assert dag is not None
 
-            run_id = unpause_trigger_dag_and_get_run_id(dag_id=dag_id)
+            from airflow_shared.observability.traces import TASK_SPAN_DETAIL_LEVEL_KEY
+
+            run_id = unpause_trigger_dag_and_get_run_id(dag_id=dag_id, conf={TASK_SPAN_DETAIL_LEVEL_KEY: 2})
 
             # Skip the span_status check.
             wait_for_dag_run(dag_id=dag_id, run_id=run_id, max_wait_time=90)
