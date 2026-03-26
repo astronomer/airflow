@@ -26,7 +26,6 @@ import { FiPlay } from "react-icons/fi";
 import { useDagParams } from "src/queries/useDagParams";
 import { useParamStore } from "src/queries/useParamStore";
 import { useTogglePause } from "src/queries/useTogglePause";
-import { useTrigger } from "src/queries/useTrigger";
 import { DEFAULT_DATETIME_FORMAT } from "src/utils/datetimeUtils";
 
 import ConfigForm from "../ConfigForm";
@@ -41,10 +40,12 @@ import { dataIntervalModeOptions } from "./types";
 type TriggerDAGFormProps = {
   readonly dagDisplayName: string;
   readonly dagId: string;
+  readonly error?: unknown;
   readonly hasSchedule: boolean;
   readonly isPartitioned: boolean;
   readonly isPaused: boolean;
-  readonly onClose: () => void;
+  readonly isPending?: boolean;
+  readonly onTrigger: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
   readonly prefillConfig?:
     | {
@@ -58,10 +59,12 @@ type TriggerDAGFormProps = {
 const TriggerDAGForm = ({
   dagDisplayName,
   dagId,
+  error,
   hasSchedule,
   isPartitioned,
   isPaused,
-  onClose,
+  isPending = false,
+  onTrigger,
   open,
   prefillConfig,
 }: TriggerDAGFormProps) => {
@@ -69,7 +72,6 @@ const TriggerDAGForm = ({
   const [errors, setErrors] = useState<{ conf?: string; date?: unknown }>({});
   const [formError, setFormError] = useState(false);
   const initialParamsDict = useDagParams(dagId, open);
-  const { error: errorTrigger, isPending, triggerDagRun } = useTrigger({ dagId, onSuccessConfirm: onClose });
   const { conf, initialParamDict, setConf, setInitialParamDict } = useParamStore();
   const [unpause, setUnpause] = useState(true);
 
@@ -157,12 +159,12 @@ const TriggerDAGForm = ({
         },
       });
     }
-    triggerDagRun(data);
+    onTrigger(data);
   };
 
   return (
     <>
-      <ErrorAlert error={errors.date ?? errorTrigger} />
+      <ErrorAlert error={errors.date ?? error} />
       <VStack alignItems="stretch" gap={2} pt={4}>
         {isPartitioned ? undefined : (
           <>
@@ -272,7 +274,7 @@ const TriggerDAGForm = ({
               formError ||
               isPending ||
               dataIntervalInvalid ||
-              (Boolean(errorTrigger) && (errorTrigger as ExpandedApiError).status === 403)
+              (Boolean(error) && (error as ExpandedApiError).status === 403)
             }
             onClick={() => void handleSubmit(onSubmit)()}
           >
