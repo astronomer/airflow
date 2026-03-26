@@ -560,7 +560,7 @@ class TestOtelIntegration:
         r = requests.get(f"http://{host}:16686/api/traces?service={service_name}")
         data = r.json()
 
-        trace = data["data"][-1]
+        trace = data["data"][0]
         spans = trace["spans"]
 
         def get_span_hierarchy():
