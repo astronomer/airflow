@@ -44,7 +44,8 @@ type TriggerDAGFormProps = {
   readonly isPartitioned: boolean;
   readonly isPaused: boolean;
   readonly isPending?: boolean;
-  readonly onSubmitTrigger: (params: DagRunTriggerParams) => void;
+  readonly onSubmitTrigger?: (params: DagRunTriggerParams) => void;
+  readonly onTrigger?: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
   readonly prefillConfig?:
     | {
@@ -64,6 +65,7 @@ const TriggerDAGForm = ({
   isPaused,
   isPending = false,
   onSubmitTrigger,
+  onTrigger,
   open,
   prefillConfig,
 }: TriggerDAGFormProps) => {
@@ -138,9 +140,7 @@ const TriggerDAGForm = ({
     }
   }, [conf, prefillConfig, open, reset]);
 
-  const resetDateError = () => {
-    setErrors((prev) => ({ ...prev, date: undefined }));
-  };
+  const resetDateError = () => setErrors((prev) => ({ ...prev, date: undefined }));
   const dataIntervalMode = watch("dataIntervalMode");
   const dataIntervalStart = watch("dataIntervalStart");
   const dataIntervalEnd = watch("dataIntervalEnd");
@@ -148,6 +148,7 @@ const TriggerDAGForm = ({
   const dataIntervalInvalid =
     dataIntervalMode === "manual" &&
     (noDataInterval || dayjs(dataIntervalStart).isAfter(dayjs(dataIntervalEnd)));
+  const submitTrigger = onSubmitTrigger ?? onTrigger;
   const onSubmit = (data: DagRunTriggerParams) => {
     if (unpause && isPaused) {
       togglePause({
@@ -157,7 +158,7 @@ const TriggerDAGForm = ({
         },
       });
     }
-    onSubmitTrigger(data);
+    submitTrigger?.(data);
   };
 
   return (
