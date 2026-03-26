@@ -44,8 +44,7 @@ type TriggerDAGFormProps = {
   readonly isPartitioned: boolean;
   readonly isPaused: boolean;
   readonly isPending?: boolean;
-  readonly onSubmitTrigger?: (params: DagRunTriggerParams) => void;
-  readonly onTrigger?: (params: DagRunTriggerParams) => void;
+  readonly onSubmitTrigger: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
   readonly prefillConfig?:
     | {
@@ -65,7 +64,6 @@ const TriggerDAGForm = ({
   isPaused,
   isPending = false,
   onSubmitTrigger,
-  onTrigger,
   open,
   prefillConfig,
 }: TriggerDAGFormProps) => {
@@ -148,12 +146,11 @@ const TriggerDAGForm = ({
   const dataIntervalInvalid =
     dataIntervalMode === "manual" &&
     (noDataInterval || dayjs(dataIntervalStart).isAfter(dayjs(dataIntervalEnd)));
-  const submitTrigger = onSubmitTrigger ?? onTrigger ?? (() => undefined);
   const onSubmit = (data: DagRunTriggerParams) => {
     if (unpause && isPaused) {
       togglePause({ dagId, requestBody: { is_paused: false } });
     }
-    submitTrigger(data);
+    onSubmitTrigger(data);
   };
 
   return (
@@ -267,7 +264,6 @@ const TriggerDAGForm = ({
               Boolean(errors.date) ||
               formError ||
               isPending ||
-              !Boolean(onSubmitTrigger ?? onTrigger) ||
               dataIntervalInvalid ||
               (Boolean(error) && (error as ExpandedApiError).status === 403)
             }
