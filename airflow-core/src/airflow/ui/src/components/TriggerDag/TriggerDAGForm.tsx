@@ -34,8 +34,7 @@ import { ErrorAlert, type ExpandedApiError } from "../ErrorAlert";
 import { Checkbox } from "../ui/Checkbox";
 import { RadioCardItem, RadioCardRoot } from "../ui/RadioCard";
 import TriggerDAGAdvancedOptions from "./TriggerDAGAdvancedOptions";
-import type { DagRunTriggerParams } from "./types";
-import { dataIntervalModeOptions } from "./types";
+import { dataIntervalModeOptions, type DagRunTriggerParams } from "./types";
 
 type TriggerDAGFormProps = {
   readonly dagDisplayName: string;
@@ -45,7 +44,7 @@ type TriggerDAGFormProps = {
   readonly isPartitioned: boolean;
   readonly isPaused: boolean;
   readonly isPending?: boolean;
-  readonly onTrigger: (params: DagRunTriggerParams) => void;
+  readonly onSubmitTrigger: (params: DagRunTriggerParams) => void;
   readonly open: boolean;
   readonly prefillConfig?:
     | {
@@ -64,7 +63,7 @@ const TriggerDAGForm = ({
   isPartitioned,
   isPaused,
   isPending = false,
-  onTrigger,
+  onSubmitTrigger,
   open,
   prefillConfig,
 }: TriggerDAGFormProps) => {
@@ -142,7 +141,6 @@ const TriggerDAGForm = ({
   const resetDateError = () => {
     setErrors((prev) => ({ ...prev, date: undefined }));
   };
-
   const dataIntervalMode = watch("dataIntervalMode");
   const dataIntervalStart = watch("dataIntervalStart");
   const dataIntervalEnd = watch("dataIntervalEnd");
@@ -159,7 +157,7 @@ const TriggerDAGForm = ({
         },
       });
     }
-    onTrigger(data);
+    onSubmitTrigger(data);
   };
 
   return (

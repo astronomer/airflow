@@ -145,7 +145,7 @@ const TriggerDAGModal: React.FC<TriggerDAGModalProps> = ({
                   isPartitioned={isPartitioned}
                   isPaused={isPaused}
                   isPending={isTriggerPending}
-                  onTrigger={triggerDagRun}
+                  onSubmitTrigger={triggerDagRun}
                   open={open}
                   prefillConfig={prefillConfig}
                 />
