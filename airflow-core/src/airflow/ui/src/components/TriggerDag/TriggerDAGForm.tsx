@@ -148,17 +148,12 @@ const TriggerDAGForm = ({
   const dataIntervalInvalid =
     dataIntervalMode === "manual" &&
     (noDataInterval || dayjs(dataIntervalStart).isAfter(dayjs(dataIntervalEnd)));
-  const submitTrigger = onSubmitTrigger ?? onTrigger;
+  const submitTrigger = onSubmitTrigger ?? onTrigger ?? (() => undefined);
   const onSubmit = (data: DagRunTriggerParams) => {
     if (unpause && isPaused) {
-      togglePause({
-        dagId,
-        requestBody: {
-          is_paused: false,
-        },
-      });
+      togglePause({ dagId, requestBody: { is_paused: false } });
     }
-    submitTrigger?.(data);
+    submitTrigger(data);
   };
 
   return (
@@ -272,6 +267,7 @@ const TriggerDAGForm = ({
               Boolean(errors.date) ||
               formError ||
               isPending ||
+              !Boolean(onSubmitTrigger ?? onTrigger) ||
               dataIntervalInvalid ||
               (Boolean(error) && (error as ExpandedApiError).status === 403)
             }
