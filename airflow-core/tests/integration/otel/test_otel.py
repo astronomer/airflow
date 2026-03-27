@@ -485,7 +485,7 @@ class TestOtelIntegration:
                     "handle success": "run",
                     "handle_extra_links": "finalize",
                     "success_callback": "finalize",
-                    "listener.success_callback": "finalize",
+                    "listener.on_task_instance_success": "finalize",
                     "listener.before_stopping": "finalize",
                     "finalize": "run",
                     "run": "worker.task1",
@@ -559,8 +559,7 @@ class TestOtelIntegration:
         service_name = os.environ.get("OTEL_SERVICE_NAME", "test")
         r = requests.get(f"http://{host}:16686/api/traces?service={service_name}")
         data = r.json()
-
-        trace = data["data"][0]
+        trace = data["data"][-1]
         spans = trace["spans"]
 
         def get_span_hierarchy():
