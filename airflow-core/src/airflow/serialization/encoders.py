@@ -41,6 +41,7 @@ from airflow.sdk import (
     DeltaTriggerTimetable,
     EventsTimetable,
     IdentityMapper,
+    MonthlyRollupMapper,
     MultipleCronTriggerTimetable,
     PartitionMapper,
     ProductMapper,
@@ -49,6 +50,7 @@ from airflow.sdk import (
     StartOfQuarterMapper,
     StartOfWeekMapper,
     StartOfYearMapper,
+    WeeklyRollupMapper,
 )
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions.asset import AssetRef
@@ -412,6 +414,8 @@ class _Serializer:
         StartOfQuarterMapper: "airflow.partition_mappers.temporal.StartOfQuarterMapper",
         StartOfWeekMapper: "airflow.partition_mappers.temporal.StartOfWeekMapper",
         StartOfYearMapper: "airflow.partition_mappers.temporal.StartOfYearMapper",
+        WeeklyRollupMapper: "airflow.partition_mappers.temporal.WeeklyRollupMapper",
+        MonthlyRollupMapper: "airflow.partition_mappers.temporal.MonthlyRollupMapper",
     }
 
     @functools.singledispatchmethod

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from airflow._shared.timezones.timezone import make_aware, parse_timezone
-from airflow.partition_mappers.base import PartitionMapper
+from airflow.partition_mappers.base import PartitionMapper, RollupMapper
 
 if TYPE_CHECKING:
     from pendulum import FixedTimezone, Timezone
@@ -99,28 +99,108 @@ class StartOfDayMapper(_BaseTemporalMapper):
 
 
 class StartOfWeekMapper(_BaseTemporalMapper):
-    """Map a time-based partition key to week."""
+    """Map a time-based partition key to the start of its week."""
 
     default_output_format = "%Y-%m-%d (W%V)"
 
+    def __init__(
+        self,
+        *,
+        week_start: int = 0,
+        timezone: str | Timezone | FixedTimezone = "UTC",
+        input_format: str = "%Y-%m-%dT%H:%M:%S",
+        output_format: str | None = None,
+    ) -> None:
+        super().__init__(timezone=timezone, input_format=input_format, output_format=output_format)
+        self.week_start = week_start  # 0 = Monday (ISO default), 6 = Sunday
+
     def normalize(self, dt: datetime) -> datetime:
-        start = dt - timedelta(days=dt.weekday())
+        days_since_start = (dt.weekday() - self.week_start) % 7
+        start = dt - timedelta(days=days_since_start)
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def serialize(self) -> dict[str, Any]:
+        return {**super().serialize(), "week_start": self.week_start}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any]) -> PartitionMapper:
+        return cls(
+            week_start=data.get("week_start", 0),
+            timezone=parse_timezone(data.get("timezone", "UTC")),
+            input_format=data["input_format"],
+            output_format=data["output_format"],
+        )
+
+
+class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
+    """
+    Map a time-based partition key to the start of its week, requiring all 7 daily keys.
+
+    Use this when a partitioned Dag should only run once every daily asset partition
+    for a full week has been produced. Configure ``week_start`` to set which day begins
+    the week (0 = Monday, 6 = Sunday).
+    """
+
+    def to_upstream(self, downstream_key: str) -> frozenset[str]:
+        # The output format always embeds the week-start date as the first 10 chars.
+        week_start_dt = datetime.strptime(downstream_key[:10], "%Y-%m-%d")
+        return frozenset((week_start_dt + timedelta(days=i)).strftime(self.input_format) for i in range(7))
 
 
 class StartOfMonthMapper(_BaseTemporalMapper):
-    """Map a time-based partition key to month."""
+    """Map a time-based partition key to the start of its month."""
 
     default_output_format = "%Y-%m"
 
+    def __init__(
+        self,
+        *,
+        month_start_day: int = 1,
+        timezone: str | Timezone | FixedTimezone = "UTC",
+        input_format: str = "%Y-%m-%dT%H:%M:%S",
+        output_format: str | None = None,
+    ) -> None:
+        super().__init__(timezone=timezone, input_format=input_format, output_format=output_format)
+        self.month_start_day = month_start_day  # 1–28; use >1 for fiscal-month offsets
+
     def normalize(self, dt: datetime) -> datetime:
-        return dt.replace(
-            day=1,
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
+        if dt.day < self.month_start_day:
+            month = dt.month - 1 or 12
+            year = dt.year - (1 if dt.month == 1 else 0)
+            start = dt.replace(year=year, month=month, day=self.month_start_day)
+        else:
+            start = dt.replace(day=self.month_start_day)
+        return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def serialize(self) -> dict[str, Any]:
+        return {**super().serialize(), "month_start_day": self.month_start_day}
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any]) -> PartitionMapper:
+        return cls(
+            month_start_day=data.get("month_start_day", 1),
+            timezone=parse_timezone(data.get("timezone", "UTC")),
+            input_format=data["input_format"],
+            output_format=data["output_format"],
         )
+
+
+class MonthlyRollupMapper(StartOfMonthMapper, RollupMapper):
+    """
+    Map a time-based partition key to the start of its month, requiring all daily keys in that month.
+
+    Use this when a partitioned Dag should only run once every daily asset partition
+    for a full calendar month has been produced. Configure ``month_start_day`` for
+    fiscal-month offsets (e.g. ``month_start_day=15`` for a mid-month period).
+    """
+
+    def to_upstream(self, downstream_key: str) -> frozenset[str]:
+        period_start = datetime.strptime(downstream_key, self.output_format).replace(day=self.month_start_day)
+        next_month = period_start.month % 12 + 1
+        next_year = period_start.year + (1 if period_start.month == 12 else 0)
+        next_start = period_start.replace(year=next_year, month=next_month)
+        days = (next_start - period_start).days
+        return frozenset((period_start + timedelta(days=i)).strftime(self.input_format) for i in range(days))
 
 
 class StartOfQuarterMapper(_BaseTemporalMapper):
