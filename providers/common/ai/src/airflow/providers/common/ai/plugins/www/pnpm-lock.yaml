@@ -12,44 +12,44 @@ importers:
   .:
     dependencies:
       '@chakra-ui/react':
-        specifier: ^3.34.0
+        specifier: 3.34.0
         version: 3.34.0(@emotion/react@11.14.0(@types/react@19.2.14)(react@19.2.4))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@emotion/react':
-        specifier: ^11.14.0
+        specifier: 11.14.0
         version: 11.14.0(@types/react@19.2.14)(react@19.2.4)
       react:
-        specifier: ^19.2.4
+        specifier: 19.2.4
         version: 19.2.4
       react-dom:
-        specifier: ^19.2.4
+        specifier: 19.2.4
         version: 19.2.4(react@19.2.4)
       react-markdown:
-        specifier: ^10.1.0
+        specifier: 10.1.0
         version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
       remark-gfm:
-        specifier: ^4.0.1
+        specifier: 4.0.1
         version: 4.0.1
     devDependencies:
       '@types/react':
-        specifier: ^19.2.14
+        specifier: 19.2.14
         version: 19.2.14
       '@types/react-dom':
-        specifier: ^19.2.3
+        specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react-swc':
-        specifier: ^4.2.3
+        specifier: 4.2.3
         version: 4.2.3(@swc/helpers@0.5.19)(vite@7.3.1)
       typescript:
-        specifier: ~5.9.3
+        specifier: 5.9.3
         version: 5.9.3
       vite:
-        specifier: ^7.3.1
+        specifier: 7.3.1
         version: 7.3.1
       vite-plugin-css-injected-by-js:
-        specifier: ^3.5.2
+        specifier: 3.5.2
         version: 3.5.2(vite@7.3.1)
       vite-plugin-dts:
-        specifier: ^4.5.4
+        specifier: 4.5.4
         version: 4.5.4(rollup@4.59.0)(typescript@5.9.3)(vite@7.3.1)
 
 packages:
