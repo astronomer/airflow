@@ -70,6 +70,8 @@ __all__ = [
     "StartOfQuarterMapper",
     "StartOfWeekMapper",
     "StartOfYearMapper",
+    "WeeklyRollupMapper",
+    "MonthlyRollupMapper",
     "TaskGroup",
     "TaskInstance",
     "TaskInstanceState",
@@ -131,12 +133,14 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.partition_mappers.identity import IdentityMapper
     from airflow.sdk.definitions.partition_mappers.product import ProductMapper
     from airflow.sdk.definitions.partition_mappers.temporal import (
+        MonthlyRollupMapper,
         StartOfDayMapper,
         StartOfHourMapper,
         StartOfMonthMapper,
         StartOfQuarterMapper,
         StartOfWeekMapper,
         StartOfYearMapper,
+        WeeklyRollupMapper,
     )
     from airflow.sdk.definitions.taskgroup import TaskGroup
     from airflow.sdk.definitions.template import literal
@@ -215,6 +219,8 @@ __lazy_imports: dict[str, str] = {
     "StartOfQuarterMapper": ".definitions.partition_mappers.temporal",
     "StartOfWeekMapper": ".definitions.partition_mappers.temporal",
     "StartOfYearMapper": ".definitions.partition_mappers.temporal",
+    "WeeklyRollupMapper": ".definitions.partition_mappers.temporal",
+    "MonthlyRollupMapper": ".definitions.partition_mappers.temporal",
     "TaskGroup": ".definitions.taskgroup",
     "TaskInstance": ".types",
     "TaskInstanceState": ".api.datamodels._generated",

@@ -117,6 +117,7 @@ if TYPE_CHECKING:
     from airflow.executors.base_executor import BaseExecutor
     from airflow.executors.executor_utils import ExecutorName
     from airflow.executors.workloads.types import SchedulerWorkload
+    from airflow.partition_mappers.base import RollupMapper
     from airflow.serialization.definitions.dag import SerializedDAG
     from airflow.utils.sqlalchemy import CommitProhibitorGuard
 
@@ -1821,6 +1822,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
         return num_queued_tis
 
+    def _check_rollup_asset_status(
+        self,
+        asset_model: AssetModel,
+        apdr: AssetPartitionDagRun,
+        mapper: RollupMapper,
+        actual_by_asset: dict[int, set[str]],
+    ) -> bool:
+        if TYPE_CHECKING:
+            assert apdr.partition_key is not None
+        expected = mapper.to_upstream(apdr.partition_key)
+        return expected.issubset(actual_by_asset.get(asset_model.id, set()))
+
     def _create_dagruns_for_partitioned_asset_dags(self, session: Session) -> set[str]:
         partition_dag_ids: set[str] = set()
 
@@ -1845,16 +1858,30 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                         )
                     )
                 )
-            )
-            statuses: dict[SerializedAssetUniqueKey, bool] = {
-                SerializedAssetUniqueKey.from_asset(a): True for a in asset_models
-            }
-            # todo: AIP-76 so, this basically works when we only require one partition from each asset to be there
-            #  but, we ultimately need rollup ability
-            #  that is, we need to ensure that whenever it is many -> one partitions, then we need to ensure
-            #  that all the required keys are there
-            #  one way to do this would be just to figure out what the count should be
-            if not evaluator.run(dag.timetable.asset_condition, statuses=statuses):
+            ).all()
+            actual_by_asset: dict[int, set[str]] = defaultdict(set)
+            for asset_id, source_key in session.execute(
+                select(PartitionedAssetKeyLog.asset_id, PartitionedAssetKeyLog.source_partition_key).where(
+                    PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id
+                )
+            ):
+                actual_by_asset[asset_id].add(source_key)
+
+            timetable = dag.timetable
+            statuses: dict[SerializedAssetUniqueKey, bool] = {}
+            for asset_model in asset_models:
+                if timetable.partitioned:
+                    mapper = cast(
+                        "RollupMapper",
+                        timetable.get_partition_mapper(name=asset_model.name, uri=asset_model.uri),
+                    )
+                    if mapper.is_rollup:
+                        statuses[SerializedAssetUniqueKey.from_asset(asset_model)] = (
+                            self._check_rollup_asset_status(asset_model, apdr, mapper, actual_by_asset)
+                        )
+                        continue
+                statuses[SerializedAssetUniqueKey.from_asset(asset_model)] = True
+            if not evaluator.run(timetable.asset_condition, statuses=statuses):
                 continue
 
             partition_dag_ids.add(apdr.target_dag_id)
