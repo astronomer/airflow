@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from airflow.sdk.bases.decorator import TaskDecorator
+from airflow.sdk.bases.decorator import TaskDecorator, is_decorated_task
 from airflow.sdk.definitions.dag import dag
 from airflow.sdk.definitions.decorators.condition import run_if, skip_if
 from airflow.sdk.definitions.decorators.setup_teardown import setup_task, teardown_task
@@ -81,12 +81,9 @@ def result(t: C) -> C:
             something = ...
             return something
 
-    This calls :func:`DAG.add_result` internally.
+    This causes :func:`DAG.add_result` to later be called internally.
     """
-    from airflow.sdk.bases.decorator import is_decorated_task
-
     if not is_decorated_task(t):
         raise TypeError("@result must be used on top of a @task-decorated function")
-
     t.returns_dag_result = True
     return t
