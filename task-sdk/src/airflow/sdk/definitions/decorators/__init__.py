@@ -27,12 +27,16 @@ from airflow.sdk.providers_manager_runtime import ProvidersManagerTaskRuntime
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import TypeVar
+
+    C = TypeVar("C", bound=Callable)
 
 # Please keep this in sync with the .pyi's __all__.
 __all__ = [
     "TaskDecorator",
     "TaskDecoratorCollection",
     "dag",
+    "result",
     "task",
     "task_group",
     "setup",
@@ -63,3 +67,26 @@ class TaskDecoratorCollection:
 task = TaskDecoratorCollection()
 setup: Callable = setup_task
 teardown: Callable = teardown_task
+
+
+def result(t: C) -> C:
+    """
+    Mark a task as returning the dag's result.
+
+    This must be used *on top of* a ``@task`` decorator like this::
+
+        @result
+        @task
+        def emit_values():
+            something = ...
+            return something
+
+    This calls :func:`DAG.add_result` internally.
+    """
+    from airflow.sdk.bases.decorator import is_decorated_task
+
+    if not is_decorated_task(t):
+        raise TypeError("@result must be used on top of a @task-decorated function")
+
+    t.returns_dag_result = True
+    return t
