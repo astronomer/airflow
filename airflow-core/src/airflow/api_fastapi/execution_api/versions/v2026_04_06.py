@@ -186,11 +186,11 @@ class DowngradeDeferredNextKwargsForOlderWorkers(VersionChange):
         if next_kwargs_raw is None:
             return
 
+        from airflow.sdk.serde import deserialize as serde_deserialize
         from airflow.serialization.serialized_objects import BaseSerialization
-        from airflow.utils.json import XComDecoder
 
         try:
-            next_kwargs = XComDecoder().object_hook(next_kwargs_raw)
+            next_kwargs = serde_deserialize(next_kwargs_raw)
         except (ImportError, KeyError, AttributeError, TypeError):
             log.debug(
                 "serde.deserialize failed for next_kwargs, falling back to BaseSerialization",

@@ -297,6 +297,7 @@ repos:
           (?x)
           # Allow SDK imports in these legitimate locations
           ^src/airflow/example_dags/.*\.py$|
+          ^src/airflow/api_fastapi/execution_api/versions/v2026_04_06\.py$|
 
           # TODO: These files need to be refactored to remove SDK coupling
           ^src/airflow/__init__\.py$|
