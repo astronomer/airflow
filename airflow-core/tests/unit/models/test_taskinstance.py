@@ -2694,9 +2694,15 @@ def test_defer_task_returns_false_when_no_start_trigger_args(create_task_instanc
 
 def test_defer_task(create_task_instance):
     from airflow.models.trigger import Trigger
+    from airflow.sdk.serde import deserialize
     from airflow.triggers.base import StartTriggerArgs
 
     session = mock.MagicMock()
+    next_kwargs = {
+        "when": datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        "delay": datetime.timedelta(minutes=5),
+        "items": ("alpha", 2),
+    }
     ti = create_task_instance(
         dag_id="test_defer_task",
         task_id="test_defer_task_op",
@@ -2705,6 +2711,7 @@ def test_defer_task(create_task_instance):
             trigger_cls="trigger_cls",
             next_method="next_method",
             trigger_kwargs={"key": "value"},
+            next_kwargs=next_kwargs,
         ),
     )
     assert ti.defer_task(session=session)
@@ -2723,7 +2730,8 @@ def test_defer_task(create_task_instance):
     assert ti.state == TaskInstanceState.DEFERRED
     assert ti.trigger_id == trigger_row.id
     assert ti.next_method == "next_method"
-    assert ti.next_kwargs == {}
+    assert ti.next_kwargs != next_kwargs
+    assert deserialize(ti.next_kwargs) == next_kwargs
 
     # Check trigger_timeout is set (should be None since no timeout provided)
     assert ti.trigger_timeout is None

@@ -2266,12 +2266,20 @@ def test_schedule_tis_start_trigger(dag_maker, session):
     """
     Test that an operator with start_trigger_args set can be directly deferred during scheduling.
     """
+    from airflow.sdk.serde import deserialize
+
+    next_kwargs = {
+        "when": datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        "delay": datetime.timedelta(minutes=5),
+        "items": ("alpha", 2),
+    }
 
     class TestOperator(BaseOperator):
         start_trigger_args = StartTriggerArgs(
             trigger_cls="airflow.triggers.testing.SuccessTrigger",
             trigger_kwargs=None,
             next_method="execute_complete",
+            next_kwargs=next_kwargs,
             timeout=None,
         )
         start_from_trigger = True
@@ -2293,6 +2301,8 @@ def test_schedule_tis_start_trigger(dag_maker, session):
     ti.task = dr.dag.get_task("test_task")
     dr.schedule_tis((ti,), session=session)
     assert ti.state == TaskInstanceState.DEFERRED
+    assert ti.next_kwargs != next_kwargs
+    assert deserialize(ti.next_kwargs) == next_kwargs
 
 
 def test_schedule_tis_empty_operator_try_number(dag_maker, session: Session):

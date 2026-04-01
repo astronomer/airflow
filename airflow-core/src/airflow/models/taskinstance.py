@@ -1619,6 +1619,7 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
         :meta: private
         """
         from airflow.models.trigger import Trigger
+        from airflow.sdk.serde import serialize as serde_serialize
 
         if TYPE_CHECKING:
             assert self.start_date
@@ -1650,7 +1651,10 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
             self.state = TaskInstanceState.DEFERRED
             self.trigger_id = trigger_row.id
             self.next_method = start_trigger_args.next_method
-            self.next_kwargs = start_trigger_args.next_kwargs or {}
+            serialized_next_kwargs = serde_serialize(start_trigger_args.next_kwargs or {})
+            if TYPE_CHECKING:
+                assert isinstance(serialized_next_kwargs, dict)
+            self.next_kwargs = serialized_next_kwargs
             self.start_date = timezone.utcnow()
 
             # If an execution_timeout is set, set the timeout to the minimum of

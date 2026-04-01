@@ -820,6 +820,64 @@ class TestBaseOperator:
         ):
             MockOperator(task_id="one", arg1="{{ foo }}", arg2=lambda context, jinja_env: "bar")
 
+    def test_validate_start_from_trigger_next_kwargs_callable(self):
+        class NextKwargsOperator(BaseOperator):
+            start_from_trigger = True
+
+            def __init__(self, *, next_kwargs=None, **kwargs):
+                super().__init__(**kwargs)
+                self.start_trigger_args = StartTriggerArgs(
+                    trigger_cls="trigger_cls",
+                    next_method="next_method",
+                    next_kwargs=next_kwargs,
+                )
+
+        with pytest.raises(
+            ValueError,
+            match="NextKwargsOperator with task_id 'one' has a callable in next kwargs named "
+            "'arg1', which is not allowed when start_from_trigger is enabled.",
+        ):
+            NextKwargsOperator(task_id="one", next_kwargs={"arg1": lambda: "bad"})
+
+    def test_validate_start_from_trigger_next_kwargs_serializable(self):
+        class NextKwargsOperator(BaseOperator):
+            start_from_trigger = True
+
+            def __init__(self, *, next_kwargs=None, **kwargs):
+                super().__init__(**kwargs)
+                self.start_trigger_args = StartTriggerArgs(
+                    trigger_cls="trigger_cls",
+                    next_method="next_method",
+                    next_kwargs=next_kwargs,
+                )
+
+        next_kwargs = {
+            "when": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            "identifier": uuid.uuid4(),
+            "items": ("alpha", 2),
+        }
+        op = NextKwargsOperator(task_id="one", next_kwargs=next_kwargs)
+        assert op.start_trigger_args.next_kwargs == next_kwargs
+
+    def test_validate_start_from_trigger_next_kwargs_unserializable(self):
+        class NextKwargsOperator(BaseOperator):
+            start_from_trigger = True
+
+            def __init__(self, *, next_kwargs=None, **kwargs):
+                super().__init__(**kwargs)
+                self.start_trigger_args = StartTriggerArgs(
+                    trigger_cls="trigger_cls",
+                    next_method="next_method",
+                    next_kwargs=next_kwargs,
+                )
+
+        with pytest.raises(
+            ValueError,
+            match="NextKwargsOperator with task_id 'one' has values in next kwargs "
+            "that cannot be serialized for deferred execution when start_from_trigger is enabled.",
+        ):
+            NextKwargsOperator(task_id="one", next_kwargs={"arg1": object()})
+
     def test_params_source(self):
         # Test bug when copying an operator attached to a Dag
         with DAG(

@@ -1454,13 +1454,32 @@ class BaseOperator(AbstractOperator, metaclass=BaseOperatorMeta):
         XComArg.apply_upstream_relationship(self, newvalue)
 
     def _validate_start_from_trigger_kwargs(self):
-        if self.start_from_trigger and self.start_trigger_args and self.start_trigger_args.trigger_kwargs:
-            for name, val in self.start_trigger_args.trigger_kwargs.items():
+        if not (self.start_from_trigger and self.start_trigger_args):
+            return
+
+        from airflow.sdk.serde import serialize as serde_serialize
+
+        def _validate_kwargs(kwargs: dict[str, Any] | None, *, field_name: str) -> None:
+            if kwargs is None:
+                return
+
+            for name, val in kwargs.items():
                 if callable(val):
                     raise ValueError(
-                        f"{self.__class__.__name__} with task_id '{self.task_id}' has a callable in trigger kwargs named "
+                        f"{self.__class__.__name__} with task_id '{self.task_id}' has a callable in {field_name} named "
                         f"'{name}', which is not allowed when start_from_trigger is enabled."
                     )
+
+            try:
+                serde_serialize(kwargs)
+            except Exception as e:
+                raise ValueError(
+                    f"{self.__class__.__name__} with task_id '{self.task_id}' has values in {field_name} "
+                    "that cannot be serialized for deferred execution when start_from_trigger is enabled."
+                ) from e
+
+        _validate_kwargs(self.start_trigger_args.trigger_kwargs, field_name="trigger kwargs")
+        _validate_kwargs(self.start_trigger_args.next_kwargs, field_name="next kwargs")
 
     def on_kill(self) -> None:
         """

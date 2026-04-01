@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from cadwyn import ResponseInfo, VersionChange, convert_response_to_previous_version_for, endpoint, schema
@@ -33,6 +34,8 @@ from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
     TIDeferredStatePayload,
     TIRunContext,
 )
+
+log = logging.getLogger(__name__)
 
 
 class AddPartitionKeyField(VersionChange):
@@ -156,3 +159,47 @@ class AddDagEndpoint(VersionChange):
     description = __doc__
 
     instructions_to_migrate_to_previous_version = (endpoint("/dags/{dag_id}", ["GET"]).didnt_exist,)
+
+
+class DowngradeDeferredNextKwargsForOlderWorkers(VersionChange):
+    """
+    Downgrade ``TIRunContext.next_kwargs`` from serde format to BaseSerialization format.
+
+    Workers older than ``2026-04-06`` use ``BaseSerialization.deserialize`` to read
+    ``next_kwargs``.  Newer code paths (new workers, the scheduler's
+    ``start_from_trigger`` path) now store the field in serde format.  This
+    converter re-serializes the value so old workers can still resume deferred
+    tasks during rolling upgrades.
+
+    Placed in version ``2026-04-06`` so Cadwyn fires it only for clients
+    requesting versions *older* than ``2026-04-06``.
+    """
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = ()
+
+    @convert_response_to_previous_version_for(TIRunContext)  # type: ignore[arg-type]
+    def downgrade_next_kwargs(response: ResponseInfo) -> None:  # type: ignore[misc]
+        """Convert serde-format ``next_kwargs`` to BaseSerialization format for old workers."""
+        next_kwargs_raw = response.body.get("next_kwargs")
+        if next_kwargs_raw is None:
+            return
+
+        from airflow.serialization.serialized_objects import BaseSerialization
+        from airflow.utils.json import XComDecoder
+
+        try:
+            next_kwargs = XComDecoder().object_hook(next_kwargs_raw)
+        except (ImportError, KeyError, AttributeError, TypeError):
+            log.debug(
+                "serde.deserialize failed for next_kwargs, falling back to BaseSerialization",
+                exc_info=True,
+            )
+            try:
+                next_kwargs = BaseSerialization.deserialize(next_kwargs_raw)
+            except Exception:
+                log.warning("Failed to deserialize next_kwargs for legacy worker downgrade", exc_info=True)
+                return
+
+        response.body["next_kwargs"] = BaseSerialization.serialize(next_kwargs)
