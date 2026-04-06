@@ -225,9 +225,8 @@ class RuntimeTaskInstance(TaskInstance):
 
         # Cache the context object, which ensures that all calls to get_template_context
         # are operating on the same context object.
-        context = self._cached_template_context
-        if context is None:
-            context = {
+        if self._cached_template_context is None:
+            self._cached_template_context = {
                 # From the Task Execution interface
                 "dag": self.task.dag,
                 "inlets": self.task.inlets,
@@ -249,7 +248,8 @@ class RuntimeTaskInstance(TaskInstance):
                 },
                 "conn": ConnectionAccessor(),
             }
-            self._cached_template_context = context
+        if TYPE_CHECKING:
+            assert self._cached_template_context is not None
         if from_server:
             dag_run = from_server.dag_run
             context_from_server: Context = {
@@ -268,7 +268,7 @@ class RuntimeTaskInstance(TaskInstance):
                     lambda: coerce_datetime(get_previous_dagrun_success(self.id).end_date)
                 ),
             }
-            context.update(context_from_server)
+            self._cached_template_context.update(context_from_server)
 
             if logical_date := coerce_datetime(dag_run.logical_date):
                 if TYPE_CHECKING:
@@ -279,7 +279,7 @@ class RuntimeTaskInstance(TaskInstance):
                 ts_nodash = logical_date.strftime("%Y%m%dT%H%M%S")
                 ts_nodash_with_tz = ts.replace("-", "").replace(":", "")
                 # logical_date and data_interval either coexist or be None together
-                context.update(
+                self._cached_template_context.update(
                     {
                         # keys that depend on logical_date
                         "logical_date": logical_date,
@@ -306,7 +306,7 @@ class RuntimeTaskInstance(TaskInstance):
             if upstream_map_indexes is not None:
                 setattr(self, "_upstream_map_indexes", upstream_map_indexes)
 
-        return context
+        return self._cached_template_context
 
     def render_templates(
         self, context: Context | None = None, jinja_env: jinja2.Environment | None = None
