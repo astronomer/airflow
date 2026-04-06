@@ -1,0 +1,74 @@
+- OTEL tracing improvements demo (5 minutes)
+	- One-line why
+		- We simplified Airflow OTEL tracing by using standard OTEL propagation + emitting spans in the process that actually does the work (task process), instead of keeping complex long-lived spans alive across scheduler handoffs.
+
+	- 0:00–0:45 — Problem (set context)
+		- Previously: scheduler-resident, high-touch tracing logic
+			- Long-lived span objects
+			- Cross-scheduler handoff/state tracking
+			- More code in scheduler + DagRun paths than necessary
+		- Downsides
+			- Harder to reason about correctness
+			- Easy to break trace continuity across components
+			- Harder to maintain/extend
+
+	- 0:45–2:45 — The “wow” (show a trace in Jaeger)
+		- Show a single trace for a DAG run
+			- DAG run span
+				- Name: dag_run.<dag_id>
+				- Emitted on completion (DagRun state update path)
+			- Task spans (created in task process)
+				- Name: task_run.<task_id> (append _<map_index> for mapped tasks)
+				- Attributes to highlight (very demo-friendly)
+					- airflow.dag_id
+					- airflow.task_id
+					- airflow.dag_run.run_id
+					- airflow.task_instance.try_number
+					- airflow.task_instance.map_index
+		- One-sentence propagation explanation
+			- We seed a W3C traceparent carrier on the DagRun, pass it to tasks, and the task runner extracts it to correctly parent task spans.
+
+	- 2:45–4:15 — The engineering win (1–2 code callouts, no deep dive)
+		- Consolidated “new surface area”
+			- airflow-core/src/airflow/observability/traces/__init__.py
+				- new_dagrun_trace_carrier()
+					- Generates a W3C carrier without creating a recordable span (NonRecordingSpan)
+				- configure_otel()
+					- Uses standard OTEL env vars for exporter/config
+					- Keeps backcompat for deprecated Airflow configs (host/port/service)
+		- Span ownership is now correct
+			- Task spans are created in the task runner (task process), not in the scheduler
+		- Robustness
+			- Force-flush on task runner exit
+				- Config: traces.task_runner_flush_timeout_milliseconds (default 30000ms)
+				- Reduces “span dropped because process ended” cases for short-lived tasks
+
+	- 4:15–5:00 — Wrap (the takeaway)
+		- Net result
+			- Simpler code paths
+			- Spans emitted where work happens
+			- Cleaner naming + consistent Airflow attributes
+			- More standard OTEL configuration story
+		- Optional “next steps” (if asked)
+			- Expand coverage of additional Airflow components/spans using the same helper patterns
+
+	- Demo setup (recommended)
+		- Breeze integration
+			- Command: breeze start-airflow --integration otel
+		- Pre-open tabs (so it’s fast)
+			- Jaeger UI: http://127.0.0.1:36686
+			- (Optional) Grafana: http://127.0.0.1:23000
+		- Jaeger “click path”
+			- Service: test
+			- Search for operation containing “dag_run.”
+			- Expand trace tree to show “task_run.” children
+			- Click a task span and show the Airflow attributes panel
+
+	- Demo insurance (avoid live-demo surprises)
+		- Backup screenshot
+			- Trace tree + attributes panel
+		- Pre-run once
+			- Generate a fresh trace before the meeting so Jaeger search isn’t “cold”
+		- Practical caution to double-check
+			- traces.task_runner_flush_timeout_milliseconds is reasonable for your exporter/backend (default 30000ms)
+
