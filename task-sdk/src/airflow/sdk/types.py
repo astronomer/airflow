@@ -21,7 +21,7 @@ import uuid
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, TypeAlias
 
-from airflow.sdk.api.datamodels._generated import TerminalTIState, WeightRule
+from airflow.sdk.api.datamodels._generated import WeightRule
 from airflow.sdk.bases.xcom import BaseXCom
 from airflow.sdk.definitions._internal.types import NOTSET, ArgNotSet
 
@@ -160,7 +160,7 @@ class RuntimeTaskInstanceProtocol(Protocol):
         task_group_id: str | None = None,
         logical_dates: list[AwareDatetime] | None = None,
         run_ids: list[str] | None = None,
-        states: list[str] | list[TerminalTIState] | None = None,
+        states: list[str] | None = None,
     ) -> int: ...
 
     @staticmethod
