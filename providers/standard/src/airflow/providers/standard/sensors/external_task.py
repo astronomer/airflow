@@ -53,7 +53,6 @@ from airflow.utils.state import State, TaskInstanceState
 
 if not AIRFLOW_V_3_0_PLUS:
     from airflow.utils.session import NEW_SESSION, provide_session
-    from airflow.utils.state import TerminalTIState
 
 if AIRFLOW_V_3_2_PLUS:
     from airflow.dag_processing.dagbag import DagBag
@@ -198,7 +197,9 @@ class ExternalTaskSensor(BaseSensorOperator):
     ):
         super().__init__(**kwargs)
 
-        self.allowed_states = list(allowed_states) if allowed_states else [TaskInstanceState.SUCCESS.value]
+        self.allowed_states: list[str] = (
+            list(allowed_states) if allowed_states else [TaskInstanceState.SUCCESS.value]
+        )
         self.skipped_states = list(skipped_states) if skipped_states else []
         self.failed_states = list(failed_states) if failed_states else []
 
@@ -322,7 +323,7 @@ class ExternalTaskSensor(BaseSensorOperator):
         self._has_checked_existence = True
         ti = context["ti"]
 
-        def _get_count(states: list[str] | list[TerminalTIState]) -> int:
+        def _get_count(states: list[str]) -> int:
             if self.external_task_ids:
                 return ti.get_ti_count(
                     dag_id=self.external_dag_id,
