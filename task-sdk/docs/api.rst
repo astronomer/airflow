@@ -217,6 +217,10 @@ Partition Mapper
 
 .. autoapiclass:: airflow.sdk.StartOfYearMapper
 
+.. autoapiclass:: airflow.sdk.WeeklyRollupMapper
+
+.. autoapiclass:: airflow.sdk.MonthlyRollupMapper
+
 .. autoapiclass:: airflow.sdk.ProductMapper
 
 .. autoapiclass:: airflow.sdk.AllowedKeyMapper

@@ -57,29 +57,34 @@ class TestTemporalMappers:
         ],
     )
     @pytest.mark.parametrize(
-        ("mapper_cls", "expected_outut_format"),
+        ("mapper_cls", "expected_outut_format", "extra_kwargs"),
         [
-            (StartOfHourMapper, "%Y-%m-%dT%H"),
-            (StartOfDayMapper, "%Y-%m-%d"),
-            (StartOfWeekMapper, "%Y-%m-%d (W%V)"),
-            (StartOfMonthMapper, "%Y-%m"),
-            (StartOfQuarterMapper, "%Y-Q{quarter}"),
-            (StartOfYearMapper, "%Y"),
+            (StartOfHourMapper, "%Y-%m-%dT%H", {}),
+            (StartOfDayMapper, "%Y-%m-%d", {}),
+            (StartOfWeekMapper, "%Y-%m-%d (W%V)", {"week_start": 0}),
+            (StartOfMonthMapper, "%Y-%m", {"month_start_day": 1}),
+            (StartOfQuarterMapper, "%Y-Q{quarter}", {}),
+            (StartOfYearMapper, "%Y", {}),
         ],
     )
     def test_serialize(
         self,
         mapper_cls: type[_BaseTemporalMapper],
         expected_outut_format: str,
+        extra_kwargs: dict[str, int],
         timezone: str | None,
         expected_timezone: str,
     ):
         pm = mapper_cls() if timezone is None else mapper_cls(timezone=timezone)
-        assert pm.serialize() == {
-            "timezone": expected_timezone,
-            "input_format": "%Y-%m-%dT%H:%M:%S",
-            "output_format": expected_outut_format,
-        }
+        assert (
+            pm.serialize()
+            == {
+                "timezone": expected_timezone,
+                "input_format": "%Y-%m-%dT%H:%M:%S",
+                "output_format": expected_outut_format,
+            }
+            | extra_kwargs
+        )
 
     @pytest.mark.parametrize(
         "mapper_cls",
