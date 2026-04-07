@@ -31,19 +31,7 @@ test.describe("DAG Code Tab", () => {
     await codePage.navigateToCodeTab(dagId);
   });
 
-  test.fixme("Verify DAG source code is displayed", async () => {
+  test("Verify DAG code editor is visible", async () => {
     await codePage.verifySourceCodeDisplayed();
-  });
-
-  test.fixme("Verify syntax highlighting is applied", async () => {
-    await codePage.verifySyntaxHighlighting();
-  });
-
-  test.fixme("Verify code is scrollable for long files", async () => {
-    await codePage.verifyCodeIsScrollable();
-  });
-
-  test.fixme("Verify line numbers are displayed", async () => {
-    await codePage.verifyLineNumbersDisplayed();
   });
 });
