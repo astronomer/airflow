@@ -1,0 +1,1160 @@
+airflow-core/src/airflow/api/common/delete_dag.py::raise AirflowException("TaskInstances still running")
+airflow-core/src/airflow/api_fastapi/core_api/app.py::raise AirflowException(
+airflow-core/src/airflow/cli/cli_parser.py::raise AirflowException("Invalid command definition.")
+airflow-core/src/airflow/cli/commands/dag_command.py::raise AirflowException(
+airflow-core/src/airflow/cli/commands/dag_command.py::raise AirflowException(err)
+airflow-core/src/airflow/cli/commands/db_command.py::raise AirflowException(f"Unknown driver: {url.drivername}")
+airflow-core/src/airflow/config_templates/airflow_local_settings.py::raise AirflowException(
+airflow-core/src/airflow/dag_processing/dagbag.py::raise AirflowException(
+airflow-core/src/airflow/jobs/base_job_runner.py::raise AirflowException(
+airflow-core/src/airflow/jobs/job.py::raise AirflowException("Job shut down externally.")
+airflow-core/src/airflow/models/connection.py::raise AirflowException(
+airflow-core/src/airflow/models/connection.py::raise AirflowException("Invalid connection string.")
+airflow-core/src/airflow/models/connection.py::raise AirflowException(f'Unknown hook type "{self.conn_type}"')
+airflow-core/src/airflow/models/crypto.py::raise AirflowException(f"Could not create Fernet object: {value_error}")
+airflow-core/src/airflow/models/dagrun.py::raise AirflowException(
+airflow-core/src/airflow/models/dagrun.py::raise AirflowException(f"The DAG (.dag) for {self} needs to be set")
+airflow-core/src/airflow/models/pool.py::raise AirflowException(f"Unexpected state. Expected values: {allowed_execution_states}.")
+airflow-core/src/airflow/models/pool.py::raise AirflowException(f"{Pool.DEFAULT_POOL_NAME} cannot be deleted")
+airflow-core/src/airflow/secrets/local_filesystem.py::raise AirflowException(
+airflow-core/src/airflow/serialization/definitions/dag.py::raise AirflowException(f"Cannot create DagRun for DAG {dag.dag_id} because the dag is not serialized")
+airflow-core/src/airflow/serialization/json_schema.py::raise AirflowException(f"Schema file {schema_file_name} does not exists")
+airflow-core/src/airflow/serialization/serialized_objects.py::raise AirflowException(
+airflow-core/src/airflow/serialization/serialized_objects.py::raise AirflowException(f"JSON schema of {cls.__name__:s} is not set.")
+airflow-core/src/airflow/ti_deps/deps/valid_state_dep.py::raise AirflowException("ValidStatesDep received an empty set of valid states.")
+airflow-core/src/airflow/utils/cli.py::raise AirflowException(
+airflow-core/src/airflow/utils/cli.py::raise AirflowException(f"Dag {dag_id!r} could not be found in the database.")
+airflow-core/src/airflow/utils/db.py::raise AirflowException("`from_revision` only supported with `sql_only=True`.")
+airflow-core/src/airflow/utils/db_cleanup.py::raise AirflowException(f"Export format {export_format} is not supported.")
+airflow-core/src/airflow/utils/db_manager.py::raise AirflowException(f"Table '{table_}' already exists in the Airflow metadata")
+airflow-core/src/airflow/utils/db_manager.py::raise AirflowException(f"version_table not set in {env_file}")
+airflow-core/src/airflow/utils/db_manager.py::raise AirflowException(f"{manager}.version_table_name cannot be 'alembic_version'")
+airflow-core/src/airflow/utils/dot_renderer.py::raise AirflowException(
+airflow-core/src/airflow/utils/dot_renderer.py::raise AirflowException(f"The node {node} should be TaskGroup and is not")
+airflow-core/src/airflow/utils/helpers.py::raise AirflowException(
+airflow-core/src/airflow/utils/helpers.py::raise AirflowException(f"The key: {k} has to be less than {max_length} characters")
+airflow-core/src/airflow/utils/helpers.py::raise AirflowException(f"Timeout {timeout}s reached")
+airflow-core/src/airflow/utils/process_utils.py::raise AirflowException(f"The {process_name} is already running under PID {pid}.")
+airflow-core/tests/unit/models/test_dag.py::raise AirflowException("boooom")
+airflow-core/tests/unit/models/test_taskinstance.py::raise AirflowException("maybe this will pass?")
+airflow-core/tests/unit/models/test_taskinstance.py::raise AirflowException()
+airflow-core/tests/unit/utils/test_process_utils.py::raise AirflowException("Unknown exception")
+devel-common/src/tests_common/test_utils/azure_system_helpers.py::raise AirflowException("Use a JSON key file.")
+devel-common/src/tests_common/test_utils/azure_system_helpers.py::raise AirflowException(message)
+devel-common/src/tests_common/test_utils/logging_command_executor.py::raise AirflowException(
+devel-common/src/tests_common/test_utils/salesforce_system_helpers.py::raise AirflowException("Use a JSON key file.")
+devel-common/src/tests_common/test_utils/salesforce_system_helpers.py::raise AirflowException(message)
+devel-common/src/tests_common/test_utils/sftp_system_helpers.py::raise AirflowException("Use a JSON key file.")
+devel-common/src/tests_common/test_utils/watcher.py::raise AirflowException("Failing task because one or more upstream tasks failed.")
+providers/airbyte/src/airflow/providers/airbyte/hooks/airbyte.py::raise AirflowException(e)
+providers/airbyte/src/airflow/providers/airbyte/hooks/airbyte.py::raise AirflowException(f"Encountered unexpected state `{state}` for job_id `{job_id}`")
+providers/airbyte/src/airflow/providers/airbyte/hooks/airbyte.py::raise AirflowException(f"Job failed:\n{job}")
+providers/airbyte/src/airflow/providers/airbyte/hooks/airbyte.py::raise AirflowException(f"Job was cancelled:\n{job}")
+providers/airbyte/src/airflow/providers/airbyte/hooks/airbyte.py::raise AirflowException(f"Timeout: Airbyte job {job_id} is not ready after {timeout}s")
+providers/airbyte/src/airflow/providers/airbyte/operators/airbyte.py::raise AirflowException(event["message"])
+providers/airbyte/src/airflow/providers/airbyte/operators/airbyte.py::raise AirflowException(f"Encountered unexpected state `{state}` for job_id `{self.job_id}")
+providers/airbyte/src/airflow/providers/airbyte/operators/airbyte.py::raise AirflowException(f"Job failed:\n{self.job_id}")
+providers/airbyte/src/airflow/providers/airbyte/operators/airbyte.py::raise AirflowException(f"Job was cancelled:\n{self.job_id}")
+providers/airbyte/src/airflow/providers/airbyte/sensors/airbyte.py::raise AirflowException(
+providers/airbyte/src/airflow/providers/airbyte/sensors/airbyte.py::raise AirflowException(event["message"])
+providers/airbyte/src/airflow/providers/airbyte/sensors/airbyte.py::raise AirflowException(f"Job failed:\n{job}")
+providers/airbyte/src/airflow/providers/airbyte/sensors/airbyte.py::raise AirflowException(f"Job was cancelled:\n{job}")
+providers/airbyte/src/airflow/providers/airbyte/sensors/airbyte.py::raise AirflowException(message)
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException(
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException("Errors when submit spark application") from e
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException("Errors when submit spark sql") from e
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException(f"Errors when fetching log for spark application: {app_id}") from e
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException(f"Errors when fetching state for spark application: {app_id}") from e
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/analyticdb_spark.py::raise AirflowException(f"Errors when killing spark application: {app_id}") from e
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when append string for object: {key}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when check bucket object existence: {key}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when create bucket: {bucket_name}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when deleting: {bucket_name}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when deleting: {key}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when head bucket object: {key}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when read bucket object: {key}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors when upload file: {e}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f"Errors: {e}")
+providers/alibaba/src/airflow/providers/alibaba/cloud/hooks/oss.py::raise AirflowException(f'Please provide a bucket_name instead of "{ossurl}"')
+providers/alibaba/src/airflow/providers/alibaba/cloud/operators/analyticdb_spark.py::raise AirflowException(f"Application {app_id} did not succeed")
+providers/alibaba/src/airflow/providers/alibaba/cloud/sensors/oss_key.py::raise AirflowException(message)
+providers/amazon/src/airflow/providers/amazon/aws/auth_manager/avp/facade.py::raise AirflowException("Could not find the authorization result.")
+providers/amazon/src/airflow/providers/amazon/aws/auth_manager/avp/facade.py::raise AirflowException("Error occurred while making a batch authorization decision.")
+providers/amazon/src/airflow/providers/amazon/aws/auth_manager/avp/facade.py::raise AirflowException("Error occurred while making an authorization decision.")
+providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py::raise AirflowException("Refreshing a specific version is not supported")
+providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py::raise AirflowException("S3 url with version is not supported")
+providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py::raise AirflowException(f"Local DAGs path: {self.s3_dags_dir} is not a directory.")
+providers/amazon/src/airflow/providers/amazon/aws/bundles/s3.py::raise AirflowException(f"S3 bucket '{self.bucket_name}' does not exist.")
+providers/amazon/src/airflow/providers/amazon/aws/executors/aws_lambda/lambda_executor.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/executors/aws_lambda/lambda_executor.py::raise AirflowException("Lambda function %s not found.", self.lambda_function_name)
+providers/amazon/src/airflow/providers/amazon/aws/executors/batch/batch_executor.py::raise AirflowException(msg_prefix % status + msg_error_suffix)
+providers/amazon/src/airflow/providers/amazon/aws/executors/ecs/ecs_executor.py::raise AirflowException(msg_prefix % status + msg_error_suffix)
+providers/amazon/src/airflow/providers/amazon/aws/hooks/athena_sql.py::raise AirflowException("region_name must be specified in the connection's extra")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/base_aws.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/base_aws.py::raise AirflowException(f"Unsupported federation: {federation}.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(f"AWS Batch job ({job_id}) description error: response: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(f"AWS Batch job ({job_id}) failed: {job}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(f"AWS Batch job ({job_id}) has unknown status: {job}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(f"AWS Batch job ({job_id}) is not complete: {job}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_client.py::raise AirflowException(f"AWS Batch job ({job_id}) status checks exceed max_retries")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/batch_waiters.py::raise AirflowException(err)
+providers/amazon/src/airflow/providers/amazon/aws/hooks/chime.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/chime.py::raise AirflowException("Chime message must be 4096 characters or less.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/chime.py::raise AirflowException("Webhook host field is missing and is required.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/chime.py::raise AirflowException("Webhook token field is missing and is required.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/chime.py::raise AirflowException("Webook schema field is missing and is required")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/comprehend.py::raise AirflowException("Warnings in AWS Comprehend document classifier training.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/datasync.py::raise AirflowException(f"Invalid/Unsupported location type: {schema}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/datasync.py::raise AirflowException(f"Unknown status: {status}")  # Should never happen
+providers/amazon/src/airflow/providers/amazon/aws/hooks/dynamodb.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/dynamodb.py::raise AirflowException(f"Failed to insert items in dynamodb, error: {e}") from e
+providers/amazon/src/airflow/providers/amazon/aws/hooks/ec2.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/ec2.py::raise AirflowException("api_type can only be one of %s", self.API_TYPES)
+providers/amazon/src/airflow/providers/amazon/aws/hooks/elasticache_replication_group.py::raise AirflowException(f'Replication group could not be deleted. Response "{response}"')
+providers/amazon/src/airflow/providers/amazon/aws/hooks/emr.py::raise AirflowException(f"Adding steps failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/emr.py::raise AirflowException(f"Create EMR EKS Cluster failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/emr.py::raise AirflowException(f"Job ID {job_id} not found on Virtual Cluster {self.virtual_cluster_id}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/emr.py::raise AirflowException(f"More than one cluster found for name {emr_cluster_name}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/emr.py::raise AirflowException(f"Start Job Run failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/glue.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/glue.py::raise AirflowException(job_error_message)
+providers/amazon/src/airflow/providers/amazon/aws/hooks/glue_catalog.py::raise AirflowException("AWS request failed, check logs for more info")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/quicksight.py::raise AirflowException("The Amazon QuickSight SPICE ingestion cancelled!")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/quicksight.py::raise AirflowException(f"AWS request failed: {e}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/quicksight.py::raise AirflowException(f"Could not get status of the Amazon QuickSight Ingestion: {e}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/quicksight.py::raise AirflowException(f"The Amazon QuickSight Ingestion failed. Error info: {info}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll DB Cluster Snapshots until target_state is reached; raise AirflowException after a max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll DB Clusters until target_state is reached; raise AirflowException after max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll DB Instances until target_state is reached; raise AirflowException after max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll DB Snapshots until target_state is reached; raise AirflowException after max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll Event Subscriptions until target_state is reached; raise AirflowException after max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::Poll export tasks until target_state is reached; raise AirflowException after max_attempts.
+providers/amazon/src/airflow/providers/amazon/aws/hooks/rds.py::raise AirflowException("Max attempts exceeded")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/redshift_sql.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/redshift_sql.py::raise AirflowException("Host is required when cluster_identifier is not provided.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/redshift_sql.py::raise AirflowException("Please set cluster_identifier or host in redshift connection.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/s3.py::raise AirflowException(f"Errors when deleting: {errors_keys}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException("AWS request failed, check logs for more info")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException("Could not get status of the SageMaker resource")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException("Either max_results or MaxResults can be provided, not both.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException("Either name_contains or NameContains can be provided, not both.")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(f"Error training {job_name}: {status} Reason: {reason}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(f"SageMaker job took more than {max_ingestion_time} seconds")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(f"SageMaker resource failed because {response['FailureReason']}")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(f"SageMaker resource took more than {max_ingestion_time} seconds")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker.py::raise AirflowException(f"The input S3 Bucket {bucket} does not exist ")
+providers/amazon/src/airflow/providers/amazon/aws/hooks/sagemaker_unified_studio.py::raise AirflowException(error_message)
+providers/amazon/src/airflow/providers/amazon/aws/links/emr.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/links/emr.py::raise AirflowException("Requires either an AWS connection ID or an EMR Serverless Client.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/appflow.py::raise AirflowException(f"Flow ({execution_id}) without recordsProcessed info!")
+providers/amazon/src/airflow/providers/amazon/aws/operators/appflow.py::raise AirflowException(f"Flow ({execution_id}) without recordsProcessed info.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/appflow.py::raise AirflowException(f"No execution_id found from task_id {appflow_task_id}!")
+providers/amazon/src/airflow/providers/amazon/aws/operators/athena.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException("AWS Batch job - job_id was not found")
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException(e)
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException(f"Error while running job: {self.job_id} is in {job_status} state")
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException(f"Error while running job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/batch.py::raise AirflowException(f"Unexpected status: {job_status}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/bedrock.py::raise AirflowException(f"Bedrock model customization job creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/bedrock.py::raise AirflowException(f"Error while running ingestion job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/bedrock.py::raise AirflowException(f"Error while running job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/bedrock.py::raise AirflowException(f"Error while running {self.activity}: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/comprehend.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/comprehend.py::raise AirflowException("Error while running job: %s", validated_event)
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException("DataSync TaskArn could not be identified or created.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException("Missing TaskArn")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException("Nothing was executed")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException("Task could not be created")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException(f"Failed TaskExecutionArn {self.task_execution_arn}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException(f"Unable to choose a Location from {location_arn_list}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/datasync.py::raise AirflowException(f"Unable to choose a Task from {task_arn_list}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException("Only one of cdc_start_time or cdc_start_pos should be provided.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException(f"Error deleting DMS replication config: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException(f"Error in DMS replication: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException(f"Error stopping DMS replication: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException(f"Error waiting for DMS replication config: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/dms.py::raise AirflowException(f"Error waiting for DMS replication: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ec2.py::raise AirflowException(f"Instance {instance['InstanceId']} is not configured for hibernation")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException("`started_by` should not be empty or None")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException(f"Error in task execution: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException(f"Error while waiting for operation on cluster to complete: {event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException(f"This task is still pending {task}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/ecs.py::raise AirflowException(response)
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException("Error creating cluster")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException("The config_file is not an allowed parameter for the EksPodOperator.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException("Trigger error: event is None")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(f"Error creating Fargate profile: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(f"Error creating nodegroup: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(f"Error creating {resource}: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(f"Error deleting Fargate profile: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eks.py::raise AirflowException(f"Error deleting nodegroup: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException("EMR Serverless job failed or timed out in deferrable mode")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException("Exactly one of job_flow_id or job_flow_name must be specified.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException("Trigger error: event is None")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Application Creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Application deletion failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Application {event['application_id']} failed to create")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"EMR serverless job failed to start: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error cancelling EMR Serverless jobs: {event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error creating jobFlow: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error deleting EMR Serverless application: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error stopping EMR Serverless application: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error terminating JobFlow: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error while running job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Error while running steps: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Job flow creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"JobFlow termination failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Modify cluster failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"No cluster found for name: {self.job_flow_name}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Notebook Execution reached failure state {final_status}.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Starting notebook execution failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/emr.py::raise AirflowException(f"Trigger error: Application failed to start, event is {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/eventbridge.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue.py::raise AirflowException(f"Error in glue job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue.py::raise AirflowException(f"Error: AWS Glue data quality rule recommendation run: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue.py::raise AirflowException(f"Error: AWS Glue data quality ruleset evaluation run: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue.py::raise AirflowException(f"Following RulesetNames are not found {not_found_ruleset}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue_crawler.py::raise AirflowException(f"Error in glue crawl: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/glue_databrew.py::raise AirflowException("Error while running AWS Glue DataBrew job: %s", validated_event)
+providers/amazon/src/airflow/providers/amazon/aws/operators/kinesis_analytics.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/kinesis_analytics.py::raise AirflowException("Error while stopping AWS Managed Service for Apache Flink application")
+providers/amazon/src/airflow/providers/amazon/aws/operators/lambda_function.py::raise AirflowException(f"Trigger error: event is {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/mwaa.py::raise AirflowException(f"DAG run failed: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/neptune.py::raise AirflowException(f"Error starting Neptune cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/neptune.py::raise AirflowException(f"Error stopping Neptune cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/neptune.py::raise AirflowException(f"Neptune cluster {self.cluster_id} is in error state {status}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/rds.py::raise AirflowException(f"DB instance creation failed: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/rds.py::raise AirflowException(f"DB instance deletion failed: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/rds.py::raise AirflowException(f"Failed to start DB: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(f"Error creating cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(f"Error creating snapshot: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(f"Error deleting cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(f"Error pausing cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_cluster.py::raise AirflowException(f"Error resuming cluster: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_data.py::raise AirflowException("statement_id should not be empty.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/redshift_data.py::raise AirflowException(msg)
+providers/amazon/src/airflow/providers/amazon/aws/operators/s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/s3.py::raise AirflowException("Either transform_script or select_expression must be specified")
+providers/amazon/src/airflow/providers/amazon/aws/operators/s3.py::raise AirflowException(f"The source key {self.source_s3_key} does not exist")
+providers/amazon/src/airflow/providers/amazon/aws/operators/s3.py::raise AirflowException(f"Transform script failed: {process.returncode}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"A SageMaker {resource_type} with name {name} already exists.")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Error while running job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Failure during pipeline execution: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"SageMaker job failed because {reason}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"SageMaker job failed because {response['FailureReason']}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker Processing Job creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker Training Job creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker Tuning Job creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker endpoint config creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker endpoint creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker model creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker.py::raise AirflowException(f"Sagemaker transform Job creation failed: {response}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker_unified_studio.py::raise AirflowException("input_config is required")
+providers/amazon/src/airflow/providers/amazon/aws/operators/sagemaker_unified_studio.py::raise AirflowException("input_path is a required field in the input_config")
+providers/amazon/src/airflow/providers/amazon/aws/operators/step_function.py::raise AirflowException(f"Failed to start State Machine execution for: {self.state_machine_arn}")
+providers/amazon/src/airflow/providers/amazon/aws/operators/step_function.py::raise AirflowException(f"Trigger error: event is {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/athena.py::raise AirflowException("Athena sensor failed")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(f"AWS Batch compute environment {self.compute_environment} not found")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(f"AWS Batch job queue {self.job_queue} not found")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(f"Batch sensor failed. AWS Batch job status: {state}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(f"Error while running job: {event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/batch.py::raise AirflowException(message)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/bedrock.py::raise AirflowException(self.FAILURE_MESSAGE)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/comprehend.py::raise AirflowException(self.FAILURE_MESSAGE)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/dms.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/dms.py::raise AirflowException(f"Unexpected status: {status}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/ec2.py::raise AirflowException(f"Error: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/ecs.py::Poll task definition until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/ecs.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/eks.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::Poll the EMR JobFlow Cluster until it reaches any of the target states; raise AirflowException on failure.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::Poll the EMR notebook until it reaches any of the target states; raise AirflowException on failure.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::Poll the state of the step until it reaches any of the target states; raise AirflowException on failure.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::raise AirflowException(f"EMR Containers sensor failed due to state: {state}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::raise AirflowException(f"EMR job failed: {self.failure_message_from_response(response)}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/emr.py::raise AirflowException(f"Error while running job: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/glacier.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/glue.py::raise AirflowException(job_error_message)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/glue.py::raise AirflowException(message)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/glue_catalog_partition.py::raise AirflowException(f"Trigger error: event is {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/glue_crawler.py::raise AirflowException(f"Status: {crawler_status}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/kinesis_analytics.py::raise AirflowException(self.FAILURE_MESSAGE)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/lambda_function.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/mwaa.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/mwaa.py::raise AirflowException(f"Error in MWAA DAG run: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/mwaa.py::raise AirflowException(f"Error in MWAA task: {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/opensearch_serverless.py::raise AirflowException(self.FAILURE_MESSAGE)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/quicksight.py::raise AirflowException(f"The QuickSight Ingestion failed. Error info: {error}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/rds.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/redshift_cluster.py::raise AirflowException(f"{validated_event['status']}: {validated_event['message']}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/s3.py::raise AirflowException(event["message"])
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the auto ML job until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the endpoint state until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the pipeline until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the processing job until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the training job until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the transform job until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::Poll the tuning state until it reaches a terminal state; raise AirflowException with the failure reason.
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sagemaker_unified_studio.py::raise AirflowException(error_message)
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sqs.py::raise AirflowException(f"Delete SQS Messages failed {response} for messages {messages}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/sqs.py::raise AirflowException(f"Trigger error: event is {validated_event}")
+providers/amazon/src/airflow/providers/amazon/aws/sensors/step_function.py::raise AirflowException(f"Step Function sensor failed. State Machine Output: {output}")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/gcs_to_s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/transfers/redshift_to_s3.py::raise AirflowException(f"Cannot include param '{arg}' in Redshift Data API kwargs")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_dynamodb.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_dynamodb.py::raise AirflowException(f"S3 load into DynamoDB table failed with error: {e}")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_redshift.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_redshift.py::raise AirflowException(f"Cannot include param '{arg}' in Redshift Data API kwargs")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_redshift.py::raise AirflowException(f"Method not found! Available methods: {AVAILABLE_METHODS}")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/s3_to_sql.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/transfers/sql_to_s3.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/transfers/sql_to_s3.py::raise AirflowException("The argument path_or_buf is not allowed, please remove it")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/sql_to_s3.py::raise AirflowException("This hook is not supported. The hook class must have get_df method.")
+providers/amazon/src/airflow/providers/amazon/aws/transfers/sql_to_s3.py::raise AirflowException(f"The argument file_format doesn't support {file_format} value.")
+providers/amazon/src/airflow/providers/amazon/aws/triggers/ecs.py::raise AirflowException("Waiter error: max attempts reached")
+providers/amazon/src/airflow/providers/amazon/aws/triggers/sagemaker.py::raise AirflowException("Waiter error: max attempts reached")
+providers/amazon/src/airflow/providers/amazon/aws/triggers/sqs.py::raise AirflowException(f"Delete SQS Messages failed {response} for messages {messages}")
+providers/amazon/src/airflow/providers/amazon/aws/utils/__init__.py::raise AirflowException(err_msg)
+providers/amazon/src/airflow/providers/amazon/aws/utils/connection_wrapper.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/utils/waiter.py::raise AirflowException(f"{object_type.title()} reached failure state {state}.")
+providers/amazon/src/airflow/providers/amazon/aws/utils/waiter_with_logging.py::raise AirflowException(
+providers/amazon/src/airflow/providers/amazon/aws/utils/waiter_with_logging.py::raise AirflowException("Waiter error: max attempts reached")
+providers/amazon/src/airflow/providers/amazon/aws/utils/waiter_with_logging.py::raise AirflowException(f"{failure_message}: {error}")
+providers/amazon/src/airflow/providers/amazon/aws/utils/waiter_with_logging.py::raise AirflowException(f"{failure_message}\n{last_response}\n{error}")
+providers/amazon/tests/unit/amazon/aws/operators/test_ecs.py::"""Exit codes not in skip_on_exit_code raise AirflowException."""
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException(
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException("No data in stderr or in stdout.")
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException(f"Apache Beam process failed with return code {proc.returncode}")
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException(f"Apache Beam process failed with return code {return_code}")
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException(msg)
+providers/apache/beam/src/airflow/providers/apache/beam/hooks/beam.py::raise AirflowException(warning_invalid_environment)
+providers/apache/beam/src/airflow/providers/apache/beam/operators/beam.py::raise AirflowException("Beam hook is not defined.")
+providers/apache/beam/src/airflow/providers/apache/beam/operators/beam.py::raise AirflowException(event["message"])
+providers/apache/druid/src/airflow/providers/apache/druid/hooks/druid.py::raise AirflowException("Druid indexing job failed, check console for more info")
+providers/apache/druid/src/airflow/providers/apache/druid/hooks/druid.py::raise AirflowException(f"Could not get status of the job, got {status}")
+providers/apache/druid/src/airflow/providers/apache/druid/hooks/druid.py::raise AirflowException(f"Did not get 200 or 202 when submitting the Druid job to {url}")
+providers/apache/druid/src/airflow/providers/apache/druid/hooks/druid.py::raise AirflowException(f"Druid ingestion took more than {self.max_ingestion_time} seconds")
+providers/apache/flink/src/airflow/providers/apache/flink/sensors/flink_kubernetes.py::raise AirflowException(message)
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException(
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException("Failed to locate the valid server.")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException("Please specify the field you want the max value for.")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException("Provided field is not a partition key.")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException("Provided filter_map contains keys that are not partition key.")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException("The table isn't partitioned")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException(f"Provided partition_key {partition_key} is not in part_specs.")
+providers/apache/hive/src/airflow/providers/apache/hive/hooks/hive.py::raise AirflowException(stdout)
+providers/apache/hive/src/airflow/providers/apache/hive/operators/hive_stats.py::raise AirflowException("The query returned None")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException("GZIP is the only compression format Amazon S3 Select supports")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException("Header check failed")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException("To check_headers provide field_dict and headers")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException("Unable to retrieve header row from file")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException(f"No key matches {self.s3_key}")
+providers/apache/hive/src/airflow/providers/apache/hive/transfers/s3_to_hive.py::raise AirflowException(f"The key {self.s3_key} does not exists")
+providers/apache/kafka/src/airflow/providers/apache/kafka/operators/consume.py::raise AirflowException(
+providers/apache/kafka/src/airflow/providers/apache/kafka/operators/produce.py::raise AirflowException(
+providers/apache/kafka/src/airflow/providers/apache/kafka/triggers/await_message.py::raise AirflowException(f"Error: {message.error()}")
+providers/apache/kylin/src/airflow/providers/apache/kylin/hooks/kylin.py::raise AirflowException(f"Cube operation {op} error , Message: {err}")
+providers/apache/kylin/src/airflow/providers/apache/kylin/operators/kylin_cube.py::raise AirflowException(
+providers/apache/kylin/src/airflow/providers/apache/kylin/operators/kylin_cube.py::raise AirflowException("kylin job id is None")
+providers/apache/kylin/src/airflow/providers/apache/kylin/operators/kylin_cube.py::raise AirflowException(f"Kylin job {job_id} status {job_status} is error ")
+providers/apache/kylin/src/airflow/providers/apache/kylin/operators/kylin_cube.py::raise AirflowException(f"Kylin:Command {self.command} can not be empty")
+providers/apache/kylin/src/airflow/providers/apache/kylin/operators/kylin_cube.py::raise AirflowException(f"kylin job {job_id} timeout")
+providers/apache/livy/src/airflow/providers/apache/livy/hooks/livy.py::raise AirflowException(
+providers/apache/livy/src/airflow/providers/apache/livy/hooks/livy.py::raise AirflowException("Unable to parse the batch session id")
+providers/apache/livy/src/airflow/providers/apache/livy/hooks/livy.py::raise AirflowException(f"Unable to get state for batch with id: {session_id}")
+providers/apache/livy/src/airflow/providers/apache/livy/operators/livy.py::raise AirflowException(event["response"])
+providers/apache/livy/src/airflow/providers/apache/livy/operators/livy.py::raise AirflowException(f"Batch {batch_id} did not succeed")
+providers/apache/livy/src/airflow/providers/apache/livy/operators/livy.py::raise AirflowException(f"Batch {self._batch_id} did not succeed")
+providers/apache/pig/src/airflow/providers/apache/pig/hooks/pig.py::raise AirflowException(stdout)
+providers/apache/pinot/src/airflow/providers/apache/pinot/hooks/pinot.py::raise AirflowException(stdout)
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_sql.py::raise AirflowException(
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_sql.py::raise AirflowException(f"Invalid additional command: {cmd}")
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py::raise AirflowException(
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py::raise AirflowException("Failed to decode base64 keytab") from err
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py::raise AirflowException("Failed to save keytab") from err
+providers/apache/spark/src/airflow/providers/apache/spark/hooks/spark_submit.py::raise AirflowException("SparkSubmitHook env_vars is not supported in standalone-cluster mode.")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException("Failed to execute AQLQuery, expected result to be of type Cursor")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(f"Collection does not exist: {collection_name}")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(f"Failed to execute AQLQuery, error: {error}")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(f"No ArangoDB Database provided in connection: {self.arangodb_conn_id!r}.")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(f"No ArangoDB Host(s) provided in connection: {self.arangodb_conn_id!r}.")
+providers/arangodb/src/airflow/providers/arangodb/hooks/arangodb.py::raise AirflowException(f"No ArangoDB Username provided in connection: {self.arangodb_conn_id!r}.")
+providers/arangodb/src/airflow/providers/arangodb/operators/arangodb.py::raise AirflowException("At least one operation must be specified.")
+providers/atlassian/jira/src/airflow/providers/atlassian/jira/hooks/jira.py::raise AirflowException("Failed to create jira client. no jira_conn_id provided")
+providers/celery/src/airflow/providers/celery/executors/celery_executor_utils.py::raise AirflowException(msg)
+providers/celery/src/airflow/providers/celery/executors/default_celery.py::raise AirflowException(
+providers/celery/src/airflow/providers/celery/executors/default_celery.py::raise AirflowException("sentinel_kwargs should be written in the correct dictionary format.")
+providers/celery/tests/integration/celery/test_celery_executor.py::raise AirflowException("fail")
+providers/cloudant/src/airflow/providers/cloudant/hooks/cloudant.py::raise AirflowException(
+providers/cloudant/src/airflow/providers/cloudant/hooks/cloudant.py::raise AirflowException("Missing login or password in Cloudant connection.")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/backcompat/backwards_compat_converters.py::raise AirflowException(f"Expected dict or list, got {type(env_vars)}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/backcompat/backwards_compat_converters.py::raise AirflowException(f"Expected dict or {new_class}, got {type(obj)}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/backcompat/backwards_compat_converters.py::raise AirflowException(f"Expected {new_class}, got {type(obj)}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/executors/kubernetes_executor_utils.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/hooks/kubernetes.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/hooks/kubernetes.py::raise AirflowException("Deployment timed out")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/hooks/kubernetes.py::raise AirflowException("Was not able to read the yaml file from given URL")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/hooks/kubernetes.py::raise AirflowException(f"Exception when loading resource definition: {e}\n")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/custom_object_launcher.py::raise AirflowException("Make sure min/max value for dynamic allocation is passed")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/custom_object_launcher.py::raise AirflowException(f"Job took too long to start. pod status: {pod_status}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/custom_object_launcher.py::raise AirflowException(f"Spark Job Failed. Error stack: {err}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/custom_object_launcher.py::raise AirflowException(f"Spark Job Failed. Status: {waiting_reason}, Error: {waiting_message}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py::raise AirflowException("parallelism cannot be less than 1 with `wait_until_job_complete=True`.")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py::raise AirflowException(event["message"])
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/job.py::raise AirflowException(f"No pods running with labels {label_selector}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/kueue.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/kueue.py::raise AirflowException(error_message)
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/pod.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/pod.py::raise AirflowException("Error while deleting istio-proxy sidecar: %s", output_str)
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/pod.py::raise AirflowException(message)
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/resource.py::raise AirflowException("File %s not found", self.yaml_conf_file)
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/resource.py::raise AirflowException("One of `yaml_conf` or `yaml_conf_file` arguments must be provided")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/operators/spark_kubernetes.py::raise AirflowException("either application_file or template_spec should be passed")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/resource_convert/env_variable.py::raise AirflowException(f"Expected dict or list of V1EnvVar, got {type(env_vars)}")
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/secrets/kubernetes_secrets_backend.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/sensors/spark_kubernetes.py::raise AirflowException(message)
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/template_rendering.py::raise AirflowException(f"Unable to render a k8s spec for this taskinstance: {e}") from e
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/triggers/pod.py::raise AirflowException(
+providers/cncf/kubernetes/src/airflow/providers/cncf/kubernetes/utils/pod_manager.py::raise AirflowException(
+providers/common/sql/src/airflow/providers/common/sql/hooks/sql.py::raise AirflowException("conn_name_attr is not defined")
+providers/common/sql/src/airflow/providers/common/sql/operators/generic_transfer.py::raise AirflowException(event.get("message"))
+providers/common/sql/src/airflow/providers/common/sql/operators/sql.py::raise AirflowException(
+providers/common/sql/src/airflow/providers/common/sql/operators/sql.py::raise AirflowException(exception_string)
+providers/common/sql/src/airflow/providers/common/sql/operators/sql.py::raise AirflowException(f"Converting a result to float failed.\n{error_msg}")
+providers/common/sql/src/airflow/providers/common/sql/operators/sql.py::raise AirflowException(f"Invalid column check: {check}.")
+providers/common/sql/src/airflow/providers/common/sql/sensors/sql.py::raise AirflowException(
+providers/common/sql/src/airflow/providers/common/sql/sensors/sql.py::raise AirflowException(message)
+providers/common/sql/src/airflow/providers/common/sql/sensors/sql.py::the sensor will raise AirflowException. Failure criteria is evaluated before
+providers/common/sql/src/airflow/providers/common/sql/triggers/sql.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/hooks/databricks.py::Find job id by its name; if there are multiple jobs with the same name, raise AirflowException.
+providers/databricks/src/airflow/providers/databricks/hooks/databricks.py::Find pipeline id by its name; if multiple pipelines with the same name, raise AirflowException.
+providers/databricks/src/airflow/providers/databricks/hooks/databricks.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/hooks/databricks.py::raise AirflowException("Cannot combine pipeline_name and notebook_path in one request")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException("Azure SPN credentials aren't provided")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException("Service Principal credentials aren't provided")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException("Token authentication isn't configured")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException("Unexpected HTTP Method: " + method)
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"API requests to Azure failed {self.retry_limit} times. Giving up.")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"API requests to Databricks failed {self.retry_limit} times. Giving up.")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"Can't get necessary data from OAuth token: {token}")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"Permission denied reading token from {projected_token_path}") from e
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"Response: {err.message}, Status Code: {err.status}")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(f"Token file at {projected_token_path} is empty")
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_base.py::raise AirflowException(msg)
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_sql.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/hooks/databricks_sql.py::raise AirflowException("SQL connection is not initialized")
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException("'pipeline_name' is not allowed in conjunction with 'pipeline_id'")
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException("Argument 'job_name' is not allowed with argument 'job_id'")
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException("Missing required parameter: name")
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException("git_source is required for dbt_task")
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException(error_message)
+providers/databricks/src/airflow/providers/databricks/operators/databricks.py::raise AirflowException(f"Job ID for job name {self.json['job_name']} can not be found")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException("One of branch or tag should be provided")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException("One of repo_id or repo_path should be provided")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException("One of repo_id repo_path tag should be provided")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException("Only one of branch or tag should be provided, but not both")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException("Only one of repo_id or repo_path should be provided, but not both")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException(f"Can't find Repo ID for path '{self.repo_path}'")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_repos.py::raise AirflowException(f"Repo with path '{self.repo_path}' already exists")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException("Only one of 'pattern' or 'files' should be specified")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException("Output format should be specified!")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException("There is missing description present for the output file.")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException("file_location shouldn't be empty")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException("table_name shouldn't be empty")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException(f"Incorrect data type for validate parameter: {type(self._validate)}")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_sql.py::raise AirflowException(f"file_format '{file_format}' isn't supported")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_workflow.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/operators/databricks_workflow.py::raise AirflowException("Task group must be a DatabricksWorkflowTaskGroup")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_workflow.py::raise AirflowException("Task group must be set before accessing job_name")
+providers/databricks/src/airflow/providers/databricks/operators/databricks_workflow.py::raise AirflowException(f"Could not start the workflow job. State: {life_cycle_state}")
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("Dag not found.")
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("No launch task can be found in the task group.") from e
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("Session not provided.")
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("Task group ID is required for generating repair link.")
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("Task group is required for generating Databricks Workflow Job Run Link.")
+providers/databricks/src/airflow/providers/databricks/plugins/databricks_workflow.py::raise AirflowException("Task group is required for generating repair link.")
+providers/databricks/src/airflow/providers/databricks/sensors/databricks.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/sensors/databricks.py::raise AirflowException("Cannot provide both statement and statement_id.")
+providers/databricks/src/airflow/providers/databricks/sensors/databricks.py::raise AirflowException("One of either statement or statement_id must be provided.")
+providers/databricks/src/airflow/providers/databricks/sensors/databricks.py::raise AirflowException("warehouse_id must be provided.")
+providers/databricks/src/airflow/providers/databricks/sensors/databricks_partition.py::raise AirflowException(message)
+providers/databricks/src/airflow/providers/databricks/sensors/databricks_sql.py::raise AirflowException(message)
+providers/databricks/src/airflow/providers/databricks/utils/databricks.py::raise AirflowException(f"Could not find `{key}` in the event: {event}")
+providers/databricks/src/airflow/providers/databricks/utils/databricks.py::raise AirflowException(f"Run state returned by the Trigger is incorrect: {event['run_state']}")
+providers/databricks/src/airflow/providers/databricks/utils/databricks.py::raise AirflowException(msg)
+providers/databricks/src/airflow/providers/databricks/utils/mixins.py::raise AirflowException(
+providers/databricks/src/airflow/providers/databricks/utils/mixins.py::raise AirflowException("Failed to retrieve statement_id after submitting SQL statement.")
+providers/databricks/src/airflow/providers/databricks/utils/mixins.py::raise AirflowException(error_message)
+providers/databricks/tests/unit/databricks/hooks/test_databricks_base.py::raise AirflowException(
+providers/datadog/src/airflow/providers/datadog/hooks/datadog.py::raise AirflowException("Error status received from Datadog")
+providers/datadog/src/airflow/providers/datadog/hooks/datadog.py::raise AirflowException("api_key must be specified in the Datadog connection details")
+providers/datadog/src/airflow/providers/datadog/sensors/datadog.py::raise AirflowException(message)
+providers/dbt/cloud/src/airflow/providers/dbt/cloud/hooks/dbt.py::raise AirflowException("An API token is required to connect to dbt Cloud.")
+providers/dbt/cloud/src/airflow/providers/dbt/cloud/hooks/dbt.py::raise AirflowException("Could not determine the dbt Cloud account.")
+providers/dbt/cloud/src/airflow/providers/dbt/cloud/operators/dbt.py::raise AirflowException(f"Job run {self.run_id} has timed out.")
+providers/dbt/cloud/src/airflow/providers/dbt/cloud/sensors/dbt.py::raise AirflowException()
+providers/dingding/src/airflow/providers/dingding/hooks/dingding.py::raise AirflowException(
+providers/dingding/src/airflow/providers/dingding/hooks/dingding.py::raise AirflowException(f"Send Dingding message failed, receive error message {resp.text}")
+providers/discord/src/airflow/providers/discord/operators/discord_webhook.py::raise AirflowException("No valid Discord http_conn_id supplied.")
+providers/docker/src/airflow/providers/docker/decorators/docker.py::raise AirflowException(msg)
+providers/docker/src/airflow/providers/docker/hooks/docker.py::raise AirflowException("Failed to establish connection to any given Docker hosts.")
+providers/docker/src/airflow/providers/docker/hooks/docker.py::raise AirflowException("URL to the Docker server not provided.")
+providers/docker/src/airflow/providers/docker/hooks/docker.py::raise AirflowException(msg)
+providers/docker/src/airflow/providers/docker/operators/docker_swarm.py::raise AirflowException(
+providers/docker/src/airflow/providers/docker/operators/docker_swarm.py::raise AirflowException(f"Service did not complete: {self.service!r}")
+providers/edge3/src/airflow/providers/edge3/example_dags/win_test.py::raise AirflowException(f"Can not find the cwd: {self.cwd}")
+providers/edge3/src/airflow/providers/edge3/example_dags/win_test.py::raise AirflowException(f"Command failed. The command returned a non-zero exit code {exit_code}.")
+providers/edge3/src/airflow/providers/edge3/example_dags/win_test.py::raise AirflowException(f"The cwd {self.cwd} must be a directory")
+providers/fab/src/airflow/providers/fab/auth_manager/fab_auth_manager.py::raise AirflowException("AppBuilder is not initialized.")
+providers/fab/src/airflow/providers/fab/auth_manager/fab_auth_manager.py::raise AirflowException(f"Unknown DAG access entity: {dag_access_entity}")
+providers/fab/src/airflow/providers/fab/auth_manager/fab_auth_manager.py::raise AirflowException(f"Unknown method: {method}")
+providers/fab/src/airflow/providers/fab/auth_manager/models/db.py::raise AirflowException("`from_revision` only supported with `sql_only=True`.")
+providers/fab/src/airflow/providers/fab/www/extensions/init_security.py::raise AirflowException(err)
+providers/facebook/src/airflow/providers/facebook/ads/hooks/ads.py::raise AirflowException(message)
+providers/git/src/airflow/providers/git/bundles/git.py::raise AirflowException("Refreshing a specific version is not supported")
+providers/git/src/airflow/providers/git/bundles/git.py::raise AirflowException("Repository path: %s not found", self.bare_repo_path) from e
+providers/git/src/airflow/providers/git/bundles/git.py::raise AirflowException(f"Connection {self.git_conn_id} doesn't have a host url")
+providers/git/src/airflow/providers/git/bundles/git.py::raise AirflowException(f"Version {self.version} not found in the repository")
+providers/git/src/airflow/providers/git/hooks/git.py::raise AirflowException("Both 'key_file' and 'private_key' cannot be provided at the same time")
+providers/github/src/airflow/providers/github/operators/github.py::raise AirflowException(f"Failed to execute GithubOperator, error: {github_error}")
+providers/github/src/airflow/providers/github/operators/github.py::raise AirflowException(f"GitHub operator error: {e}")
+providers/github/src/airflow/providers/github/sensors/github.py::raise AirflowException("Override me.")
+providers/github/src/airflow/providers/github/sensors/github.py::raise AirflowException(f"Failed to execute GithubSensor, error: {github_error}")
+providers/github/src/airflow/providers/github/sensors/github.py::raise AirflowException(f"GitHub operator error: {e}")
+providers/github/tests/system/github/example_github.py::raise AirflowException(f"Failed to execute GithubSensor, error: {github_error}")
+providers/github/tests/system/github/example_github.py::raise AirflowException(f"GitHub operator error: {e}")
+providers/google/src/airflow/providers/google/ads/hooks/ads.py::raise AirflowException("Authentication method could not be determined")
+providers/google/src/airflow/providers/google/cloud/hooks/alloy_db.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py:::raise AirflowException: if matching fails
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException("Need to specify 'location' to use BigQueryHook.get_records()")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException("The first SQL query returned None")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException("The query returned None")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException("The second SQL query returned None")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(error_msg)
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"BigQuery job failed. Error was: {error_msg}")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"Converting a result to float failed.\n{error_msg}")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"Job '{job_id}' is not a query job")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"Job '{job_id}' is not in DONE state")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"The following tests have failed:\n {', '.join(sorted(failed_tests))}")
+providers/google/src/airflow/providers/google/cloud/hooks/bigquery.py::raise AirflowException(f"Unknown job type. Supported types: {supported_jobs.keys()}")
+providers/google/src/airflow/providers/google/cloud/hooks/bigtable.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_batch.py::raise AirflowException("The limit for the list jobs request should be greater or equal to zero")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_batch.py::raise AirflowException("The limit for the list tasks request should be greater or equal to zero")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_batch.py::raise AirflowException(f"Job with name [{job_name}] timed out")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_batch.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_build.py::raise AirflowException("Cloud Build Trigger with such parameters already exists.")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_build.py::raise AirflowException("Could not retrieve Build ID from Operation.")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_build.py::raise AirflowException("Google Cloud Build id is required.")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_composer.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_composer.py::raise AirflowException(response_body["title"])
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_memorystore.py::raise AirflowException("instance is not instance of Instance type or python dict")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_memorystore.py::raise AirflowException("instance is not instance of MemcacheParameters type or python dict")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_run.py::raise AirflowException("The limit for the list jobs request should be greater or equal to zero")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The database parameter needs to be set in connection")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The host parameter needs to be set in connection")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The login parameter needs to be set in connection")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The password parameter needs to be set in connection")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The path_prefix must not be empty!")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The required extra 'instance' is empty or None")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The required extra 'location' is empty or None")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The required extra 'project_id' is empty")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException("The sql proxy is not started yet")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(error_msg)
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"Cloning of instance {instance} failed: {ex.content}")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"Error when starting the cloud_sql_proxy {line}!")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"Importing instance {instance} failed: {ex.content}")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"Invalid SSL settings. Parameter{s} missing: {missed_values_str}")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"SSL connections requires {name} to be set")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"The cloud_sql_proxy finished early with return code {return_code}!")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"The sql proxy is already running: {self.sql_proxy_process}")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_sql.py::raise AirflowException(f"The {file_to_check} must be a readable file")
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_storage_transfer_service.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/cloud_storage_transfer_service.py::raise AirflowException("Timeout. The operation could not be completed within the allotted time.")
+providers/google/src/airflow/providers/google/cloud/hooks/compute.py::raise AirflowException("The target instance does not have external IP")
+providers/google/src/airflow/providers/google/cloud/hooks/compute.py::raise AirflowException(f"Wrong response '{response}' returned - it should contain 'name' field")
+providers/google/src/airflow/providers/google/cloud/hooks/compute.py::raise AirflowException(f"{code} {msg}: " + error_msg)
+providers/google/src/airflow/providers/google/cloud/hooks/compute_ssh.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/compute_ssh.py::raise AirflowException("Can not connect to instance")
+providers/google/src/airflow/providers/google/cloud/hooks/compute_ssh.py::raise AirflowException("Maximum retries exceeded. Aborting operation.")
+providers/google/src/airflow/providers/google/cloud/hooks/compute_ssh.py::raise AirflowException("Unable to establish SSH connection.")
+providers/google/src/airflow/providers/google/cloud/hooks/compute_ssh.py::raise AirflowException(f"Error encountered creating ssh keys, {err}")
+providers/google/src/airflow/providers/google/cloud/hooks/dataflow.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/dataform.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/dataform.py::raise AirflowException(f"Workflow Invocation failed:\n{workflow_invocation}")
+providers/google/src/airflow/providers/google/cloud/hooks/dataform.py::raise AirflowException(f"Workflow Invocation was cancelled:\n{workflow_invocation}")
+providers/google/src/airflow/providers/google/cloud/hooks/dataplex.py::raise AirflowException("Unable to set scan_name.")
+providers/google/src/airflow/providers/google/cloud/hooks/dataplex.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc.py::raise AirflowException(f"Job failed:\n{job}")
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc.py::raise AirflowException(f"Job was cancelled:\n{job}")
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc.py::raise AirflowException(f"Timeout: dataproc job {job_id} is not ready after {timeout}s")
+providers/google/src/airflow/providers/google/cloud/hooks/dataproc_metastore.py::raise AirflowException(f"Operation failed: {error}")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide either organization_id or project_id.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of deidentify template to be deleted.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of deidentify template to be updated.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the DLP job resource to be cancelled.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the DLP job resource to be read.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the DLP job trigger to be deleted.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the DLP job trigger to be read.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the DLP job trigger to be updated.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the deidentify template to be read.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the inspect template to be deleted.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the inspect template to be read.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the inspect template to be updated.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the stored info type to be deleted.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the stored info type to be read.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException("Please provide the ID of the stored info type to be updated.")
+providers/google/src/airflow/providers/google/cloud/hooks/dlp.py::raise AirflowException(f"Unable to retrieve DLP job's ID from {job.name}.")
+providers/google/src/airflow/providers/google/cloud/hooks/functions.py::raise AirflowException(response["error"])
+providers/google/src/airflow/providers/google/cloud/hooks/functions.py::raise AirflowException(str(error))
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException("'match_glob' param cannot be used with 'delimiter' that differs than '/'")
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException("Please provide a bucket name")
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException(f"Failed to decode query result from bytes to json: {ex}")
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException(f"Failed to download file with query result: {ex}")
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException(f"Failed to read file: {ex}")
+providers/google/src/airflow/providers/google/cloud/hooks/gcs.py::raise AirflowException(f"Schema must be to 'gs://': Current schema: '{parsed_url.scheme}://'")
+providers/google/src/airflow/providers/google/cloud/hooks/gdm.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/kubernetes_engine.py::raise AirflowException("cluster is not instance of Cluster proto or python dict")
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(f"No `host` was supplied in connection: {self.conn.id}.")
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(f"No `login` was supplied in connection: {self.conn.id}.")
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(f"No `password` was supplied in connection: {self.conn.id}.")
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(f"PDT materialization job was cancelled. Job id: {materialization_id}.")
+providers/google/src/airflow/providers/google/cloud/hooks/looker.py::raise AirflowException(f"This API requires Looker version 22.2+. Found: {looker_ver}.")
+providers/google/src/airflow/providers/google/cloud/hooks/managed_kafka.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/hooks/mlengine.py::raise AirflowException("An unique job id is required for Google MLEngine training job.")
+providers/google/src/airflow/providers/google/cloud/hooks/mlengine.py::raise AirflowException("Google Cloud project id is required.")
+providers/google/src/airflow/providers/google/cloud/hooks/spanner.py::raise AirflowException("The instance_id or database_id were not specified")
+providers/google/src/airflow/providers/google/cloud/hooks/spanner.py::raise AirflowException(f"The instance {instance_id} does not exist in project {project_id} !")
+providers/google/src/airflow/providers/google/cloud/hooks/stackdriver.py::raise AirflowException(f"Delete alerting policy failed. Error was {err.content}")
+providers/google/src/airflow/providers/google/cloud/hooks/stackdriver.py::raise AirflowException(f"Delete notification channel failed. Error was {err.content}")
+providers/google/src/airflow/providers/google/cloud/hooks/tasks.py::raise AirflowException("Unable to set queue_name.")
+providers/google/src/airflow/providers/google/cloud/hooks/tasks.py::raise AirflowException("Unable to set task_name.")
+providers/google/src/airflow/providers/google/cloud/hooks/translate.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/translate.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/hooks/translate.py::raise AirflowException(f"Fail to get glossary {name}! Please check if it exists.")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/auto_ml.py::raise AirflowException("AutoMLForecastingTrainingJob was not created")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/auto_ml.py::raise AirflowException("AutoMLImageTrainingJob was not created")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/auto_ml.py::raise AirflowException("AutoMLTabularTrainingJob was not created")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/batch_prediction_job.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/custom_job.py::raise AirflowException("CustomContainerTrainingJob instance creation failed.")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/custom_job.py::raise AirflowException("CustomJob was not created")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/custom_job.py::raise AirflowException("CustomPythonPackageTrainingJob instance creation failed.")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/custom_job.py::raise AirflowException("CustomTrainingJob instance creation failed.")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/custom_job.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/feature_store.py::raise AirflowException(str(e))
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/hyperparameter_tuning_job.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/model_service.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/model_service.py::raise AirflowException("Name of the alias can't start with '-'")
+providers/google/src/airflow/providers/google/cloud/hooks/vertex_ai/pipeline_job.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/hooks/vision.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/hooks/vision.py::raise AirflowException(ERR_UNABLE_TO_CREATE.format(label=self.label, id_label=self.id_label))
+providers/google/src/airflow/providers/google/cloud/hooks/vision.py::raise AirflowException(f"Unable to get id from name... [{name}]")
+providers/google/src/airflow/providers/google/cloud/hooks/vision.py::raise AirflowException(f"Unable to get name from response... [{response}]\n{e}")
+providers/google/src/airflow/providers/google/cloud/hooks/vision.py::raise AirflowException(response)
+providers/google/src/airflow/providers/google/cloud/operators/alloy_db.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/operators/alloy_db.py::raise AirflowException(ex) from ex
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException("Job is already in state DONE. Can not reattach to this job.")
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException("Table creation failed.")
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(error_msg)
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(f"BigQuery job {job.job_id} failed: {job.error_result}")
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(f"Job failed with state: {job.state}")
+providers/google/src/airflow/providers/google/cloud/operators/bigquery.py::raise AirflowException(f"The following query returned zero rows: {self.sql}")
+providers/google/src/airflow/providers/google/cloud/operators/bigquery_dts.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/bigquery_dts.py::raise AirflowException(f"Transfer run was finished with {state} status.")
+providers/google/src/airflow/providers/google/cloud/operators/bigtable.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/bigtable.py::raise AirflowException(f"Dependency: instance '{self.instance_id}' does not exist.")
+providers/google/src/airflow/providers/google/cloud/operators/bigtable.py::raise AirflowException(f"Empty parameter: {attr_name}")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_batch.py::raise AirflowException("The limit for the list jobs request should be greater or equal to zero")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_batch.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/operators/cloud_batch.py::raise AirflowException(f"Unexpected error in the operation: {event['message']}")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_build.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/cloud_build.py::raise AirflowException(f"Unexpected error in the operation: {event['message']}")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_composer.py::raise AirflowException("The provided command is empty.")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_composer.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/cloud_composer.py::raise AirflowException(f"Unexpected error in the operation: {event['operation_name']}")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_composer.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/operators/cloud_composer.py::raise AirflowException(not_found_err)
+providers/google/src/airflow/providers/google/cloud/operators/cloud_logging_sink.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/cloud_logging_sink.py::raise AirflowException("The page_size for the list sinks request must be greater than zero")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException("Not all tasks finished execution")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException("Operation is None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException("Operation timed out")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException("Some tasks failed execution")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException("The limit for the list jobs request should be greater or equal to zero")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_run.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException("The required parameter 'body' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException("The required parameter 'database' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException("The required parameter 'destination_instance_name' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException("The required parameter 'instance' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException("The required parameter 'project_id' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_sql.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException("If 'delete_job_after_completion' is True, then 'wait' must also be True.")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException("The required parameter 'body' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException("The required parameter 'job_name' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException("The required parameter 'operation_name' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException("The required parameter 'request_filter' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/cloud_storage_transfer_service.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/compute.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/compute.py::raise AirflowException("The required parameter 'project_id' is missing")
+providers/google/src/airflow/providers/google/cloud/operators/compute.py::raise AirflowException("The required parameter 'resource_id' is missing. ")
+providers/google/src/airflow/providers/google/cloud/operators/compute.py::raise AirflowException("The required parameter 'resource_id' is missing.")
+providers/google/src/airflow/providers/google/cloud/operators/compute.py::raise AirflowException("The required parameter 'zone' is missing")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("Data Pipeline Project ID not given; cannot run pipeline.")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("Data Pipeline location not given; cannot run pipeline.")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("Data Pipeline name not given; cannot run unspecified pipeline.")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("Error occurred when running Pipeline: %s", exc)
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("Pipeline with given name was not found.")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException("location not given; cannot create a Data Pipeline without the location.")
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException(self.pipeline.get("error").get("message"))
+providers/google/src/airflow/providers/google/cloud/operators/dataflow.py::raise AirflowException(self.response)
+providers/google/src/airflow/providers/google/cloud/operators/datafusion.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/datafusion.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException("There are no jobs, you should create one before.")
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(NotFound)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(ex)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(exc)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Data Profile job failed: {job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Data Quality job failed: {job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Error creating Data Profile scan {self.data_scan_id}", e)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Error creating Data Quality scan {self.data_scan_id}", e)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Error occurred when creating asset {self.asset_id}", e)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Error occurred when creating zone {self.zone_id}", e)
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Job failed:\n{job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataplex.py::raise AirflowException(f"Job was cancelled:\n{job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Batch failed.")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Cluster was created but is in ERROR state")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Cluster was created in an ERROR state then deleted.")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Create a job template before")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("No event received in trigger callback")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Operation metadata is not available.")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("Set internal_ip_only to true only when you pass a subnetwork_uri.")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException("The job should be set here.")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(event.get("message"))
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Batch job {batch_id} unspecified.\nDriver logs: {link}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Batch job {batch_id} was cancelled.\nDriver logs: {link}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Cluster is in ERROR state:\n{cluster_name}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Cluster {self.cluster_name} is still CREATING state, aborting")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Cluster {self.cluster_name} is still DELETING state, aborting")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job failed:\n{job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job failed:\n{job}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job was cancelled:\n{job_id}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job was cancelled:\n{job}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job {job_id} failed:\n{job}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(f"Job {job_id} was cancelled:\n{job}")
+providers/google/src/airflow/providers/google/cloud/operators/dataproc.py::raise AirflowException(str(e))
+providers/google/src/airflow/providers/google/cloud/operators/dataproc_metastore.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/dataproc_metastore.py::raise AirflowException("Restoring service FAILED")
+providers/google/src/airflow/providers/google/cloud/operators/datastore.py::raise AirflowException(f"Operation failed: result={result}")
+providers/google/src/airflow/providers/google/cloud/operators/functions.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/functions.py::raise AirflowException("The required parameter 'body' is missing")
+providers/google/src/airflow/providers/google/cloud/operators/functions.py::raise AirflowException("The required parameter 'location' is missing")
+providers/google/src/airflow/providers/google/cloud/operators/functions.py::raise AirflowException("validate() method has to be invoked before should_upload_function")
+providers/google/src/airflow/providers/google/cloud/operators/gcs.py::raise AirflowException(f"Transform script failed: {process.returncode}")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Error during file upload! Check file name or mime type!")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("File %s not found!", self.file_name)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("File with name %s not found", self.file_name)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Job with name %s not found", self.job_name)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Job with name %s was not found", self.job_name)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Provided file was not found!")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Something went wrong during creation of the batch job: %s", e)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Something went wrong during creation of the embeddings job.")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Something went wrong during waiting of the batch job.")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("Something went wrong during waiting of the batch job: %s", e)
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("path to results_folder does not exist, please provide correct path")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException("results_folder works only when input_source is file name")
+providers/google/src/airflow/providers/google/cloud/operators/gen_ai.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException("Operator has incorrect or missing input.")
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException("config_file is not an allowed parameter for the GKEDeleteJobOperator.")
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException("config_file is not an allowed parameter for the GKEStartJobOperator.")
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException("config_file is not an allowed parameter for the GKEStartPodOperator.")
+providers/google/src/airflow/providers/google/cloud/operators/kubernetes_engine.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/operators/looker.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/managed_kafka.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/operators/managed_kafka.py::raise AirflowException(not_found_err)
+providers/google/src/airflow/providers/google/cloud/operators/pubsub.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException("The required parameter 'database_id' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException("The required parameter 'ddl_statements' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException("The required parameter 'instance_id' is empty or None")
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException("The required parameter 'project_id' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/spanner.py::raise AirflowException("The required parameter 'query' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/speech_to_text.py::raise AirflowException("The required parameter 'audio' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/speech_to_text.py::raise AirflowException("The required parameter 'config' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/text_to_speech.py::raise AirflowException(f"The required parameter '{parameter}' is empty")
+providers/google/src/airflow/providers/google/cloud/operators/translate.py::raise AirflowException(e)
+providers/google/src/airflow/providers/google/cloud/operators/translate_speech.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/operators/translate_speech.py::raise AirflowException(e)
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/batch_prediction_job.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/custom_job.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/dataset.py::raise AirflowException(f"Empty results of data import for the dataset_id {dataset_id}.")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException("Experiment %s not found", self.experiment_name)
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException("Experiment or experiment run not found")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException(f"Experiment Run with name {self.experiment_run_name} already exist")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException(f"Experiment Run with name {self.experiment_run_name} not found")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException(f"Experiment with name {self.experiment_name} already exist")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/experiment_service.py::raise AirflowException(f"Experiment with name {self.experiment_name} not found")
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/feature_store.py::raise AirflowException(exc_msg) from ex
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/hyperparameter_tuning_job.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/pipeline_job.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/ray.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/cloud/operators/vertex_ai/ray.py::raise AirflowException(not_found_err)
+providers/google/src/airflow/providers/google/cloud/secrets/secret_manager.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/sensors/bigquery.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/sensors/bigquery.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/bigquery_dts.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/cloud_composer.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/sensors/cloud_composer.py::raise AirflowException(not_found_err)
+providers/google/src/airflow/providers/google/cloud/sensors/cloud_storage_transfer_service.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/sensors/dataflow.py::raise AirflowException(f"Sensor failed with the following message: {event['message']}")
+providers/google/src/airflow/providers/google/cloud/sensors/dataflow.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/dataform.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/sensors/dataform.py::raise AirflowException(f"Workflow Invocation Action target {self.target_name} not found.")
+providers/google/src/airflow/providers/google/cloud/sensors/dataform.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/datafusion.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/dataplex.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/dataplex.py::raise AirflowException(message, e)
+providers/google/src/airflow/providers/google/cloud/sensors/dataproc.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/sensors/dataproc.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/dataproc_metastore.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/gcs.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/sensors/gcs.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/looker.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/sensors/pubsub.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/sensors/vertex_ai/feature_store.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/sensors/workflows.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/transfers/azure_fileshare_to_gcs.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/transfers/bigquery_to_gcs.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/transfers/bigquery_to_gcs.py::raise AirflowException("Job ID is None, expected a valid job ID.")
+providers/google/src/airflow/providers/google/cloud/transfers/bigquery_to_gcs.py::raise AirflowException("Job is already in state DONE. Can not reattach to this job.")
+providers/google/src/airflow/providers/google/cloud/transfers/bigquery_to_gcs.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/transfers/bigquery_to_gcs.py::raise AirflowException(f"BigQuery job {job.job_id} failed: {job.error_result}")
+providers/google/src/airflow/providers/google/cloud/transfers/cassandra_to_gcs.py::raise AirflowException("Not a supported type_: " + type_.cassname)
+providers/google/src/airflow/providers/google/cloud/transfers/cassandra_to_gcs.py::raise AirflowException(f"Unexpected value: {value}")
+providers/google/src/airflow/providers/google/cloud/transfers/facebook_ads_to_gcs.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_bigquery.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_bigquery.py::raise AirflowException("Job is already in state DONE. Can not reattach to this job.")
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_bigquery.py::raise AirflowException(e.message)
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_bigquery.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_bigquery.py::raise AirflowException(f"BigQuery job {job.job_id} failed: {job.error_result}")
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_gcs.py::raise AirflowException("At least, one of the `objects` in the `source_objects` is not a string")
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_gcs.py::raise AirflowException("You can't have two empty strings inside source_object")
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_gcs.py::raise AirflowException(error_msg)
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_gcs.py::raise AirflowException(msg)
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_local.py::raise AirflowException("The size of the downloaded file is too large to push to XCom!")
+providers/google/src/airflow/providers/google/cloud/transfers/gcs_to_sftp.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/transfers/s3_to_gcs.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/transfers/s3_to_gcs.py::raise AirflowException(event["message"])
+providers/google/src/airflow/providers/google/cloud/transfers/sftp_to_gcs.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/triggers/bigquery.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/triggers/cloud_composer.py::raise AirflowException(f"Cloud Composer Environment error: {operation.error.message}")
+providers/google/src/airflow/providers/google/cloud/triggers/cloud_composer.py::raise AirflowException(not_found_err)
+providers/google/src/airflow/providers/google/cloud/triggers/cloud_run.py::raise AirflowException(f"Cloud Run Job error: {operation.error.message}")
+providers/google/src/airflow/providers/google/cloud/triggers/dataproc.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/triggers/dataproc.py::raise AirflowException("Error during cancellation handling: %s", e)
+providers/google/src/airflow/providers/google/cloud/triggers/kubernetes_engine.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException(
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException("Credential Configuration File is not a valid json string.")
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException("Invalid secret name specified for fetching JSON key data.")
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException("Key data read from GCP Secret Manager is not valid JSON.")
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException("Legacy P12 key file are not supported, use a JSON key file.")
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException("Unrecognised extension for key file.")
+providers/google/src/airflow/providers/google/cloud/utils/credentials_provider.py::raise AirflowException(f"Failed getting value of secret {self.key_secret_name}.")
+providers/google/src/airflow/providers/google/common/hooks/base_google.py::raise AirflowException(
+providers/google/src/airflow/providers/google/common/hooks/base_google.py::raise AirflowException("Invalid JSON.")
+providers/google/src/airflow/providers/google/common/hooks/base_google.py::raise AirflowException("Invalid key JSON.")
+providers/google/src/airflow/providers/google/common/hooks/base_google.py::raise AirflowException("Legacy P12 key file are not supported, use a JSON key file.")
+providers/google/src/airflow/providers/google/common/hooks/operation_helpers.py::raise AirflowException("Google API error on operation result call") from ex
+providers/google/src/airflow/providers/google/common/hooks/operation_helpers.py::raise AirflowException(error)
+providers/google/src/airflow/providers/google/firebase/hooks/firestore.py::raise AirflowException(str(error))
+providers/google/src/airflow/providers/google/firebase/operators/firestore.py::raise AirflowException("The required parameter 'body' is missing")
+providers/google/src/airflow/providers/google/leveldb/hooks/leveldb.py::raise AirflowException(DB_NOT_INITIALIZED_BEFORE)
+providers/google/src/airflow/providers/google/marketing_platform/hooks/campaign_manager.py::raise AirflowException(errored_conversions)
+providers/google/src/airflow/providers/google/marketing_platform/hooks/search_ads.py::raise AirflowException("google_search_ads_client not found in extra field")
+providers/google/src/airflow/providers/google/marketing_platform/operators/bid_manager.py::raise AirflowException(
+providers/google/src/airflow/providers/google/marketing_platform/operators/bid_manager.py::raise AirflowException(f"Redirect from GCS report URL to {newurl!r} is not allowed.")
+providers/google/src/airflow/providers/google/marketing_platform/operators/bid_manager.py::raise AirflowException(f"Report {self.report_id} for query {self.query_id} is still running")
+providers/google/src/airflow/providers/google/marketing_platform/operators/campaign_manager.py::raise AirflowException("Please provide `report_name` or `report_id`.")
+providers/google/src/airflow/providers/google/marketing_platform/operators/campaign_manager.py::raise AirflowException("Please provide only one parameter `report_name` or `report_id`.")
+providers/google/src/airflow/providers/google/marketing_platform/sensors/display_video.py::raise AirflowException(message)
+providers/google/src/airflow/providers/google/suite/hooks/calendar.py::raise AirflowException(
+providers/google/src/airflow/providers/google/suite/hooks/sheets.py::raise AirflowException(
+providers/google/src/airflow/providers/google/suite/transfers/gcs_to_gdrive.py::raise AirflowException(error_msg)
+providers/google/tests/system/google/cloud/cloud_build/example_cloud_build_trigger.py::raise AirflowException(
+providers/google/tests/system/google/cloud/composer/example_cloud_composer.py::raise AirflowException(
+providers/google/tests/system/google/cloud/dataflow/example_dataflow_native_python_async.py::raise AirflowException(f"Metric '{metric_name}' not found in metrics")
+providers/google/tests/system/google/cloud/dataflow/example_dataflow_sensors_deferrable.py::raise AirflowException(f"Metric '{metric_name}' not found in metrics")
+providers/google/tests/unit/google/cloud/hooks/test_bigquery.py::"""Assert that check raise AirflowException"""
+providers/google/tests/unit/google/cloud/operators/test_dataflow.py::Test that if the Pipeline does not exist, the operator raise AirflowException
+providers/google/tests/unit/google/cloud/utils/gcp_authenticator.py::raise AirflowException(
+providers/google/tests/unit/google/cloud/utils/gcp_authenticator.py::raise AirflowException("The gcp_key is not set!")
+providers/http/src/airflow/providers/http/hooks/http.py:::raise AirflowException: If the response contains a status code not
+providers/http/src/airflow/providers/http/hooks/http.py::raise AirflowException(str(response.status_code) + ":" + response.reason)
+providers/http/src/airflow/providers/http/operators/http.py::raise AirflowException("Response check returned False.")
+providers/http/src/airflow/providers/http/operators/http.py::raise AirflowException(f"Unexpected error in the operation: {event['message']}")
+providers/http/src/airflow/providers/http/triggers/http.py::raise AirflowException("The response_check callable is not asynchronous.")
+providers/http/tests/unit/http/sensors/test_http.py::raise AirflowException("AirflowException raised here!")
+providers/imap/src/airflow/providers/imap/hooks/imap.py::raise AirflowException("No mail attachments found!")
+providers/jdbc/src/airflow/providers/jdbc/hooks/jdbc.py::raise AirflowException(
+providers/jdbc/src/airflow/providers/jdbc/hooks/jdbc.py::raise AirflowException("The parameter 'sqlalchemy_query' must be of type dict!")
+providers/jenkins/src/airflow/providers/jenkins/operators/jenkins_job_trigger.py::raise AirflowException(
+providers/jenkins/src/airflow/providers/jenkins/operators/jenkins_job_trigger.py::raise AirflowException(f"Jenkins job status check failed. Final error was: {err.resp.status}")
+providers/jenkins/src/airflow/providers/jenkins/sensors/jenkins.py::raise AirflowException(message)
+providers/keycloak/src/airflow/providers/keycloak/auth_manager/keycloak_auth_manager.py::raise AirflowException(
+providers/keycloak/src/airflow/providers/keycloak/auth_manager/keycloak_auth_manager.py::raise AirflowException(f"Unexpected error: {resp.status_code} - {resp.text}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/adx.py::raise AirflowException("Host connection option is required")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/adx.py::raise AirflowException(f"Error running Kusto query: {error}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/adx.py::raise AirflowException(f"Required connection parameter is missing: `{name}`")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/adx.py::raise AirflowException(f"Unknown authentication method: {auth_method}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/base_azure.py::raise AirflowException("Unrecognised extension for key file.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/batch.py::raise AirflowException("Batch Account URL parameter is missing.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/container_instance.py::raise AirflowException("Unrecognised extension for key file.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/cosmos.py::raise AirflowException("Either password or resource_group_name is required")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the dataset already exists.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the dataset does not exist.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the factory already exists.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the factory does not exist.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the linked service already exists.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the linked service does not exist.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the pipeline already exists.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the pipeline does not exist.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the trigger already exists.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py:::raise AirflowException: If the trigger does not exist.
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException("Could not determine the targeted data factory.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Dataflow {dataflow_name!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Dataflow {dataflow_name!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Dataset {dataset_name!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Dataset {dataset_name!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Factory {factory!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Factory {factory!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Linked service {linked_service_name!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Linked service {linked_service_name!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Pipeline {pipeline_name!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Pipeline {pipeline_name!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Trigger {trigger_name!r} already exists.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_factory.py::raise AirflowException(f"Trigger {trigger_name!r} does not exist.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/data_lake.py::raise AirflowException(f"File {path} not found")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py::raise AirflowException("Failed to create the KiotaRequestAdapterHook. No conn_id provided!")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/msgraph.py::raise AirflowException(message)
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/wasb.py::raise AirflowException("BlobServiceClient is not initialized")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/hooks/wasb.py::raise AirflowException(f"Blob(s) not found: {blob_name}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/batch.py::raise AirflowException(
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/batch.py::raise AirflowException("The auto_scale_formula is required when enable_auto_scale is set")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/batch.py::raise AirflowException("You must specify either vm_publisher or os_family")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/batch.py::raise AirflowException(f"Job fail. The failed task are: {fail_tasks}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException(
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException("ACI name cannot be longer than 63 characters")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException("Container group exists")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException("Could not start container group")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException("identity['resource_ids'] must be a list of resource id strings")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException('ACI name must match regex [a-z0-9]([-a-z0-9]*[a-z0-9])? (like "my-name")')
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/container_instances.py::raise AirflowException(f"Container had a non-zero exit code, {exit_code}")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/data_factory.py::raise AirflowException(event["message"])
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/msgraph.py::raise AirflowException(event.get("message"))
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/powerbi.py::raise AirflowException("Failed to trigger dataset refresh")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/powerbi.py::raise AirflowException(event["message"])
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/synapse.py::raise AirflowException(event["message"])
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/operators/synapse.py::raise AirflowException(f"Job run {self.job_id} has failed or has been cancelled.")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/sensors/data_factory.py::raise AirflowException(event["message"])
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/sensors/msgraph.py::raise AirflowException(event.get("message"))
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/sensors/wasb.py::raise AirflowException("Did not receive valid event from the triggerer")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/sensors/wasb.py::raise AirflowException(event["message"])
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/transfers/local_to_adls.py::raise AirflowException("Recursive glob patterns using `**` are not supported")
+providers/microsoft/azure/src/airflow/providers/microsoft/azure/transfers/sftp_to_wasb.py::raise AirflowException(
+providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_asb.py::Test `delete_subscription` functionality to raise AirflowException,
+providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_asb.py::Test `receive_message` functionality to raise AirflowException in Azure MessageHook
+providers/microsoft/azure/tests/unit/microsoft/azure/hooks/test_asb.py::Test `send_message` functionality to raise AirflowException in Azure MessageHook
+providers/microsoft/azure/tests/unit/microsoft/azure/operators/test_asb.py::Test `AzureServiceBusSubscriptionCreateOperator` functionality to raise AirflowException,
+providers/microsoft/azure/tests/unit/microsoft/azure/operators/test_asb.py::Test `AzureServiceBusTopicCreateOperator` functionality to raise AirflowException,
+providers/microsoft/azure/tests/unit/microsoft/azure/operators/test_asb.py::Test `delete_topic` functionality to raise AirflowException,
+providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/hooks/psrp.py::raise AirflowException("Process had one or more errors")
+providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/hooks/psrp.py::raise AirflowException(f"Unexpected extra configuration keys: {', '.join(sorted(extra))}")
+providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/operators/psrp.py::raise AirflowException(
+providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/operators/psrp.py::raise AirflowException("Process failed")
+providers/microsoft/psrp/src/airflow/providers/microsoft/psrp/operators/psrp.py::raise AirflowException(f"Process exited with non-zero status code: {rc}")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm.py::raise AirflowException("Missing required param: remote_host")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm.py::raise AirflowException("No command specified so nothing to execute here.")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm.py::raise AirflowException(error_msg)
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/hooks/winrm.py::raise AirflowException(f"WinRM operator error: {e}")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException(
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException("Cannot operate in deferrable mode without ssh_conn_id.")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException("Cannot operate without winrm_hook.")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException("No command specified so nothing to execute here.")
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException(error_msg)
+providers/microsoft/winrm/src/airflow/providers/microsoft/winrm/operators/winrm.py::raise AirflowException(f"Trigger failed: {event.get('message')}")
+providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::raise AirflowException("No rows returned, raising as per parameter 'fail_on_empty=True'")
+providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::raise AirflowException(f"Failure criteria met: failure({value!r}) returned True")
+providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::raise AirflowException(f"Parameter 'failure' is not callable: {self.failure!r}")
+providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::raise AirflowException(f"Parameter 'selector' is not callable: {self.selector!r}")
+providers/neo4j/src/airflow/providers/neo4j/sensors/neo4j.py::raise AirflowException(f"Parameter 'success' is not callable: {self.success!r}")
+providers/openfaas/src/airflow/providers/openfaas/hooks/openfaas.py::raise AirflowException("failed to deploy")
+providers/openfaas/src/airflow/providers/openfaas/hooks/openfaas.py::raise AirflowException("failed to invoke function")
+providers/openfaas/src/airflow/providers/openfaas/hooks/openfaas.py::raise AirflowException("failed to update " + self.function_name)
+providers/opensearch/src/airflow/providers/opensearch/hooks/opensearch.py::raise AirflowException(
+providers/opensearch/src/airflow/providers/opensearch/log/os_task_handler.py::raise AirflowException(f"Could not find TaskInstance for {ti}")
+providers/opensearch/src/airflow/providers/opensearch/operators/opensearch.py::raise AirflowException(
+providers/opensearch/src/airflow/providers/opensearch/operators/opensearch.py::raise AirflowException("Index name is required when using the query input.")
+providers/opensearch/src/airflow/providers/opensearch/operators/opensearch.py::raise AirflowException("Query input is missing required field Query in dictionary")
+providers/opensearch/src/airflow/providers/opensearch/operators/opensearch.py::raise AirflowException(e)
+providers/pagerduty/src/airflow/providers/pagerduty/hooks/pagerduty.py::raise AirflowException("Cannot get token: No valid api token nor pagerduty_conn_id supplied.")
+providers/pagerduty/src/airflow/providers/pagerduty/hooks/pagerduty_events.py::raise AirflowException(
+providers/postgres/src/airflow/providers/postgres/hooks/postgres.py::raise AirflowException(
+providers/postgres/src/airflow/providers/postgres/hooks/postgres.py::raise AirflowException("The parameter 'sqlalchemy_query' must be of type dict!")
+providers/presto/src/airflow/providers/presto/hooks/presto.py::raise AirflowException("Kerberos authorization doesn't support password.")
+providers/samba/src/airflow/providers/samba/transfers/gcs_to_samba.py::raise AirflowException(
+providers/segment/src/airflow/providers/segment/hooks/segment.py::raise AirflowException("No Segment write key provided")
+providers/segment/src/airflow/providers/segment/hooks/segment.py::raise AirflowException(f"Segment error: {error}")
+providers/sftp/src/airflow/providers/sftp/hooks/sftp.py::raise AirflowException("No files matching")
+providers/sftp/src/airflow/providers/sftp/hooks/sftp.py::raise AirflowException(f"{local_full_path} already exists")
+providers/sftp/src/airflow/providers/sftp/hooks/sftp.py::raise AirflowException(f"{path} already exists and is a file")
+providers/sftp/src/airflow/providers/sftp/hooks/sftp.py::raise AirflowException(f"{remote_full_path} already exists")
+providers/sftp/src/airflow/providers/sftp/operators/sftp.py::raise AirflowException(
+providers/sftp/src/airflow/providers/sftp/operators/sftp.py::raise AirflowException("Cannot operate without sftp_hook or ssh_conn_id.")
+providers/sftp/src/airflow/providers/sftp/sensors/sftp.py::raise AirflowException from e
+providers/sftp/src/airflow/providers/sftp/sensors/sftp.py::raise AirflowException("No event received in trigger callback")
+providers/sftp/src/airflow/providers/sftp/sensors/sftp.py::raise AirflowException(event["message"])
+providers/singularity/src/airflow/providers/singularity/operators/singularity.py::raise AirflowException("You must define a command.")
+providers/singularity/src/airflow/providers/singularity/operators/singularity.py::raise AirflowException(f"Singularity failed: {message}")
+providers/slack/src/airflow/providers/slack/hooks/slack.py::raise AirflowException("Max retries reached for conversations.list")
+providers/slack/src/airflow/providers/slack/hooks/slack_webhook.py::raise AirflowException(
+providers/slack/src/airflow/providers/slack/transfers/base_sql_to_slack.py::raise AirflowException("This hook is not supported. The hook class must have get_df method.")
+providers/slack/src/airflow/providers/slack/transfers/sql_to_slack.py::raise AirflowException(f"Unexpected output file format: {output_file_format}")
+providers/slack/src/airflow/providers/slack/transfers/sql_to_slack_webhook.py::raise AirflowException("Expected 'slack_message' parameter is missing.")
+providers/slack/src/airflow/providers/slack/transfers/sql_to_slack_webhook.py::raise AirflowException("Expected 'sql' parameter is missing.")
+providers/slack/src/airflow/providers/slack/transfers/sql_to_slack_webhook.py::raise AirflowException("Expected 'sql' parameter should be a string.")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException(
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("SMTP connection is not found.")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("The 'smtp_client' should be initialized before!")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("The SMTP client is not initialized")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("The smtp connection should be loaded before!")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("Unable to connect to smtp server")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("You should provide `from_email` or define it in the connection.")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException("smtp_user or from_email must be set for OAuth2 authentication")
+providers/smtp/src/airflow/providers/smtp/hooks/smtp.py::raise AirflowException(f"Unable to obtain access token: {result.get('error_description')}")
+providers/smtp/src/airflow/providers/smtp/operators/smtp.py::raise AirflowException(
+providers/smtp/src/airflow/providers/smtp/operators/smtp.py::raise AirflowException("You should provide `from_email` or define it in the connection.")
+providers/snowflake/src/airflow/providers/snowflake/hooks/snowflake.py::raise AirflowException(
+providers/snowflake/src/airflow/providers/snowflake/hooks/snowflake_sql_api.py::raise AirflowException(
+providers/snowflake/src/airflow/providers/snowflake/hooks/snowflake_sql_api.py::raise AirflowException("Bindings should be a dictionary or None.")
+providers/snowflake/src/airflow/providers/snowflake/hooks/snowflake_sql_api.py::raise AirflowException("No statementHandle/statementHandles present in response")
+providers/snowflake/src/airflow/providers/snowflake/operators/snowflake.py::raise AirflowException(f"{statement_status.get('status')}: {statement_status.get('message')}")
+providers/snowflake/src/airflow/providers/snowflake/operators/snowflake.py::raise AirflowException(msg)
+providers/snowflake/src/airflow/providers/snowflake/operators/snowflake.py::raise AirflowException(statement_status["error"])
+providers/snowflake/tests/unit/snowflake/operators/test_snowflake.py::"""Test SnowflakeSqlApiOperator raise AirflowException of error event"""
+providers/ssh/src/airflow/providers/ssh/hooks/ssh.py::raise AirflowException(
+providers/ssh/src/airflow/providers/ssh/hooks/ssh.py::raise AirflowException("Key must have BEGIN and END header/footer on separate lines.")
+providers/ssh/src/airflow/providers/ssh/hooks/ssh.py::raise AirflowException("Missing required param: remote_host")
+providers/ssh/src/airflow/providers/ssh/hooks/ssh.py::raise AirflowException("SSH command timed out")
+providers/ssh/src/airflow/providers/ssh/operators/ssh.py::raise AirflowException("Cannot operate without ssh_hook or ssh_conn_id.")
+providers/ssh/src/airflow/providers/ssh/operators/ssh.py::raise AirflowException("SSH operator error: SSH command not specified. Aborting.")
+providers/ssh/src/airflow/providers/ssh/operators/ssh.py::raise AirflowException(f"SSH operator error: exit status = {exit_status}")
+providers/ssh/src/airflow/providers/ssh/operators/ssh_remote_job.py::raise AirflowException(
+providers/ssh/src/airflow/providers/ssh/operators/ssh_remote_job.py::raise AirflowException("Received null event from trigger")
+providers/ssh/src/airflow/providers/ssh/operators/ssh_remote_job.py::raise AirflowException("SSH operator error: command not specified.")
+providers/ssh/src/airflow/providers/ssh/operators/ssh_remote_job.py::raise AirflowException(f"Remote job failed with exit code: {exit_code}")
+providers/ssh/src/airflow/providers/ssh/operators/ssh_remote_job.py::raise AirflowException(f"Remote job failed: {event.get('message', 'Unknown error')}")
+providers/standard/src/airflow/providers/standard/operators/bash.py::raise AirflowException(
+providers/standard/src/airflow/providers/standard/operators/bash.py::raise AirflowException(f"Can not find the cwd: {self.cwd}")
+providers/standard/src/airflow/providers/standard/operators/bash.py::raise AirflowException(f"The cwd {self.cwd} must be a directory")
+providers/standard/src/airflow/providers/standard/operators/datetime.py::raise AirflowException(
+providers/standard/src/airflow/providers/standard/operators/python.py::raise AirflowException(
+providers/standard/src/airflow/providers/standard/operators/python.py::raise AirflowException("`python_callable` param must be callable")
+providers/standard/src/airflow/providers/standard/operators/python.py::raise AirflowException(error_msg) from None
+providers/standard/src/airflow/providers/standard/operators/python.py::raise AirflowException(f"Unable to create new virtual environment in {venv_path}") from e
+providers/standard/src/airflow/providers/standard/operators/python.py::raise AirflowException(msg)
+providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py::raise AirflowException(
+providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py::raise AirflowException(f"Dag {self.trigger_dag_id} is paused")
+providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py::raise AirflowException(f"{self.trigger_dag_id} failed with failed state {state}")
+providers/standard/src/airflow/providers/standard/operators/trigger_dagrun.py::raise AirflowException(f"{self.trigger_dag_id} failed with failed states {state}")
+providers/standard/src/airflow/providers/standard/sensors/filesystem.py::raise AirflowException("%s task failed as %s not found.", self.task_id, self.filepath)
+providers/standard/src/airflow/providers/standard/utils/skipmixin.py::raise AirflowException(
+providers/standard/tests/unit/standard/operators/test_python.py::"""Non-serializable op_kwargs should raise AirflowException with helpful message."""
+providers/standard/tests/unit/standard/sensors/test_external_task_sensor.py::Clearing across multiple DAGs should raise AirflowException if more levels are being cleared
+providers/tableau/src/airflow/providers/tableau/hooks/tableau.py::raise AirflowException(
+providers/tableau/src/airflow/providers/tableau/operators/tableau.py::raise AirflowException(error_message)
+providers/tableau/src/airflow/providers/tableau/operators/tableau.py::raise AirflowException(f"{self.resource} with {self.match_with} {self.find} not found!")
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException(
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException("'chat_id' must be provided for telegram document message")
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException("'chat_id' must be provided for telegram message")
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException("'text' must be provided for telegram message")
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException("Cannot get token: No valid Telegram connection supplied.")
+providers/telegram/src/airflow/providers/telegram/hooks/telegram.py::raise AirflowException("Missing token(password) in Telegram connection")
+providers/telegram/src/airflow/providers/telegram/operators/telegram.py::raise AirflowException("No valid Telegram connection id supplied.")
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(Constants.BTEQ_REMOTE_ERROR_MSG)
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(Constants.BTEQ_TIMEOUT_ERROR_MSG, timeout)
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(Constants.BTEQ_UNEXPECTED_ERROR_MSG)
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(f"Failed to execute BTEQ script : {failure_message}")
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(f"{Constants.BTEQ_REMOTE_ERROR_MSG}: {str(e)}")
+providers/teradata/src/airflow/providers/teradata/hooks/bteq.py::raise AirflowException(f"{Constants.BTEQ_UNEXPECTED_ERROR_MSG}: {failure_message}")
+providers/teradata/src/airflow/providers/teradata/hooks/ttu.py::raise AirflowException("Missing required connection parameters: login, password, or host.")
+providers/teradata/src/airflow/providers/teradata/operators/teradata_compute_cluster.py::raise AirflowException(Constants.CC_ERR_VERSION_GET)
+providers/teradata/src/airflow/providers/teradata/operators/teradata_compute_cluster.py::raise AirflowException(Constants.CC_GRP_LAKE_SUPPORT_ONLY_MSG % operation)
+providers/teradata/src/airflow/providers/teradata/operators/teradata_compute_cluster.py::raise AirflowException(Constants.CC_GRP_PRP_NON_EXISTS_MSG % operation)
+providers/teradata/src/airflow/providers/teradata/operators/teradata_compute_cluster.py::raise AirflowException(Constants.CC_OPR_EMPTY_PROFILE_ERROR_MSG % operation)
+providers/teradata/src/airflow/providers/teradata/operators/teradata_compute_cluster.py::raise AirflowException(event["message"])
+providers/teradata/src/airflow/providers/teradata/triggers/teradata_compute_cluster.py::raise AirflowException(Constants.CC_GRP_PRP_NON_EXISTS_MSG % "manage")
+providers/teradata/src/airflow/providers/teradata/utils/bteq_util.py::raise AirflowException(
+providers/teradata/src/airflow/providers/teradata/utils/bteq_util.py::raise AirflowException("BTEQ is not installed or not available in the system's PATH.")
+providers/trino/src/airflow/providers/trino/hooks/trino.py::raise AirflowException(
+providers/ydb/src/airflow/providers/ydb/hooks/ydb.py::raise AirflowException("parameters is not supported yet")
+providers/ydb/src/airflow/providers/ydb/operators/ydb.py::raise AirflowException("parameters are not supported yet")
+scripts/ci/prek/check_new_airflow_exception_usage.py::"""Check that no new ``raise AirflowException`` usages are introduced.
+scripts/ci/prek/check_new_airflow_exception_usage.py::"""``relative/path/to/file.py::raise AirflowException(...)``"""
+scripts/ci/prek/check_new_airflow_exception_usage.py::"New [bold]raise AirflowException[/bold] usage detected.\n"
+scripts/ci/prek/check_new_airflow_exception_usage.py::``raise AirflowException`` found in a checked file that is **not** present in
+scripts/ci/prek/check_new_airflow_exception_usage.py::console.print(f"Scanning [cyan]{REPO_ROOT}[/cyan] for raise AirflowException …")
+scripts/ci/prek/check_new_airflow_exception_usage.py::description="Prevent new raise AirflowException usages.",
+task-sdk/src/airflow/sdk/bases/sensor.py::raise AirflowException("Override me.")
+task-sdk/src/airflow/sdk/bases/skipmixin.py::raise AirflowException(
+task-sdk/src/airflow/sdk/crypto.py::raise AirflowException(f"Could not create Fernet object: {value_error}")
+task-sdk/src/airflow/sdk/definitions/_internal/setup_teardown.py::raise AirflowException("Cannot add task to context outside the context manager.")
+task-sdk/src/airflow/sdk/definitions/connection.py::raise AirflowException(
+task-sdk/src/airflow/sdk/definitions/connection.py::raise AirflowException(f"Invalid connection string: {uri}.")
+task-sdk/src/airflow/sdk/definitions/connection.py::raise AirflowException(f'Unknown hook type "{self.conn_type}"')
+task-sdk/src/airflow/sdk/definitions/decorators/setup_teardown.py::raise AirflowException("Only setup/teardown tasks can be used as context managers.")
+task-sdk/src/airflow/sdk/definitions/decorators/setup_teardown.py::raise AirflowException("Task groups cannot be marked as setup or teardown.")
+task-sdk/src/airflow/sdk/definitions/xcom_arg.py::raise AirflowException("Only setup/teardown tasks can be used as context managers.")
+task-sdk/src/airflow/sdk/execution_time/task_runner.py::raise AirflowException(
+task-sdk/tests/task_sdk/bases/test_sensor.py::raise AirflowException("Should be skipped")
+task-sdk/tests/task_sdk/execution_time/test_task_runner.py::raise AirflowException("Failing task")
+task-sdk/tests/task_sdk/execution_time/test_task_runner.py::raise AirflowException("Test failure")
