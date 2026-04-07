@@ -24,22 +24,26 @@
 """Check that no new ``raise AirflowException`` usages are introduced.
 
 All *existing* usages are recorded in ``known_airflow_exceptions.txt`` next to
-this script (one ``relative/path::stripped_raise_line`` entry per line).  Any
-``raise AirflowException`` found in a checked file that is **not** present in
-that list is treated as a violation – use a dedicated exception class instead.
+this script as ``relative/path::N`` entries (one per file), where ``N`` is the
+maximum number of ``raise AirflowException`` occurrences allowed in that file.
+A file whose current count exceeds the recorded limit is treated as a violation
+– use a dedicated exception class instead.
 
 Modes
 -----
 Default (files passed by prek/pre-commit):
-    Check only the supplied files; fail on any unlisted usage.
+    Check only the supplied files; fail if any file's count exceeds the limit.
+    When a file's count has *decreased*, the allowlist entry is tightened
+    automatically and the hook exits with a non-zero code so that pre-commit
+    reports the modified allowlist — just stage
+    ``scripts/ci/prek/known_airflow_exceptions.txt`` and re-run.
 
 ``--all-files``:
     Walk the whole repository and check every ``.py`` file.
 
 ``--cleanup``:
-    Remove stale entries from the allowlist (entries whose exception no longer
-    exists in the corresponding source file). Safe to run at any time; does
-    not add new entries.
+    Remove entries for files that no longer exist. Safe to run at any time;
+    does not add new entries or raise limits.
 
 ``--generate``:
     Scan the whole repository and *rebuild* the allowlist from scratch.
@@ -68,25 +72,41 @@ class AllowlistManager:
     def __init__(self, allowlist_file: Path) -> None:
         self.allowlist_file = allowlist_file
 
-    def load(self) -> set[str]:
+    def load(self) -> dict[str, int]:
+        """Return mapping of ``relative_path -> allowed_count``."""
         if not self.allowlist_file.exists():
-            return set()
-        return {line for line in self.allowlist_file.read_text().splitlines() if line.strip()}
+            return {}
+        result: dict[str, int] = {}
+        for raw_line in self.allowlist_file.read_text().splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            rel_str, _, count_str = stripped.rpartition("::")
+            if not rel_str or not count_str:
+                continue
+            try:
+                result[rel_str] = int(count_str)
+            except ValueError:
+                continue
+        return result
 
-    def save(self, entries: set[str]) -> None:
-        self.allowlist_file.write_text("\n".join(sorted(entries)) + "\n")
+    def save(self, counts: dict[str, int]) -> None:
+        lines = [f"{rel}::{count}" for rel, count in sorted(counts.items())]
+        self.allowlist_file.write_text("\n".join(lines) + "\n")
 
     def generate(self) -> int:
         console.print(f"Scanning [cyan]{REPO_ROOT}[/cyan] for raise AirflowException …")
-        entries: set[str] = set()
+        counts: dict[str, int] = {}
         for path in _iter_python_files():
-            for line in _raise_lines(path):
-                entries.add(_make_entry(path, line))
+            n = len(_raise_lines(path))
+            if n > 0:
+                counts[str(path.relative_to(REPO_ROOT))] = n
 
-        self.save(entries)
+        self.save(counts)
+        total = sum(counts.values())
         console.print(
             f"[green]✓ Generated[/green] [cyan]{self.allowlist_file.relative_to(REPO_ROOT)}[/cyan] "
-            f"with [bold]{len(entries)}[/bold] entries."
+            f"with [bold]{len(counts)}[/bold] files / [bold]{total}[/bold] occurrences."
         )
         return 0
 
@@ -96,12 +116,7 @@ class AllowlistManager:
             console.print("[yellow]Allowlist is empty – nothing to clean up.[/yellow]")
             return 0
 
-        stale: set[str] = set()
-        for entry in allowlist:
-            rel_str, _, raise_line = entry.partition("::")
-            path = REPO_ROOT / rel_str
-            if not path.exists() or raise_line not in _raise_lines(path):
-                stale.add(entry)
+        stale: list[str] = [rel for rel in allowlist if not (REPO_ROOT / rel).exists()]
 
         if stale:
             console.print(
@@ -109,18 +124,15 @@ class AllowlistManager:
             )
             for s in sorted(stale):
                 console.print(f"  [dim]-[/dim] {s}")
-            self.save(allowlist - stale)
+            for s in stale:
+                del allowlist[s]
+            self.save(allowlist)
             console.print(
                 f"\n[green]Updated[/green] [cyan]{self.allowlist_file.relative_to(REPO_ROOT)}[/cyan]"
             )
         else:
             console.print("[green]✓ No stale entries found.[/green]")
         return 0
-
-
-def _make_entry(path: Path, stripped_line: str) -> str:
-    """Generate entry like ``relative/path/to/file.py::raise AirflowException(...)``"""
-    return f"{path.relative_to(REPO_ROOT)}::{stripped_line}"
 
 
 def _raise_lines(path: Path) -> list[str]:
@@ -146,16 +158,37 @@ def _iter_python_files() -> list[Path]:
     ]
 
 
-def _check_airflow_exception_usage(files: list[Path], allowlist: set[str]) -> int:
-    # [(file_name, line content), ...]
-    violations: list[tuple[Path, str]] = []
+def _check_airflow_exception_usage(
+    files: list[Path], allowlist: dict[str, int], manager: AllowlistManager
+) -> int:
+    violations: list[tuple[Path, int, int]] = []
+    tightened: list[tuple[str, int, int]] = []  # (rel, old_count, new_count)
+
     for path in files:
         if not path.exists() or path.suffix != ".py":
             continue
-        for line in _raise_lines(path):
-            entry = _make_entry(path, line)
-            if entry not in allowlist:
-                violations.append((path, line))
+        actual = len(_raise_lines(path))
+        rel = str(path.relative_to(REPO_ROOT))
+        allowed = allowlist.get(rel, 0)
+        if actual > allowed:
+            violations.append((path, actual, allowed))
+        elif actual < allowed:
+            # Usage was reduced — tighten the allowlist entry so it can't creep back up.
+            if actual == 0:
+                del allowlist[rel]
+            else:
+                allowlist[rel] = actual
+            tightened.append((rel, allowed, actual))
+
+    if tightened:
+        manager.save(allowlist)
+        console.print(
+            f"[green]✓ Tightened {len(tightened)} entr{'y' if len(tightened) == 1 else 'ies'} "
+            f"in [cyan]{manager.allowlist_file.relative_to(REPO_ROOT)}[/cyan][/green] "
+            "(stage the updated file):"
+        )
+        for rel, old, new in tightened:
+            console.print(f"  [cyan]{rel}[/cyan]  {old} → {new}")
 
     if violations:
         console.print(
@@ -170,11 +203,13 @@ def _check_airflow_exception_usage(files: list[Path], allowlist: set[str]) -> in
                 border_style="red",
             )
         )
-        for path, line in violations:
-            rel = path.relative_to(REPO_ROOT)
-            console.print(f"  [cyan]{rel}[/cyan]  {line}")
+        for path, actual, allowed in violations:
+            console.print(f"  [cyan]{path.relative_to(REPO_ROOT)}[/cyan]  count={actual} (allowed={allowed})")
         return 1
-    return 0
+
+    # Return 1 when the allowlist was tightened so pre-commit reports the file as modified
+    # and prompts the user to stage the updated allowlist.
+    return 1 if tightened else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -212,7 +247,7 @@ def main(argv: list[str] | None = None) -> int:
     allowlist = manager.load()
 
     if args.all_files:
-        return _check_airflow_exception_usage(_iter_python_files(), allowlist)
+        return _check_airflow_exception_usage(_iter_python_files(), allowlist, manager)
 
     if not args.files:
         console.print(
@@ -220,7 +255,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    return _check_airflow_exception_usage([Path(f).resolve() for f in args.files], allowlist)
+    return _check_airflow_exception_usage([Path(f).resolve() for f in args.files], allowlist, manager)
 
 
 if __name__ == "__main__":
