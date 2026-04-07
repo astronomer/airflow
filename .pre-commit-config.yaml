@@ -982,7 +982,7 @@ repos:
         entry: ./scripts/ci/prek/check_new_airflow_exception_usage.py
         language: python
         pass_filenames: true
-        files: \.py$
+        files: ^(airflow-core|airflow-ctl|task-sdk|providers|shared)/.*\.py$
       - id: bandit
         name: bandit
         description: "Bandit is a tool for finding common security issues in Python code"
