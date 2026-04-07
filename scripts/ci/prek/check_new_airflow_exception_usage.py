@@ -76,18 +76,21 @@ class AllowlistManager:
         """Return mapping of ``relative_path -> allowed_count``."""
         if not self.allowlist_file.exists():
             return {}
+
         result: dict[str, int] = {}
         for raw_line in self.allowlist_file.read_text().splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
+            if not (stripped := raw_line.strip()):
                 continue
+
             rel_str, _, count_str = stripped.rpartition("::")
             if not rel_str or not count_str:
                 continue
+
             try:
                 result[rel_str] = int(count_str)
             except ValueError:
                 continue
+
         return result
 
     def save(self, counts: dict[str, int]) -> None:
@@ -117,7 +120,6 @@ class AllowlistManager:
             return 0
 
         stale: list[str] = [rel for rel in allowlist if not (REPO_ROOT / rel).exists()]
-
         if stale:
             console.print(
                 f"[yellow]Removing {len(stale)} stale entr{'y' if len(stale) == 1 else 'ies'}:[/yellow]"
@@ -141,6 +143,7 @@ def _raise_lines(path: Path) -> list[str]:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+
     result = []
     for raw_line in text.splitlines():
         stripped = raw_line.strip()
