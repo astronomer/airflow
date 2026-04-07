@@ -1956,7 +1956,7 @@ export class TaskInstanceService {
      * @param data.requestBody
      * @param data.mapIndex
      * @param data.updateMask
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static patchTaskInstance(data: PatchTaskInstanceData): CancelablePromise<PatchTaskInstanceResponse> {
@@ -2062,7 +2062,7 @@ export class TaskInstanceService {
      * @param data.limit
      * @param data.offset
      * @param data.orderBy Attributes to order by, multi criteria sort is supported. Prefix with `-` for descending order. Supported attributes: `id, state, duration, start_date, end_date, map_index, try_number, logical_date, run_after, data_interval_start, data_interval_end, rendered_map_index, operator, run_after, logical_date, data_interval_start, data_interval_end`
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static getMappedTaskInstances(data: GetMappedTaskInstancesData): CancelablePromise<GetMappedTaskInstancesResponse> {
@@ -2286,7 +2286,7 @@ export class TaskInstanceService {
      * @param data.mapIndex
      * @param data.requestBody
      * @param data.updateMask
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static patchTaskInstanceByMapIndex(data: PatchTaskInstanceByMapIndexData): CancelablePromise<PatchTaskInstanceByMapIndexResponse> {
@@ -2321,9 +2321,16 @@ export class TaskInstanceService {
      *
      * This endpoint allows specifying `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs
      * and DAG runs.
+     *
+     * Supports two pagination modes:
+     *
+     * - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
+     * - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's ``next_cursor``).
+     * When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
      * @param data The data for the request.
      * @param data.dagId
      * @param data.dagRunId
+     * @param data.cursor Cursor for keyset-based pagination (mutually exclusive with offset)
      * @param data.taskId
      * @param data.runAfterGte
      * @param data.runAfterGt
@@ -2367,7 +2374,7 @@ export class TaskInstanceService {
      * @param data.limit
      * @param data.offset
      * @param data.orderBy Attributes to order by, multi criteria sort is supported. Prefix with `-` for descending order. Supported attributes: `id, state, duration, start_date, end_date, map_index, try_number, logical_date, run_after, data_interval_start, data_interval_end, rendered_map_index, operator, logical_date, run_after, data_interval_start, data_interval_end`
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static getTaskInstances(data: GetTaskInstancesData): CancelablePromise<GetTaskInstancesResponse> {
@@ -2379,6 +2386,7 @@ export class TaskInstanceService {
                 dag_run_id: data.dagRunId
             },
             query: {
+                cursor: data.cursor,
                 task_id: data.taskId,
                 run_after_gte: data.runAfterGte,
                 run_after_gt: data.runAfterGt,
@@ -2468,7 +2476,7 @@ export class TaskInstanceService {
      * @param data.dagId
      * @param data.dagRunId
      * @param data.requestBody
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static getTaskInstancesBatch(data: GetTaskInstancesBatchData): CancelablePromise<GetTaskInstancesBatchResponse> {
@@ -2561,7 +2569,7 @@ export class TaskInstanceService {
      * @param data The data for the request.
      * @param data.dagId
      * @param data.requestBody
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static postClearTaskInstances(data: PostClearTaskInstancesData): CancelablePromise<PostClearTaskInstancesResponse> {
@@ -2593,7 +2601,7 @@ export class TaskInstanceService {
      * @param data.mapIndex
      * @param data.requestBody
      * @param data.updateMask
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static patchTaskInstanceDryRunByMapIndex(data: PatchTaskInstanceDryRunByMapIndexData): CancelablePromise<PatchTaskInstanceDryRunByMapIndexResponse> {
@@ -2631,7 +2639,7 @@ export class TaskInstanceService {
      * @param data.requestBody
      * @param data.mapIndex
      * @param data.updateMask
-     * @returns TaskInstanceCollectionResponse Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static patchTaskInstanceDryRun(data: PatchTaskInstanceDryRunData): CancelablePromise<PatchTaskInstanceDryRunResponse> {

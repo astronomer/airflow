@@ -31,7 +31,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: name_pattern
@@ -148,7 +147,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: name_pattern
@@ -281,7 +279,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -944,7 +941,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -1489,7 +1485,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -1987,7 +1982,14 @@ paths:
             application/json:
               schema:
                 anyOf:
-                - $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                - oneOf:
+                  - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                  - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                  discriminator:
+                    propertyName: pagination
+                    mapping:
+                      offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                      cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
                 - $ref: '#/components/schemas/DAGRunResponse'
                 title: Response Clear Dag Run
         '401':
@@ -2048,7 +2050,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: run_after_gte
@@ -2963,7 +2964,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -3031,7 +3031,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: tags
@@ -3337,7 +3336,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: tags
@@ -3833,7 +3831,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4181,7 +4178,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4343,7 +4339,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4450,7 +4445,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       responses:
@@ -4696,7 +4690,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4869,7 +4862,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       responses:
@@ -5209,7 +5201,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: xcom_key_pattern
@@ -5574,7 +5565,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Patch Task Instance
         '401':
           content:
             application/json:
@@ -6036,7 +6035,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -6065,7 +6063,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Get Mapped Task Instances
         '401':
           content:
             application/json:
@@ -6479,7 +6485,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Patch Task Instance By Map Index
         '401':
           content:
             application/json:
@@ -6521,13 +6535,13 @@ paths:
       tags:
       - Task Instance
       summary: Get Task Instances
-      description: 'Get list of task instances.
-
-
-        This endpoint allows specifying `~` as the dag_id, dag_run_id to retrieve
-        Task Instances for all DAGs
-
-        and DAG runs.'
+      description: "Get list of task instances.\n\nThis endpoint allows specifying\
+        \ `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs\n\
+        and DAG runs.\n\nSupports two pagination modes:\n\n- **Offset** (default):\
+        \ Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.\n\
+        - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's\
+        \ ``next_cursor``).\n  When ``cursor`` is provided, ``offset`` is ignored\
+        \ and ``total_entries`` is not returned."
       operationId: get_task_instances
       security:
       - OAuth2PasswordBearer: []
@@ -6545,6 +6559,17 @@ paths:
         schema:
           type: string
           title: Dag Run Id
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Cursor for keyset-based pagination (mutually exclusive with
+            offset)
+          title: Cursor
+        description: Cursor for keyset-based pagination (mutually exclusive with offset)
       - name: task_id
         in: query
         required: false
@@ -6938,7 +6963,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -6967,7 +6991,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Get Task Instances
         '401':
           content:
             application/json:
@@ -7088,7 +7120,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Get Task Instances Batch
         '401':
           content:
             application/json:
@@ -7286,7 +7326,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Post Clear Task Instances
         '401':
           content:
             application/json:
@@ -7376,7 +7424,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Patch Task Instance Dry Run By Map Index
         '401':
           content:
             application/json:
@@ -7466,7 +7522,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TaskInstanceCollectionResponse'
+                oneOf:
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                discriminator:
+                  propertyName: pagination
+                  mapping:
+                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
+                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                title: Response Patch Task Instance Dry Run
         '401':
           content:
             application/json:
@@ -7801,7 +7865,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -8204,7 +8267,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -8348,7 +8410,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: version_number
@@ -8671,7 +8732,6 @@ paths:
         required: false
         schema:
           type: integer
-          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -12568,22 +12628,35 @@ components:
       - updated_at
       title: TaskInletAssetReference
       description: Task inlet reference serializer for assets.
-    TaskInstanceCollectionResponse:
+    TaskInstanceCursorCollectionResponse:
       properties:
+        pagination:
+          type: string
+          const: cursor
+          title: Pagination
+          default: cursor
+        next_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Cursor
+        previous_cursor:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Previous Cursor
         task_instances:
           items:
             $ref: '#/components/schemas/TaskInstanceResponse'
           type: array
           title: Task Instances
-        total_entries:
-          type: integer
-          title: Total Entries
       type: object
       required:
+      - next_cursor
+      - previous_cursor
       - task_instances
-      - total_entries
-      title: TaskInstanceCollectionResponse
-      description: Task Instance Collection serializer for responses.
+      title: TaskInstanceCursorCollectionResponse
+      description: Cursor-paginated task instance collection response.
     TaskInstanceHistoryCollectionResponse:
       properties:
         task_instances:
@@ -12742,6 +12815,27 @@ components:
       - dag_version
       title: TaskInstanceHistoryResponse
       description: TaskInstanceHistory serializer for responses.
+    TaskInstanceOffsetCollectionResponse:
+      properties:
+        pagination:
+          type: string
+          const: offset
+          title: Pagination
+          default: offset
+        total_entries:
+          type: integer
+          title: Total Entries
+        task_instances:
+          items:
+            $ref: '#/components/schemas/TaskInstanceResponse'
+          type: array
+          title: Task Instances
+      type: object
+      required:
+      - total_entries
+      - task_instances
+      title: TaskInstanceOffsetCollectionResponse
+      description: Offset-paginated task instance collection response.
     TaskInstanceResponse:
       properties:
         id:

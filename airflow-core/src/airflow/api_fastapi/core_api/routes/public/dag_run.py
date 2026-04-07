@@ -76,6 +76,7 @@ from airflow.api_fastapi.core_api.datamodels.dag_run import (
 )
 from airflow.api_fastapi.core_api.datamodels.task_instances import (
     TaskInstanceCollectionResponse,
+    TaskInstanceOffsetCollectionResponse,
     TaskInstanceResponse,
 )
 from airflow.api_fastapi.core_api.openapi.exceptions import create_openapi_http_exception_doc
@@ -310,7 +311,7 @@ def clear_dag_run(
             session=session,
         )
 
-        return TaskInstanceCollectionResponse(
+        return TaskInstanceOffsetCollectionResponse(
             task_instances=cast("list[TaskInstanceResponse]", task_instances),
             total_entries=len(task_instances),
         )

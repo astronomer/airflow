@@ -119,7 +119,10 @@ class OffsetFilter(BaseParam[NonNegativeInt]):
         return select.offset(self.value)
 
     @classmethod
-    def depends(cls, offset: NonNegativeInt = 0) -> OffsetFilter:
+    def depends(
+        cls,
+        offset: NonNegativeInt = Query(0),
+    ) -> OffsetFilter:
         return cls().set_value(offset)
 
 
@@ -281,10 +284,18 @@ class SortParam(BaseParam[list[str]]):
         self.allowed_attrs = allowed_attrs
         self.model = model
         self.to_replace = to_replace
+        self._cached_resolution: tuple[list[ColumnElement], list[tuple[str, ColumnElement, bool]]] | None = (
+            None
+        )
 
-    def to_orm(self, select: Select) -> Select:
-        if self.skip_none is False:
-            raise ValueError(f"Cannot set 'skip_none' to False on a {type(self)}")
+    def set_value(self, value: list[str] | None) -> Self:
+        self._cached_resolution = None
+        return super().set_value(value)
+
+    def _resolve(self) -> tuple[list[ColumnElement], list[tuple[str, ColumnElement, bool]]]:
+        """Resolve sort columns and ORDER BY expressions. Cached after first call."""
+        if self._cached_resolution is not None:
+            return self._cached_resolution
 
         if self.value is None:
             self.value = [self.get_primary_key_string()]
@@ -297,8 +308,10 @@ class SortParam(BaseParam[list[str]]):
             )
 
         columns: list[ColumnElement] = []
+        resolved: list[tuple[str, ColumnElement, bool]] = []
         for order_by_value in order_by_values:
             lstriped_orderby = order_by_value.lstrip("-")
+            attr_name = lstriped_orderby
             column: Column | None = None
             if self.to_replace:
                 replacement = self.to_replace.get(lstriped_orderby, lstriped_orderby)
@@ -316,22 +329,38 @@ class SortParam(BaseParam[list[str]]):
             if column is None:
                 column = getattr(self.model, lstriped_orderby)
 
-            if order_by_value.startswith("-"):
+            is_desc = order_by_value.startswith("-")
+            if is_desc:
                 columns.append(column.desc())
             else:
                 columns.append(column.asc())
-
-        # Reset default sorting
-        select = select.order_by(None)
+            resolved.append((attr_name, column, is_desc))
 
         primary_key_column = self.get_primary_key_column()
-        # Always add a final discriminator to enforce deterministic ordering.
-        if order_by_values and order_by_values[0].startswith("-"):
+        pk_name = self.get_primary_key_string()
+        pk_desc = bool(order_by_values and order_by_values[0].startswith("-"))
+        if pk_desc:
             columns.append(primary_key_column.desc())
         else:
             columns.append(primary_key_column.asc())
 
-        return select.order_by(*columns)
+        if not any(name == pk_name for name, _, _ in resolved):
+            resolved.append((pk_name, primary_key_column, pk_desc))
+
+        self._cached_resolution = (columns, resolved)
+        return self._cached_resolution
+
+    def to_orm(self, select: Select) -> Select:
+        if self.skip_none is False:
+            raise ValueError(f"Cannot set 'skip_none' to False on a {type(self)}")
+
+        columns, _ = self._resolve()
+        return select.order_by(None).order_by(*columns)
+
+    def get_resolved_columns(self) -> list[tuple[str, ColumnElement, bool]]:
+        """Return resolved sort columns as (attr_name, column_element, is_descending) tuples."""
+        _, resolved = self._resolve()
+        return resolved
 
     def get_primary_key_column(self) -> Column:
         """Get the primary key column of the model of SortParam object."""

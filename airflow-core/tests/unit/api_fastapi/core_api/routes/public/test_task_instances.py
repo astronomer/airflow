@@ -1717,6 +1717,124 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         assert (num_entries_batch1 + num_entries_batch2) == ti_count
         assert response_batch1 != response_batch2
 
+    def test_cursor_pagination_first_page(self, test_client, session):
+        """First request without cursor returns offset response with pagination='offset'."""
+        dag_id = "example_python_operator"
+        self.create_task_instances(
+            session,
+            task_instances=[
+                {"start_date": DEFAULT_DATETIME_1 + dt.timedelta(minutes=(i + 1))} for i in range(5)
+            ],
+            dag_id=dag_id,
+        )
+        response = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"limit": 3, "order_by": ["map_index"]},
+        )
+        assert response.status_code == 200, response.json()
+        body = response.json()
+        assert body["pagination"] == "offset"
+        assert "total_entries" in body
+        assert len(body["task_instances"]) == 3
+
+    def test_cursor_pagination_returns_cursor_response(self, test_client, session):
+        """When cursor param is provided, response has pagination='cursor'."""
+        import base64
+        import json
+
+        dag_id = "example_python_operator"
+        self.create_task_instances(
+            session,
+            task_instances=[
+                {"start_date": DEFAULT_DATETIME_1 + dt.timedelta(minutes=(i + 1))} for i in range(5)
+            ],
+            dag_id=dag_id,
+        )
+        # Build a fake first-page cursor with an empty string that forces the cursor code path.
+        # Instead, let's fetch the first page normally, then use cursor for the second page.
+        # First page without cursor (offset mode)
+        response1 = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"limit": 100, "order_by": ["map_index"]},
+        )
+        assert response1.status_code == 200
+        body1 = response1.json()
+        assert body1["pagination"] == "offset"
+        tis = body1["task_instances"]
+        assert len(tis) > 0
+
+        # Build a cursor from the first result (simulate what encode_cursor does)
+        first_ti = tis[0]
+        cursor_payload = {
+            "values": [str(first_ti["map_index"]), str(first_ti["id"])],
+            "order_by": ["map_index"],
+        }
+        cursor_token = base64.urlsafe_b64encode(json.dumps(cursor_payload).encode()).decode()
+
+        response2 = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"limit": 100, "cursor": cursor_token, "order_by": ["map_index"]},
+        )
+        assert response2.status_code == 200
+        body2 = response2.json()
+        assert body2["pagination"] == "cursor"
+        assert "next_cursor" in body2
+        assert "previous_cursor" in body2
+        assert "total_entries" not in body2
+
+    def test_cursor_pagination_pages_do_not_overlap(self, test_client, session):
+        """Cursor-driven pages partition the result set without overlap."""
+        import base64
+        import json
+
+        dag_id = "example_python_operator"
+        self.create_task_instances(
+            session,
+            task_instances=[
+                {"start_date": DEFAULT_DATETIME_1 + dt.timedelta(minutes=(i + 1))} for i in range(10)
+            ],
+            dag_id=dag_id,
+        )
+        page_size = 4
+        all_ids: list[str] = []
+        cursor_token = None
+
+        for _ in range(5):
+            params: dict = {"limit": page_size, "order_by": ["map_index"]}
+            if cursor_token:
+                params["cursor"] = cursor_token
+            response = test_client.get("/dags/~/dagRuns/~/taskInstances", params=params)
+            assert response.status_code == 200, response.json()
+            body = response.json()
+            page_ids = [ti["id"] for ti in body["task_instances"]]
+            all_ids.extend(page_ids)
+
+            if cursor_token is None:
+                # First page is offset-mode, build cursor from last row
+                if not body["task_instances"]:
+                    break
+                last = body["task_instances"][-1]
+                cursor_payload = {
+                    "values": [str(last["map_index"]), str(last["id"])],
+                    "order_by": ["map_index"],
+                }
+                cursor_token = base64.urlsafe_b64encode(json.dumps(cursor_payload).encode()).decode()
+            else:
+                cursor_token = body.get("next_cursor")
+                if cursor_token is None:
+                    break
+
+        assert len(all_ids) == len(set(all_ids)), "Cursor pages should not have overlapping items"
+
+    def test_cursor_pagination_invalid_token(self, test_client, session):
+        """Invalid cursor token returns 400."""
+        self.create_task_instances(session)
+        response = test_client.get(
+            "/dags/~/dagRuns/~/taskInstances",
+            params={"cursor": "this-is-not-valid", "order_by": ["map_index"]},
+        )
+        assert response.status_code == 400
+
     def test_task_group_filter_uses_run_version_not_latest(self, test_client, dag_maker, session):
         """
         Task group lookup should use the DAG version from the run, not the latest version.
@@ -4199,6 +4317,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
         response_data = response.json()
         assert response.status_code == 200
         assert response_data == {
+            "pagination": "offset",
             "task_instances": [
                 {
                     "dag_id": self.DAG_ID,
@@ -4473,6 +4592,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
                 "failed",
                 200,
                 {
+                    "pagination": "offset",
                     "task_instances": [
                         {
                             "dag_id": "example_python_operator",
@@ -4609,6 +4729,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
         assert response.status_code == 200, response.text
         response_data = response.json()
         assert response_data == {
+            "pagination": "offset",
             "task_instances": [
                 {
                     "dag_id": self.DAG_ID,
@@ -4670,6 +4791,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
         assert response.status_code == 200, response.text
         response_data = response.json()
         assert response_data == {
+            "pagination": "offset",
             "task_instances": [
                 {
                     "dag_id": self.DAG_ID,
@@ -4749,6 +4871,7 @@ class TestPatchTaskInstance(TestTaskInstanceEndpoint):
             assert response.status_code == 200, response.text
             response_data = response.json()
             assert response_data == {
+                "pagination": "offset",
                 "task_instances": [
                     {
                         "dag_id": self.DAG_ID,
@@ -4946,6 +5069,7 @@ class TestPatchTaskInstanceDryRun(TestTaskInstanceEndpoint):
         response_data = response.json()
         assert response.status_code == 200
         assert response_data == {
+            "pagination": "offset",
             "task_instances": [
                 {
                     "dag_id": self.DAG_ID,
@@ -5232,6 +5356,7 @@ class TestPatchTaskInstanceDryRun(TestTaskInstanceEndpoint):
                 "failed",
                 200,
                 {
+                    "pagination": "offset",
                     "task_instances": [
                         {
                             "dag_id": "example_python_operator",
@@ -5358,7 +5483,7 @@ class TestPatchTaskInstanceDryRun(TestTaskInstanceEndpoint):
             },
         )
         assert response.status_code == 200
-        assert response.json() == {"task_instances": [], "total_entries": 0}
+        assert response.json() == {"pagination": "offset", "task_instances": [], "total_entries": 0}
 
 
 class TestDeleteTaskInstance(TestTaskInstanceEndpoint):

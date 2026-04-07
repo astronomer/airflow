@@ -34,6 +34,7 @@ from pydantic import (
 )
 
 from airflow.api_fastapi.core_api.base import BaseModel, StrictBaseModel
+from airflow.api_fastapi.core_api.datamodels.common import CursorPaginatedResponse, OffsetPaginatedResponse
 from airflow.api_fastapi.core_api.datamodels.dag_versions import DagVersionResponse
 from airflow.api_fastapi.core_api.datamodels.job import JobResponse
 from airflow.api_fastapi.core_api.datamodels.trigger import TriggerResponse
@@ -82,11 +83,22 @@ class TaskInstanceResponse(BaseModel):
     dag_version: DagVersionResponse | None
 
 
-class TaskInstanceCollectionResponse(BaseModel):
-    """Task Instance Collection serializer for responses."""
+class TaskInstanceOffsetCollectionResponse(OffsetPaginatedResponse):
+    """Offset-paginated task instance collection response."""
 
     task_instances: Iterable[TaskInstanceResponse]
-    total_entries: int
+
+
+class TaskInstanceCursorCollectionResponse(CursorPaginatedResponse):
+    """Cursor-paginated task instance collection response."""
+
+    task_instances: Iterable[TaskInstanceResponse]
+
+
+TaskInstanceCollectionResponse = Annotated[
+    TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse,
+    Field(discriminator="pagination"),
+]
 
 
 class TaskDependencyResponse(BaseModel):

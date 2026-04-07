@@ -1375,11 +1375,13 @@ export type TaskInletAssetReference = {
 };
 
 /**
- * Task Instance Collection serializer for responses.
+ * Cursor-paginated task instance collection response.
  */
-export type TaskInstanceCollectionResponse = {
+export type TaskInstanceCursorCollectionResponse = {
+    pagination?: "cursor";
+    next_cursor: string | null;
+    previous_cursor: string | null;
     task_instances: Array<TaskInstanceResponse>;
-    total_entries: number;
 };
 
 /**
@@ -1420,6 +1422,15 @@ export type TaskInstanceHistoryResponse = {
     executor: string | null;
     executor_config: string;
     dag_version: DagVersionResponse | null;
+};
+
+/**
+ * Offset-paginated task instance collection response.
+ */
+export type TaskInstanceOffsetCollectionResponse = {
+    pagination?: "offset";
+    total_entries: number;
+    task_instances: Array<TaskInstanceResponse>;
 };
 
 /**
@@ -2563,7 +2574,7 @@ export type ClearDagRunData = {
     requestBody: DAGRunClearBody;
 };
 
-export type ClearDagRunResponse = TaskInstanceCollectionResponse | DAGRunResponse;
+export type ClearDagRunResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse | DAGRunResponse;
 
 export type GetDagRunsData = {
     bundleVersion?: string | null;
@@ -2943,7 +2954,7 @@ export type PatchTaskInstanceData = {
     updateMask?: Array<(string)> | null;
 };
 
-export type PatchTaskInstanceResponse = TaskInstanceCollectionResponse;
+export type PatchTaskInstanceResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type DeleteTaskInstanceData = {
     dagId: string;
@@ -3010,7 +3021,7 @@ export type GetMappedTaskInstancesData = {
     versionNumber?: Array<(number)>;
 };
 
-export type GetMappedTaskInstancesResponse = TaskInstanceCollectionResponse;
+export type GetMappedTaskInstancesResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type GetTaskInstanceDependenciesByMapIndexData = {
     dagId: string;
@@ -3066,9 +3077,13 @@ export type PatchTaskInstanceByMapIndexData = {
     updateMask?: Array<(string)> | null;
 };
 
-export type PatchTaskInstanceByMapIndexResponse = TaskInstanceCollectionResponse;
+export type PatchTaskInstanceByMapIndexResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type GetTaskInstancesData = {
+    /**
+     * Cursor for keyset-based pagination (mutually exclusive with offset)
+     */
+    cursor?: string | null;
     dagId: string;
     /**
      * SQL LIKE expression — use `%` / `_` wildcards (e.g. `%customer_%`). or the pipe `|` operator for OR logic (e.g. `dag1 | dag2`). Regular expressions are **not** supported.
@@ -3140,7 +3155,7 @@ export type GetTaskInstancesData = {
     versionNumber?: Array<(number)>;
 };
 
-export type GetTaskInstancesResponse = TaskInstanceCollectionResponse;
+export type GetTaskInstancesResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type BulkTaskInstancesData = {
     dagId: string;
@@ -3156,7 +3171,7 @@ export type GetTaskInstancesBatchData = {
     requestBody: TaskInstancesBatchBody;
 };
 
-export type GetTaskInstancesBatchResponse = TaskInstanceCollectionResponse;
+export type GetTaskInstancesBatchResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type GetTaskInstanceTryDetailsData = {
     dagId: string;
@@ -3183,7 +3198,7 @@ export type PostClearTaskInstancesData = {
     requestBody: ClearTaskInstancesBody;
 };
 
-export type PostClearTaskInstancesResponse = TaskInstanceCollectionResponse;
+export type PostClearTaskInstancesResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type PatchTaskInstanceDryRunByMapIndexData = {
     dagId: string;
@@ -3194,7 +3209,7 @@ export type PatchTaskInstanceDryRunByMapIndexData = {
     updateMask?: Array<(string)> | null;
 };
 
-export type PatchTaskInstanceDryRunByMapIndexResponse = TaskInstanceCollectionResponse;
+export type PatchTaskInstanceDryRunByMapIndexResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type PatchTaskInstanceDryRunData = {
     dagId: string;
@@ -3205,7 +3220,7 @@ export type PatchTaskInstanceDryRunData = {
     updateMask?: Array<(string)> | null;
 };
 
-export type PatchTaskInstanceDryRunResponse = TaskInstanceCollectionResponse;
+export type PatchTaskInstanceDryRunResponse = TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
 
 export type GetLogData = {
     accept?: 'application/json' | 'application/x-ndjson' | '*/*';
@@ -4678,7 +4693,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse | DAGRunResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse | DAGRunResponse;
                 /**
                  * Unauthorized
                  */
@@ -5373,7 +5388,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Bad Request
                  */
@@ -5433,7 +5448,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Unauthorized
                  */
@@ -5593,7 +5608,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Bad Request
                  */
@@ -5628,7 +5643,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Bad Request
                  */
@@ -5680,7 +5695,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Unauthorized
                  */
@@ -5761,7 +5776,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Unauthorized
                  */
@@ -5792,7 +5807,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Bad Request
                  */
@@ -5823,7 +5838,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: TaskInstanceCollectionResponse;
+                200: TaskInstanceOffsetCollectionResponse | TaskInstanceCursorCollectionResponse;
                 /**
                  * Bad Request
                  */

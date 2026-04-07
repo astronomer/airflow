@@ -2039,13 +2039,15 @@ class TaskCollectionResponse(BaseModel):
     total_entries: Annotated[int, Field(title="Total Entries")]
 
 
-class TaskInstanceCollectionResponse(BaseModel):
+class TaskInstanceCursorCollectionResponse(BaseModel):
     """
-    Task Instance Collection serializer for responses.
+    Cursor-paginated task instance collection response.
     """
 
+    pagination: Annotated[Literal["cursor"], Field(title="Pagination")] = "cursor"
+    next_cursor: Annotated[str | None, Field(title="Next Cursor")] = None
+    previous_cursor: Annotated[str | None, Field(title="Previous Cursor")] = None
     task_instances: Annotated[list[TaskInstanceResponse], Field(title="Task Instances")]
-    total_entries: Annotated[int, Field(title="Total Entries")]
 
 
 class TaskInstanceHistoryCollectionResponse(BaseModel):
@@ -2055,6 +2057,16 @@ class TaskInstanceHistoryCollectionResponse(BaseModel):
 
     task_instances: Annotated[list[TaskInstanceHistoryResponse], Field(title="Task Instances")]
     total_entries: Annotated[int, Field(title="Total Entries")]
+
+
+class TaskInstanceOffsetCollectionResponse(BaseModel):
+    """
+    Offset-paginated task instance collection response.
+    """
+
+    pagination: Annotated[Literal["offset"], Field(title="Pagination")] = "offset"
+    total_entries: Annotated[int, Field(title="Total Entries")]
+    task_instances: Annotated[list[TaskInstanceResponse], Field(title="Task Instances")]
 
 
 class BulkBodyBulkTaskInstanceBody(BaseModel):

@@ -33,7 +33,8 @@ from airflow.api_fastapi.common.dagbag import (
     get_dag_for_run_or_latest_version,
     get_latest_version_of_dag,
 )
-from airflow.api_fastapi.common.db.common import SessionDep, paginated_select
+from airflow.api_fastapi.common.db.common import SessionDep, apply_filters_to_select, paginated_select
+from airflow.api_fastapi.common.db.cursors import apply_cursor_filter, encode_cursor
 from airflow.api_fastapi.common.db.task_instances import eager_load_TI_and_TIH_for_validation
 from airflow.api_fastapi.common.parameters import (
     FilterOptionEnum,
@@ -65,6 +66,7 @@ from airflow.api_fastapi.common.parameters import (
     search_param_factory,
 )
 from airflow.api_fastapi.common.router import AirflowRouter
+from airflow.api_fastapi.core_api.base import OrmClause
 from airflow.api_fastapi.core_api.datamodels.common import BulkBody, BulkResponse
 from airflow.api_fastapi.core_api.datamodels.task_instance_history import (
     TaskInstanceHistoryCollectionResponse,
@@ -76,6 +78,8 @@ from airflow.api_fastapi.core_api.datamodels.task_instances import (
     PatchTaskInstanceBody,
     TaskDependencyCollectionResponse,
     TaskInstanceCollectionResponse,
+    TaskInstanceCursorCollectionResponse,
+    TaskInstanceOffsetCollectionResponse,
     TaskInstanceResponse,
     TaskInstancesBatchBody,
 )
@@ -245,7 +249,7 @@ def get_mapped_task_instances(
     )
     task_instances = session.scalars(task_instance_select)
 
-    return TaskInstanceCollectionResponse(
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=task_instances,
         total_entries=total_entries,
     )
@@ -470,13 +474,23 @@ def get_task_instances(
     ],
     readable_ti_filter: ReadableTIFilterDep,
     session: SessionDep,
+    cursor: str | None = Query(
+        None, description="Cursor for keyset-based pagination (mutually exclusive with offset)"
+    ),
 ) -> TaskInstanceCollectionResponse:
     """
     Get list of task instances.
 
     This endpoint allows specifying `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs
     and DAG runs.
+
+    Supports two pagination modes:
+
+    - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
+    - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's ``next_cursor``).
+      When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
     """
+    use_cursor = cursor is not None
     dag_run = None
     query = eager_load_TI_and_TIH_for_validation(select(TI))
     if dag_run_id != "~":
@@ -498,41 +512,57 @@ def get_task_instances(
         if dag:
             task_group_id.dag = dag
 
+    filters: list[OrmClause] = [
+        run_after_range,
+        logical_date_range,
+        start_date_range,
+        end_date_range,
+        update_at_range,
+        duration_range,
+        state,
+        pool,
+        pool_name_pattern,
+        queue,
+        queue_name_pattern,
+        executor,
+        task_id,
+        task_display_name_pattern,
+        task_group_id,
+        dag_id_pattern,
+        run_id_pattern,
+        version_number,
+        readable_ti_filter,
+        try_number,
+        operator,
+        operator_name_pattern,
+        map_index,
+    ]
+
+    if use_cursor:
+        task_instance_select = apply_filters_to_select(statement=query, filters=filters)
+        task_instance_select = apply_filters_to_select(
+            statement=task_instance_select, filters=[order_by, limit]
+        )
+        # cursor is guaranteed non-None when use_cursor is True
+        task_instance_select = apply_cursor_filter(task_instance_select, cast("str", cursor), order_by)
+
+        task_instances = list(session.scalars(task_instance_select))
+        return TaskInstanceCursorCollectionResponse(
+            task_instances=task_instances,
+            next_cursor=encode_cursor(task_instances[-1], order_by) if task_instances else None,
+            previous_cursor=encode_cursor(task_instances[0], order_by) if task_instances else None,
+        )
+
     task_instance_select, total_entries = paginated_select(
         statement=query,
-        filters=[
-            run_after_range,
-            logical_date_range,
-            start_date_range,
-            end_date_range,
-            update_at_range,
-            duration_range,
-            state,
-            pool,
-            pool_name_pattern,
-            queue,
-            queue_name_pattern,
-            executor,
-            task_id,
-            task_display_name_pattern,
-            task_group_id,
-            dag_id_pattern,
-            run_id_pattern,
-            version_number,
-            readable_ti_filter,
-            try_number,
-            operator,
-            operator_name_pattern,
-            map_index,
-        ],
+        filters=filters,
         order_by=order_by,
         offset=offset,
         limit=limit,
         session=session,
     )
-
-    task_instances = session.scalars(task_instance_select)
-    return TaskInstanceCollectionResponse(
+    task_instances = list(session.scalars(task_instance_select))
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=task_instances,
         total_entries=total_entries,
     )
@@ -640,7 +670,7 @@ def get_task_instances_batch(
     )
     task_instances = session.scalars(task_instance_select)
 
-    return TaskInstanceCollectionResponse(
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=task_instances,
         total_entries=total_entries,
     )
@@ -858,7 +888,7 @@ def post_clear_task_instances(
             .all()
         )
 
-    return TaskInstanceCollectionResponse(
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=[TaskInstanceResponse.model_validate(ti) for ti in task_instances],
         total_entries=len(task_instances),
     )
@@ -928,7 +958,7 @@ def patch_task_instance_dry_run(
             .all()
         )
 
-    return TaskInstanceCollectionResponse(
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=[
             TaskInstanceResponse.model_validate(
                 ti,
@@ -1026,7 +1056,7 @@ def patch_task_instance(
                 update_mask=update_mask,
             )
 
-    return TaskInstanceCollectionResponse(
+    return TaskInstanceOffsetCollectionResponse(
         task_instances=[
             TaskInstanceResponse.model_validate(
                 ti,

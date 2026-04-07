@@ -156,3 +156,21 @@ class BulkResponse(BaseModel):
         default=None,
         description="Details of the bulk delete operation, including successful keys and errors.",
     )
+
+
+# Common Pagination Base Models
+
+
+class OffsetPaginatedResponse(BaseModel):
+    """Base for offset-paginated collection responses."""
+
+    pagination: Literal["offset"] = "offset"
+    total_entries: int
+
+
+class CursorPaginatedResponse(BaseModel):
+    """Base for cursor-paginated collection responses."""
+
+    pagination: Literal["cursor"] = "cursor"
+    next_cursor: str | None
+    previous_cursor: str | None
