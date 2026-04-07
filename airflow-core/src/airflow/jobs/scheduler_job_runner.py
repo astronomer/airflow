@@ -89,7 +89,7 @@ from airflow.observability.metrics import stats_utils
 from airflow.serialization.definitions.assets import SerializedAssetUniqueKey
 from airflow.serialization.definitions.notset import NOTSET
 from airflow.ti_deps.dependencies_states import EXECUTION_STATES
-from airflow.timetables.simple import AssetTriggeredTimetable
+from airflow.timetables.simple import AssetTriggeredTimetable, PartitionedAssetTimetable
 from airflow.utils.event_scheduler import EventScheduler
 from airflow.utils.log.logging_mixin import LoggingMixin
 from airflow.utils.retries import MAX_DB_RETRIES, retry_db_transaction, run_with_db_retries
@@ -1824,7 +1824,8 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
     def _check_rollup_asset_status(
         self,
-        asset_model: AssetModel,
+        *,
+        asset_id: int,
         apdr: AssetPartitionDagRun,
         mapper: RollupMapper,
         actual_by_asset: dict[int, set[str]],
@@ -1832,55 +1833,112 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
         if TYPE_CHECKING:
             assert apdr.partition_key is not None
         expected = mapper.to_upstream(apdr.partition_key)
-        return expected.issubset(actual_by_asset.get(asset_model.id, set()))
+        return expected.issubset(actual_by_asset.get(asset_id, set()))
+
+    def _resolve_asset_partition_status(
+        self,
+        *,
+        asset_id: int,
+        name: str,
+        uri: str,
+        apdr: AssetPartitionDagRun,
+        timetable: PartitionedAssetTimetable,
+        actual_by_asset: dict[int, set[str]],
+    ) -> bool | None:
+        """
+        Return the rollup status for one asset within a pending partitioned Dag run.
+
+        Returns *True*/*False* for rollup assets, or *None* when the asset has no
+        rollup mapper and should default to satisfied.
+        """
+        try:
+            mapper = timetable.get_partition_mapper(name=name, uri=uri)
+            if not mapper.is_rollup:
+                return None
+            return self._check_rollup_asset_status(
+                asset_id=asset_id,
+                apdr=apdr,
+                mapper=cast("RollupMapper", mapper),
+                actual_by_asset=actual_by_asset,
+            )
+        except Exception:
+            self.log.exception(
+                "Failed to evaluate rollup status for asset; treating as not-yet-satisfied. "
+                "This likely indicates a misconfigured partition mapper.",
+                dag_id=apdr.target_dag_id,
+                partition_key=apdr.partition_key,
+                asset_name=name,
+                asset_uri=uri,
+            )
+            return False
 
     def _create_dagruns_for_partitioned_asset_dags(self, session: Session) -> set[str]:
         partition_dag_ids: set[str] = set()
 
-        evaluator = AssetEvaluator(session)
-        for apdr in session.scalars(
+        pending_apdrs = session.scalars(
             select(AssetPartitionDagRun).where(AssetPartitionDagRun.created_dag_run_id.is_(None))
+        ).all()
+        if not pending_apdrs:
+            return partition_dag_ids
+
+        pending_apdr_ids = [apdr.id for apdr in pending_apdrs]
+
+        # Pre-fetch all required serialized Dags in one query.
+        dag_ids = list({apdr.target_dag_id for apdr in pending_apdrs if apdr.target_dag_id})
+        # {"dag_id": Serialized Dag}
+        serialized_dags: dict[str, SerializedDAG] = {}
+        for serdag in SerializedDagModel.get_latest_serialized_dags(dag_ids=dag_ids, session=session):
+            try:
+                serdag.load_op_links = False
+                serialized_dags[serdag.dag_id] = serdag.dag
+            except Exception:
+                self.log.exception("Failed to deserialize Dag '%s'", serdag.dag_id)
+
+        # {apdr_id: {asset_id: set(source_key, ...)}
+        source_key_by_asset_per_apdr: dict[int, dict[int, set[str]]] = defaultdict(lambda: defaultdict(set))
+        # {apdr_id: {asset_id: (asset_name, asset_uri)}
+        asset_info_per_apdr: dict[int, dict[int, tuple[str, str]]] = defaultdict(dict)
+        for apdr_id, asset_id, source_key, name, uri in session.execute(
+            select(
+                PartitionedAssetKeyLog.asset_partition_dag_run_id,
+                PartitionedAssetKeyLog.asset_id,
+                PartitionedAssetKeyLog.source_partition_key,
+                AssetModel.name,
+                AssetModel.uri,
+            )
+            .join(AssetModel, AssetModel.id == PartitionedAssetKeyLog.asset_id)
+            .where(PartitionedAssetKeyLog.asset_partition_dag_run_id.in_(pending_apdr_ids))
         ):
+            source_key_by_asset_per_apdr[apdr_id][asset_id].add(source_key)
+            asset_info_per_apdr[apdr_id][asset_id] = (name, uri)
+
+        evaluator = AssetEvaluator(session)
+        for apdr in pending_apdrs:
             if TYPE_CHECKING:
                 assert apdr.target_dag_id
 
-            if not (dag := self._get_current_dag(dag_id=apdr.target_dag_id, session=session)):
+            if not (dag := serialized_dags.get(apdr.target_dag_id)):
                 self.log.error("Dag '%s' not found in serialized_dag table", apdr.target_dag_id)
                 continue
 
-            asset_models = session.scalars(
-                select(AssetModel).where(
-                    exists(
-                        select(1).where(
-                            PartitionedAssetKeyLog.asset_id == AssetModel.id,
-                            PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id,
-                            PartitionedAssetKeyLog.target_partition_key == apdr.partition_key,
-                        )
-                    )
-                )
-            ).all()
-            actual_by_asset: dict[int, set[str]] = defaultdict(set)
-            for asset_id, source_key in session.execute(
-                select(PartitionedAssetKeyLog.asset_id, PartitionedAssetKeyLog.source_partition_key).where(
-                    PartitionedAssetKeyLog.asset_partition_dag_run_id == apdr.id
-                )
-            ):
-                actual_by_asset[asset_id].add(source_key)
-
+            source_key_by_asset = source_key_by_asset_per_apdr[apdr.id]
             timetable = dag.timetable
             statuses: dict[SerializedAssetUniqueKey, bool] = {}
-            for asset_model in asset_models:
-                if timetable.partitioned:
-                    mapper = cast(
-                        "RollupMapper",
-                        timetable.get_partition_mapper(name=asset_model.name, uri=asset_model.uri),
+            for asset_id, (name, uri) in asset_info_per_apdr[apdr.id].items():
+                key = SerializedAssetUniqueKey(name=name, uri=uri)
+                if isinstance(timetable, PartitionedAssetTimetable):
+                    status = self._resolve_asset_partition_status(
+                        asset_id=asset_id,
+                        name=name,
+                        uri=uri,
+                        apdr=apdr,
+                        timetable=timetable,
+                        actual_by_asset=source_key_by_asset,
                     )
-                    if mapper.is_rollup:
-                        statuses[SerializedAssetUniqueKey.from_asset(asset_model)] = (
-                            self._check_rollup_asset_status(asset_model, apdr, mapper, actual_by_asset)
-                        )
+                    if status is not None:
+                        statuses[key] = status
                         continue
-                statuses[SerializedAssetUniqueKey.from_asset(asset_model)] = True
+                statuses[key] = True
             if not evaluator.run(timetable.asset_condition, statuses=statuses):
                 continue
 

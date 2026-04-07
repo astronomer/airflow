@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
     from airflow.models.dag import DagModel
     from airflow.models.dagrun import DagRun
-    from airflow.partition_mappers.base import PartitionMapper
     from airflow.serialization.dag_dependency import DagDependency
     from airflow.serialization.definitions.assets import (
         SerializedAsset,
@@ -218,16 +217,6 @@ class Timetable(Protocol):
     This is *True* for timetables that switch scheduling to use partitions
     instead of the traditional logic based on logical dates and data intervals.
     """
-
-    def get_partition_mapper(self, *, name: str = "", uri: str = "") -> PartitionMapper:
-        """
-        Return the partition mapper for the asset identified by *name* or *uri*.
-
-        Only called by the scheduler when ``partitioned`` is *True*. The default
-        implementation raises :exc:`NotImplementedError`; timetables that set
-        ``partitioned = True`` must override this.
-        """
-        raise NotImplementedError
 
     @classmethod
     def deserialize(cls, data: dict[str, Any]) -> Timetable:

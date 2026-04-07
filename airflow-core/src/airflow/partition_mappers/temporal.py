@@ -141,10 +141,24 @@ class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
     the week (0 = Monday, 6 = Sunday).
     """
 
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        if "%Y-%m-%d" not in self.output_format:
+            raise ValueError(
+                f"WeeklyRollupMapper requires output_format to contain '%Y-%m-%d' so that "
+                f"to_upstream() can recover the week-start date, got: {self.output_format!r}"
+            )
+
     def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        # The output format always embeds the week-start date as the first 10 chars.
-        week_start_dt = datetime.strptime(downstream_key[:10], "%Y-%m-%d")
-        return frozenset((week_start_dt + timedelta(days=i)).strftime(self.input_format) for i in range(7))
+        # Parse via output_format (not a hardcoded slice) so custom formats work correctly.
+        # Arithmetic stays on naive datetimes to keep day-counting unambiguous across
+        # DST transitions; each result is made timezone-aware before formatting so that
+        # %z in input_format produces the correct offset.
+        week_start_naive = datetime.strptime(downstream_key, self.output_format)
+        return frozenset(
+            make_aware(week_start_naive + timedelta(days=i), self._timezone).strftime(self.input_format)
+            for i in range(7)
+        )
 
 
 class StartOfMonthMapper(_BaseTemporalMapper):
@@ -195,12 +209,19 @@ class MonthlyRollupMapper(StartOfMonthMapper, RollupMapper):
     """
 
     def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        period_start = datetime.strptime(downstream_key, self.output_format).replace(day=self.month_start_day)
-        next_month = period_start.month % 12 + 1
-        next_year = period_start.year + (1 if period_start.month == 12 else 0)
-        next_start = period_start.replace(year=next_year, month=next_month)
-        days = (next_start - period_start).days
-        return frozenset((period_start + timedelta(days=i)).strftime(self.input_format) for i in range(days))
+        # Use naive datetimes for day-counting to avoid DST ambiguity, then make
+        # each result timezone-aware before formatting so %z produces the correct offset.
+        period_start_naive = datetime.strptime(downstream_key, self.output_format).replace(
+            day=self.month_start_day
+        )
+        next_month = period_start_naive.month % 12 + 1
+        next_year = period_start_naive.year + (1 if period_start_naive.month == 12 else 0)
+        next_start_naive = period_start_naive.replace(year=next_year, month=next_month)
+        days = (next_start_naive - period_start_naive).days
+        return frozenset(
+            make_aware(period_start_naive + timedelta(days=i), self._timezone).strftime(self.input_format)
+            for i in range(days)
+        )
 
 
 class StartOfQuarterMapper(_BaseTemporalMapper):
