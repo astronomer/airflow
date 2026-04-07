@@ -158,9 +158,6 @@ class BulkResponse(BaseModel):
     )
 
 
-# Common Pagination Base Models
-
-
 class OffsetPaginatedResponse(BaseModel):
     """Base for offset-paginated collection responses."""
 

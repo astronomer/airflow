@@ -32,72 +32,68 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
 
 if TYPE_CHECKING:
-    from sqlalchemy.sql import ColumnElement, Select
+    from sqlalchemy.sql import Select
 
     from airflow.api_fastapi.common.parameters import SortParam
+
+
+def _encode_value(val: Any) -> dict[str, Any]:
+    """Encode a single Python value as a typed {"type": ..., "value": ...} object."""
+    if val is None:
+        return {"type": "null", "value": None}
+    if isinstance(val, uuid_mod.UUID):
+        return {"type": "uuid", "value": str(val)}
+    if isinstance(val, datetime):
+        return {"type": "datetime", "value": val.isoformat()}
+    if isinstance(val, int):
+        return {"type": "int", "value": val}
+    return {"type": "str", "value": str(val)}
+
+
+def _decode_value(entry: dict[str, Any]) -> Any:
+    """Decode a typed cursor entry back to its Python value."""
+    type_tag = entry["type"]
+    raw = entry["value"]
+    if type_tag == "null":
+        return None
+    if type_tag == "uuid":
+        return uuid_mod.UUID(str(raw))
+    if type_tag == "datetime":
+        return datetime.fromisoformat(str(raw))
+    if type_tag == "int":
+        return int(raw)
+    return str(raw)
 
 
 def encode_cursor(row: Any, sort_param: SortParam) -> str:
     """
     Encode cursor token from the last row of a result set.
 
-    The token is a base64url-encoded JSON list containing the sort column
-    values in the same order as the resolved sort columns.
+    The token is a base64url-encoded JSON list of typed objects, each
+    containing ``{"type": "<tag>", "value": <serialized>}`` so the
+    cursor is self-describing and can be decoded without column metadata.
     """
     resolved = sort_param.get_resolved_columns()
     if not resolved:
         raise ValueError("SortParam has no resolved columns.")
 
-    values: list[Any] = []
-    for attr_name, _col, _desc in resolved:
-        val = getattr(row, attr_name, None)
-        if val is None:
-            values.append(None)
-        elif isinstance(val, datetime):
-            values.append(val.isoformat())
-        else:
-            values.append(str(val))
-
-    return base64.urlsafe_b64encode(json.dumps(values).encode()).decode()
+    entries = [_encode_value(getattr(row, attr_name, None)) for attr_name, _col, _desc in resolved]
+    return base64.urlsafe_b64encode(json.dumps(entries).encode()).decode()
 
 
-def decode_cursor(token: str) -> list[Any]:
-    """Decode a cursor token and return the list of values."""
+def decode_cursor(token: str) -> list[dict[str, Any]]:
+    """Decode a cursor token and return the list of typed value entries."""
     try:
         data = json.loads(base64.urlsafe_b64decode(token))
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cursor token")
 
-    if not isinstance(data, list):
+    if not isinstance(data, list) or any(
+        not isinstance(entry, dict) or "type" not in entry or "value" not in entry for entry in data
+    ):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cursor token structure")
 
     return data
-
-
-def _coerce_cursor_value(raw: Any, col: ColumnElement) -> Any:
-    """Convert a JSON-serialized cursor value to the Python type expected by the column."""
-    if raw is None:
-        return None
-
-    from sqlalchemy import Integer, String
-    from sqlalchemy.sql.sqltypes import Uuid
-
-    col_type = getattr(col, "type", None)
-    if col_type is None:
-        return raw
-
-    if isinstance(col_type, Uuid):
-        return uuid_mod.UUID(str(raw))
-    if isinstance(col_type, Integer):
-        return int(raw)
-    if isinstance(col_type, String):
-        return str(raw)
-
-    type_name = type(col_type).__name__.lower()
-    if "datetime" in type_name or "timestamp" in type_name or "date" in type_name:
-        return datetime.fromisoformat(str(raw))
-
-    return raw
 
 
 def apply_cursor_filter(statement: Select, cursor: str, sort_param: SortParam) -> Select:
@@ -107,15 +103,13 @@ def apply_cursor_filter(statement: Select, cursor: str, sort_param: SortParam) -
     Builds a composite comparison that respects mixed ASC/DESC ordering
     on the resolved sort columns.
     """
-    cursor_values = decode_cursor(cursor)
+    cursor_entries = decode_cursor(cursor)
 
     resolved = sort_param.get_resolved_columns()
-    if len(cursor_values) != len(resolved):
+    if len(cursor_entries) != len(resolved):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cursor token does not match current query shape")
 
-    parsed_values: list[Any] = []
-    for i, (_name, col, _desc) in enumerate(resolved):
-        parsed_values.append(_coerce_cursor_value(cursor_values[i], col))
+    parsed_values = [_decode_value(entry) for entry in cursor_entries]
 
     # Build the keyset WHERE clause for mixed ASC/DESC ordering.
     # For columns (c1 ASC, c2 DESC, c3 ASC) with cursor values (v1, v2, v3):

@@ -49,7 +49,10 @@ class TestCursorPagination:
         token = encode_cursor(row, sp)
         decoded = decode_cursor(token)
 
-        assert decoded == ["2024-01-15T10:00:00+00:00", "019462ab-1234-5678-9abc-def012345678"]
+        assert decoded == [
+            {"type": "str", "value": "2024-01-15T10:00:00+00:00"},
+            {"type": "str", "value": "019462ab-1234-5678-9abc-def012345678"},
+        ]
 
     def test_decode_cursor_invalid_base64(self):
         with pytest.raises(HTTPException, match="Invalid cursor token"):
@@ -65,6 +68,21 @@ class TestCursorPagination:
         with pytest.raises(HTTPException, match="Invalid cursor token structure"):
             decode_cursor(token)
 
+    def test_decode_cursor_missing_type_key(self):
+        token = base64.urlsafe_b64encode(json.dumps([{"value": "foo"}]).encode()).decode()
+        with pytest.raises(HTTPException, match="Invalid cursor token structure"):
+            decode_cursor(token)
+
+    def test_decode_cursor_missing_value_key(self):
+        token = base64.urlsafe_b64encode(json.dumps([{"type": "str"}]).encode()).decode()
+        with pytest.raises(HTTPException, match="Invalid cursor token structure"):
+            decode_cursor(token)
+
+    def test_decode_cursor_entry_not_a_dict(self):
+        token = base64.urlsafe_b64encode(json.dumps(["just-a-string"]).encode()).decode()
+        with pytest.raises(HTTPException, match="Invalid cursor token structure"):
+            decode_cursor(token)
+
     def test_encode_cursor_works_without_prior_to_orm(self):
         """get_resolved_columns now lazily resolves, so to_orm is no longer required before encode."""
         sp = SortParam(["id"], TaskInstance)
@@ -73,18 +91,23 @@ class TestCursorPagination:
         row.id = "019462ab-1234-5678-9abc-def012345678"
         token = encode_cursor(row, sp)
         decoded = decode_cursor(token)
-        assert decoded == ["019462ab-1234-5678-9abc-def012345678"]
+        assert decoded == [{"type": "str", "value": "019462ab-1234-5678-9abc-def012345678"}]
 
     def test_apply_cursor_filter_wrong_value_count(self):
         sp = self._make_sort_param_with_resolved_columns(["start_date"])
-        token = base64.urlsafe_b64encode(json.dumps(["only-one-value"]).encode()).decode()
+        token = base64.urlsafe_b64encode(
+            json.dumps([{"type": "str", "value": "only-one-value"}]).encode()
+        ).decode()
 
         with pytest.raises(HTTPException, match="does not match"):
             apply_cursor_filter(select(TaskInstance), token, sp)
 
     def test_apply_cursor_filter_ascending(self):
         sp = self._make_sort_param_with_resolved_columns(["start_date"])
-        values = ["2024-01-15T10:00:00", "019462ab-1234-5678-9abc-def012345678"]
+        values = [
+            {"type": "datetime", "value": "2024-01-15T10:00:00"},
+            {"type": "uuid", "value": "019462ab-1234-5678-9abc-def012345678"},
+        ]
         token = base64.urlsafe_b64encode(json.dumps(values).encode()).decode()
 
         stmt = apply_cursor_filter(select(TaskInstance), token, sp)
@@ -93,7 +116,10 @@ class TestCursorPagination:
 
     def test_apply_cursor_filter_descending(self):
         sp = self._make_sort_param_with_resolved_columns(["-start_date"])
-        values = ["2024-01-15T10:00:00", "019462ab-1234-5678-9abc-def012345678"]
+        values = [
+            {"type": "datetime", "value": "2024-01-15T10:00:00"},
+            {"type": "uuid", "value": "019462ab-1234-5678-9abc-def012345678"},
+        ]
         token = base64.urlsafe_b64encode(json.dumps(values).encode()).decode()
 
         stmt = apply_cursor_filter(select(TaskInstance), token, sp)
