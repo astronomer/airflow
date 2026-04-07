@@ -475,7 +475,9 @@ def get_task_instances(
     readable_ti_filter: ReadableTIFilterDep,
     session: SessionDep,
     cursor: str | None = Query(
-        None, description="Cursor for keyset-based pagination (mutually exclusive with offset)"
+        None,
+        description="Cursor for keyset-based pagination (mutually exclusive with offset). "
+        "Pass an empty string for the first page, then use ``next_cursor`` from the response.",
     ),
 ) -> TaskInstanceCollectionResponse:
     """
@@ -487,8 +489,8 @@ def get_task_instances(
     Supports two pagination modes:
 
     - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
-    - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's ``next_cursor``).
-      When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
+    - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor`` from each
+      response). When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
     """
     use_cursor = cursor is not None
     dag_run = None
@@ -543,8 +545,8 @@ def get_task_instances(
         task_instance_select = apply_filters_to_select(
             statement=task_instance_select, filters=[order_by, limit]
         )
-        # cursor is guaranteed non-None when use_cursor is True
-        task_instance_select = apply_cursor_filter(task_instance_select, cast("str", cursor), order_by)
+        if cursor:
+            task_instance_select = apply_cursor_filter(task_instance_select, cursor, order_by)
 
         task_instances = list(session.scalars(task_instance_select))
         return TaskInstanceCursorCollectionResponse(

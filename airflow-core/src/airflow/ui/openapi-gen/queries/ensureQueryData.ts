@@ -908,12 +908,12 @@ export const ensureUseTaskInstanceServiceGetMappedTaskInstanceData = (queryClien
 * Supports two pagination modes:
 *
 * - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
-* - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's ``next_cursor``).
-* When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
+* - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor`` from each
+* response). When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
 * @param data The data for the request.
 * @param data.dagId
 * @param data.dagRunId
-* @param data.cursor Cursor for keyset-based pagination (mutually exclusive with offset)
+* @param data.cursor Cursor for keyset-based pagination (mutually exclusive with offset). Pass an empty string for the first page, then use ``next_cursor`` from the response.
 * @param data.taskId
 * @param data.runAfterGte
 * @param data.runAfterGt

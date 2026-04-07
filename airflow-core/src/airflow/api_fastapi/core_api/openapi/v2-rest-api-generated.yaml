@@ -6539,8 +6539,8 @@ paths:
         \ `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs\n\
         and DAG runs.\n\nSupports two pagination modes:\n\n- **Offset** (default):\
         \ Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.\n\
-        - **Cursor**: Pass the ``cursor`` query parameter (from a previous response's\
-        \ ``next_cursor``).\n  When ``cursor`` is provided, ``offset`` is ignored\
+        - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor``\
+        \ from each\n  response). When ``cursor`` is provided, ``offset`` is ignored\
         \ and ``total_entries`` is not returned."
       operationId: get_task_instances
       security:
@@ -6567,9 +6567,12 @@ paths:
           - type: string
           - type: 'null'
           description: Cursor for keyset-based pagination (mutually exclusive with
-            offset)
+            offset). Pass an empty string for the first page, then use ``next_cursor``
+            from the response.
           title: Cursor
-        description: Cursor for keyset-based pagination (mutually exclusive with offset)
+        description: Cursor for keyset-based pagination (mutually exclusive with offset).
+          Pass an empty string for the first page, then use ``next_cursor`` from the
+          response.
       - name: task_id
         in: query
         required: false

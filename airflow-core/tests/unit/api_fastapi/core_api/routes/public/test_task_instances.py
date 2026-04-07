@@ -1718,7 +1718,7 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         assert response_batch1 != response_batch2
 
     def test_cursor_pagination_first_page(self, test_client, session):
-        """First request without cursor returns offset response with pagination='offset'."""
+        """First page with cursor='' returns cursor response without needing a real token."""
         dag_id = "example_python_operator"
         self.create_task_instances(
             session,
@@ -1729,19 +1729,18 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         )
         response = test_client.get(
             "/dags/~/dagRuns/~/taskInstances",
-            params={"limit": 3, "order_by": ["map_index"]},
+            params={"limit": 3, "order_by": ["map_index"], "cursor": ""},
         )
         assert response.status_code == 200, response.json()
         body = response.json()
-        assert body["pagination"] == "offset"
-        assert "total_entries" in body
+        assert body["pagination"] == "cursor"
+        assert "next_cursor" in body
+        assert "previous_cursor" in body
+        assert "total_entries" not in body
         assert len(body["task_instances"]) == 3
 
     def test_cursor_pagination_returns_cursor_response(self, test_client, session):
         """When cursor param is provided, response has pagination='cursor'."""
-        import base64
-        import json
-
         dag_id = "example_python_operator"
         self.create_task_instances(
             session,
@@ -1750,30 +1749,22 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
             ],
             dag_id=dag_id,
         )
-        # Build a fake first-page cursor with an empty string that forces the cursor code path.
-        # Instead, let's fetch the first page normally, then use cursor for the second page.
-        # First page without cursor (offset mode)
+        # First page in cursor mode (empty cursor)
         response1 = test_client.get(
             "/dags/~/dagRuns/~/taskInstances",
-            params={"limit": 100, "order_by": ["map_index"]},
+            params={"limit": 3, "order_by": ["map_index"], "cursor": ""},
         )
         assert response1.status_code == 200
         body1 = response1.json()
-        assert body1["pagination"] == "offset"
-        tis = body1["task_instances"]
-        assert len(tis) > 0
+        assert body1["pagination"] == "cursor"
+        assert len(body1["task_instances"]) == 3
+        next_cursor = body1["next_cursor"]
+        assert next_cursor is not None
 
-        # Build a cursor from the first result (simulate what encode_cursor does)
-        first_ti = tis[0]
-        cursor_payload = {
-            "values": [str(first_ti["map_index"]), str(first_ti["id"])],
-            "order_by": ["map_index"],
-        }
-        cursor_token = base64.urlsafe_b64encode(json.dumps(cursor_payload).encode()).decode()
-
+        # Second page using next_cursor from first page
         response2 = test_client.get(
             "/dags/~/dagRuns/~/taskInstances",
-            params={"limit": 100, "cursor": cursor_token, "order_by": ["map_index"]},
+            params={"limit": 100, "cursor": next_cursor, "order_by": ["map_index"]},
         )
         assert response2.status_code == 200
         body2 = response2.json()
@@ -1784,9 +1775,6 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
 
     def test_cursor_pagination_pages_do_not_overlap(self, test_client, session):
         """Cursor-driven pages partition the result set without overlap."""
-        import base64
-        import json
-
         dag_id = "example_python_operator"
         self.create_task_instances(
             session,
@@ -1797,32 +1785,20 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         )
         page_size = 4
         all_ids: list[str] = []
-        cursor_token = None
+        cursor_token = ""
 
         for _ in range(5):
-            params: dict = {"limit": page_size, "order_by": ["map_index"]}
-            if cursor_token:
-                params["cursor"] = cursor_token
+            params: dict = {"limit": page_size, "order_by": ["map_index"], "cursor": cursor_token}
             response = test_client.get("/dags/~/dagRuns/~/taskInstances", params=params)
             assert response.status_code == 200, response.json()
             body = response.json()
+            assert body["pagination"] == "cursor"
             page_ids = [ti["id"] for ti in body["task_instances"]]
             all_ids.extend(page_ids)
 
+            cursor_token = body.get("next_cursor")
             if cursor_token is None:
-                # First page is offset-mode, build cursor from last row
-                if not body["task_instances"]:
-                    break
-                last = body["task_instances"][-1]
-                cursor_payload = {
-                    "values": [str(last["map_index"]), str(last["id"])],
-                    "order_by": ["map_index"],
-                }
-                cursor_token = base64.urlsafe_b64encode(json.dumps(cursor_payload).encode()).decode()
-            else:
-                cursor_token = body.get("next_cursor")
-                if cursor_token is None:
-                    break
+                break
 
         assert len(all_ids) == len(set(all_ids)), "Cursor pages should not have overlapping items"
 

@@ -41,12 +41,12 @@ def encode_cursor(row: Any, sort_param: SortParam) -> str:
     """
     Encode cursor token from the last row of a result set.
 
-    The token is a base64url-encoded JSON object containing the sort column
-    values and the order_by specification used to produce them.
+    The token is a base64url-encoded JSON list containing the sort column
+    values in the same order as the resolved sort columns.
     """
     resolved = sort_param.get_resolved_columns()
     if not resolved:
-        raise ValueError("SortParam has no resolved columns. Call to_orm() first.")
+        raise ValueError("SortParam has no resolved columns.")
 
     values: list[Any] = []
     for attr_name, _col, _desc in resolved:
@@ -58,21 +58,17 @@ def encode_cursor(row: Any, sort_param: SortParam) -> str:
         else:
             values.append(str(val))
 
-    payload = {
-        "values": values,
-        "order_by": sort_param.value or [],
-    }
-    return base64.urlsafe_b64encode(json.dumps(payload).encode()).decode()
+    return base64.urlsafe_b64encode(json.dumps(values).encode()).decode()
 
 
-def decode_cursor(token: str) -> dict[str, Any]:
-    """Decode a cursor token and return the payload dict."""
+def decode_cursor(token: str) -> list[Any]:
+    """Decode a cursor token and return the list of values."""
     try:
         data = json.loads(base64.urlsafe_b64decode(token))
     except Exception:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cursor token")
 
-    if not isinstance(data, dict) or "values" not in data or "order_by" not in data:
+    if not isinstance(data, list):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid cursor token structure")
 
     return data
@@ -111,16 +107,9 @@ def apply_cursor_filter(statement: Select, cursor: str, sort_param: SortParam) -
     Builds a composite comparison that respects mixed ASC/DESC ordering
     on the resolved sort columns.
     """
-    cursor_data = decode_cursor(cursor)
-
-    if cursor_data["order_by"] != (sort_param.value or []):
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "Cursor was created with a different order_by. Cannot change ordering between pages.",
-        )
+    cursor_values = decode_cursor(cursor)
 
     resolved = sort_param.get_resolved_columns()
-    cursor_values = cursor_data["values"]
     if len(cursor_values) != len(resolved):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cursor token does not match current query shape")
 
