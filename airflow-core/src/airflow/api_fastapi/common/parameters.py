@@ -121,7 +121,7 @@ class OffsetFilter(BaseParam[NonNegativeInt]):
     @classmethod
     def depends(
         cls,
-        offset: NonNegativeInt = Query(0),
+        offset: NonNegativeInt = 0,
     ) -> OffsetFilter:
         return cls().set_value(offset)
 

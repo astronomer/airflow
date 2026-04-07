@@ -25,7 +25,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 
-from airflow.api_fastapi.common.db.cursors import apply_cursor_filter, decode_cursor, encode_cursor
+from airflow.api_fastapi.common.cursors import apply_cursor_filter, decode_cursor, encode_cursor
 from airflow.api_fastapi.common.parameters import SortParam
 from airflow.models.taskinstance import TaskInstance
 

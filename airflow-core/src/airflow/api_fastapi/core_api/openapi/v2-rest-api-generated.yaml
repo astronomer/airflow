@@ -31,6 +31,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: name_pattern
@@ -147,6 +148,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: name_pattern
@@ -279,6 +281,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -941,6 +944,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -1485,6 +1489,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -2050,6 +2055,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: run_after_gte
@@ -2964,6 +2970,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -3031,6 +3038,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: tags
@@ -3336,6 +3344,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: tags
@@ -3831,6 +3840,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4178,6 +4188,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4339,6 +4350,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4445,6 +4457,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       responses:
@@ -4690,6 +4703,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -4862,6 +4876,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       responses:
@@ -5201,6 +5216,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: xcom_key_pattern
@@ -6035,6 +6051,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -6535,13 +6552,25 @@ paths:
       tags:
       - Task Instance
       summary: Get Task Instances
-      description: "Get list of task instances.\n\nThis endpoint allows specifying\
-        \ `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs\n\
-        and DAG runs.\n\nSupports two pagination modes:\n\n- **Offset** (default):\
-        \ Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.\n\
-        - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor``\
-        \ from each\n  response). When ``cursor`` is provided, ``offset`` is ignored\
-        \ and ``total_entries`` is not returned."
+      description: 'Get list of task instances.
+
+
+        This endpoint allows specifying `~` as the dag_id, dag_run_id
+
+        to retrieve task instances for all DAGs and DAG runs.
+
+
+        Supports two pagination modes:
+
+
+        **Offset (default):** use `limit` and `offset` query parameters. Returns `total_entries`.
+
+
+        **Cursor:** pass `cursor` (empty string for the first page, then `next_cursor`
+        from the response).
+
+        When `cursor` is provided, `offset` is ignored and `total_entries` is not
+        returned.'
       operationId: get_task_instances
       security:
       - OAuth2PasswordBearer: []
@@ -6966,6 +6995,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -7868,6 +7898,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -8270,6 +8301,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by
@@ -8413,6 +8445,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: version_number
@@ -8735,6 +8768,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 0
           default: 0
           title: Offset
       - name: order_by

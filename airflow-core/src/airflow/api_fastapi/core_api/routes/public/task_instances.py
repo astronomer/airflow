@@ -27,6 +27,7 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.selectable import Select
 
 from airflow.api_fastapi.auth.managers.models.resource_details import DagAccessEntity
+from airflow.api_fastapi.common.cursors import apply_cursor_filter, encode_cursor
 from airflow.api_fastapi.common.dagbag import (
     DagBagDep,
     get_dag_for_run,
@@ -34,7 +35,6 @@ from airflow.api_fastapi.common.dagbag import (
     get_latest_version_of_dag,
 )
 from airflow.api_fastapi.common.db.common import SessionDep, apply_filters_to_select, paginated_select
-from airflow.api_fastapi.common.db.cursors import apply_cursor_filter, encode_cursor
 from airflow.api_fastapi.common.db.task_instances import eager_load_TI_and_TIH_for_validation
 from airflow.api_fastapi.common.parameters import (
     FilterOptionEnum,
@@ -483,14 +483,15 @@ def get_task_instances(
     """
     Get list of task instances.
 
-    This endpoint allows specifying `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs
-    and DAG runs.
+    This endpoint allows specifying `~` as the dag_id, dag_run_id
+    to retrieve task instances for all DAGs and DAG runs.
 
     Supports two pagination modes:
 
-    - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
-    - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor`` from each
-      response). When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
+    **Offset (default):** use `limit` and `offset` query parameters. Returns `total_entries`.
+
+    **Cursor:** pass `cursor` (empty string for the first page, then `next_cursor` from the response).
+    When `cursor` is provided, `offset` is ignored and `total_entries` is not returned.
     """
     use_cursor = cursor is not None
     dag_run = None
@@ -541,10 +542,7 @@ def get_task_instances(
     ]
 
     if use_cursor:
-        task_instance_select = apply_filters_to_select(statement=query, filters=filters)
-        task_instance_select = apply_filters_to_select(
-            statement=task_instance_select, filters=[order_by, limit]
-        )
+        task_instance_select = apply_filters_to_select(statement=query, filters=[*filters, order_by, limit])
         if cursor:
             task_instance_select = apply_cursor_filter(task_instance_select, cursor, order_by)
 

@@ -902,14 +902,15 @@ export const useTaskInstanceServiceGetMappedTaskInstance = <TData = Common.TaskI
 * Get Task Instances
 * Get list of task instances.
 *
-* This endpoint allows specifying `~` as the dag_id, dag_run_id to retrieve Task Instances for all DAGs
-* and DAG runs.
+* This endpoint allows specifying `~` as the dag_id, dag_run_id
+* to retrieve task instances for all DAGs and DAG runs.
 *
 * Supports two pagination modes:
 *
-* - **Offset** (default): Use ``limit`` and ``offset`` query parameters. Returns ``total_entries``.
-* - **Cursor**: Pass ``cursor`` (empty string for the first page, then ``next_cursor`` from each
-* response). When ``cursor`` is provided, ``offset`` is ignored and ``total_entries`` is not returned.
+* **Offset (default):** use `limit` and `offset` query parameters. Returns `total_entries`.
+*
+* **Cursor:** pass `cursor` (empty string for the first page, then `next_cursor` from the response).
+* When `cursor` is provided, `offset` is ignored and `total_entries` is not returned.
 * @param data The data for the request.
 * @param data.dagId
 * @param data.dagRunId
