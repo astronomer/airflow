@@ -21,6 +21,7 @@
 import { Flex, Link } from "@chakra-ui/react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { TFunction } from "i18next";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link as RouterLink, useParams, useSearchParams } from "react-router-dom";
 
@@ -29,6 +30,7 @@ import type { TaskInstanceResponse } from "openapi/requests/types.gen";
 import { ClearTaskInstanceButton } from "src/components/Clear";
 import { DagVersion } from "src/components/DagVersion";
 import { DataTable } from "src/components/DataTable";
+import type { CursorPaginationProps } from "src/components/DataTable";
 import { useRowSelection, type GetColumnsParams } from "src/components/DataTable/useRowSelection";
 import { useTableURLState } from "src/components/DataTable/useTableUrlState";
 import { ErrorAlert } from "src/components/ErrorAlert";
@@ -274,6 +276,16 @@ export const TaskInstances = () => {
   const [sort] = sorting;
   const orderBy = sort ? [`${sort.desc ? "-" : ""}${sort.id}`] : ["-id"];
 
+  const [cursor, setCursor] = useState<string>("");
+
+  // Reset cursor to the first page when filters or sort order change.
+  const searchParamsKey = searchParams.toString();
+  const sortKey = sort ? `${sort.desc ? "-" : ""}${sort.id}` : "";
+
+  useEffect(() => {
+    setCursor("");
+  }, [searchParamsKey, sortKey]);
+
   const filteredState = searchParams.getAll(STATE_PARAM);
   const filteredDagVersion = searchParams.get(DAG_VERSION_PARAM);
   const durationGte = searchParams.get(DURATION_GTE_PARAM);
@@ -296,6 +308,7 @@ export const TaskInstances = () => {
 
   const { data, error, isLoading } = useTaskInstanceServiceGetTaskInstances(
     {
+      cursor,
       dagId: dagId ?? "~",
       dagIdPattern: filteredDagIdPattern ?? undefined,
       dagRunId: runId ?? "~",
@@ -306,7 +319,6 @@ export const TaskInstances = () => {
       logicalDateGte: logicalDateGte ?? undefined,
       logicalDateLte: logicalDateLte ?? undefined,
       mapIndex: mapIndexFilter !== null && mapIndexFilter !== "" ? [Number(mapIndexFilter)] : undefined,
-      offset: pagination.pageIndex * pagination.pageSize,
       operatorNamePattern: operatorNamePattern ?? undefined,
       orderBy,
       poolNamePattern: poolNamePattern ?? undefined,
@@ -328,6 +340,28 @@ export const TaskInstances = () => {
         query.state.data?.task_instances.some((ti) => isStatePending(ti.state)) ? refetchInterval : false,
     },
   );
+
+  const nextCursor = data && "next_cursor" in data ? data.next_cursor : undefined;
+  const previousCursor = data && "previous_cursor" in data ? data.previous_cursor : undefined;
+
+  const handleNextPage = useCallback(() => {
+    if (nextCursor !== undefined && nextCursor !== null) {
+      setCursor(nextCursor);
+    }
+  }, [nextCursor]);
+
+  const handlePreviousPage = useCallback(() => {
+    if (previousCursor !== undefined && previousCursor !== null) {
+      setCursor(previousCursor);
+    }
+  }, [previousCursor]);
+
+  const cursorPagination: CursorPaginationProps = {
+    hasNext: nextCursor !== undefined && nextCursor !== null,
+    hasPrevious: previousCursor !== undefined && previousCursor !== null,
+    onNext: handleNextPage,
+    onPrevious: handlePreviousPage,
+  };
 
   const { allRowsSelected, clearSelections, handleRowSelect, handleSelectAll, selectedRows } =
     useRowSelection({
@@ -354,13 +388,13 @@ export const TaskInstances = () => {
       <TaskInstancesFilter />
       <DataTable
         columns={columns}
+        cursorPagination={cursorPagination}
         data={data?.task_instances ?? []}
         errorMessage={<ErrorAlert error={error} />}
         initialState={tableURLState}
         isLoading={isLoading}
         modelName="common:taskInstance"
         onStateChange={setTableURLState}
-        total={data && "total_entries" in data ? data.total_entries : undefined}
       />
       <ActionBar.Root closeOnInteractOutside={false} open={Boolean(selectedRows.size)}>
         <ActionBar.Content>
