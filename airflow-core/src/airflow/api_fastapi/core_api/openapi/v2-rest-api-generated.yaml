@@ -1987,14 +1987,7 @@ paths:
             application/json:
               schema:
                 anyOf:
-                - oneOf:
-                  - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                  - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                  discriminator:
-                    propertyName: pagination
-                    mapping:
-                      offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                      cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
+                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
                 - $ref: '#/components/schemas/DAGRunResponse'
                 title: Response Clear Dag Run
         '401':
@@ -5581,15 +5574,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Patch Task Instance
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -6080,15 +6065,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Get Mapped Task Instances
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -6502,15 +6479,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Patch Task Instance By Map Index
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -7153,15 +7122,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Get Task Instances Batch
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -7359,15 +7320,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Post Clear Task Instances
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -7457,15 +7410,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Patch Task Instance Dry Run By Map Index
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:
@@ -7555,15 +7500,7 @@ paths:
           content:
             application/json:
               schema:
-                oneOf:
-                - $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                - $ref: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                discriminator:
-                  propertyName: pagination
-                  mapping:
-                    offset: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
-                    cursor: '#/components/schemas/TaskInstanceCursorCollectionResponse'
-                title: Response Patch Task Instance Dry Run
+                $ref: '#/components/schemas/TaskInstanceOffsetCollectionResponse'
         '401':
           content:
             application/json:

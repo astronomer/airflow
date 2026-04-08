@@ -200,7 +200,7 @@ def get_mapped_task_instances(
         ),
     ],
     session: SessionDep,
-) -> TaskInstanceCollectionResponse:
+) -> TaskInstanceOffsetCollectionResponse:
     """Get list of mapped task instances."""
     query = eager_load_TI_and_TIH_for_validation(
         select(TI).where(
@@ -582,7 +582,7 @@ def get_task_instances_batch(
     body: TaskInstancesBatchBody,
     readable_ti_filter: ReadableTIFilterDep,
     session: SessionDep,
-) -> TaskInstanceCollectionResponse:
+) -> TaskInstanceOffsetCollectionResponse:
     """Get list of task instances."""
     dag_ids = FilterParam(TI.dag_id, body.dag_ids, FilterOptionEnum.IN)  # type: ignore[arg-type]
     dag_run_ids = FilterParam(TI.run_id, body.dag_run_ids, FilterOptionEnum.IN)  # type: ignore[arg-type]
@@ -749,7 +749,7 @@ def post_clear_task_instances(
     body: ClearTaskInstancesBody,
     session: SessionDep,
     user: GetUserDep,
-) -> TaskInstanceCollectionResponse:
+) -> TaskInstanceOffsetCollectionResponse:
     """Clear task instances."""
     dag = get_latest_version_of_dag(dag_bag, dag_id, session)
 
@@ -919,7 +919,7 @@ def patch_task_instance_dry_run(
     session: SessionDep,
     map_index: int | None = None,
     update_mask: list[str] | None = Query(None),
-) -> TaskInstanceCollectionResponse:
+) -> TaskInstanceOffsetCollectionResponse:
     """Update a task instance dry_run mode."""
     tis: Sequence[TI]
     dag, tis, data = _patch_ti_validate_request(
@@ -1019,7 +1019,7 @@ def patch_task_instance(
     session: SessionDep,
     map_index: int | None = None,
     update_mask: list[str] | None = Query(None),
-) -> TaskInstanceCollectionResponse:
+) -> TaskInstanceOffsetCollectionResponse:
     """Update a task instance."""
     dag, tis, data = _patch_ti_validate_request(
         dag_id, dag_run_id, task_id, dag_bag, body, session, map_index, update_mask

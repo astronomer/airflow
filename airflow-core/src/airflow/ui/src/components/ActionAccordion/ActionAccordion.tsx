@@ -22,7 +22,7 @@ import { useTranslation } from "react-i18next";
 
 import type {
   DAGRunResponse,
-  TaskInstanceCollectionResponse,
+  TaskInstanceOffsetCollectionResponse,
   TaskInstanceResponse,
 } from "openapi/requests/types.gen";
 import ReactMarkdown from "src/components/ReactMarkdown";
@@ -32,7 +32,7 @@ import { DataTable } from "../DataTable";
 import { getColumns } from "./columns";
 
 type Props = {
-  readonly affectedTasks?: TaskInstanceCollectionResponse;
+  readonly affectedTasks?: TaskInstanceOffsetCollectionResponse;
   readonly groupByRunId?: boolean;
   readonly note: DAGRunResponse["note"];
   readonly setNote: (value: string) => void;

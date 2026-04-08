@@ -21,7 +21,7 @@ import { useMemo } from "react";
 
 import { TaskInstanceService } from "openapi/requests/services.gen";
 import type {
-  TaskInstanceCollectionResponse,
+  TaskInstanceOffsetCollectionResponse,
   TaskInstanceResponse,
   TaskInstanceState,
 } from "openapi/requests/types.gen";
@@ -33,7 +33,7 @@ type Options = {
   includeUpstream: boolean;
 };
 
-const EMPTY: TaskInstanceCollectionResponse = { task_instances: [], total_entries: 0 };
+const EMPTY: TaskInstanceOffsetCollectionResponse = { task_instances: [], total_entries: 0 };
 
 export const useBulkMarkAsDryRunKey = "bulkMarkAsDryRun";
 
@@ -91,7 +91,7 @@ export const useBulkMarkAsDryRun = (
 
   const isFetching = results.some((result) => result.isFetching);
 
-  const data = useMemo<TaskInstanceCollectionResponse>(() => {
+  const data = useMemo<TaskInstanceOffsetCollectionResponse>(() => {
     const seen = new Set<string>();
     const merged: Array<TaskInstanceResponse> = [];
 

@@ -28,7 +28,10 @@ import {
   useTaskInstanceServicePostClearTaskInstances,
 } from "openapi/queries";
 import type { ApiError } from "openapi/requests";
-import type { ClearTaskInstancesBody, TaskInstanceCollectionResponse } from "openapi/requests/types.gen";
+import type {
+  ClearTaskInstancesBody,
+  TaskInstanceOffsetCollectionResponse,
+} from "openapi/requests/types.gen";
 import { toaster } from "src/components/ui";
 
 import { gridQueryKeys } from "./gridViewQueryKeys";
@@ -87,7 +90,7 @@ export const useClearTaskInstances = ({
   };
 
   const onSuccess = async (
-    _: TaskInstanceCollectionResponse,
+    _: TaskInstanceOffsetCollectionResponse,
     variables: { dagId: string; requestBody: ClearTaskInstancesBody },
   ) => {
     // deduplication using set as user can clear multiple map index of the same task_id.
