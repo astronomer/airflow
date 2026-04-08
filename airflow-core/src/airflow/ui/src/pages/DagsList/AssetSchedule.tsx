@@ -83,6 +83,7 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
     }
   }
 
+  // Fully satisfied assets (used for the button count label).
   const pendingEvents = nextRunEvents.flatMap((event) => {
     if (timetablePartitioned) {
       return event.lastUpdate === null ? [] : [event];
@@ -92,6 +93,22 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
 
     return queuedAt === undefined ? [] : [{ ...event, lastUpdate: event.lastUpdate ?? queuedAt }];
   });
+
+  // For partitioned Dags, also include partially-received assets in the popover visualization.
+  const popoverEvents = timetablePartitioned
+    ? nextRunEvents.filter((event) => (event.receivedCount ?? (event.lastUpdate === null ? 0 : 1)) > 0)
+    : pendingEvents;
+
+  // For partitioned Dags (which may use rollup mappers), compute event-level totals so the
+  // button label reflects received/required partition-key events, not just asset counts.
+  // For non-partitioned Dags, fall back to asset counts (existing behaviour).
+  const scheduledCount = timetablePartitioned
+    ? nextRunEvents.reduce((sum, event) => sum + (event.receivedCount ?? 0), 0)
+    : pendingEvents.length;
+  const scheduledTotal = timetablePartitioned
+    ? nextRunEvents.reduce((sum, event) => sum + (event.requiredCount ?? 1), 0)
+    : nextRunEvents.length;
+
   const isLoading = isNextRunLoading || (!timetablePartitioned && isQueuedEventsLoading);
 
   if (!nextRunEvents.length) {
@@ -143,14 +160,14 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
       <Popover.Trigger asChild>
         <Button loading={isLoading} paddingInline={0} size="sm" variant="ghost">
           <FiDatabase style={{ display: "inline" }} />
-          {translate("assetSchedule", { count: pendingEvents.length, total: nextRunEvents.length })}
+          {translate("assetSchedule", { count: scheduledCount, total: scheduledTotal })}
         </Button>
       </Popover.Trigger>
       <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
         <Popover.Arrow />
         <Popover.Body>
           <AssetExpression
-            events={pendingEvents}
+            events={popoverEvents}
             expression={(nextRun?.asset_expression ?? assetExpression) as ExpressionType}
           />
         </Popover.Body>

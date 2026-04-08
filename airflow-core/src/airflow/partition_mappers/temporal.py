@@ -150,11 +150,18 @@ class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
             )
 
     def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        # Parse via output_format (not a hardcoded slice) so custom formats work correctly.
+        # Python strptime raises ValueError when %V (ISO week number) appears without
+        # %G and a weekday directive, so we cannot parse via the full output_format.
+        # Instead, locate %Y-%m-%d in the format string — __init__ guarantees it is
+        # present — and parse only the matching 10-char slice of the key.
+        # The prefix before %Y-%m-%d is literal text (no format directives), so its
+        # length in the format string equals its length in the formatted output.
+        ymd_fmt = "%Y-%m-%d"
+        key_start = len(self.output_format[: self.output_format.index(ymd_fmt)])
+        week_start_naive = datetime.strptime(downstream_key[key_start : key_start + 10], ymd_fmt)
         # Arithmetic stays on naive datetimes to keep day-counting unambiguous across
         # DST transitions; each result is made timezone-aware before formatting so that
         # %z in input_format produces the correct offset.
-        week_start_naive = datetime.strptime(downstream_key, self.output_format)
         return frozenset(
             make_aware(week_start_naive + timedelta(days=i), self._timezone).strftime(self.input_format)
             for i in range(7)

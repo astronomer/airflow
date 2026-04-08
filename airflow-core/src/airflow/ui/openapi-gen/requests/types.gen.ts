@@ -2211,6 +2211,8 @@ export type PartitionedDagRunAssetResponse = {
     asset_name: string;
     asset_uri: string;
     received: boolean;
+    received_count: number;
+    required_count: number;
 };
 
 /**

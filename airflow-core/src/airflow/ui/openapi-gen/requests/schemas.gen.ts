@@ -8877,10 +8877,18 @@ export const $PartitionedDagRunAssetResponse = {
         received: {
             type: 'boolean',
             title: 'Received'
+        },
+        received_count: {
+            type: 'integer',
+            title: 'Received Count'
+        },
+        required_count: {
+            type: 'integer',
+            title: 'Required Count'
         }
     },
     type: 'object',
-    required: ['asset_id', 'asset_name', 'asset_uri', 'received'],
+    required: ['asset_id', 'asset_name', 'asset_uri', 'received', 'received_count', 'required_count'],
     title: 'PartitionedDagRunAssetResponse',
     description: 'Asset info within a partitioned Dag run detail.'
 } as const;
