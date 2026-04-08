@@ -39,11 +39,13 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
   const assets: Array<PartitionedDagRunAssetResponse> = data?.assets ?? [];
 
   const events: Array<NextRunEvent> = assets
-    .filter((ak: PartitionedDagRunAssetResponse) => ak.received)
+    .filter((ak: PartitionedDagRunAssetResponse) => ak.received_count > 0)
     .map((ak: PartitionedDagRunAssetResponse) => ({
       id: ak.asset_id,
-      lastUpdate: "received",
+      lastUpdate: ak.received ? "received" : null,
       name: ak.asset_name,
+      receivedCount: ak.received_count,
+      requiredCount: ak.required_count,
       uri: ak.asset_uri,
     }));
 

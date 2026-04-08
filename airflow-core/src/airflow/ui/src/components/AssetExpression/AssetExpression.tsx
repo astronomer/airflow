@@ -39,6 +39,14 @@ export const AssetExpression = ({
     return undefined;
   }
 
+  // A bare asset or alias at the top level (no all/any wrapper) — render it directly.
+  if ("asset" in expression) {
+    return <AssetNode asset={expression} event={events?.find((ev) => ev.id === expression.asset.id)} />;
+  }
+  if ("alias" in expression) {
+    return <AssetNode asset={expression} />;
+  }
+
   return (
     <>
       {"any" in expression ? (

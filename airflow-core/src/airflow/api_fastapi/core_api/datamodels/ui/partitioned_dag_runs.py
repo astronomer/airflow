@@ -47,6 +47,8 @@ class PartitionedDagRunAssetResponse(BaseModel):
     asset_name: str
     asset_uri: str
     received: bool
+    received_count: int
+    required_count: int
 
 
 class PartitionedDagRunDetailResponse(BaseModel):

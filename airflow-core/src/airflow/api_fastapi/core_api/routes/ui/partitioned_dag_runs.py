@@ -16,8 +16,11 @@
 # under the License.
 from __future__ import annotations
 
+from contextlib import suppress
+from typing import TYPE_CHECKING, cast
+
 from fastapi import Depends, HTTPException, status
-from sqlalchemy import exists, func, select
+from sqlalchemy import func, select
 
 from airflow.api_fastapi.common.db.common import SessionDep, apply_filters_to_select
 from airflow.api_fastapi.common.parameters import (
@@ -44,6 +47,50 @@ from airflow.models.asset import (
     PartitionedAssetKeyLog,
 )
 from airflow.models.dagrun import DagRun
+from airflow.models.serialized_dag import SerializedDagModel
+from airflow.timetables.simple import PartitionedAssetTimetable
+
+if TYPE_CHECKING:
+    from airflow.partition_mappers.base import RollupMapper
+
+
+def _load_timetable_and_assets(
+    dag_id: str, session
+) -> tuple[PartitionedAssetTimetable | None, list[tuple[str, str]]]:
+    """Load the DAG timetable and its active required assets as (name, uri) pairs."""
+    timetable = None
+    serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
+    if serdag is not None:
+        with suppress(Exception):
+            dag = serdag.dag
+            if isinstance(dag.timetable, PartitionedAssetTimetable):
+                timetable = dag.timetable
+
+    asset_rows = session.execute(
+        select(AssetModel.name, AssetModel.uri)
+        .join(DagScheduleAssetReference, DagScheduleAssetReference.asset_id == AssetModel.id)
+        .where(DagScheduleAssetReference.dag_id == dag_id, AssetModel.active.has())
+    ).all()
+    return timetable, [(r.name or "", r.uri or "") for r in asset_rows]
+
+
+def _compute_total_required(
+    timetable: PartitionedAssetTimetable | None,
+    asset_info: list[tuple[str, str]],
+    partition_key: str,
+) -> int:
+    """Sum required upstream events across all assets, using to_upstream for rollup mappers."""
+    if timetable is None:
+        return len(asset_info)
+    total = 0
+    for name, uri in asset_info:
+        try:
+            mapper = timetable.get_partition_mapper(name=name, uri=uri)
+            total += len(mapper.to_upstream(partition_key)) if isinstance(mapper, RollupMapper) else 1
+        except Exception:
+            total += 1
+    return total or len(asset_info)
+
 
 partitioned_dag_runs_router = AirflowRouter(tags=["PartitionedDagRun"])
 
@@ -73,21 +120,8 @@ def get_partitioned_dag_runs(
 ) -> PartitionedDagRunCollectionResponse:
     """Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id."""
     if dag_id.value is not None:
-        # Single query: validate Dag + get required count
         dag_info = session.execute(
-            select(
-                DagModel.timetable_summary,
-                func.count(DagScheduleAssetReference.asset_id).label("required_count"),
-            )
-            .outerjoin(
-                DagScheduleAssetReference,
-                (DagScheduleAssetReference.dag_id == DagModel.dag_id)
-                & DagScheduleAssetReference.asset_id.in_(
-                    select(AssetModel.id).where(AssetModel.active.has())
-                ),
-            )
-            .where(DagModel.dag_id == dag_id.value)
-            .group_by(DagModel.dag_id)
+            select(DagModel.timetable_summary).where(DagModel.dag_id == dag_id.value)
         ).one_or_none()
 
         if dag_info is None:
@@ -95,9 +129,7 @@ def get_partitioned_dag_runs(
         if dag_info.timetable_summary != "Partitioned Asset":
             return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
-        required_count = dag_info.required_count
-
-    # Subquery for received count per partition (only count required assets)
+    # Subquery: count received events per partition (PartitionedAssetKeyLog rows for required assets)
     required_assets_subq = (
         select(DagScheduleAssetReference.asset_id)
         .join(AssetModel, AssetModel.id == DagScheduleAssetReference.asset_id)
@@ -108,7 +140,7 @@ def get_partitioned_dag_runs(
         .correlate(AssetPartitionDagRun)
     )
     received_subq = (
-        select(func.count(func.distinct(PartitionedAssetKeyLog.asset_id)))
+        select(func.count(PartitionedAssetKeyLog.id))
         .where(
             PartitionedAssetKeyLog.asset_partition_dag_run_id == AssetPartitionDagRun.id,
             PartitionedAssetKeyLog.asset_id.in_(required_assets_subq),
@@ -137,30 +169,34 @@ def get_partitioned_dag_runs(
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
     if dag_id.value is not None:
-        results = [_build_response(row, required_count) for row in rows]
+        timetable, asset_info = _load_timetable_and_assets(dag_id.value, session)
+        results = [
+            _build_response(row, _compute_total_required(timetable, asset_info, row.partition_key))
+            for row in rows
+        ]
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=results, total=len(results))
 
-    # No dag_id: need to get required counts and expressions per dag
-    dag_ids = list({row.target_dag_id for row in rows})
+    # No dag_id filter: load timetables and assets for each unique DAG
+    unique_dag_ids = list({row.target_dag_id for row in rows})
+    dag_timetables_assets: dict[str, tuple[PartitionedAssetTimetable | None, list[tuple[str, str]]]] = {
+        did: _load_timetable_and_assets(did, session) for did in unique_dag_ids
+    }
     dag_rows = session.execute(
-        select(
-            DagModel.dag_id,
-            DagModel.asset_expression,
-            func.count(DagScheduleAssetReference.asset_id).label("required_count"),
-        )
-        .outerjoin(
-            DagScheduleAssetReference,
-            (DagScheduleAssetReference.dag_id == DagModel.dag_id)
-            & DagScheduleAssetReference.asset_id.in_(select(AssetModel.id).where(AssetModel.active.has())),
-        )
-        .where(DagModel.dag_id.in_(dag_ids))
-        .group_by(DagModel.dag_id)
+        select(DagModel.dag_id, DagModel.asset_expression).where(DagModel.dag_id.in_(unique_dag_ids))
     ).all()
-
-    required_counts = {r.dag_id: r.required_count for r in dag_rows}
     asset_expressions = {r.dag_id: r.asset_expression for r in dag_rows}
-    results = [_build_response(row, required_counts.get(row.target_dag_id, 0)) for row in rows]
 
+    results = [
+        _build_response(
+            row,
+            _compute_total_required(
+                dag_timetables_assets[row.target_dag_id][0],
+                dag_timetables_assets[row.target_dag_id][1],
+                row.partition_key,
+            ),
+        )
+        for row in rows
+    ]
     return PartitionedDagRunCollectionResponse(
         partitioned_dag_runs=results,
         total=len(results),
@@ -201,13 +237,17 @@ def get_pending_partitioned_dag_run(
             f"No PartitionedDagRun for dag={dag_id} partition={partition_key}",
         )
 
-    received_subq = (
-        select(PartitionedAssetKeyLog.asset_id).where(
-            PartitionedAssetKeyLog.asset_partition_dag_run_id == partitioned_dag_run.id
+    # Count received PartitionedAssetKeyLog entries per asset for this partition
+    received_count_col = (
+        select(func.count(PartitionedAssetKeyLog.id))
+        .where(
+            PartitionedAssetKeyLog.asset_partition_dag_run_id == partitioned_dag_run.id,
+            PartitionedAssetKeyLog.asset_id == AssetModel.id,
         )
-    ).correlate(AssetModel)
-
-    received_expr = exists(received_subq.where(PartitionedAssetKeyLog.asset_id == AssetModel.id))
+        .correlate(AssetModel)
+        .scalar_subquery()
+        .label("received_count")
+    )
 
     asset_expression_subq = (
         select(DagModel.asset_expression).where(DagModel.dag_id == dag_id).scalar_subquery()
@@ -217,21 +257,45 @@ def get_pending_partitioned_dag_run(
             AssetModel.id,
             AssetModel.uri,
             AssetModel.name,
-            received_expr.label("received"),
+            received_count_col,
             asset_expression_subq.label("asset_expression"),
         )
         .join(DagScheduleAssetReference, DagScheduleAssetReference.asset_id == AssetModel.id)
         .where(DagScheduleAssetReference.dag_id == dag_id, AssetModel.active.has())
-        .order_by(received_expr.asc(), AssetModel.uri)
+        .order_by(received_count_col, AssetModel.uri)
     ).all()
 
-    assets = [
-        PartitionedDagRunAssetResponse(
-            asset_id=row.id, asset_name=row.name, asset_uri=row.uri, received=row.received
+    # Load serialized DAG to compute required counts for rollup assets
+    timetable = None
+    serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
+    if serdag is not None:
+        with suppress(Exception):
+            dag = serdag.dag
+            if isinstance(dag.timetable, PartitionedAssetTimetable):
+                timetable = dag.timetable
+
+    assets = []
+    for row in asset_rows:
+        received_count = row.received_count or 0
+        required_count = 1
+        if timetable is not None:
+            with suppress(Exception):
+                mapper = timetable.get_partition_mapper(name=row.name or "", uri=row.uri or "")
+                if isinstance(mapper, RollupMapper):
+                    required_count = len(mapper.to_upstream(partition_key))
+        assets.append(
+            PartitionedDagRunAssetResponse(
+                asset_id=row.id,
+                asset_name=row.name,
+                asset_uri=row.uri,
+                received=received_count >= required_count and required_count > 0,
+                received_count=received_count,
+                required_count=required_count,
+            )
         )
-        for row in asset_rows
-    ]
-    total_received = sum(1 for a in assets if a.received)
+
+    total_received = sum(a.received_count for a in assets)
+    total_required = sum(a.required_count for a in assets)
     asset_expression = asset_rows[0].asset_expression if asset_rows else None
 
     return PartitionedDagRunDetailResponse(
@@ -242,7 +306,7 @@ def get_pending_partitioned_dag_run(
         updated_at=partitioned_dag_run.updated_at.isoformat() if partitioned_dag_run.updated_at else None,
         created_dag_run_id=partitioned_dag_run.created_dag_run_id,
         assets=assets,
-        total_required=len(assets),
+        total_required=total_required,
         total_received=total_received,
         asset_expression=asset_expression,
     )

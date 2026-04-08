@@ -146,7 +146,7 @@ class TestGetPartitionedDagRuns:
             )
         session.commit()
 
-        with assert_queries_count(3):
+        with assert_queries_count(4):
             resp = test_client.get(
                 f"/partitioned_dag_runs?dag_id=list_dag"
                 f"&has_created_dag_run_id={str(has_created_dag_run_id).lower()}"

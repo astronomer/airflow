@@ -16,6 +16,9 @@
 # under the License.
 from __future__ import annotations
 
+from contextlib import suppress
+from typing import TYPE_CHECKING, cast
+
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import ColumnElement, and_, case, exists, func, select, true
 
@@ -31,6 +34,9 @@ from airflow.models.asset import (
     DagScheduleAssetReference,
     PartitionedAssetKeyLog,
 )
+from airflow.models.serialized_dag import SerializedDagModel
+from airflow.partition_mappers.base import RollupMapper
+from airflow.timetables.simple import PartitionedAssetTimetable
 
 assets_router = AirflowRouter(tags=["Asset"])
 
@@ -114,6 +120,64 @@ def next_run_assets(
     for event in events:
         if not event.pop("queued", None):
             event["lastUpdate"] = None
+
+    # For partitioned Dags: enrich events with per-asset received/required counts,
+    # using to_upstream for rollup mappers, and fix lastUpdate for partial receipt.
+    if is_partitioned:
+        pending_apdr = session.execute(
+            select(AssetPartitionDagRun.id, AssetPartitionDagRun.partition_key)
+            .where(
+                AssetPartitionDagRun.target_dag_id == dag_id,
+                AssetPartitionDagRun.created_dag_run_id.is_(None),
+            )
+            .order_by(AssetPartitionDagRun.created_at.desc())
+            .limit(1)
+        ).one_or_none()
+
+        if pending_apdr is not None:
+            # Count received log entries per asset for this partition
+            received_by_asset: dict[int, int] = {
+                row.asset_id: row.cnt
+                for row in session.execute(
+                    select(
+                        PartitionedAssetKeyLog.asset_id,
+                        func.count(PartitionedAssetKeyLog.id).label("cnt"),
+                    )
+                    .where(PartitionedAssetKeyLog.asset_partition_dag_run_id == pending_apdr.id)
+                    .group_by(PartitionedAssetKeyLog.asset_id)
+                ).all()
+            }
+
+            timetable = None
+            serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
+            if serdag is not None:
+                with suppress(Exception):
+                    dag_obj = serdag.dag
+                    if isinstance(dag_obj.timetable, PartitionedAssetTimetable):
+                        timetable = dag_obj.timetable
+
+            for event in events:
+                asset_id = event["id"]
+                received_count = received_by_asset.get(asset_id, 0)
+                required_count = 1
+                if timetable is not None:
+                    with suppress(Exception):
+                        mapper = timetable.get_partition_mapper(
+                            name=event.get("name") or "",
+                            uri=event.get("uri") or "",
+                        )
+                        mapper.is_rollup
+                        if isinstance(mapper, RollupMapper):
+                            required_count = len(mapper.to_upstream(pending_apdr.partition_key))
+                event["receivedCount"] = received_count
+                event["requiredCount"] = required_count
+                # Only show lastUpdate when all required upstream keys are received
+                if received_count < required_count:
+                    event["lastUpdate"] = None
+        else:
+            for event in events:
+                event["receivedCount"] = 0
+                event["requiredCount"] = 1
 
     data: dict = {"asset_expression": dag_model.asset_expression, "events": events}
     if pending_partition_count is not None:

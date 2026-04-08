@@ -30,32 +30,44 @@ export const AssetNode = ({
 }: {
   readonly asset: AssetSummary;
   readonly event?: NextRunEvent;
-}) => (
-  <Box
-    bg="bg.muted"
-    border="1px solid"
-    borderColor={Boolean(event?.lastUpdate) ? "success.solid" : "border.emphasized"}
-    borderRadius="md"
-    borderWidth={Boolean(event?.lastUpdate) ? 3 : 1}
-    display="inline-block"
-    minW="fit-content"
-    p={2}
-    position="relative"
-  >
-    <HStack gap={2}>
-      {"asset" in asset ? <FiDatabase /> : <PiRectangleDashed />}
-      {"alias" in asset ? (
-        <Text fontSize="sm">{asset.alias.name}</Text>
-      ) : (
-        <Link asChild color="fg.info" display="block" py={2}>
-          <RouterLink to={`/assets/${asset.asset.id}`}>{asset.asset.name}</RouterLink>
-        </Link>
-      )}
-    </HStack>
-    {event?.lastUpdate === undefined ? undefined : (
-      <Text color="fg.muted" fontSize="sm">
-        <Time datetime={event.lastUpdate} />
-      </Text>
-    )}
-  </Box>
-);
+}) => {
+  const isFullyReceived = Boolean(event?.lastUpdate);
+  const isPartial =
+    !isFullyReceived &&
+    (event?.receivedCount ?? 0) > 0 &&
+    (event?.receivedCount ?? 0) < (event?.requiredCount ?? 1);
+
+  return (
+    <Box
+      bg="bg.muted"
+      border="1px solid"
+      borderColor={isFullyReceived ? "success.solid" : isPartial ? "warning.solid" : "border.emphasized"}
+      borderRadius="md"
+      borderWidth={isFullyReceived || isPartial ? 3 : 1}
+      display="inline-block"
+      minW="fit-content"
+      p={2}
+      position="relative"
+    >
+      <HStack gap={2}>
+        {"asset" in asset ? <FiDatabase /> : <PiRectangleDashed />}
+        {"alias" in asset ? (
+          <Text fontSize="sm">{asset.alias.name}</Text>
+        ) : (
+          <Link asChild color="fg.info" display="block" py={2}>
+            <RouterLink to={`/assets/${asset.asset.id}`}>{asset.asset.name}</RouterLink>
+          </Link>
+        )}
+      </HStack>
+      {isFullyReceived ? (
+        <Text color="fg.muted" fontSize="sm">
+          <Time datetime={event?.lastUpdate ?? null} />
+        </Text>
+      ) : isPartial ? (
+        <Text color="warning.fg" fontSize="sm">
+          {event?.receivedCount} / {event?.requiredCount}
+        </Text>
+      ) : undefined}
+    </Box>
+  );
+};
