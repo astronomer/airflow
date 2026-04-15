@@ -2213,6 +2213,8 @@ export type PartitionedDagRunAssetResponse = {
     received: boolean;
     received_count: number;
     required_count: number;
+    received_keys: Array<(string)>;
+    required_keys: Array<(string)>;
 };
 
 /**

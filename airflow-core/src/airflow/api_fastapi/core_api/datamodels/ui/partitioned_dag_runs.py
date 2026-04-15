@@ -49,6 +49,8 @@ class PartitionedDagRunAssetResponse(BaseModel):
     received: bool
     received_count: int
     required_count: int
+    received_keys: list[str]
+    required_keys: list[str]
 
 
 class PartitionedDagRunDetailResponse(BaseModel):

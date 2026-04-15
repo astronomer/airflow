@@ -16,8 +16,9 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Button } from "@chakra-ui/react";
-import { FiDatabase } from "react-icons/fi";
+import { Button, HStack, Link, Text, VStack } from "@chakra-ui/react";
+import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
+import { Link as RouterLink } from "react-router-dom";
 
 import { usePartitionedDagRunServiceGetPendingPartitionedDagRun } from "openapi/queries";
 import type { PartitionedDagRunAssetResponse } from "openapi/requests/types.gen";
@@ -37,6 +38,8 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
 
   const assetExpression = data?.asset_expression as ExpressionType | undefined;
   const assets: Array<PartitionedDagRunAssetResponse> = data?.assets ?? [];
+
+  const hasRollup = assets.some((ak) => ak.required_count > 1);
 
   const events: Array<NextRunEvent> = assets
     .filter((ak: PartitionedDagRunAssetResponse) => ak.received_count > 0)
@@ -61,7 +64,43 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
       <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
         <Popover.Arrow />
         <Popover.Body>
-          <AssetExpression events={events} expression={assetExpression} />
+          {hasRollup ? (
+            <VStack align="start" gap={3} maxH="300px" overflowY="auto">
+              {assets
+                .filter((ak) => ak.required_count > 1)
+                .map((ak) => {
+                  const receivedKeySet = new Set(ak.received_keys);
+
+                  return (
+                    <VStack align="start" gap={1} key={ak.asset_id}>
+                      {assets.length > 1 ? (
+                        <Link asChild color="fg.info" fontSize="xs" fontWeight="semibold">
+                          <RouterLink to={`/assets/${ak.asset_id}`}>{ak.asset_name}</RouterLink>
+                        </Link>
+                      ) : undefined}
+                      {ak.required_keys.map((key) => {
+                        const isReceived = receivedKeySet.has(key);
+
+                        return (
+                          <HStack gap={2} key={key}>
+                            {isReceived ? (
+                              <FiCheck color="var(--chakra-colors-success-fg)" />
+                            ) : (
+                              <FiMinus color="var(--chakra-colors-fg-muted)" />
+                            )}
+                            <Text color={isReceived ? "fg.muted" : "fg.default"} fontSize="sm">
+                              {key}
+                            </Text>
+                          </HStack>
+                        );
+                      })}
+                    </VStack>
+                  );
+                })}
+            </VStack>
+          ) : (
+            <AssetExpression events={events} expression={assetExpression} />
+          )}
         </Popover.Body>
       </Popover.Content>
     </Popover.Root>
