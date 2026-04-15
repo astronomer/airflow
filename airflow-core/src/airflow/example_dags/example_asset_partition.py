@@ -23,6 +23,7 @@ from airflow.sdk import (
     DAG,
     AllowedKeyMapper,
     Asset,
+    AssetAll,
     CronPartitionTimetable,
     IdentityMapper,
     PartitionedAssetTimetable,
@@ -30,6 +31,7 @@ from airflow.sdk import (
     StartOfDayMapper,
     StartOfHourMapper,
     StartOfYearMapper,
+    WeeklyRollupMapper,
     asset,
     task,
 )
@@ -225,3 +227,68 @@ def regional_stats_breakdown():
     keys belong to a fixed set of allowed values (``us``, ``eu``, ``apac``) rather than time-based partitions.
     """
     pass
+
+
+daily_sales = Asset(uri="s3://sales/daily", name="daily_sales")
+daily_costs = Asset(uri="s3://costs/daily", name="daily_costs")
+
+
+with DAG(
+    dag_id="produce_daily_sales",
+    schedule=CronPartitionTimetable("0 0 * * *", timezone="UTC"),
+    tags=["sales", "ingestion"],
+):
+    """Produce daily sales data partitioned by date."""
+
+    @task(outlets=[daily_sales])
+    def upload_daily_sales(dag_run=None):
+        """Upload sales data for the current daily partition."""
+        if TYPE_CHECKING:
+            assert dag_run
+        print(f"Producing partition: {dag_run.partition_key}")
+
+    upload_daily_sales()
+
+
+with DAG(
+    dag_id="produce_daily_costs",
+    schedule=CronPartitionTimetable("0 0 * * *", timezone="UTC"),
+    tags=["costs", "ingestion"],
+):
+    """Produce daily cost data partitioned by date."""
+
+    @task(outlets=[daily_costs])
+    def upload_daily_costs(dag_run=None):
+        """Upload cost data for the current daily partition."""
+        if TYPE_CHECKING:
+            assert dag_run
+        print(f"Producing partition: {dag_run.partition_key}")
+
+    upload_daily_costs()
+
+
+with DAG(
+    dag_id="weekly_sales_report",
+    schedule=PartitionedAssetTimetable(
+        assets=AssetAll(daily_sales, daily_costs),
+        default_partition_mapper=WeeklyRollupMapper(),
+    ),
+    catchup=False,
+    tags=["sales", "reporting"],
+):
+    """
+    Generate a weekly sales report once all daily partitions for both assets have arrived.
+
+    This Dag demonstrates WeeklyRollupMapper with multiple assets: it waits for all 7
+    daily partitions of ``daily_sales`` and ``daily_costs`` before triggering for a given week.
+    The partition key is the week identifier, e.g. ``2024-01-15 (W03)``.
+    """
+
+    @task
+    def generate_weekly_report(dag_run=None):
+        """Combine the full week of sales and cost data into a report."""
+        if TYPE_CHECKING:
+            assert dag_run
+        print(f"All 7 daily partitions for both assets received. Week: {dag_run.partition_key}")
+
+    generate_weekly_report()
