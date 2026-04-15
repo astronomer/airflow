@@ -57,7 +57,12 @@ from airflow.sdk.definitions.timetables.assets import (
     AssetTriggeredTimetable,
     PartitionedAssetTimetable,
 )
-from airflow.sdk.definitions.timetables.simple import ContinuousTimetable, NullTimetable, OnceTimetable
+from airflow.sdk.definitions.timetables.simple import (
+    ContinuousTimetable,
+    NullTimetable,
+    OnceTimetable,
+    PartitionAtRuntime,
+)
 from airflow.sdk.definitions.timetables.trigger import CronPartitionTimetable
 from airflow.serialization.decoders import decode_deadline_alert
 from airflow.serialization.definitions.assets import (
@@ -292,6 +297,7 @@ class _Serializer:
         MultipleCronTriggerTimetable: "airflow.timetables.trigger.MultipleCronTriggerTimetable",
         NullTimetable: "airflow.timetables.simple.NullTimetable",
         OnceTimetable: "airflow.timetables.simple.OnceTimetable",
+        PartitionAtRuntime: "airflow.timetables.simple.PartitionAtRuntime",
         PartitionedAssetTimetable: "airflow.timetables.simple.PartitionedAssetTimetable",
     }
 
@@ -317,7 +323,10 @@ class _Serializer:
     @serialize_timetable.register(ContinuousTimetable)
     @serialize_timetable.register(NullTimetable)
     @serialize_timetable.register(OnceTimetable)
-    def _(self, timetable: ContinuousTimetable | NullTimetable | OnceTimetable) -> dict[str, Any]:
+    @serialize_timetable.register(PartitionAtRuntime)
+    def _(
+        self, timetable: ContinuousTimetable | NullTimetable | OnceTimetable | PartitionAtRuntime
+    ) -> dict[str, Any]:
         return {}
 
     @serialize_timetable.register

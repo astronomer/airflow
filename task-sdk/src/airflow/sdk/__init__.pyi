@@ -48,6 +48,7 @@ from airflow.sdk.definitions.asset import (
     AssetAll as AssetAll,
     AssetAny as AssetAny,
     AssetWatcher as AssetWatcher,
+    PartitionKey as PartitionKey,
 )
 from airflow.sdk.definitions.asset.decorators import asset as asset
 from airflow.sdk.definitions.asset.metadata import Metadata as Metadata
@@ -86,6 +87,7 @@ from airflow.sdk.definitions.timetables.interval import (
     CronDataIntervalTimetable,
     DeltaDataIntervalTimetable,
 )
+from airflow.sdk.definitions.timetables.simple import PartitionAtRuntime as PartitionAtRuntime
 from airflow.sdk.definitions.timetables.trigger import (
     CronPartitionTimetable,
     CronTriggerTimetable,
@@ -137,7 +139,9 @@ __all__ = [
     "ObjectStoragePath",
     "Param",
     "PokeReturnValue",
+    "PartitionAtRuntime",
     "PartitionedAssetTimetable",
+    "PartitionKey",
     "PartitionMapper",
     "ProductMapper",
     "SecretCache",

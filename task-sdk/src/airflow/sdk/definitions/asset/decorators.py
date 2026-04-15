@@ -49,10 +49,36 @@ def _validate_asset_function_arguments(f: Callable) -> None:
             raise TypeError(f"positional-only argument '{name}' without a default is not supported in @asset")
 
 
+class _AssetSelfProxy:
+    """
+    Proxy for the ``self`` parameter in ``@asset`` functions.
+
+    Allows setting ``partition_keys`` at runtime, which is then propagated
+    to the outlet event for the dag run.  All other attribute reads are
+    forwarded to the underlying :class:`Asset`.
+    """
+
+    def __init__(self, asset: Asset) -> None:
+        object.__setattr__(self, "_asset", asset)
+        object.__setattr__(self, "partition_keys", [])
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(object.__getattribute__(self, "_asset"), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "partition_keys":
+            object.__setattr__(self, "partition_keys", value)
+        else:
+            raise AttributeError(
+                f"Cannot set '{name}' on @asset self; only 'partition_keys' is settable at runtime"
+            )
+
+
 class _AssetMainOperator(PythonOperator):
     def __init__(self, *, definition_name: str, uri: str | None = None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._definition_name = definition_name
+        self._self_proxy: _AssetSelfProxy | None = None
 
     @classmethod
     def from_definition(cls, definition: AssetDefinition | MultiAssetDefinition) -> Self:
@@ -62,7 +88,8 @@ class _AssetMainOperator(PythonOperator):
             inlets=[
                 Asset.ref(name=inlet_asset_name)
                 for inlet_asset_name, param in inspect.signature(definition._function).parameters.items()
-                if inlet_asset_name not in ("self", "context") and param.default is inspect.Parameter.empty
+                if inlet_asset_name not in ("self", "context", "outlet_events")
+                and param.default is inspect.Parameter.empty
             ],
             outlets=list(definition.iter_outlets()),
             python_callable=definition._function,
@@ -86,15 +113,25 @@ class _AssetMainOperator(PythonOperator):
             if param.default is not inspect.Parameter.empty:
                 value = param.default
             elif key == "self":
-                value = _fetch_asset(self._definition_name)
+                fetched = _fetch_asset(self._definition_name)
+                self._self_proxy = _AssetSelfProxy(fetched)
+                value = self._self_proxy
             elif key == "context":
                 value = context
+            elif key == "outlet_events":
+                value = context["outlet_events"]
             else:
                 value = _fetch_asset(key)
             yield key, value
 
     def determine_kwargs(self, context: Mapping[str, Any]) -> Mapping[str, Any]:
         return dict(self._iter_kwargs(context))
+
+    def execute(self, context: Mapping[str, Any]) -> Any:
+        result = super().execute(context)
+        if self._self_proxy is not None and self._self_proxy.partition_keys:
+            context["outlet_events"][self._self_proxy._asset].partition_keys = self._self_proxy.partition_keys
+        return result
 
 
 def _instantiate_task(definition: AssetDefinition | MultiAssetDefinition) -> None:

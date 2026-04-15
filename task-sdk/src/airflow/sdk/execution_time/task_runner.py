@@ -1102,11 +1102,22 @@ def _build_asset_profiles(lineage_objects: list) -> Iterator[AssetProfile]:
 def _serialize_outlet_events(events: OutletEventAccessorsProtocol) -> Iterator[dict[str, JsonValue]]:
     if TYPE_CHECKING:
         assert isinstance(events, OutletEventAccessors)
+    from airflow.sdk.definitions.asset import PartitionKey
+
     # We just collect everything the user recorded in the accessors.
     # Further filtering will be done in the API server.
     for key, accessor in events._dict.items():
         if isinstance(key, AssetUniqueKey):
-            yield {"dest_asset_key": attrs.asdict(key), "extra": accessor.extra}
+            yield {
+                "dest_asset_key": attrs.asdict(key),
+                "extra": accessor.extra,
+                "partition_keys": [
+                    {"key": pk.key, "extra": pk.extra}
+                    if isinstance(pk, PartitionKey)
+                    else {"key": pk, "extra": {}}
+                    for pk in accessor.partition_keys
+                ],
+            }
         for alias_event in accessor.asset_alias_events:
             yield attrs.asdict(alias_event)
 

@@ -40,6 +40,7 @@ from airflow.sdk.definitions.asset import (
     AssetUniqueKey,
     AssetUriRef,
     BaseAssetUniqueKey,
+    PartitionKey,
 )
 from airflow.sdk.exceptions import AirflowNotFoundException, AirflowRuntimeError, ErrorType
 from airflow.sdk.log import mask_secret
@@ -484,6 +485,35 @@ class OutletEventAccessor(_AssetRefResolutionMixin):
     key: BaseAssetUniqueKey
     extra: dict[str, JsonValue] = attrs.Factory(dict)
     asset_alias_events: list[AssetAliasEvent] = attrs.field(factory=list)
+    partition_keys: list[str | PartitionKey] = attrs.Factory(list)
+
+    def add_partition(
+        self,
+        key: str | PartitionKey,
+        *,
+        extra: dict[str, JsonValue] | None = None,
+    ) -> None:
+        """
+        Add a partition key to this outlet event.
+
+        Equivalent to appending to :attr:`partition_keys` directly, but also
+        lets you attach per-partition ``extra`` metadata inline::
+
+            outlet_events[asset].add_partition("region_a", extra={"source": "s3://…"})
+            outlet_events[asset].add_partition(PartitionKey(key="region_b", extra={…}))
+
+        :param key: The partition key string or a :class:`~airflow.sdk.PartitionKey`
+            instance that already carries extra metadata.
+        :param extra: Per-partition extra metadata.  When *key* is a plain string
+            this is set directly.  When *key* is already a :class:`PartitionKey`,
+            the values are merged (``extra`` takes precedence).
+        """
+        if isinstance(key, str):
+            self.partition_keys.append(PartitionKey(key=key, extra=extra or {}))
+        elif extra is not None:
+            self.partition_keys.append(PartitionKey(key=key.key, extra={**key.extra, **extra}))
+        else:
+            self.partition_keys.append(key)
 
     def add(self, asset: Asset | AssetRef, extra: dict[str, JsonValue] | None = None) -> None:
         """Add an AssetEvent to an existing Asset."""

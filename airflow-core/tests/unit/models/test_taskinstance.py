@@ -82,6 +82,7 @@ from airflow.sdk import (
     BaseSensorOperator,
     IdentityMapper,
     Metadata,
+    PartitionAtRuntime,
     PartitionedAssetTimetable,
     task,
     task_group,
@@ -3442,6 +3443,95 @@ def test_when_dag_run_has_partition_and_downstreams_listening_then_tables_popula
     assert pakl.asset_partition_dag_run_id == apdr.id
     assert pakl.source_partition_key == "abc123"
     assert pakl.target_dag_id == "asset_event_listener"
+
+
+@pytest.mark.db_test
+def test_partition_keys_in_outlet_events_single_key_sets_dag_run(dag_maker, session):
+    """When a single partition key is emitted, dag_run.partition_key is updated."""
+    asset = Asset(name="single_pk_asset")
+    with dag_maker(dag_id="producer", schedule=PartitionAtRuntime(), session=session) as dag:
+        EmptyOperator(task_id="t", outlets=[asset])
+    dr = dag_maker.create_dagrun(session=session)
+    assert dr.partition_key is None
+    [ti] = dr.get_task_instances(session=session)
+    dest_key = {"name": asset.name, "uri": asset.name}
+
+    TaskInstance.register_asset_changes_in_db(
+        ti=ti,
+        task_outlets=[ensure_serialized_asset(asset).asprofile()],
+        outlet_events=[
+            {
+                "dest_asset_key": dest_key,
+                "extra": {"info": "test"},
+                "partition_keys": [{"key": "region_a", "extra": {}}],
+            }
+        ],
+        session=session,
+    )
+    assert dr.partition_key == "region_a"
+    actual_event = session.scalar(select(AssetEvent).where(AssetEvent.source_dag_id == dag.dag_id))
+    assert actual_event.partition_key == "region_a"
+    assert actual_event.extra == {"info": "test"}
+
+
+@pytest.mark.db_test
+def test_partition_keys_in_outlet_events_fan_out_creates_multiple_events(dag_maker, session):
+    """When multiple partition keys are emitted, one asset event is created per key."""
+    asset = Asset(name="fan_out_asset")
+    with dag_maker(dag_id="fan_out_producer", schedule=PartitionAtRuntime(), session=session) as dag:
+        EmptyOperator(task_id="t", outlets=[asset])
+    dr = dag_maker.create_dagrun(session=session)
+    [ti] = dr.get_task_instances(session=session)
+    dest_key = {"name": asset.name, "uri": asset.name}
+
+    regions = ["us", "eu", "apac"]
+    TaskInstance.register_asset_changes_in_db(
+        ti=ti,
+        task_outlets=[ensure_serialized_asset(asset).asprofile()],
+        outlet_events=[
+            {
+                "dest_asset_key": dest_key,
+                "extra": {},
+                "partition_keys": [
+                    {"key": region, "extra": {"source": f"s3://{region}"}} for region in regions
+                ],
+            }
+        ],
+        session=session,
+    )
+    # Fan-out: dag_run.partition_key should NOT be set (multiple keys)
+    assert dr.partition_key is None
+    events = session.scalars(select(AssetEvent).where(AssetEvent.source_dag_id == dag.dag_id)).all()
+    assert len(events) == 3
+    assert {e.partition_key for e in events} == {"us", "eu", "apac"}
+    assert {e.extra.get("source") for e in events} == {"s3://us", "s3://eu", "s3://apac"}
+
+
+@pytest.mark.db_test
+def test_partition_key_per_partition_extra_merged_with_base_extra(dag_maker, session):
+    """Per-partition extra is merged with the base event extra."""
+    asset = Asset(name="merged_extra_asset")
+    with dag_maker(dag_id="merged_extra_producer", schedule=PartitionAtRuntime(), session=session) as dag:
+        EmptyOperator(task_id="t", outlets=[asset])
+    dr = dag_maker.create_dagrun(session=session)
+    [ti] = dr.get_task_instances(session=session)
+    dest_key = {"name": asset.name, "uri": asset.name}
+
+    TaskInstance.register_asset_changes_in_db(
+        ti=ti,
+        task_outlets=[ensure_serialized_asset(asset).asprofile()],
+        outlet_events=[
+            {
+                "dest_asset_key": dest_key,
+                "extra": {"base": "value"},
+                "partition_keys": [{"key": "k1", "extra": {"pk": "specific"}}],
+            }
+        ],
+        session=session,
+    )
+    actual_event = session.scalar(select(AssetEvent).where(AssetEvent.source_dag_id == dag.dag_id))
+    assert actual_event.partition_key == "k1"
+    assert actual_event.extra == {"base": "value", "pk": "specific"}
 
 
 async def empty_callback_for_deadline():

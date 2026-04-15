@@ -183,6 +183,23 @@ class ContinuousTimetable(_TrivialTimetable):
         return DagRunInfo.interval(start, end)
 
 
+class PartitionAtRuntime(NullTimetable):
+    """
+    Timetable indicating that partition keys are determined at runtime.
+
+    Semantically equivalent to ``NullTimetable`` (the Dag is externally
+    triggered and never auto-scheduled), but signals that tasks in this Dag
+    will set partition keys on their outlet events at execution time via
+    ``outlet_events[asset].partition_keys = [...].``
+    """
+
+    description: str = "Never, partition key(s) set at runtime"
+
+    @property
+    def summary(self) -> str:
+        return "PartitionAtRuntime"
+
+
 class AssetTriggeredTimetable(_TrivialTimetable):
     """
     Timetable that never schedules anything.

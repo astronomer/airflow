@@ -31,6 +31,7 @@ from airflow.sdk.definitions.asset import (
     AssetAliasEvent,
     AssetAliasUniqueKey,
     AssetUniqueKey,
+    PartitionKey,
 )
 from airflow.sdk.definitions.connection import Connection
 from airflow.sdk.definitions.variable import Variable
@@ -418,6 +419,58 @@ class TestOutletEventAccessor:
         outlet_event_accessor = OutletEventAccessor(key=key)
         outlet_event_accessor.add(*add_args)
         assert outlet_event_accessor.asset_alias_events == asset_alias_events
+
+
+class TestOutletEventAccessorPartitionKeys:
+    """Tests for add_partition() and partition_keys list on OutletEventAccessor."""
+
+    def _make_accessor(self) -> OutletEventAccessor:
+        key = AssetUniqueKey.from_asset(Asset("test_asset"))
+        return OutletEventAccessor(key=key, extra={})
+
+    def test_add_partition_str(self):
+        accessor = self._make_accessor()
+        accessor.add_partition("region_a")
+        assert accessor.partition_keys == [PartitionKey(key="region_a", extra={})]
+
+    def test_add_partition_str_with_extra(self):
+        accessor = self._make_accessor()
+        accessor.add_partition("region_a", extra={"source": "s3://bucket"})
+        assert accessor.partition_keys == [PartitionKey(key="region_a", extra={"source": "s3://bucket"})]
+
+    def test_add_partition_partition_key_object(self):
+        accessor = self._make_accessor()
+        pk = PartitionKey(key="region_b", extra={"x": 1})
+        accessor.add_partition(pk)
+        assert accessor.partition_keys == [PartitionKey(key="region_b", extra={"x": 1})]
+
+    def test_add_partition_partition_key_with_extra_override(self):
+        accessor = self._make_accessor()
+        pk = PartitionKey(key="region_c", extra={"a": 1})
+        accessor.add_partition(pk, extra={"b": 2})
+        assert accessor.partition_keys == [PartitionKey(key="region_c", extra={"a": 1, "b": 2})]
+
+    def test_add_partition_multiple(self):
+        accessor = self._make_accessor()
+        accessor.add_partition("us")
+        accessor.add_partition("eu")
+        accessor.add_partition("apac")
+        assert len(accessor.partition_keys) == 3
+        assert [pk.key for pk in accessor.partition_keys] == ["us", "eu", "apac"]  # type: ignore[union-attr]
+
+    def test_partition_keys_setter_plain_strings(self):
+        accessor = self._make_accessor()
+        accessor.partition_keys = ["key1", "key2"]
+        assert accessor.partition_keys == ["key1", "key2"]
+
+    def test_partition_keys_setter_partition_key_objects(self):
+        accessor = self._make_accessor()
+        accessor.partition_keys = [PartitionKey(key="k1", extra={"a": 1})]
+        assert accessor.partition_keys == [PartitionKey(key="k1", extra={"a": 1})]
+
+    def test_default_partition_keys_is_empty(self):
+        accessor = self._make_accessor()
+        assert accessor.partition_keys == []
 
 
 class TestTriggeringAssetEventsAccessor:
