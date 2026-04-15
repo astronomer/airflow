@@ -38,7 +38,9 @@ export type NextRunEvent = {
   lastUpdate: string | null;
   name: string | null;
   receivedCount?: number;
+  receivedKeys?: Array<string>;
   requiredCount?: number;
+  requiredKeys?: Array<string>;
   uri: string;
 };
 

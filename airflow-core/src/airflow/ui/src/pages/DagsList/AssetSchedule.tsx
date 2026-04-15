@@ -16,11 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Button, HStack, Link, Text } from "@chakra-ui/react";
+import { Button, HStack, Link, Text, VStack } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FiDatabase } from "react-icons/fi";
+import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
 import { Link as RouterLink } from "react-router-dom";
 
 import { useAssetServiceGetDagAssetQueuedEvents, useAssetServiceNextRunAssets } from "openapi/queries";
@@ -142,6 +142,62 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
   const [asset] = nextRunEvents;
 
   if (nextRunEvents.length === 1 && asset !== undefined) {
+    const requiredCount = asset.requiredCount ?? 1;
+    const receivedCount = asset.receivedCount ?? 0;
+
+    if (requiredCount > 1) {
+      const requiredKeys = asset.requiredKeys ?? [];
+      const receivedKeySet = new Set(asset.receivedKeys ?? []);
+
+      return (
+        <HStack>
+          <FiDatabase style={{ display: "inline", flexShrink: 0 }} />
+          <Link asChild color="fg.info" display="block" fontSize="sm">
+            <RouterLink to={`/assets/${asset.id}`}>
+              <TruncatedText minWidth={0} text={asset.name ?? asset.uri} />
+            </RouterLink>
+          </Link>
+          {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+          <Popover.Root autoFocus={false} lazyMount positioning={{ placement: "bottom-end" }} unmountOnExit>
+            <Popover.Trigger asChild>
+              <Button
+                color={receivedCount < requiredCount ? "warning.fg" : "fg.muted"}
+                loading={isLoading}
+                paddingInline={0}
+                size="sm"
+                variant="ghost"
+              >
+                {receivedCount}/{requiredCount}
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
+              <Popover.Arrow />
+              <Popover.Body>
+                <VStack align="start" gap={1}>
+                  {requiredKeys.map((key) => {
+                    const isReceived = receivedKeySet.has(key);
+
+                    return (
+                      <HStack gap={2} key={key}>
+                        {isReceived ? (
+                          <FiCheck color="var(--chakra-colors-success-fg)" />
+                        ) : (
+                          <FiMinus color="var(--chakra-colors-fg-muted)" />
+                        )}
+                        <Text color={isReceived ? "fg.muted" : "fg.default"} fontSize="sm">
+                          {key}
+                        </Text>
+                      </HStack>
+                    );
+                  })}
+                </VStack>
+              </Popover.Body>
+            </Popover.Content>
+          </Popover.Root>
+        </HStack>
+      );
+    }
+
     return (
       <HStack>
         <FiDatabase style={{ display: "inline", flexShrink: 0 }} />

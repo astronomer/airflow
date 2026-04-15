@@ -135,18 +135,15 @@ def next_run_assets(
         ).one_or_none()
 
         if pending_apdr is not None:
-            # Count received log entries per asset for this partition
-            received_by_asset: dict[int, int] = {
-                row.asset_id: row.cnt
-                for row in session.execute(
-                    select(
-                        PartitionedAssetKeyLog.asset_id,
-                        func.count(PartitionedAssetKeyLog.id).label("cnt"),
-                    )
-                    .where(PartitionedAssetKeyLog.asset_partition_dag_run_id == pending_apdr.id)
-                    .group_by(PartitionedAssetKeyLog.asset_id)
-                ).all()
-            }
+            # Collect received upstream partition keys per asset for this partition run.
+            received_keys_by_asset: dict[int, list[str]] = {}
+            for row in session.execute(
+                select(
+                    PartitionedAssetKeyLog.asset_id,
+                    PartitionedAssetKeyLog.source_partition_key,
+                ).where(PartitionedAssetKeyLog.asset_partition_dag_run_id == pending_apdr.id)
+            ):
+                received_keys_by_asset.setdefault(row.asset_id, []).append(row.source_partition_key or "")
 
             timetable = None
             serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
@@ -158,8 +155,8 @@ def next_run_assets(
 
             for event in events:
                 asset_id = event["id"]
-                received_count = received_by_asset.get(asset_id, 0)
-                required_count = 1
+                received_keys = received_keys_by_asset.get(asset_id, [])
+                required_keys: list[str] = [pending_apdr.partition_key]
                 if timetable is not None:
                     with suppress(Exception):
                         mapper = timetable.get_partition_mapper(
@@ -168,9 +165,13 @@ def next_run_assets(
                         )
                         mapper.is_rollup
                         if isinstance(mapper, RollupMapper):
-                            required_count = len(mapper.to_upstream(pending_apdr.partition_key))
+                            required_keys = sorted(mapper.to_upstream(pending_apdr.partition_key))
+                received_count = len(received_keys)
+                required_count = len(required_keys)
                 event["receivedCount"] = received_count
                 event["requiredCount"] = required_count
+                event["receivedKeys"] = sorted(received_keys)
+                event["requiredKeys"] = required_keys
                 # Only show lastUpdate when all required upstream keys are received
                 if received_count < required_count:
                     event["lastUpdate"] = None
@@ -178,6 +179,8 @@ def next_run_assets(
             for event in events:
                 event["receivedCount"] = 0
                 event["requiredCount"] = 1
+                event["receivedKeys"] = []
+                event["requiredKeys"] = []
 
     data: dict = {"asset_expression": dag_model.asset_expression, "events": events}
     if pending_partition_count is not None:
