@@ -84,6 +84,12 @@ Configuration  (airflow.cfg)
 
     # Seconds to wait for each submission request
     submission_timeout = 30
+
+    # Base URL of the Spark master HTTP UI (not the REST submission port).
+    # Used to look up which worker ran a given driver and to retrieve its
+    # log URL.  Required for JAR task log upload to the Airflow remote log
+    # store.  Defaults to http://localhost:8080.
+    master_ui_url = http://localhost:8080
 """
 
 from __future__ import annotations
@@ -127,6 +133,7 @@ class SparkStandaloneExecutor(BaseExecutor):
         super().__init__(parallelism=parallelism)
         self._rest_url: str = ""
         self._master_url: str = ""
+        self._master_ui_url: str = ""
         self._task_runner_script: str = ""
         self._driver_launcher_jar: str = ""
         self._spark_version: str = "3.5.0"
@@ -165,6 +172,9 @@ class SparkStandaloneExecutor(BaseExecutor):
         self._executor_memory = conf.get("spark_standalone_executor", "executor_memory", fallback="1g")
         self._executor_cores = conf.get("spark_standalone_executor", "executor_cores", fallback="1")
         self._submission_timeout = conf.getint("spark_standalone_executor", "submission_timeout", fallback=30)
+        self._master_ui_url = conf.get(
+            "spark_standalone_executor", "master_ui_url", fallback="http://localhost:8080"
+        )
         startup_timeout = conf.getint("spark_standalone_executor", "startup_timeout", fallback=30)
 
         self._validate_connectivity(startup_timeout)
@@ -214,12 +224,14 @@ class SparkStandaloneExecutor(BaseExecutor):
 
             if driver_state == _DRIVER_STATE_SUCCESS:
                 self.log.info("Task %s finished successfully (submissionId=%s)", key, submission_id)
+                self._upload_driver_logs(key, submission_id)
                 self.success(key)
                 del self._submissions[key]
             elif driver_state in _DRIVER_STATE_TERMINAL_FAILURE:
                 self.log.error(
                     "Task %s failed — driverState=%s (submissionId=%s)", key, driver_state, submission_id
                 )
+                self._upload_driver_logs(key, submission_id)
                 self.fail(key, info=f"driverState={driver_state}")
                 del self._submissions[key]
             else:
@@ -408,6 +420,191 @@ class SparkStandaloneExecutor(BaseExecutor):
                 env[key] = val
 
         return env
+
+    def _upload_driver_logs(self, key: TaskInstanceKey, submission_id: str) -> None:
+        """
+        Fetch Spark driver stdout/stderr and upload to the Airflow remote log store.
+
+        When ``AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER`` is set (e.g.
+        ``s3://airflow-logs/``), the driver logs are fetched from the Spark
+        worker HTTP UI and uploaded to the same S3/MinIO path the Airflow log
+        tab reads from, so JAR task logs appear inline with Python task logs.
+
+        Silently no-ops if:
+        - remote logging is not configured
+        - the Spark master UI or worker UI is unreachable
+        - ``apache-airflow-providers-amazon`` is not installed
+
+        The Breeze container (or the host running the scheduler) must be able
+        to reach the worker HTTP UI.  In the Docker Compose dev setup this
+        requires connecting the Airflow container to the Spark network once::
+
+            docker network connect spark-standalone_default <airflow-container>
+
+        (``dev/spark-standalone/env.sh`` does this automatically.)
+        """
+        try:
+            self._do_upload_driver_logs(key, submission_id)
+        except Exception as exc:
+            self.log.warning(
+                "Could not upload driver logs for %s (submissionId=%s): %s  "
+                "Logs are still available in the Spark UI.",
+                key,
+                submission_id,
+                exc,
+            )
+
+    def _do_upload_driver_logs(self, key: TaskInstanceKey, submission_id: str) -> None:
+        import os
+
+        from airflow.configuration import conf as airflow_conf
+
+        remote_base = os.environ.get("AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER") or airflow_conf.get(
+            "logging", "remote_base_log_folder", fallback=""
+        )
+        if not remote_base:
+            return
+
+        worker_ui_url = self._get_worker_ui_url(submission_id)
+        if not worker_ui_url:
+            self.log.debug(
+                "Could not determine worker UI URL for submissionId=%s; skipping log upload.",
+                submission_id,
+            )
+            return
+
+        content = self._fetch_driver_log_content(worker_ui_url, submission_id)
+        if not content:
+            return
+
+        log_relative_path = (
+            f"dag_id={key.dag_id}/run_id={key.run_id}/task_id={key.task_id}/attempt={key.try_number}.log"
+        )
+        self._write_log_to_remote(remote_base, log_relative_path, content)
+        self.log.info("Driver logs for task %s uploaded to %s", key, remote_base)
+
+    def _get_worker_ui_url(self, submission_id: str) -> str | None:
+        """
+        Return the Spark worker HTTP UI base URL that ran the given submission.
+
+        Queries the Spark master JSON API (``{master_ui_url}/json/``) to look
+        up the worker's ``webuiaddress`` by matching ``workerHostPort`` from
+        the driver status response.
+        """
+        # Find which worker ran the driver.
+        try:
+            status = requests.get(f"{self._rest_url}/status/{submission_id}", timeout=10).json()
+        except (ConnectionError, RequestException) as exc:
+            self.log.debug("Could not fetch driver status for log lookup: %s", exc)
+            return None
+
+        worker_host_port = status.get("workerHostPort", "")
+        if not worker_host_port:
+            return None
+        worker_host = worker_host_port.split(":")[0]
+
+        # Look up the worker's HTTP UI address from the master.
+        try:
+            master_json = requests.get(f"{self._master_ui_url}/json/", timeout=10).json()
+        except (ConnectionError, RequestException) as exc:
+            self.log.debug("Could not reach Spark master UI at %s: %s", self._master_ui_url, exc)
+            return None
+
+        for worker in master_json.get("workers", []):
+            if worker.get("host") == worker_host:
+                return worker.get("webuiaddress")
+
+        self.log.debug(
+            "Worker with host %s not found in master JSON (submission %s).", worker_host, submission_id
+        )
+        return None
+
+    def _fetch_driver_log_content(self, worker_ui_url: str, submission_id: str) -> str:
+        """
+        Fetch driver stderr and stdout from the Spark worker ``/log/`` endpoint.
+
+        The endpoint returns a one-line header followed by the raw log bytes::
+
+            ==== Bytes 0-12345 of 12345 of /opt/spark/work/driver-xxx/stdout ====
+            Pi is roughly 3.14...
+
+        stderr is included first (full Spark execution log) then stdout.
+        """
+        parts = []
+        for log_type in ("stderr", "stdout"):
+            try:
+                resp = requests.get(
+                    f"{worker_ui_url.rstrip('/')}/log/",
+                    params={
+                        "driverId": submission_id,
+                        "logType": log_type,
+                        "offset": "0",
+                        "byteLength": "10485760",  # 10 MiB cap
+                    },
+                    timeout=60,
+                )
+                if resp.ok:
+                    # Strip the "==== Bytes ... ====" header line
+                    lines = resp.text.splitlines(keepends=True)
+                    body = "".join(lines[1:]) if lines else ""
+                    if body.strip():
+                        parts.append(f"=== Spark driver {log_type} ===\n{body}")
+                else:
+                    self.log.debug(
+                        "Worker %s returned HTTP %s for %s %s log",
+                        worker_ui_url,
+                        resp.status_code,
+                        submission_id,
+                        log_type,
+                    )
+            except (ConnectionError, RequestException) as exc:
+                self.log.debug("Could not fetch %s log for %s: %s", log_type, submission_id, exc)
+
+        return "\n".join(parts)
+
+    def _write_log_to_remote(self, remote_base: str, log_relative_path: str, content: str) -> None:
+        """
+        Upload *content* to ``remote_base/log_relative_path``.
+
+        Only S3/S3A remote log folders are supported.  The upload uses
+        ``S3Hook`` from ``apache-airflow-providers-amazon`` which must be
+        installed separately (it is **not** a hard dependency of this
+        provider).  On MinIO the connection must have ``endpoint_url`` set in
+        its extras (``{"endpoint_url": "http://minio:9000"}``).
+        """
+        import os
+        from urllib.parse import urlparse
+
+        from airflow.configuration import conf as airflow_conf
+
+        parsed = urlparse(remote_base)
+        if parsed.scheme not in ("s3", "s3a"):
+            self.log.debug(
+                "Remote log scheme %r is not supported for JAR task log upload "
+                "(only s3:// / s3a:// are supported).",
+                parsed.scheme,
+            )
+            return
+
+        conn_id = os.environ.get("AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID") or airflow_conf.get(
+            "logging", "remote_log_conn_id", fallback="aws_default"
+        )
+
+        bucket = parsed.netloc
+        key_prefix = parsed.path.strip("/")
+        s3_key = f"{key_prefix}/{log_relative_path}" if key_prefix else log_relative_path
+
+        try:
+            from airflow.providers.amazon.aws.hooks.s3 import S3Hook  # type: ignore[import]
+        except ImportError:
+            self.log.warning(
+                "apache-airflow-providers-amazon is not installed; "
+                "cannot upload Spark driver logs to S3/MinIO.  "
+                "Install it with: pip install apache-airflow-providers-amazon"
+            )
+            return
+
+        S3Hook(aws_conn_id=conn_id).load_string(content, key=s3_key, bucket_name=bucket, replace=True)
 
     def _get_driver_state(self, submission_id: str) -> str:
         """

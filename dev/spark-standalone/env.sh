@@ -39,7 +39,34 @@ export AIRFLOW__SPARK_STANDALONE_EXECUTOR__SPARK_VERSION=4.0.1
 export AIRFLOW__API_SERVER__PORT=8081
 export AIRFLOW__EXECUTION_API__URL=http://host.docker.internal:8081/execution/
 
+# --- Remote logging: upload Spark driver logs to MinIO so they appear in the Airflow UI log tab ---
+# MinIO runs in the Spark docker-compose stack (docker compose up in dev/spark-standalone/).
+# The airflow-logs bucket is auto-created by the minio-init service on first start.
+export AIRFLOW__LOGGING__REMOTE_LOGGING=True
+export AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER=s3://airflow-logs/
+export AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID=minio_logs
+# MinIO credentials (matches MINIO_ROOT_USER/MINIO_ROOT_PASSWORD in docker-compose.yml).
+# endpoint_url uses host.docker.internal so this connection works from both the Breeze
+# container and (if you ever run the scheduler on the host) directly.
+export AIRFLOW_CONN_MINIO_LOGS='aws://minioadmin:minioadmin@?endpoint_url=http%3A%2F%2Fhost.docker.internal%3A9000&region_name=us-east-1'
+
+# --- Spark master UI URL (used by the executor to look up worker log URLs) ---
+# host.docker.internal:8080 is the Spark master UI as seen from inside the Breeze container.
+export AIRFLOW__SPARK_STANDALONE_EXECUTOR__MASTER_UI_URL=http://host.docker.internal:8080
+
+# --- Network: connect the Breeze container to the Spark docker-compose network ---
+# The executor fetches driver logs directly from worker HTTP UIs (192.168.117.x:8081).
+# Those IPs are only routable from the Breeze container after this one-time network join.
+_BREEZE_CONTAINER=$(docker ps --filter 'name=breeze-airflow-run' --format '{{.Names}}' 2>/dev/null | head -1)
+if [ -n "$_BREEZE_CONTAINER" ]; then
+    docker network connect spark-standalone_default "$_BREEZE_CONTAINER" 2>/dev/null \
+        && echo "  Joined spark-standalone_default network (worker log fetch enabled)." \
+        || echo "  Already on spark-standalone_default network."
+fi
+unset _BREEZE_CONTAINER
+
 echo "SparkStandaloneExecutor environment set."
 echo "  Spark master:  spark://localhost:7077"
 echo "  REST API:      http://localhost:6066"
 echo "  Airflow API:   http://host.docker.internal:8081/execution/ (as seen from Spark workers)"
+echo "  Remote logs:   s3://airflow-logs/  (MinIO at localhost:9001)"
