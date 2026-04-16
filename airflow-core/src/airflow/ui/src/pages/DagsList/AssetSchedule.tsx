@@ -86,27 +86,30 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
   // Fully satisfied assets (used for the button count label).
   const pendingEvents = nextRunEvents.flatMap((event) => {
     if (timetablePartitioned) {
-      return event.lastUpdate === null ? [] : [event];
+      return event.last_update === null ? [] : [event];
     }
 
     const queuedAt = queuedAssetEvents.get(event.id);
 
-    return queuedAt === undefined ? [] : [{ ...event, lastUpdate: event.lastUpdate ?? queuedAt }];
+    return queuedAt === undefined ? [] : [{ ...event, last_update: event.last_update ?? queuedAt }];
   });
 
   // For partitioned Dags, also include partially-received assets in the popover visualization.
   const popoverEvents = timetablePartitioned
-    ? nextRunEvents.filter((event) => (event.receivedCount ?? (event.lastUpdate === null ? 0 : 1)) > 0)
+    ? nextRunEvents.filter((event) => (event.received_count ?? (event.last_update === null ? 0 : 1)) > 0)
     : pendingEvents;
 
   // For partitioned Dags (which may use rollup mappers), compute event-level totals so the
   // button label reflects received/required partition-key events, not just asset counts.
   // For non-partitioned Dags, fall back to asset counts (existing behaviour).
   const scheduledCount = timetablePartitioned
-    ? nextRunEvents.reduce((sum, event) => sum + (event.receivedCount ?? 0), 0)
+    ? nextRunEvents.reduce(
+        (sum, event) => sum + Math.min(event.received_count ?? 0, event.required_count ?? 1),
+        0,
+      )
     : pendingEvents.length;
   const scheduledTotal = timetablePartitioned
-    ? nextRunEvents.reduce((sum, event) => sum + (event.requiredCount ?? 1), 0)
+    ? nextRunEvents.reduce((sum, event) => sum + (event.required_count ?? 1), 0)
     : nextRunEvents.length;
 
   const isLoading = isNextRunLoading || (!timetablePartitioned && isQueuedEventsLoading);
@@ -142,12 +145,12 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
   const [asset] = nextRunEvents;
 
   if (nextRunEvents.length === 1 && asset !== undefined) {
-    const requiredCount = asset.requiredCount ?? 1;
-    const receivedCount = asset.receivedCount ?? 0;
+    const requiredCount = asset.required_count ?? 1;
+    const receivedCount = asset.received_count ?? 0;
+    const requiredKeys = asset.required_keys ?? [];
 
-    if (requiredCount > 1) {
-      const requiredKeys = asset.requiredKeys ?? [];
-      const receivedKeySet = new Set(asset.receivedKeys ?? []);
+    if (asset.is_rollup && requiredKeys.length > 0) {
+      const receivedKeySet = new Set(asset.received_keys ?? []);
 
       return (
         <HStack>

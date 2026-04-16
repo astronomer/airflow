@@ -1875,8 +1875,15 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
     def _create_dagruns_for_partitioned_asset_dags(self, session: Session) -> set[str]:
         partition_dag_ids: set[str] = set()
 
+        # Cap per-tick work so the scheduler transaction stays bounded and other
+        # scheduling work isn't starved. Remaining APDRs drain across subsequent ticks.
+        # Note: with strict FIFO ordering, >BATCH persistently-unsatisfied APDRs would
+        # block newer ones; switch to updated_at-based ordering if that becomes an issue.
         pending_apdrs = session.scalars(
-            select(AssetPartitionDagRun).where(AssetPartitionDagRun.created_dag_run_id.is_(None))
+            select(AssetPartitionDagRun)
+            .where(AssetPartitionDagRun.created_dag_run_id.is_(None))
+            .order_by(AssetPartitionDagRun.created_at)
+            .limit(500)
         ).all()
         if not pending_apdrs:
             return partition_dag_ids

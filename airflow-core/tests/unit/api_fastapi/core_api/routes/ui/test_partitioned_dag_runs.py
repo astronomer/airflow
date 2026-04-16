@@ -23,6 +23,7 @@ import pytest
 from sqlalchemy import select
 
 from airflow.models.asset import AssetEvent, AssetModel, AssetPartitionDagRun, PartitionedAssetKeyLog
+from airflow.partition_mappers.temporal import WeeklyRollupMapper
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk.definitions.asset import Asset
 from airflow.sdk.definitions.timetables.assets import PartitionedAssetTimetable
@@ -146,7 +147,7 @@ class TestGetPartitionedDagRuns:
             )
         session.commit()
 
-        with assert_queries_count(4):
+        with assert_queries_count(5):
             resp = test_client.get(
                 f"/partitioned_dag_runs?dag_id=list_dag"
                 f"&has_created_dag_run_id={str(has_created_dag_run_id).lower()}"
@@ -237,6 +238,141 @@ class TestGetPartitionedDagRuns:
         body = resp.json()
         dag_ids = {r["dag_id"] for r in body["partitioned_dag_runs"]}
         assert "restricted_dag" not in dag_ids
+
+    def test_duplicate_events_count_as_one(self, test_client, dag_maker, session):
+        """Multiple log entries for the same asset count as 1 received, not N."""
+        asset_def = Asset(uri="s3://bucket/dup0", name="dup0")
+        with dag_maker(
+            dag_id="dup_dag",
+            schedule=PartitionedAssetTimetable(assets=asset_def),
+            serialized=True,
+        ):
+            EmptyOperator(task_id="t")
+        dag_maker.create_dagrun()
+        dag_maker.sync_dagbag_to_db()
+
+        asset = session.scalar(select(AssetModel).where(AssetModel.uri == "s3://bucket/dup0"))
+        pdr = AssetPartitionDagRun(target_dag_id="dup_dag", partition_key="2024-06-01")
+        session.add(pdr)
+        session.flush()
+
+        # Log 3 events for the same asset — all should collapse to total_received = 1.
+        for _ in range(3):
+            event = AssetEvent(asset_id=asset.id, timestamp=pendulum.now())
+            session.add(event)
+            session.flush()
+            session.add(
+                PartitionedAssetKeyLog(
+                    asset_id=asset.id,
+                    asset_event_id=event.id,
+                    asset_partition_dag_run_id=pdr.id,
+                    source_partition_key="2024-06-01",
+                    target_dag_id="dup_dag",
+                    target_partition_key="2024-06-01",
+                )
+            )
+        session.commit()
+
+        resp = test_client.get("/partitioned_dag_runs?dag_id=dup_dag&has_created_dag_run_id=false")
+        assert resp.status_code == 200
+        pdr_resp = resp.json()["partitioned_dag_runs"][0]
+        assert pdr_resp["total_required"] == 1
+        assert pdr_resp["total_received"] == 1
+
+    def test_non_rollup_any_event_counts_as_one(self, test_client, dag_maker, session):
+        """For non-rollup, an event with a different source_partition_key still counts as 1."""
+        asset_def = Asset(uri="s3://bucket/nr0", name="nr0")
+        with dag_maker(
+            dag_id="nr_dag",
+            schedule=PartitionedAssetTimetable(assets=asset_def),
+            serialized=True,
+        ):
+            EmptyOperator(task_id="t")
+        dag_maker.create_dagrun()
+        dag_maker.sync_dagbag_to_db()
+
+        asset = session.scalar(select(AssetModel).where(AssetModel.uri == "s3://bucket/nr0"))
+        pdr = AssetPartitionDagRun(target_dag_id="nr_dag", partition_key="2024-06-01")
+        session.add(pdr)
+        session.flush()
+
+        # Log an event whose source_partition_key differs from the APDR partition_key.
+        event = AssetEvent(asset_id=asset.id, timestamp=pendulum.now())
+        session.add(event)
+        session.flush()
+        session.add(
+            PartitionedAssetKeyLog(
+                asset_id=asset.id,
+                asset_event_id=event.id,
+                asset_partition_dag_run_id=pdr.id,
+                source_partition_key="different-key",
+                target_dag_id="nr_dag",
+                target_partition_key="2024-06-01",
+            )
+        )
+        session.commit()
+
+        resp = test_client.get("/partitioned_dag_runs?dag_id=nr_dag&has_created_dag_run_id=false")
+        assert resp.status_code == 200
+        pdr_resp = resp.json()["partitioned_dag_runs"][0]
+        assert pdr_resp["total_required"] == 1
+        assert pdr_resp["total_received"] == 1
+
+    def test_rollup_mapper_counts_received_upstream_keys(self, test_client, dag_maker, session):
+        """For a rollup mapper, only upstream keys in to_upstream() are counted."""
+        asset_def = Asset(uri="s3://bucket/daily", name="daily")
+        mapper = WeeklyRollupMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0)
+        with dag_maker(
+            dag_id="rollup_dag",
+            schedule=PartitionedAssetTimetable(assets=asset_def, partition_mapper_config={asset_def: mapper}),
+            serialized=True,
+        ):
+            EmptyOperator(task_id="t")
+        dag_maker.create_dagrun()
+        dag_maker.sync_dagbag_to_db()
+
+        asset = session.scalar(select(AssetModel).where(AssetModel.uri == "s3://bucket/daily"))
+        # Week starting 2024-06-03 (Monday) needs 7 daily keys.
+        pdr = AssetPartitionDagRun(target_dag_id="rollup_dag", partition_key="2024-06-03")
+        session.add(pdr)
+        session.flush()
+
+        # Receive 2 of the 7 required upstream daily keys.
+        for day in ("2024-06-03", "2024-06-04"):
+            event = AssetEvent(asset_id=asset.id, timestamp=pendulum.now())
+            session.add(event)
+            session.flush()
+            session.add(
+                PartitionedAssetKeyLog(
+                    asset_id=asset.id,
+                    asset_event_id=event.id,
+                    asset_partition_dag_run_id=pdr.id,
+                    source_partition_key=day,
+                    target_dag_id="rollup_dag",
+                    target_partition_key="2024-06-03",
+                )
+            )
+        # Also log a key outside the required week — it must not inflate the count.
+        stray = AssetEvent(asset_id=asset.id, timestamp=pendulum.now())
+        session.add(stray)
+        session.flush()
+        session.add(
+            PartitionedAssetKeyLog(
+                asset_id=asset.id,
+                asset_event_id=stray.id,
+                asset_partition_dag_run_id=pdr.id,
+                source_partition_key="2024-05-27",  # previous week
+                target_dag_id="rollup_dag",
+                target_partition_key="2024-06-03",
+            )
+        )
+        session.commit()
+
+        resp = test_client.get("/partitioned_dag_runs?dag_id=rollup_dag&has_created_dag_run_id=false")
+        assert resp.status_code == 200
+        pdr_resp = resp.json()["partitioned_dag_runs"][0]
+        assert pdr_resp["total_required"] == 7
+        assert pdr_resp["total_received"] == 2  # only the 2 in-week keys count
 
 
 class TestGetPendingPartitionedDagRun:
@@ -354,3 +490,73 @@ class TestGetPendingPartitionedDagRun:
 
         received_uris = {a["asset_uri"] for a in body["assets"] if a["received"]}
         assert received_uris == set(uris[:received_count])
+
+    def test_is_rollup_false_for_non_rollup_asset(self, test_client, dag_maker, session):
+        """is_rollup is False for assets that use the identity (non-rollup) mapper."""
+        asset_def = Asset(uri="s3://bucket/nr1", name="nr1")
+        with dag_maker(
+            dag_id="nr_detail_dag",
+            schedule=PartitionedAssetTimetable(assets=asset_def),
+            serialized=True,
+        ):
+            EmptyOperator(task_id="t")
+        dag_maker.create_dagrun()
+        dag_maker.sync_dagbag_to_db()
+
+        session.add(AssetPartitionDagRun(target_dag_id="nr_detail_dag", partition_key="2024-07-01"))
+        session.commit()
+
+        resp = test_client.get("/pending_partitioned_dag_run/nr_detail_dag/2024-07-01")
+        assert resp.status_code == 200
+        assets = resp.json()["assets"]
+        assert len(assets) == 1
+        assert assets[0]["is_rollup"] is False
+
+    def test_is_rollup_true_for_rollup_asset(self, test_client, dag_maker, session):
+        """is_rollup is True for assets that use a RollupMapper, and keys are populated."""
+        asset_def = Asset(uri="s3://bucket/weekly", name="weekly")
+        mapper = WeeklyRollupMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0)
+        with dag_maker(
+            dag_id="rollup_detail_dag",
+            schedule=PartitionedAssetTimetable(assets=asset_def, partition_mapper_config={asset_def: mapper}),
+            serialized=True,
+        ):
+            EmptyOperator(task_id="t")
+        dag_maker.create_dagrun()
+        dag_maker.sync_dagbag_to_db()
+
+        asset = session.scalar(select(AssetModel).where(AssetModel.uri == "s3://bucket/weekly"))
+        pdr = AssetPartitionDagRun(target_dag_id="rollup_detail_dag", partition_key="2024-06-03")
+        session.add(pdr)
+        session.flush()
+
+        # Receive one upstream daily key.
+        event = AssetEvent(asset_id=asset.id, timestamp=pendulum.now())
+        session.add(event)
+        session.flush()
+        session.add(
+            PartitionedAssetKeyLog(
+                asset_id=asset.id,
+                asset_event_id=event.id,
+                asset_partition_dag_run_id=pdr.id,
+                source_partition_key="2024-06-03",
+                target_dag_id="rollup_detail_dag",
+                target_partition_key="2024-06-03",
+            )
+        )
+        session.commit()
+
+        resp = test_client.get("/pending_partitioned_dag_run/rollup_detail_dag/2024-06-03")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total_required"] == 7
+        assert body["total_received"] == 1
+        assets = body["assets"]
+        assert len(assets) == 1
+        a = assets[0]
+        assert a["is_rollup"] is True
+        assert a["required_count"] == 7
+        assert a["received_count"] == 1
+        assert len(a["required_keys"]) == 7
+        assert "2024-06-03" in a["required_keys"]
+        assert a["received_keys"] == ["2024-06-03"]

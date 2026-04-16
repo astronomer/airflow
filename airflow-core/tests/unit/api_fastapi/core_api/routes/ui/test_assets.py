@@ -77,7 +77,7 @@ class TestNextRunAssets:
                 ]
             },
             "events": [
-                {"id": mock.ANY, "uri": "s3://bucket/next-run-asset/1", "name": "asset1", "lastUpdate": None}
+                {"id": mock.ANY, "uri": "s3://bucket/next-run-asset/1", "name": "asset1", "last_update": None}
             ],
         }
 
@@ -141,8 +141,8 @@ class TestNextRunAssets:
             },
             # events are ordered by uri
             "events": [
-                {"id": mock.ANY, "uri": "s3://bucket/A", "name": "A", "lastUpdate": mock.ANY},
-                {"id": mock.ANY, "uri": "s3://bucket/B", "name": "B", "lastUpdate": None},
+                {"id": mock.ANY, "uri": "s3://bucket/A", "name": "A", "last_update": mock.ANY},
+                {"id": mock.ANY, "uri": "s3://bucket/B", "name": "B", "last_update": None},
             ],
         }
 
@@ -169,7 +169,7 @@ class TestNextRunAssets:
         resp = test_client.get("/next_run_assets/filter_run")
         assert resp.status_code == 200
         ev = resp.json()["events"][0]
-        assert ev["lastUpdate"] is not None
+        assert ev["last_update"] is not None
         assert "queued" not in ev
 
     @pytest.mark.parametrize(
@@ -221,4 +221,4 @@ class TestNextRunAssets:
         resp = test_client.get("/next_run_assets/part_dag")
         assert resp.status_code == 200
         ev = resp.json()["events"][0]
-        assert (ev["lastUpdate"] is not None) == expect_last_update
+        assert (ev["last_update"] is not None) == expect_last_update

@@ -51,6 +51,7 @@ class PartitionedDagRunAssetResponse(BaseModel):
     required_count: int
     received_keys: list[str]
     required_keys: list[str]
+    is_rollup: bool = False
 
 
 class PartitionedDagRunDetailResponse(BaseModel):

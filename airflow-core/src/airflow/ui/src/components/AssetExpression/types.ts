@@ -35,12 +35,13 @@ type Alias = {
 
 export type NextRunEvent = {
   id: number;
-  lastUpdate: string | null;
+  is_rollup?: boolean;
+  last_update: string | null;
   name: string | null;
-  receivedCount?: number;
-  receivedKeys?: Array<string>;
-  requiredCount?: number;
-  requiredKeys?: Array<string>;
+  received_count?: number;
+  received_keys?: Array<string>;
+  required_count?: number;
+  required_keys?: Array<string>;
   uri: string;
 };
 
