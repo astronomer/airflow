@@ -16,12 +16,15 @@
 # under the License.
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from airflow._shared.timezones.timezone import make_aware, parse_timezone
 from airflow.partition_mappers.base import PartitionMapper, RollupMapper
+
+_YMD_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 if TYPE_CHECKING:
     from pendulum import FixedTimezone, Timezone
@@ -150,15 +153,15 @@ class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
             )
 
     def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        # Python strptime raises ValueError when %V (ISO week number) appears without
-        # %G and a weekday directive, so we cannot parse via the full output_format.
-        # Instead, locate %Y-%m-%d in the format string — __init__ guarantees it is
-        # present — and parse only the matching 10-char slice of the key.
-        # The prefix before %Y-%m-%d is literal text (no format directives), so its
-        # length in the format string equals its length in the formatted output.
-        ymd_fmt = "%Y-%m-%d"
-        key_start = len(self.output_format[: self.output_format.index(ymd_fmt)])
-        week_start_naive = datetime.strptime(downstream_key[key_start : key_start + 10], ymd_fmt)
+        # strptime cannot consume %V (ISO week) without %G+weekday, so parse by
+        # locating the YYYY-MM-DD slice directly. Regex is robust against
+        # variable-width directives (e.g. %B, %A, %Z) appearing elsewhere in the key.
+        match = _YMD_RE.search(downstream_key)
+        if match is None:
+            raise ValueError(
+                f"WeeklyRollupMapper.to_upstream could not locate YYYY-MM-DD in {downstream_key!r}"
+            )
+        week_start_naive = datetime.strptime(match.group(), "%Y-%m-%d")
         # Arithmetic stays on naive datetimes to keep day-counting unambiguous across
         # DST transitions; each result is made timezone-aware before formatting so that
         # %z in input_format produces the correct offset.

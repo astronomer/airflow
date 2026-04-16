@@ -24,6 +24,7 @@ from sqlalchemy import ColumnElement, and_, case, exists, func, select, true
 
 from airflow.api_fastapi.common.db.common import SessionDep
 from airflow.api_fastapi.common.router import AirflowRouter
+from airflow.api_fastapi.core_api.routes.ui.partitioned_dag_runs import _load_timetable
 from airflow.api_fastapi.core_api.security import requires_access_asset, requires_access_dag
 from airflow.models import DagModel
 from airflow.models.asset import (
@@ -34,9 +35,9 @@ from airflow.models.asset import (
     DagScheduleAssetReference,
     PartitionedAssetKeyLog,
 )
-from airflow.models.serialized_dag import SerializedDagModel
-from airflow.partition_mappers.base import RollupMapper
-from airflow.timetables.simple import PartitionedAssetTimetable
+
+if TYPE_CHECKING:
+    from airflow.partition_mappers.base import RollupMapper
 
 assets_router = AirflowRouter(tags=["Asset"])
 
@@ -96,7 +97,7 @@ def next_run_assets(
             AssetModel.id,
             AssetModel.uri,
             AssetModel.name,
-            func.max(AssetEvent.timestamp).label("lastUpdate"),
+            func.max(AssetEvent.timestamp).label("last_update"),
             queued_expr.label("queued"),
         )
         .join(DagScheduleAssetReference, DagScheduleAssetReference.asset_id == AssetModel.id)
@@ -119,11 +120,13 @@ def next_run_assets(
     events = [dict(info._mapping) for info in session.execute(query)]
     for event in events:
         if not event.pop("queued", None):
-            event["lastUpdate"] = None
+            event["last_update"] = None
 
     # For partitioned Dags: enrich events with per-asset received/required counts,
-    # using to_upstream for rollup mappers, and fix lastUpdate for partial receipt.
+    # using to_upstream for rollup mappers, and fix last_update for partial receipt.
     if is_partitioned:
+        timetable = _load_timetable(dag_id, session)
+
         pending_apdr = session.execute(
             select(AssetPartitionDagRun.id, AssetPartitionDagRun.partition_key)
             .where(
@@ -136,51 +139,59 @@ def next_run_assets(
 
         if pending_apdr is not None:
             # Collect received upstream partition keys per asset for this partition run.
-            received_keys_by_asset: dict[int, list[str]] = {}
+            # Use a set to deduplicate: multiple events for the same key count as one.
+            received_keys_by_asset: dict[int, set[str]] = {}
             for row in session.execute(
                 select(
                     PartitionedAssetKeyLog.asset_id,
                     PartitionedAssetKeyLog.source_partition_key,
                 ).where(PartitionedAssetKeyLog.asset_partition_dag_run_id == pending_apdr.id)
             ):
-                received_keys_by_asset.setdefault(row.asset_id, []).append(row.source_partition_key or "")
-
-            timetable = None
-            serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
-            if serdag is not None:
-                with suppress(Exception):
-                    dag_obj = serdag.dag
-                    if isinstance(dag_obj.timetable, PartitionedAssetTimetable):
-                        timetable = dag_obj.timetable
+                received_keys_by_asset.setdefault(row.asset_id, set()).add(row.source_partition_key or "")
 
             for event in events:
                 asset_id = event["id"]
-                received_keys = received_keys_by_asset.get(asset_id, [])
+                received_keys = sorted(received_keys_by_asset.get(asset_id, set()))
                 required_keys: list[str] = [pending_apdr.partition_key]
+                is_rollup = False
                 if timetable is not None:
                     with suppress(Exception):
                         mapper = timetable.get_partition_mapper(
-                            name=event.get("name") or "",
-                            uri=event.get("uri") or "",
+                            name=event["name"],
+                            uri=event["uri"],
                         )
-                        mapper.is_rollup
-                        if isinstance(mapper, RollupMapper):
-                            required_keys = sorted(mapper.to_upstream(pending_apdr.partition_key))
+                        if mapper.is_rollup:
+                            required_keys = sorted(
+                                cast("RollupMapper", mapper).to_upstream(pending_apdr.partition_key)
+                            )
+                            is_rollup = True
                 received_count = len(received_keys)
                 required_count = len(required_keys)
-                event["receivedCount"] = received_count
-                event["requiredCount"] = required_count
-                event["receivedKeys"] = sorted(received_keys)
-                event["requiredKeys"] = required_keys
-                # Only show lastUpdate when all required upstream keys are received
+                event["received_count"] = received_count
+                event["required_count"] = required_count
+                event["received_keys"] = received_keys
+                event["required_keys"] = required_keys
+                event["is_rollup"] = is_rollup
+                # Only show last_update when all required upstream keys are received
                 if received_count < required_count:
-                    event["lastUpdate"] = None
+                    event["last_update"] = None
         else:
+            # No pending APDR yet — mark rollup assets so the UI can handle them
+            # correctly (e.g. skip "Asset Triggered" in favour of the asset name view).
             for event in events:
-                event["receivedCount"] = 0
-                event["requiredCount"] = 1
-                event["receivedKeys"] = []
-                event["requiredKeys"] = []
+                is_rollup = False
+                if timetable is not None:
+                    with suppress(Exception):
+                        mapper = timetable.get_partition_mapper(
+                            name=event["name"],
+                            uri=event["uri"],
+                        )
+                        is_rollup = mapper.is_rollup
+                event["received_count"] = 0
+                event["required_count"] = 1
+                event["received_keys"] = []
+                event["required_keys"] = []
+                event["is_rollup"] = is_rollup
 
     data: dict = {"asset_expression": dag_model.asset_expression, "events": events}
     if pending_partition_count is not None:

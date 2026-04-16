@@ -2215,6 +2215,7 @@ export type PartitionedDagRunAssetResponse = {
     required_count: number;
     received_keys: Array<(string)>;
     required_keys: Array<(string)>;
+    is_rollup?: boolean;
 };
 
 /**

@@ -16,13 +16,68 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Text, HStack, Link } from "@chakra-ui/react";
-import { FiDatabase } from "react-icons/fi";
+import { Box, Button, HStack, Link, Text, VStack } from "@chakra-ui/react";
+import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
 import { PiRectangleDashed } from "react-icons/pi";
 import { Link as RouterLink } from "react-router-dom";
 
+import { Popover } from "src/components/ui";
+
 import Time from "../Time";
 import type { AssetSummary, NextRunEvent } from "./types";
+
+const RollupKeyChecklistPopover = ({
+  receivedCount,
+  receivedKeys,
+  requiredCount,
+  requiredKeys,
+}: {
+  readonly receivedCount: number;
+  readonly receivedKeys: Array<string>;
+  readonly requiredCount: number;
+  readonly requiredKeys: Array<string>;
+}) => {
+  const receivedKeySet = new Set(receivedKeys);
+
+  return (
+    // eslint-disable-next-line jsx-a11y/no-autofocus
+    <Popover.Root autoFocus={false} lazyMount positioning={{ placement: "bottom-end" }} unmountOnExit>
+      <Popover.Trigger asChild>
+        <Button
+          color={receivedCount < requiredCount ? "warning.fg" : "fg.muted"}
+          paddingInline={0}
+          size="sm"
+          variant="ghost"
+        >
+          {receivedCount} / {requiredCount}
+        </Button>
+      </Popover.Trigger>
+      <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
+        <Popover.Arrow />
+        <Popover.Body>
+          <VStack align="start" gap={1}>
+            {requiredKeys.map((key) => {
+              const isReceived = receivedKeySet.has(key);
+
+              return (
+                <HStack gap={2} key={key}>
+                  {isReceived ? (
+                    <FiCheck color="var(--chakra-colors-success-fg)" />
+                  ) : (
+                    <FiMinus color="var(--chakra-colors-fg-muted)" />
+                  )}
+                  <Text color={isReceived ? "fg.muted" : "fg.default"} fontSize="sm">
+                    {key}
+                  </Text>
+                </HStack>
+              );
+            })}
+          </VStack>
+        </Popover.Body>
+      </Popover.Content>
+    </Popover.Root>
+  );
+};
 
 export const AssetNode = ({
   asset,
@@ -31,11 +86,18 @@ export const AssetNode = ({
   readonly asset: AssetSummary;
   readonly event?: NextRunEvent;
 }) => {
-  const isFullyReceived = Boolean(event?.lastUpdate);
+  const isFullyReceived = Boolean(event?.last_update);
   const isPartial =
     !isFullyReceived &&
-    (event?.receivedCount ?? 0) > 0 &&
-    (event?.receivedCount ?? 0) < (event?.requiredCount ?? 1);
+    (event?.received_count ?? 0) > 0 &&
+    (event?.received_count ?? 0) < (event?.required_count ?? 1);
+  // In partitioned dags the `last_update` timestamp is the last asset event, not the
+  // pending partition key's arrival — so it isn't meaningful here. Suppress it for
+  // non-rollup partitioned nodes.
+  const isPartitionedNonRollup = event?.is_rollup === false;
+  const showTime = isFullyReceived && !isPartitionedNonRollup;
+  const showRollupChecklist =
+    (event?.is_rollup ?? false) && (event?.required_keys?.length ?? 0) > 0 && (isPartial || isFullyReceived);
 
   return (
     <Box
@@ -59,13 +121,20 @@ export const AssetNode = ({
           </Link>
         )}
       </HStack>
-      {isFullyReceived ? (
+      {showRollupChecklist ? (
+        <RollupKeyChecklistPopover
+          receivedCount={event?.received_count ?? 0}
+          receivedKeys={event?.received_keys ?? []}
+          requiredCount={event?.required_count ?? 0}
+          requiredKeys={event?.required_keys ?? []}
+        />
+      ) : showTime ? (
         <Text color="fg.muted" fontSize="sm">
-          <Time datetime={event?.lastUpdate ?? null} />
+          <Time datetime={event?.last_update ?? null} />
         </Text>
       ) : isPartial ? (
         <Text color="warning.fg" fontSize="sm">
-          {event?.receivedCount} / {event?.requiredCount}
+          {event?.received_count} / {event?.required_count}
         </Text>
       ) : undefined}
     </Box>

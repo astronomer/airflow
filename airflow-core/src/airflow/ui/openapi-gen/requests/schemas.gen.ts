@@ -8899,6 +8899,11 @@ export const $PartitionedDagRunAssetResponse = {
             },
             type: 'array',
             title: 'Required Keys'
+        },
+        is_rollup: {
+            type: 'boolean',
+            title: 'Is Rollup',
+            default: false
         }
     },
     type: 'object',

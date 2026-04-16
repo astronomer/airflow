@@ -54,24 +54,34 @@ if TYPE_CHECKING:
     from airflow.partition_mappers.base import RollupMapper
 
 
+def _load_timetable(dag_id: str, session) -> PartitionedAssetTimetable | None:
+    """Return the PartitionedAssetTimetable for *dag_id*, or None if absent or not partitioned."""
+    serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
+    if serdag is None:
+        return None
+    with suppress(Exception):
+        if isinstance(serdag.dag.timetable, PartitionedAssetTimetable):
+            return serdag.dag.timetable
+    return None
+
+
 def _load_timetable_and_assets(
     dag_id: str, session
-) -> tuple[PartitionedAssetTimetable | None, list[tuple[str, str]]]:
-    """Load the DAG timetable and its active required assets as (name, uri) pairs."""
-    timetable = None
-    serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
-    if serdag is not None:
-        with suppress(Exception):
-            dag = serdag.dag
-            if isinstance(dag.timetable, PartitionedAssetTimetable):
-                timetable = dag.timetable
+) -> tuple[PartitionedAssetTimetable | None, list[tuple[str, str]], dict[int, tuple[str, str]]]:
+    """
+    Load timetable and active required assets.
 
+    Returns (timetable, [(name, uri), ...], {asset_id: (name, uri)}).
+    """
+    timetable = _load_timetable(dag_id, session)
     asset_rows = session.execute(
-        select(AssetModel.name, AssetModel.uri)
+        select(AssetModel.id, AssetModel.name, AssetModel.uri)
         .join(DagScheduleAssetReference, DagScheduleAssetReference.asset_id == AssetModel.id)
         .where(DagScheduleAssetReference.dag_id == dag_id, AssetModel.active.has())
     ).all()
-    return timetable, [(r.name or "", r.uri or "") for r in asset_rows]
+    asset_info = [(r.name, r.uri) for r in asset_rows]
+    asset_id_to_info = {r.id: (r.name, r.uri) for r in asset_rows}
+    return timetable, asset_info, asset_id_to_info
 
 
 def _compute_total_required(
@@ -84,24 +94,48 @@ def _compute_total_required(
         return len(asset_info)
     total = 0
     for name, uri in asset_info:
-        try:
+        mapper = timetable.get_partition_mapper(name=name, uri=uri)
+        total += len(cast("RollupMapper", mapper).to_upstream(partition_key)) if mapper.is_rollup else 1
+    return total
+
+
+def _compute_received_count(
+    received_by_asset: dict[int, set[str]],
+    timetable: PartitionedAssetTimetable | None,
+    asset_id_to_info: dict[int, tuple[str, str]],
+    partition_key: str,
+) -> int:
+    """
+    Count received events using rollup-aware deduplication.
+
+    For rollup assets: count distinct upstream keys that intersect the required set.
+    For non-rollup assets: count 1 per asset if any event has been logged — the
+    source_partition_key value is irrelevant; having any event satisfies the requirement.
+    """
+    total = 0
+    for asset_id, received_keys in received_by_asset.items():
+        if timetable is not None:
+            name, uri = asset_id_to_info[asset_id]
             mapper = timetable.get_partition_mapper(name=name, uri=uri)
-            total += len(mapper.to_upstream(partition_key)) if isinstance(mapper, RollupMapper) else 1
-        except Exception:
-            total += 1
-    return total or len(asset_info)
+            if mapper.is_rollup:
+                required_keys = frozenset(cast("RollupMapper", mapper).to_upstream(partition_key))
+                total += len(received_keys & required_keys)
+                continue
+        # Non-rollup: any logged event satisfies this asset's requirement.
+        total += 1 if received_keys else 0
+    return total
 
 
 partitioned_dag_runs_router = AirflowRouter(tags=["PartitionedDagRun"])
 
 
-def _build_response(row, required_count: int) -> PartitionedDagRunResponse:
+def _build_response(row, required_count: int, received_count: int | None = None) -> PartitionedDagRunResponse:
     return PartitionedDagRunResponse(
         id=row.id,
         dag_id=row.target_dag_id,
         partition_key=row.partition_key,
         created_at=row.created_at.isoformat() if row.created_at else None,
-        total_received=row.total_received or 0,
+        total_received=received_count if received_count is not None else (row.total_received or 0),
         total_required=required_count,
         state=row.dag_run_state if row.created_dag_run_id else "pending",
         created_dag_run_id=row.dag_run_id,
@@ -129,7 +163,9 @@ def get_partitioned_dag_runs(
         if dag_info.timetable_summary != "Partitioned Asset":
             return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
-    # Subquery: count received events per partition (PartitionedAssetKeyLog rows for required assets)
+    # Subquery for received count per partition (count of required assets that have any log).
+    # This matches the non-rollup contract "any event for an asset = that asset is satisfied".
+    # Rollup-aware counts are computed in Python in _compute_received_count when dag_id is set.
     required_assets_subq = (
         select(DagScheduleAssetReference.asset_id)
         .join(AssetModel, AssetModel.id == DagScheduleAssetReference.asset_id)
@@ -140,7 +176,7 @@ def get_partitioned_dag_runs(
         .correlate(AssetPartitionDagRun)
     )
     received_subq = (
-        select(func.count(PartitionedAssetKeyLog.id))
+        select(func.count(func.distinct(PartitionedAssetKeyLog.asset_id)))
         .where(
             PartitionedAssetKeyLog.asset_partition_dag_run_id == AssetPartitionDagRun.id,
             PartitionedAssetKeyLog.asset_id.in_(required_assets_subq),
@@ -169,18 +205,43 @@ def get_partitioned_dag_runs(
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
     if dag_id.value is not None:
-        timetable, asset_info = _load_timetable_and_assets(dag_id.value, session)
+        timetable, asset_info, asset_id_to_info = _load_timetable_and_assets(dag_id.value, session)
+
+        # Batch-fetch all log entries for these APDRs in one query.
+        apdr_ids = [row.id for row in rows]
+        log_by_apdr: dict[int, dict[int, set[str]]] = {}
+        for log_row in session.execute(
+            select(
+                PartitionedAssetKeyLog.asset_partition_dag_run_id,
+                PartitionedAssetKeyLog.asset_id,
+                PartitionedAssetKeyLog.source_partition_key,
+            ).where(
+                PartitionedAssetKeyLog.asset_partition_dag_run_id.in_(apdr_ids),
+                PartitionedAssetKeyLog.asset_id.in_(list(asset_id_to_info)),
+            )
+        ).all():
+            log_by_apdr.setdefault(log_row.asset_partition_dag_run_id, {}).setdefault(
+                log_row.asset_id, set()
+            ).add(log_row.source_partition_key or "")
+
         results = [
-            _build_response(row, _compute_total_required(timetable, asset_info, row.partition_key))
+            _build_response(
+                row,
+                _compute_total_required(timetable, asset_info, row.partition_key),
+                _compute_received_count(
+                    log_by_apdr.get(row.id, {}), timetable, asset_id_to_info, row.partition_key
+                ),
+            )
             for row in rows
         ]
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=results, total=len(results))
 
-    # No dag_id filter: load timetables and assets for each unique DAG
+    # No dag_id filter: load timetables and assets for each unique Dag.
+    # total_received is approximated via SQL for this global view.
     unique_dag_ids = list({row.target_dag_id for row in rows})
-    dag_timetables_assets: dict[str, tuple[PartitionedAssetTimetable | None, list[tuple[str, str]]]] = {
-        did: _load_timetable_and_assets(did, session) for did in unique_dag_ids
-    }
+    dag_timetables_assets: dict[
+        str, tuple[PartitionedAssetTimetable | None, list[tuple[str, str]], dict[int, tuple[str, str]]]
+    ] = {did: _load_timetable_and_assets(did, session) for did in unique_dag_ids}
     dag_rows = session.execute(
         select(DagModel.dag_id, DagModel.asset_expression).where(DagModel.dag_id.in_(unique_dag_ids))
     ).all()
@@ -238,14 +299,15 @@ def get_pending_partitioned_dag_run(
         )
 
     # Collect received upstream partition keys per asset for this partition run.
-    received_keys_by_asset: dict[int, list[str]] = {}
+    # Use a set to deduplicate: multiple events for the same key count as one.
+    received_keys_by_asset: dict[int, set[str]] = {}
     for row in session.execute(
         select(
             PartitionedAssetKeyLog.asset_id,
             PartitionedAssetKeyLog.source_partition_key,
         ).where(PartitionedAssetKeyLog.asset_partition_dag_run_id == partitioned_dag_run.id)
     ):
-        received_keys_by_asset.setdefault(row.asset_id, []).append(row.source_partition_key or "")
+        received_keys_by_asset.setdefault(row.asset_id, set()).add(row.source_partition_key or "")
 
     asset_expression_subq = (
         select(DagModel.asset_expression).where(DagModel.dag_id == dag_id).scalar_subquery()
@@ -262,24 +324,19 @@ def get_pending_partitioned_dag_run(
         .order_by(AssetModel.uri)
     ).all()
 
-    # Load serialized DAG to compute required keys for rollup assets
-    timetable = None
-    serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
-    if serdag is not None:
-        with suppress(Exception):
-            dag = serdag.dag
-            if isinstance(dag.timetable, PartitionedAssetTimetable):
-                timetable = dag.timetable
+    timetable = _load_timetable(dag_id, session)
 
     assets = []
     for row in asset_rows:
-        received_keys = received_keys_by_asset.get(row.id, [])
+        received_keys = sorted(received_keys_by_asset.get(row.id, set()))
         required_keys: list[str] = [partition_key]
+        is_rollup = False
         if timetable is not None:
             with suppress(Exception):
-                mapper = timetable.get_partition_mapper(name=row.name or "", uri=row.uri or "")
-                if isinstance(mapper, RollupMapper):
-                    required_keys = sorted(mapper.to_upstream(partition_key))
+                mapper = timetable.get_partition_mapper(name=row.name, uri=row.uri)
+                if mapper.is_rollup:
+                    required_keys = sorted(cast("RollupMapper", mapper).to_upstream(partition_key))
+                    is_rollup = True
         received_count = len(received_keys)
         required_count = len(required_keys)
         assets.append(
@@ -290,8 +347,9 @@ def get_pending_partitioned_dag_run(
                 received=received_count >= required_count and required_count > 0,
                 received_count=received_count,
                 required_count=required_count,
-                received_keys=sorted(received_keys),
+                received_keys=received_keys,
                 required_keys=required_keys,
+                is_rollup=is_rollup,
             )
         )
 

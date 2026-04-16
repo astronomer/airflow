@@ -39,16 +39,17 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
   const assetExpression = data?.asset_expression as ExpressionType | undefined;
   const assets: Array<PartitionedDagRunAssetResponse> = data?.assets ?? [];
 
-  const hasRollup = assets.some((ak) => ak.required_count > 1);
+  const hasRollup = assets.some((ak) => ak.is_rollup);
 
   const events: Array<NextRunEvent> = assets
     .filter((ak: PartitionedDagRunAssetResponse) => ak.received_count > 0)
     .map((ak: PartitionedDagRunAssetResponse) => ({
       id: ak.asset_id,
-      lastUpdate: ak.received ? "received" : null,
+      is_rollup: ak.is_rollup,
+      last_update: ak.received ? "received" : null,
       name: ak.asset_name,
-      receivedCount: ak.received_count,
-      requiredCount: ak.required_count,
+      received_count: ak.received_count,
+      required_count: ak.required_count,
       uri: ak.asset_uri,
     }));
 
@@ -65,19 +66,17 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
         <Popover.Arrow />
         <Popover.Body>
           {hasRollup ? (
-            <VStack align="start" gap={3} maxH="300px" overflowY="auto">
+            <HStack align="start" gap={4} maxH="300px" overflowX="auto" overflowY="auto">
               {assets
-                .filter((ak) => ak.required_count > 1)
+                .filter((ak) => ak.is_rollup)
                 .map((ak) => {
                   const receivedKeySet = new Set(ak.received_keys);
 
                   return (
                     <VStack align="start" gap={1} key={ak.asset_id}>
-                      {assets.length > 1 ? (
-                        <Link asChild color="fg.info" fontSize="xs" fontWeight="semibold">
-                          <RouterLink to={`/assets/${ak.asset_id}`}>{ak.asset_name}</RouterLink>
-                        </Link>
-                      ) : undefined}
+                      <Link asChild color="fg.info" fontSize="xs" fontWeight="semibold">
+                        <RouterLink to={`/assets/${ak.asset_id}`}>{ak.asset_name}</RouterLink>
+                      </Link>
                       {ak.required_keys.map((key) => {
                         const isReceived = receivedKeySet.has(key);
 
@@ -97,7 +96,7 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
                     </VStack>
                   );
                 })}
-            </VStack>
+            </HStack>
           ) : (
             <AssetExpression events={events} expression={assetExpression} />
           )}
