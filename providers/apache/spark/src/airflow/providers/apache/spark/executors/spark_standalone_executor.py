@@ -232,6 +232,14 @@ class SparkStandaloneExecutor(BaseExecutor):
     def _submit(self, workload: Any) -> str | None:
         """Submit a task to the Spark cluster. Returns the submissionId or None on failure."""
         ti = workload.ti
+        spark_jar = (ti.executor_config or {}).get("spark_jar")
+        if spark_jar:
+            return self._submit_jar(spark_jar, ti)
+        return self._submit_python_task(workload)
+
+    def _submit_python_task(self, workload: Any) -> str | None:
+        """Submit a Python Airflow task via AirflowDriverLauncher."""
+        ti = workload.ti
         payload: dict[str, Any] = {
             "action": "CreateSubmissionRequest",
             "clientSparkVersion": self._spark_version,
@@ -252,11 +260,83 @@ class SparkStandaloneExecutor(BaseExecutor):
             "environmentVariables": self._build_env(workload),
         }
 
-        # Allow per-task overrides via executor_config
+        # Allow per-task resource overrides via executor_config
         if ti.executor_config:
             spark_props = ti.executor_config.get("spark_properties", {})
             payload["sparkProperties"].update(spark_props)
 
+        return self._post_submission(payload, ti)
+
+    def _submit_jar(self, spark_jar: dict[str, Any], ti: Any) -> str | None:
+        """
+        Submit a JVM application directly to the Spark cluster.
+
+        Used when ``executor_config`` contains a ``spark_jar`` dict::
+
+            @task(
+                executor_config={
+                    "spark_jar": {
+                        "app_resource": "file:///opt/myapp/my-job.jar",
+                        "main_class": "com.example.MyJob",
+                        "app_args": ["--input", "s3://raw/"],
+                        # spark_properties is optional — use only for per-task overrides.
+                    }
+                }
+            )
+            def run_job():
+                pass  # body is not executed
+
+        No ``AirflowDriverLauncher`` or Task SDK involvement — Airflow treats the
+        job as a black box and maps driverState to task success/failure.
+
+        Infrastructure defaults (master URL, memory, classpath) are derived from
+        executor config so DAG authors only need to specify what to run, not how.
+        ``spark_properties`` overrides are applied last and take full precedence.
+        """
+        app_resource = spark_jar["app_resource"]
+
+        spark_props: dict[str, Any] = {
+            "spark.master": self._master_url,
+            "spark.submit.deployMode": "cluster",
+            "spark.app.name": f"airflow-{ti.dag_id}-{ti.task_id}-{ti.run_id[:8]}",
+            "spark.driver.memory": self._driver_memory,
+            "spark.executor.memory": self._executor_memory,
+            "spark.executor.cores": self._executor_cores,
+        }
+
+        # Spark's DriverWrapper loads the user JAR via a dynamic URLClassLoader,
+        # not the JVM system classloader.  Scala/Java lambdas serialized from that
+        # child classloader cannot be deserialized on executors because
+        # LambdaMetafactory requires the implementation class in the system
+        # classloader on both sides.  Adding the JAR to extraClassPath on both
+        # driver and executor puts it in the system classloader, fixing the
+        # SerializedLambda ClassCastException that otherwise occurs at runtime.
+        #
+        # For remote URIs (s3://, hdfs://, http://) Spark's own file-serving
+        # mechanism handles distribution via spark.jars instead.
+        if app_resource.startswith("file://"):
+            local_path = app_resource[len("file://") :]
+            spark_props["spark.driver.extraClassPath"] = local_path
+            spark_props["spark.executor.extraClassPath"] = local_path
+        else:
+            spark_props["spark.jars"] = app_resource
+
+        # User-provided overrides are applied last and always win.
+        spark_props.update(spark_jar.get("spark_properties", {}))
+
+        payload: dict[str, Any] = {
+            "action": "CreateSubmissionRequest",
+            "clientSparkVersion": self._spark_version,
+            "appResource": app_resource,
+            "mainClass": spark_jar["main_class"],
+            "appArgs": spark_jar.get("app_args", []),
+            "sparkProperties": spark_props,
+            "environmentVariables": {},
+        }
+        return self._post_submission(payload, ti)
+
+    def _post_submission(self, payload: dict[str, Any], ti: Any) -> str | None:
+        """POST a submission payload to the Spark REST API. Returns submissionId or None."""
         try:
             resp = requests.post(
                 f"{self._rest_url}/create",

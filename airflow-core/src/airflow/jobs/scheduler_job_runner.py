@@ -1394,6 +1394,23 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
                     ti.set_state(None)
                     continue
 
+                # Handle executors that complete tasks without going through the
+                # Execution API (e.g. Spark JAR tasks submitted by
+                # SparkStandaloneExecutor, or any future executor that manages
+                # non-Python workloads directly).  The task never called the
+                # Execution API so it stayed QUEUED/RUNNING in the DB, but the
+                # executor is explicitly reporting that it finished successfully.
+                # Respect the executor's result instead of treating this as
+                # "killed externally".
+                if state == TaskInstanceState.SUCCESS:
+                    cls.logger().info(
+                        "Task %s was reported as successful by executor without an "
+                        "Execution API transition; marking as success.",
+                        ti,
+                    )
+                    ti.set_state(TaskInstanceState.SUCCESS, session=session)
+                    continue
+
                 # Send email notification request to DAG processor via DB
                 if task.email and (task.email_on_failure or task.email_on_retry):
                     cls.logger().info(
