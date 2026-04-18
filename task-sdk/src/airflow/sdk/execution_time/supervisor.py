@@ -1280,6 +1280,8 @@ class ActivitySubprocess(WatchedSubprocess):
                 id=self.id,
                 end_date=msg.end_date,
                 rendered_map_index=self._rendered_map_index,
+                retry_delay_seconds=getattr(msg, "retry_delay_seconds", None),
+                retry_reason=getattr(msg, "retry_reason", None),
             )
         elif isinstance(msg, GetConnection):
             conn = self.client.connections.get(msg.conn_id)
