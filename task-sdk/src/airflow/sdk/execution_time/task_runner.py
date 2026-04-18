@@ -768,20 +768,35 @@ def _maybe_reschedule_startup_failure(
     )
 
 
-def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
+def parse(what: StartupDetails, log: Logger) -> tuple[RuntimeTaskInstance, int, int]:
+    """
+    Parse the DAG file for a task and return the runtime task instance plus phase durations.
+
+    Returned tuple is ``(ti, bundle_prepare_ms, dag_file_parse_ms)``:
+
+    - ``bundle_prepare_ms`` covers bundle fetch/verify (Airflow-side overhead, e.g. git clone
+      on first task after a bundle version change).
+    - ``dag_file_parse_ms`` covers the actual DAG file import (user code).
+
+    Callers can use these to surface startup breakdowns to support engineers/customers who
+    need to attribute apparent slow task startup to bundle operations vs. user DAG complexity.
+    """
     # TODO: Task-SDK:
     # Using BundleDagBag here is about 98% wrong, but it'll do for now
     from airflow.dag_processing.dagbag import BundleDagBag
 
     bundle_info = what.bundle_info
+    bundle_prepare_start = time.monotonic()
     bundle_instance = DagBundlesManager().get_bundle(
         name=bundle_info.name,
         version=bundle_info.version,
     )
     bundle_instance.initialize()
     _verify_bundle_access(bundle_instance, log)
+    bundle_prepare_ms = int((time.monotonic() - bundle_prepare_start) * 1000)
 
     dag_absolute_path = os.fspath(Path(bundle_instance.path, what.dag_rel_path))
+    dag_file_parse_start = time.monotonic()
     bag = BundleDagBag(
         dag_folder=dag_absolute_path,
         safe_mode=False,
@@ -789,6 +804,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         bundle_path=bundle_instance.path,
         bundle_name=bundle_info.name,
     )
+    dag_file_parse_ms = int((time.monotonic() - dag_file_parse_start) * 1000)
     if TYPE_CHECKING:
         assert what.ti.dag_id
 
@@ -821,7 +837,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
             f"task is of the wrong type, got {type(task)}, wanted {BaseOperator} or {MappedOperator}"
         )
 
-    return RuntimeTaskInstance.model_construct(
+    ti = RuntimeTaskInstance.model_construct(
         **what.ti.model_dump(exclude_unset=True),
         task=task,
         bundle_instance=bundle_instance,
@@ -831,6 +847,7 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         state=TaskInstanceState.RUNNING,
         sentry_integration=what.sentry_integration,
     )
+    return ti, bundle_prepare_ms, dag_file_parse_ms
 
 
 # This global variable will be used by Connection/Variable/XCom classes, or other parts of the task's execution,
@@ -930,7 +947,7 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
         log.exception("error calling listener")
 
     with _airflow_parsing_context_manager(dag_id=msg.ti.dag_id, task_id=msg.ti.task_id):
-        ti = parse(msg, log)
+        ti, bundle_prepare_ms, dag_file_parse_ms = parse(msg, log)
     log.debug("Dag file parsed", file=msg.dag_rel_path)
 
     run_as_user = getattr(ti.task, "run_as_user", None) or conf.get(
@@ -960,6 +977,19 @@ def startup(msg: StartupDetails) -> tuple[RuntimeTaskInstance, Context, Logger]:
 
         # ideally, we should never reach here, but if we do, we should return None, None, None
         return None, None, None
+
+    # Surface the worker's post-RUNNING startup breakdown so support engineers and DAG authors
+    # can attribute apparent slow startup to bundle prep (Airflow-side) vs. DAG file parse (user code).
+    # Emitted after the re-exec check so it fires exactly once per task, even under run_as_user.
+    log.info(
+        "Worker startup parse complete",
+        bundle_name=msg.bundle_info.name,
+        bundle_version=msg.bundle_info.version,
+        dag_file=msg.dag_rel_path,
+        dag_id=msg.ti.dag_id,
+        bundle_prepare_ms=bundle_prepare_ms,
+        dag_file_parse_ms=dag_file_parse_ms,
+    )
 
     return ti, ti.get_template_context(), log
 
