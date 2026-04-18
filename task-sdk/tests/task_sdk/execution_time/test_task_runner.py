@@ -205,7 +205,7 @@ def test_parse(test_dags_dir: Path, make_ti_context):
             ),
         },
     ):
-        ti, _, _ = parse(what, mock.Mock())
+        ti = parse(what, mock.Mock())
 
     assert ti.task
     assert ti.task.dag
@@ -585,7 +585,7 @@ def test_parse_module_in_bundle_root(tmp_path: Path, make_ti_context):
             ),
         },
     ):
-        ti, _, _ = parse(what, mock.Mock())
+        ti = parse(what, mock.Mock())
 
     assert ti.task.dag.dag_id == "dag_name"
 

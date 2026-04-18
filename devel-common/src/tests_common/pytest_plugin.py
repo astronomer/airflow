@@ -2418,7 +2418,7 @@ def mocked_parse(spy_agency):
         )
         if hasattr(parse, "spy"):
             spy_agency.unspy(parse)
-        spy_agency.spy_on(parse, call_fake=lambda _, log: (ti, 0, 0))
+        spy_agency.spy_on(parse, call_fake=lambda _, log: ti)
         return ti
 
     return set_dag
