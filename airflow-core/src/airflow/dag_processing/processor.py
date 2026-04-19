@@ -252,7 +252,7 @@ def _serialize_dags(
             data = DagSerialization.to_dict(dag)
             serialized_dags.append(LazyDeserializedDAG(data=data, last_loaded=dag.last_loaded))
         except Exception:
-            log.exception("Failed to serialize DAG: %s", dag.fileloc)
+            log.exception("Failed to serialize DAG: %s", dag.fileloc, user_code_source="dag_serialize")
             dagbag_import_error_traceback_depth = conf.getint(
                 "core", "dagbag_import_error_traceback_depth", fallback=None
             )
@@ -355,7 +355,11 @@ def _execute_dag_callbacks(dagbag: DagBag, request: DagCallbackRequest, log: Fil
         try:
             callback(context)
         except Exception:
-            log.exception("Callback failed", dag_id=request.dag_id)
+            log.exception(
+                "Callback failed, likely a bug in your callback code",
+                dag_id=request.dag_id,
+                user_code_source="dag_callback",
+            )
             Stats.incr("dag.callback_exceptions", tags={"dag_id": request.dag_id})
 
 
@@ -419,7 +423,12 @@ def _execute_task_callbacks(dagbag: DagBag, request: TaskCallbackRequest, log: F
         try:
             callback(context)
         except Exception:
-            log.exception("Error in callback at index %d: %s", idx, callback_repr)
+            log.exception(
+                "Error in callback at index %d: %s, likely a bug in your callback code",
+                idx,
+                callback_repr,
+                user_code_source="task_callback",
+            )
 
 
 def _execute_email_callbacks(dagbag: DagBag, request: EmailRequest, log: FilteringBoundLogger) -> None:

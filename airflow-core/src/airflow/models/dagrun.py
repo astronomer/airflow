@@ -1423,7 +1423,11 @@ class DagRun(Base, LoggingMixin):
             try:
                 callback(context)
             except Exception:
-                self.log.exception("Callback failed for %s", dag.dag_id)
+                self.log.exception(
+                    "Callback failed for %s, likely a bug in your callback code",
+                    dag.dag_id,
+                    user_code_source="dag_callback",
+                )
                 Stats.incr("dag.callback_exceptions", tags={"dag_id": dag.dag_id})
 
     def _get_ready_tis(

@@ -199,7 +199,11 @@ def _load_entrypoint_plugins() -> tuple[list[AirflowPlugin], dict[str, str]]:
             plugin_instance.source = EntryPointSource(entry_point, dist)
             plugins.append(plugin_instance)
         except Exception as e:
-            log.exception("Failed to import plugin %s", entry_point.name)
+            log.exception(
+                "Failed to import plugin %s, likely an issue in your plugin code",
+                entry_point.name,
+                extra={"user_code_source": "plugin_import"},
+            )
             import_errors[entry_point.module] = str(e)
     return plugins, import_errors
 
@@ -252,7 +256,11 @@ def _load_plugins_from_plugin_directory(
                     plugin_instance.source = PluginsDirectorySource(file_path, plugins_folder)
                     plugins.append(plugin_instance)
             except Exception as e:
-                log.exception("Failed to import plugin %s", file_path)
+                log.exception(
+                    "Failed to import plugin %s, likely an issue in your plugin code",
+                    file_path,
+                    extra={"user_code_source": "plugin_import"},
+                )
                 import_errors[file_path] = str(e)
     return plugins, import_errors
 

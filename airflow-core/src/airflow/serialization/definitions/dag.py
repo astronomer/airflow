@@ -425,9 +425,10 @@ class SerializedDAG:
             return info
         except Exception:
             log.exception(
-                "Failed to fetch run info",
+                "Failed to fetch run info, likely a bug in your timetable code",
                 last_run_info=last_automated_run_info,
                 dag_id=self.dag_id,
+                user_code_source="timetable",
             )
         return None
 
@@ -465,9 +466,10 @@ class SerializedDAG:
                     break
         except Exception:
             log.exception(
-                "Failed to fetch run info",
+                "Failed to fetch run info, likely a bug in your timetable code",
                 last_dagrun_info=info,
                 dag_id=self.dag_id,
+                user_code_source="timetable",
             )
 
     @provide_session

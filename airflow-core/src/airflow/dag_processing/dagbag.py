@@ -324,7 +324,12 @@ class DagBag(LoggingMixin):
                 error_path = error.file_path if error.file_path else self._get_relative_fileloc(filepath)
                 error_msg = error.stacktrace if error.stacktrace else error.message
                 self.import_errors[error_path] = error_msg
-                self.log.error("Error loading DAG from %s: %s", error_path, error.message)
+                self.log.error(
+                    "Error loading DAG from %s, likely an issue in your DAG code: %s",
+                    error_path,
+                    error.message,
+                    user_code_source="dag_load",
+                )
 
         if result.warnings:
             formatted_warnings = [
@@ -353,7 +358,7 @@ class DagBag(LoggingMixin):
             except AirflowClusterPolicySkipDag:
                 self.log.debug("DAG %s skipped by cluster policy", dag.dag_id)
             except Exception as e:
-                self.log.exception("Error bagging DAG from %s", filepath)
+                self.log.exception("Error bagging DAG from %s", filepath, user_code_source="dag_validate")
                 relative_path = self._get_relative_fileloc(filepath)
                 self.import_errors[relative_path] = f"{type(e).__name__}: {e}"
 

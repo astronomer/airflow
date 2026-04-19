@@ -1836,7 +1836,7 @@ my_postgres_conn:
             assert len(records) == 1
             record = records[0]
             assert record.exc_info is not None, "Should contain exception"
-            assert record.message == "Failed to fetch run info"
+            assert record.message == "Failed to fetch run info, likely a bug in your timetable code"
 
         with caplog.at_level(level=logging.ERROR):
             next_info = scheduler_dag.next_dagrun_info(last_automated_run_info=None)
@@ -3123,7 +3123,7 @@ def test_iter_dagrun_infos_between_error(caplog):
         (
             "airflow.serialization.definitions.dag",
             logging.ERROR,
-            "Failed to fetch run info",
+            "Failed to fetch run info, likely a bug in your timetable code",
         ),
     ]
     assert caplog.entries[0].get("exception"), "should contain exception context"

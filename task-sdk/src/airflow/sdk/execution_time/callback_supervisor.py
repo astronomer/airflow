@@ -115,10 +115,11 @@ def execute_callback(
     except Exception as e:
         error_msg = f"Callback execution failed: {type(e).__name__}: {str(e)}"
         log.exception(
-            "Callback execution failed",
+            "Callback execution failed, likely a bug in your callback code",
             callback_path=callback_path,
             callback_kwargs=callback_kwargs,
             error_msg=error_msg,
+            user_code_source="task_callback",
         )
         return False, error_msg
 

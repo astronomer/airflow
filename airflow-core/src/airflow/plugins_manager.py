@@ -65,7 +65,12 @@ def _load_providers_plugins() -> tuple[list[AirflowPlugin], dict[str, str]]:
             else:
                 log.warning("Plugin %s is not a valid plugin", plugin.name)
         except ImportError:
-            log.exception("Failed to load plugin %s from class name %s", plugin.name, plugin.plugin_class)
+            log.exception(
+                "Failed to load plugin %s from class name %s, likely an issue in your plugin code",
+                plugin.name,
+                plugin.plugin_class,
+                extra={"user_code_source": "plugin_import"},
+            )
     return plugins, import_errors
 
 
@@ -107,7 +112,11 @@ def _get_plugins() -> tuple[list[AirflowPlugin], dict[str, str]]:
                 plugin_instance.on_load()
                 plugins.append(plugin_instance)
             except Exception as e:
-                log.exception("Failed to load plugin %s", plugin_instance.name)
+                log.exception(
+                    "Failed to load plugin %s, likely a bug in your plugin code (on_load raised)",
+                    plugin_instance.name,
+                    extra={"user_code_source": "plugin_on_load"},
+                )
                 name = str(plugin_instance.source) if plugin_instance.source else plugin_instance.name or ""
                 import_errors[name] = str(e)
         import_errors.update(errors)
