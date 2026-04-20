@@ -20,10 +20,12 @@ import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { useDagRunServiceGetDagRun } from "openapi/queries";
+import { Graph } from "src/layouts/Details/Graph/Graph";
 import { useGridTiSummariesStream } from "src/queries/useGridTISummaries.ts";
 import { Wrapper } from "src/utils/Wrapper";
 
-import { Graph } from "./Graph";
+// testsSetup.ts mocks Graph globally for other tests; load the real component here.
+vi.unmock("src/layouts/Details/Graph/Graph");
 
 let mockParams: Record<string, string> = { dagId: "test_dag" };
 
