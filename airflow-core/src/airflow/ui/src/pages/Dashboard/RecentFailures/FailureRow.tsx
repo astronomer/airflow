@@ -54,22 +54,16 @@ export const FailureRow = ({ dagRun }: Props) => {
 
   const lastFailedTi = failedTis?.task_instances[0];
 
-  const { isLoading: logLoading, parsedData } = useLogs(
+  const { fetchedData, isLoading: logLoading } = useLogs(
     {
       dagId: dagRun.dag_id,
-      limit: 200,
-      logLevelFilters: ["error", "critical"],
       taskInstance: lastFailedTi,
       tryNumber: lastFailedTi?.try_number,
     },
     { enabled: expanded && Boolean(lastFailedTi), refetchInterval: false, retry: false },
   );
 
-  const extracted = useMemo(() => {
-    const text = parsedData.searchableText.join("\n");
-
-    return text.length > 0 ? extractException(text) : undefined;
-  }, [parsedData.searchableText]);
+  const extracted = useMemo(() => extractException(fetchedData?.content), [fetchedData?.content]);
 
   const extractionInFlight = expanded && (tiLoading || logLoading);
   const noExceptionDetected = expanded && !extractionInFlight && extracted === undefined;

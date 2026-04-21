@@ -16,31 +16,80 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
-// Match Python-style exception lines like:
-//   ValueError: invalid literal for int()
-//   airflow.exceptions.AirflowSkipException: skipping
-//   ConnectionError: timeout
-const EXCEPTION_LINE = /^(\w+(?:\.\w+)*(?:Error|Exception|Failure|Timeout))\s*:\s*(.+)$/mu;
+import type { StructuredLogMessage, TaskInstancesLogResponse } from "openapi/requests/types.gen";
 
 export type ExtractedException = {
   exceptionClass: string;
   message: string;
 };
 
-export const extractException = (logText: string): ExtractedException | undefined => {
-  const lines = logText.split("\n");
+type ErrorDetail = {
+  exc_notes?: Array<string>;
+  exc_type?: string;
+  exc_value?: string;
+};
 
-  // Walk from the bottom — the last exception line is usually the one that
-  // actually killed the task (earlier matches are often from caught/re-raised
-  // inner exceptions).
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const match = EXCEPTION_LINE.exec(lines[index] ?? "");
+// Unanchored — Airflow's rendered log lines are prefixed with timestamp/level,
+// so a start-of-line anchor would never match. Matches "Foo.Bar.Error: message"
+// anywhere in a line; iteration picks the *last* occurrence since earlier
+// matches are usually from inner/re-raised exceptions.
+const EXCEPTION_PATTERN = /\b(?<cls>\w+(?:\.\w+)*(?:Error|Exception|Failure|Timeout))\s*:\s*(?<msg>[^\n]+)/gu;
 
-    if (match?.[1] !== undefined && match[2] !== undefined) {
-      return { exceptionClass: match[1], message: match[2].trim() };
-    }
+const getErrorDetail = (entry: string | StructuredLogMessage): Array<ErrorDetail> | undefined => {
+  if (typeof entry !== "object") {
+    return undefined;
+  }
+  const detail = entry.error_detail;
+
+  return Array.isArray(detail) ? (detail as Array<ErrorDetail>) : undefined;
+};
+
+const fromStructured = (
+  content: Array<string> | Array<StructuredLogMessage>,
+): ExtractedException | undefined => {
+  // Walk from the bottom — the most recent error_detail killed the task.
+  const reversed = [...content].reverse();
+  const match = reversed
+    .map(getErrorDetail)
+    .find((detail): detail is Array<ErrorDetail> => detail !== undefined && detail.length > 0);
+
+  const last = match?.at(-1);
+
+  if (last?.exc_type !== undefined && last.exc_value !== undefined) {
+    return { exceptionClass: last.exc_type, message: last.exc_value };
   }
 
   return undefined;
+};
+
+const toPlainText = (entry: string | StructuredLogMessage): string => {
+  if (typeof entry === "string") {
+    return entry;
+  }
+
+  return String(entry.event);
+};
+
+const fromRegex = (content: Array<string> | Array<StructuredLogMessage>): ExtractedException | undefined => {
+  const text = content.map(toPlainText).join("\n");
+  const matches = [...text.matchAll(EXCEPTION_PATTERN)];
+  const lastMatch = matches.at(-1);
+  const cls = lastMatch?.groups?.cls;
+  const msg = lastMatch?.groups?.msg;
+
+  if (cls !== undefined && msg !== undefined) {
+    return { exceptionClass: cls, message: msg.trim() };
+  }
+
+  return undefined;
+};
+
+export const extractException = (
+  content: TaskInstancesLogResponse["content"] | undefined,
+): ExtractedException | undefined => {
+  if (!content || content.length === 0) {
+    return undefined;
+  }
+
+  return fromStructured(content) ?? fromRegex(content);
 };
