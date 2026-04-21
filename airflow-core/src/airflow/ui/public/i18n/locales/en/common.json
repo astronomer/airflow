@@ -160,6 +160,7 @@
     "home": "Home",
     "legacyFabViews": "Legacy Views",
     "plugins": "Plugins",
+    "runs": "Runs",
     "security": "Security"
   },
   "noItemsFound": "No {{modelName}} found",

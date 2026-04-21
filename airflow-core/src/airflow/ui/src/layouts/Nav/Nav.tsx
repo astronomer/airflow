@@ -18,7 +18,7 @@
  */
 import { Box, Flex, Text, VStack, useDisclosure } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
-import { FiDatabase, FiHome, FiClock } from "react-icons/fi";
+import { FiBarChart, FiDatabase, FiHome, FiClock } from "react-icons/fi";
 import { Link } from "react-router-dom";
 
 import {
@@ -172,6 +172,12 @@ export const Nav = () => {
           </Link>
         </Box>
         <NavButton data-testid="nav-home-link" icon={FiHome} title={translate("nav.home")} to="/" />
+        <NavButton
+          data-testid="nav-runs-link"
+          icon={FiBarChart}
+          title={translate("nav.runs")}
+          to="dag_runs"
+        />
         <NavButton
           data-testid="nav-dags-link"
           disabled={!authLinks?.authorized_menu_items.includes("Dags")}
