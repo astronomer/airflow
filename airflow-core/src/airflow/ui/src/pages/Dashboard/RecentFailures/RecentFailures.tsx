@@ -76,6 +76,23 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
     { refetchInterval },
   );
 
+  // Count of successful runs in the window — used to make the happy-path
+  // empty state informative rather than muted. Uses limit: 1 so we only pay
+  // for the total_entries header, not the row payload.
+  const { data: successData } = useDagRunServiceGetDagRuns(
+    {
+      dagId: "~",
+      limit: 1,
+      runAfterGte: startDate,
+      runAfterLte: endDate,
+      state: ["success"],
+    },
+    undefined,
+    { refetchInterval },
+  );
+
+  const successCount = successData?.total_entries ?? 0;
+
   const tisByRun = useMemo(() => {
     const map = new Map<string, Array<TaskInstanceResponse>>();
 
@@ -110,17 +127,43 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
   }
 
   if (runs.length === 0) {
+    const hasActivity = successCount > 0;
+
     return (
       <Box>
-        <Flex align="center" color="fg.muted" my={2}>
-          <FiCheckCircle color="var(--chakra-colors-green-fg)" />
-          <Heading ml={1} size="xs">
-            Failures · {windowLabel}
-          </Heading>
+        <Flex align="center" justify="space-between" my={2}>
+          <Flex align="center" color={hasActivity ? "green.fg" : "fg.muted"}>
+            <FiCheckCircle />
+            <Heading ml={1} size="xs">
+              {hasActivity ? "All clear" : "No activity"} · {windowLabel}
+            </Heading>
+          </Flex>
+          <Link asChild color="fg.info" fontSize="sm">
+            <RouterLink to="/dag_runs">View all runs →</RouterLink>
+          </Link>
         </Flex>
-        <Text color="fg.muted" fontSize="sm" ml={1}>
-          No failures in this window. All clear.
-        </Text>
+        <Box
+          borderColor={hasActivity ? "green.solid" : "border"}
+          borderLeftWidth={hasActivity ? 3 : 1}
+          borderRadius="md"
+          borderWidth={1}
+          px={4}
+          py={3}
+        >
+          <Text color="fg.muted" fontSize="sm">
+            {hasActivity ? (
+              <>
+                No failures ·{" "}
+                <Text as="span" color="fg" fontWeight="semibold">
+                  {successCount.toLocaleString()}
+                </Text>{" "}
+                DAG run{successCount === 1 ? "" : "s"} completed successfully in this window.
+              </>
+            ) : (
+              <>No DAG runs have executed in this window yet.</>
+            )}
+          </Text>
+        </Box>
       </Box>
     );
   }
