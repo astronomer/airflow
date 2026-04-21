@@ -157,10 +157,10 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
                 <Text as="span" color="fg" fontWeight="semibold">
                   {successCount.toLocaleString()}
                 </Text>{" "}
-                DAG run{successCount === 1 ? "" : "s"} completed successfully in this window.
+                Dag run{successCount === 1 ? "" : "s"} completed successfully in this window.
               </>
             ) : (
-              <>No DAG runs have executed in this window yet.</>
+              <>No Dag runs have executed in this window yet.</>
             )}
           </Text>
         </Box>
