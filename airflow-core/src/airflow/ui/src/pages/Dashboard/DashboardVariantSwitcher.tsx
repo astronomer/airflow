@@ -36,11 +36,13 @@ const VARIANT_LABELS: Record<DashboardVariant, string> = {
 
 const VARIANT_KEYS: Array<DashboardVariant> = ["v1", "v2", "v3"];
 
+const DEFAULT_VARIANT: DashboardVariant = "v2";
+
 export const useDashboardVariant = (): DashboardVariant => {
   const [params] = useSearchParams();
   const raw = params.get("variant");
 
-  return (VARIANT_KEYS as Array<string>).includes(raw ?? "") ? (raw as DashboardVariant) : "v1";
+  return (VARIANT_KEYS as Array<string>).includes(raw ?? "") ? (raw as DashboardVariant) : DEFAULT_VARIANT;
 };
 
 export const DashboardVariantSwitcher = () => {
@@ -50,7 +52,7 @@ export const DashboardVariantSwitcher = () => {
   const setVariant = (next: DashboardVariant) => {
     const updated = new URLSearchParams(params);
 
-    if (next === "v1") {
+    if (next === DEFAULT_VARIANT) {
       updated.delete("variant");
     } else {
       updated.set("variant", next);
