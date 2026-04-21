@@ -30,6 +30,7 @@ import { ClearRunButton } from "src/components/Clear";
 import Time from "src/components/Time";
 import { useLogs } from "src/queries/useLogs";
 import { renderDuration } from "src/utils";
+import { parseStreamingLogContent } from "src/utils/logs";
 
 import { extractException } from "./extractException";
 
@@ -63,7 +64,7 @@ export const FailureRow = ({ dagRun }: Props) => {
     { enabled: expanded && Boolean(lastFailedTi), refetchInterval: false, retry: false },
   );
 
-  const extracted = useMemo(() => extractException(fetchedData?.content), [fetchedData?.content]);
+  const extracted = useMemo(() => extractException(parseStreamingLogContent(fetchedData)), [fetchedData]);
 
   const extractionInFlight = expanded && (tiLoading || logLoading);
   const noExceptionDetected = expanded && !extractionInFlight && extracted === undefined;
