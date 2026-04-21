@@ -19,129 +19,92 @@
 
 /* eslint-disable i18next/no-literal-string --
    POC: strings will be localized before any real PR. */
-import { Box, Flex, HStack, IconButton, Link, Spinner, Table, Text } from "@chakra-ui/react";
-import { useMemo, useState } from "react";
+import { Button, HStack, IconButton, Link, Stack, Table } from "@chakra-ui/react";
+import { useState } from "react";
 import { FiChevronDown, FiChevronRight } from "react-icons/fi";
 import { Link as RouterLink } from "react-router-dom";
 
-import { useTaskInstanceServiceGetTaskInstances } from "openapi/queries";
-import type { DAGRunResponse } from "openapi/requests/types.gen";
+import type { DAGRunResponse, TaskInstanceResponse } from "openapi/requests/types.gen";
 import { ClearRunButton } from "src/components/Clear";
 import Time from "src/components/Time";
-import { useLogs } from "src/queries/useLogs";
 import { renderDuration } from "src/utils";
-import { parseStreamingLogContent } from "src/utils/logs";
 
-import { extractException } from "./extractException";
+import { TaskFailureLine } from "./TaskFailureLine";
+
+const INLINE_TASK_LIMIT = 3;
 
 type Props = {
   readonly dagRun: DAGRunResponse;
+  readonly failedTis: Array<TaskInstanceResponse>;
 };
 
-export const FailureRow = ({ dagRun }: Props) => {
+export const FailureRow = ({ dagRun, failedTis }: Props) => {
   const [expanded, setExpanded] = useState(false);
 
-  const { data: failedTis, isLoading: tiLoading } = useTaskInstanceServiceGetTaskInstances(
-    {
-      dagId: dagRun.dag_id,
-      dagRunId: dagRun.dag_run_id,
-      limit: 1,
-      orderBy: ["-start_date"],
-      state: ["failed"],
-    },
-    undefined,
-    { enabled: expanded },
-  );
+  const hasMoreThanLimit = failedTis.length > INLINE_TASK_LIMIT;
+  const visibleTis = expanded ? failedTis : failedTis.slice(0, INLINE_TASK_LIMIT);
+  const hiddenCount = Math.max(0, failedTis.length - INLINE_TASK_LIMIT);
 
-  const lastFailedTi = failedTis?.task_instances[0];
-
-  const { fetchedData, isLoading: logLoading } = useLogs(
-    {
-      dagId: dagRun.dag_id,
-      taskInstance: lastFailedTi,
-      tryNumber: lastFailedTi?.try_number,
-    },
-    { enabled: expanded && Boolean(lastFailedTi), refetchInterval: false, retry: false },
-  );
-
-  const extracted = useMemo(() => extractException(parseStreamingLogContent(fetchedData)), [fetchedData]);
-
-  const extractionInFlight = expanded && (tiLoading || logLoading);
-  const noExceptionDetected = expanded && !extractionInFlight && extracted === undefined;
+  const expandable = failedTis.length > 0;
 
   return (
-    <>
-      <Table.Row _hover={{ bg: "bg.subtle" }}>
-        <Table.Cell width="1">
+    <Table.Row _hover={{ bg: "bg.subtle" }}>
+      <Table.Cell verticalAlign="top" width="1">
+        {expandable ? (
           <IconButton
-            aria-label={expanded ? "Collapse error details" : "Expand error details"}
+            aria-label={expanded ? "Collapse failed tasks" : "Show full messages and all failed tasks"}
             onClick={() => setExpanded((prev) => !prev)}
             size="xs"
             variant="ghost"
           >
             {expanded ? <FiChevronDown /> : <FiChevronRight />}
           </IconButton>
-        </Table.Cell>
-        <Table.Cell>
+        ) : undefined}
+      </Table.Cell>
+      <Table.Cell verticalAlign="top">
+        <Stack gap={1}>
           <Link asChild color="fg.info" fontWeight="medium">
             <RouterLink to={`/dags/${dagRun.dag_id}`}>{dagRun.dag_display_name}</RouterLink>
           </Link>
-        </Table.Cell>
-        <Table.Cell>
-          <Link asChild color="fg.info">
-            <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.dag_run_id}`}>
-              <Time datetime={dagRun.run_after} />
-            </RouterLink>
+          {failedTis.length === 0 ? undefined : (
+            <Stack gap={0.5} pl={2}>
+              {visibleTis.map((ti) => (
+                <TaskFailureLine key={ti.id} taskInstance={ti} truncated={!expanded} />
+              ))}
+              {!expanded && hasMoreThanLimit ? (
+                <Button
+                  alignSelf="flex-start"
+                  color="fg.info"
+                  fontSize="xs"
+                  height="auto"
+                  onClick={() => setExpanded(true)}
+                  p={0}
+                  textDecoration="underline"
+                  variant="plain"
+                >
+                  + {hiddenCount} more failed task{hiddenCount === 1 ? "" : "s"}
+                </Button>
+              ) : undefined}
+            </Stack>
+          )}
+        </Stack>
+      </Table.Cell>
+      <Table.Cell verticalAlign="top">
+        <Link asChild color="fg.info">
+          <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.dag_run_id}`}>
+            <Time datetime={dagRun.run_after} />
+          </RouterLink>
+        </Link>
+      </Table.Cell>
+      <Table.Cell verticalAlign="top">{renderDuration(dagRun.duration)}</Table.Cell>
+      <Table.Cell verticalAlign="top">
+        <HStack gap={1} justify="flex-end">
+          <ClearRunButton dagRun={dagRun} />
+          <Link asChild color="fg.info" fontSize="sm">
+            <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.dag_run_id}`}>View</RouterLink>
           </Link>
-        </Table.Cell>
-        <Table.Cell>{renderDuration(dagRun.duration)}</Table.Cell>
-        <Table.Cell>
-          <HStack gap={1} justify="flex-end">
-            <ClearRunButton dagRun={dagRun} />
-            <Link asChild color="fg.info" fontSize="sm">
-              <RouterLink to={`/dags/${dagRun.dag_id}/runs/${dagRun.dag_run_id}`}>View</RouterLink>
-            </Link>
-          </HStack>
-        </Table.Cell>
-      </Table.Row>
-      {expanded ? (
-        <Table.Row>
-          <Table.Cell colSpan={5} p={0}>
-            <Box bg="bg.subtle" borderLeftColor="red.500" borderLeftWidth={3} p={3}>
-              {extractionInFlight ? (
-                <Flex align="center" gap={2}>
-                  <Spinner size="xs" />
-                  <Text color="fg.muted" fontSize="sm">
-                    Extracting error…
-                  </Text>
-                </Flex>
-              ) : undefined}
-              {extracted ? (
-                <Box fontFamily="mono" fontSize="sm">
-                  <Text as="span" color="red.fg" fontWeight="bold">
-                    {extracted.exceptionClass}:
-                  </Text>{" "}
-                  <Text as="span">{extracted.message}</Text>
-                </Box>
-              ) : undefined}
-              {noExceptionDetected ? (
-                <Text color="fg.muted" fontSize="sm">
-                  No exception pattern detected in recent ERROR-level logs.{" "}
-                  {lastFailedTi ? (
-                    <Link asChild color="fg.info">
-                      <RouterLink
-                        to={`/dags/${lastFailedTi.dag_id}/runs/${lastFailedTi.dag_run_id}/tasks/${lastFailedTi.task_id}/logs`}
-                      >
-                        Open full logs
-                      </RouterLink>
-                    </Link>
-                  ) : undefined}
-                </Text>
-              ) : undefined}
-            </Box>
-          </Table.Cell>
-        </Table.Row>
-      ) : undefined}
-    </>
+        </HStack>
+      </Table.Cell>
+    </Table.Row>
   );
 };

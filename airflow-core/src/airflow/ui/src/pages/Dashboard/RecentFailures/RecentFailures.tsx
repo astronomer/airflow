@@ -20,13 +20,23 @@
 /* eslint-disable i18next/no-literal-string --
    POC: strings will be localized before any real PR. */
 import { Box, Flex, Heading, Link, Skeleton, Table, Text } from "@chakra-ui/react";
+import { useMemo } from "react";
 import { FiAlertCircle, FiCheckCircle } from "react-icons/fi";
 import { Link as RouterLink } from "react-router-dom";
 
-import { useDagRunServiceGetDagRuns } from "openapi/queries";
+import { useDagRunServiceGetDagRuns, useTaskInstanceServiceGetTaskInstances } from "openapi/queries";
+import type { TaskInstanceResponse } from "openapi/requests/types.gen";
 import { useAutoRefresh } from "src/utils";
 
 import { FailureRow } from "./FailureRow";
+
+// Cap on total failed TIs we fetch across the window. Matches the intent of
+// keeping the dashboard responsive: 10 runs × ~5 failed tasks per run is a
+// reasonable ceiling. Runs with more than this will show their first few
+// tasks inline; users click through to the run detail for the full list.
+const TI_FETCH_CAP = 50;
+
+const runKey = (dagId: string, dagRunId: string) => `${dagId}:${dagRunId}`;
 
 type Props = {
   readonly compact?: boolean;
@@ -39,7 +49,7 @@ type Props = {
 export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate, windowLabel }: Props) => {
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
 
-  const { data, isLoading } = useDagRunServiceGetDagRuns(
+  const { data: runsData, isLoading: runsLoading } = useDagRunServiceGetDagRuns(
     {
       dagId: "~",
       limit,
@@ -52,9 +62,40 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
     { refetchInterval },
   );
 
-  const runs = data?.dag_runs ?? [];
+  const { data: tisData } = useTaskInstanceServiceGetTaskInstances(
+    {
+      dagId: "~",
+      dagRunId: "~",
+      limit: TI_FETCH_CAP,
+      orderBy: ["start_date"],
+      runAfterGte: startDate,
+      runAfterLte: endDate,
+      state: ["failed"],
+    },
+    undefined,
+    { refetchInterval },
+  );
 
-  if (isLoading && runs.length === 0) {
+  const tisByRun = useMemo(() => {
+    const map = new Map<string, Array<TaskInstanceResponse>>();
+
+    for (const ti of tisData?.task_instances ?? []) {
+      const key = runKey(ti.dag_id, ti.dag_run_id);
+      const existing = map.get(key);
+
+      if (existing === undefined) {
+        map.set(key, [ti]);
+      } else {
+        existing.push(ti);
+      }
+    }
+
+    return map;
+  }, [tisData]);
+
+  const runs = runsData?.dag_runs ?? [];
+
+  if (runsLoading && runs.length === 0) {
     return (
       <Box>
         <Flex align="center" color="fg.muted" my={2}>
@@ -102,7 +143,7 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
           <Table.Header>
             <Table.Row>
               <Table.ColumnHeader width="1" />
-              <Table.ColumnHeader>Dag</Table.ColumnHeader>
+              <Table.ColumnHeader>Dag · Failures</Table.ColumnHeader>
               <Table.ColumnHeader>Run After</Table.ColumnHeader>
               <Table.ColumnHeader>Duration</Table.ColumnHeader>
               <Table.ColumnHeader textAlign="end">Actions</Table.ColumnHeader>
@@ -110,7 +151,11 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
           </Table.Header>
           <Table.Body>
             {runs.map((run) => (
-              <FailureRow dagRun={run} key={`${run.dag_id}:${run.dag_run_id}`} />
+              <FailureRow
+                dagRun={run}
+                failedTis={tisByRun.get(runKey(run.dag_id, run.dag_run_id)) ?? []}
+                key={runKey(run.dag_id, run.dag_run_id)}
+              />
             ))}
           </Table.Body>
         </Table.Root>
