@@ -90,7 +90,7 @@ export const Stats = () => {
           icon={<FiPause />}
           isLoading={isPausedLoading}
           isRTL={isRTL}
-          label={translate("stats.pausedDags")}
+          label="Paused Dags"
           link="dags?paused=true"
         />
       </Flex>
