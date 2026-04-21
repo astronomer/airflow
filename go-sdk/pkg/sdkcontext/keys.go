@@ -22,6 +22,7 @@ type (
 	apiClientContextKey struct{}
 	workerContextKey    struct{}
 	runtimeTIContextKey struct{}
+	sdkClientContextKey struct{}
 )
 
 var (
@@ -32,4 +33,10 @@ var (
 	RuntimeTIContextKey = runtimeTIContextKey{}
 	ApiClientContextKey = apiClientContextKey{}
 	WorkerContextKey    = workerContextKey{}
+
+	// SdkClientContextKey stores a pre-configured sdk.Client for coordinator execution.
+	// When set, taskFunction.Execute() uses this client instead of creating an HTTP-based one.
+	//
+	// client := ctx.Value(sdkcontext.SdkClientContextKey).(sdk.Client)
+	SdkClientContextKey = sdkClientContextKey{}
 )

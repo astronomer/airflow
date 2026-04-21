@@ -45,7 +45,15 @@ func NewTaskFunction(fn any) (Task, error) {
 
 func (f *taskFunction) Execute(ctx context.Context, logger *slog.Logger) error {
 	fnType := f.fn.Type()
-	sdkClient := sdk.NewClient()
+
+	// Use a pre-injected SDK client from context (coordinator execution) if available,
+	// otherwise fall back to the default HTTP-based client.
+	var sdkClient sdk.Client
+	if c, ok := ctx.Value(sdkcontext.SdkClientContextKey).(sdk.Client); ok {
+		sdkClient = c
+	} else {
+		sdkClient = sdk.NewClient()
+	}
 
 	reflectArgs := make([]reflect.Value, fnType.NumIn())
 	for i := range reflectArgs {
