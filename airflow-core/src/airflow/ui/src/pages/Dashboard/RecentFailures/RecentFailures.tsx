@@ -30,10 +30,13 @@ import { FailureRow } from "./FailureRow";
 
 type Props = {
   readonly compact?: boolean;
+  readonly endDate: string;
   readonly limit?: number;
+  readonly startDate: string;
+  readonly windowLabel: string;
 };
 
-export const RecentFailures = ({ compact = false, limit = 10 }: Props) => {
+export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate, windowLabel }: Props) => {
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
 
   const { data, isLoading } = useDagRunServiceGetDagRuns(
@@ -41,6 +44,8 @@ export const RecentFailures = ({ compact = false, limit = 10 }: Props) => {
       dagId: "~",
       limit,
       orderBy: ["-run_after"],
+      runAfterGte: startDate,
+      runAfterLte: endDate,
       state: ["failed"],
     },
     undefined,
@@ -55,7 +60,7 @@ export const RecentFailures = ({ compact = false, limit = 10 }: Props) => {
         <Flex align="center" color="fg.muted" my={2}>
           <FiAlertCircle />
           <Heading ml={1} size="xs">
-            Recent Failures
+            Failures · {windowLabel}
           </Heading>
         </Flex>
         <Skeleton height={compact ? "80px" : "140px"} />
@@ -69,11 +74,11 @@ export const RecentFailures = ({ compact = false, limit = 10 }: Props) => {
         <Flex align="center" color="fg.muted" my={2}>
           <FiCheckCircle color="var(--chakra-colors-green-fg)" />
           <Heading ml={1} size="xs">
-            Recent Failures
+            Failures · {windowLabel}
           </Heading>
         </Flex>
         <Text color="fg.muted" fontSize="sm" ml={1}>
-          No recent failures. All clear.
+          No failures in this window. All clear.
         </Text>
       </Box>
     );
@@ -85,7 +90,7 @@ export const RecentFailures = ({ compact = false, limit = 10 }: Props) => {
         <Flex align="center" color="fg.muted">
           <FiAlertCircle />
           <Heading ml={1} size="xs">
-            Recent Failures
+            Failures · {windowLabel}
           </Heading>
         </Flex>
         <Link asChild color="fg.info" fontSize="sm">

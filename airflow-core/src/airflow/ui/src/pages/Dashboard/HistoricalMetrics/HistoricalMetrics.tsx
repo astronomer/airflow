@@ -17,26 +17,22 @@
  * under the License.
  */
 import { Box, Flex, Heading, VStack } from "@chakra-ui/react";
-import dayjs from "dayjs";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PiBooks } from "react-icons/pi";
 
 import { useDashboardServiceHistoricalMetrics } from "openapi/queries";
 import { ErrorAlert } from "src/components/ErrorAlert";
-import TimeRangeSelector from "src/components/TimeRangeSelector";
 import { useAutoRefresh } from "src/utils";
 
 import { DagRunMetrics } from "./DagRunMetrics";
 import { MetricSectionSkeleton } from "./MetricSectionSkeleton";
 
-const defaultHour = "24";
+type Props = {
+  readonly startDate: string;
+};
 
-export const HistoricalMetrics = () => {
+export const HistoricalMetrics = ({ startDate }: Props) => {
   const { t: translate } = useTranslation("dashboard");
-  const now = dayjs();
-  const [startDate, setStartDate] = useState(now.subtract(Number(defaultHour), "hour").toISOString());
-  const [endDate, setEndDate] = useState(now.toISOString());
 
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
 
@@ -60,13 +56,6 @@ export const HistoricalMetrics = () => {
       </Flex>
       <ErrorAlert error={error} />
       <VStack alignItems="left" gap={2}>
-        <TimeRangeSelector
-          defaultValue={defaultHour}
-          endDate={endDate}
-          setEndDate={setEndDate}
-          setStartDate={setStartDate}
-          startDate={startDate}
-        />
         {isLoading ? <MetricSectionSkeleton /> : undefined}
         {!isLoading && data !== undefined ? (
           <DagRunMetrics

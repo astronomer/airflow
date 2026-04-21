@@ -20,11 +20,15 @@
 /* eslint-disable @typescript-eslint/no-use-before-define --
    POC: dashboard layout variants are defined after the parent component for readability. */
 import { Box, Heading, VStack } from "@chakra-ui/react";
+import dayjs from "dayjs";
+import type { ReactElement } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { usePluginServiceGetPlugins } from "openapi/queries";
 import type { ReactAppResponse, UIAlert } from "openapi/requests/types.gen";
 import ReactMarkdown from "src/components/ReactMarkdown";
+import TimeRangeSelector from "src/components/TimeRangeSelector";
 import { Accordion, Alert } from "src/components/ui";
 import { useConfig } from "src/queries/useConfig";
 
@@ -37,11 +41,52 @@ import { PoolSummary } from "./PoolSummary";
 import { RecentFailures } from "./RecentFailures";
 import { Stats } from "./Stats";
 
+const defaultHour = "24";
+
+// Keep in sync with TimeRangeSelector's default options.
+const windowLabelByHour: Record<string, string> = {
+  "1": "Last hour",
+  "12": "Last 12 hours",
+  "24": "Last 24 hours",
+  "168": "Past week",
+};
+
+type VariantProps = {
+  readonly endDate: string;
+  readonly startDate: string;
+  readonly timeRangeSelector: ReactElement;
+  readonly windowLabel: string;
+};
+
 export const Dashboard = () => {
   const alerts = useConfig("dashboard_alert") as Array<UIAlert>;
   const { t: translate } = useTranslation("dashboard");
   const instanceName = useConfig("instance_name");
   const variant = useDashboardVariant();
+
+  const now = dayjs();
+  const [startDate, setStartDate] = useState(now.subtract(Number(defaultHour), "hour").toISOString());
+  const [endDate, setEndDate] = useState(now.toISOString());
+  const [windowHours, setWindowHours] = useState(defaultHour);
+
+  const windowLabel = windowLabelByHour[windowHours] ?? `${windowHours}h`;
+
+  const handleSetStartDate = (next: string) => {
+    setStartDate(next);
+    const hours = String(Math.round(dayjs(endDate).diff(dayjs(next), "hour")));
+
+    setWindowHours(hours);
+  };
+
+  const timeRangeSelector = (
+    <TimeRangeSelector
+      defaultValue={defaultHour}
+      endDate={endDate}
+      setEndDate={setEndDate}
+      setStartDate={handleSetStartDate}
+      startDate={startDate}
+    />
+  );
 
   const { data: pluginData } = usePluginServiceGetPlugins();
 
@@ -83,14 +128,16 @@ export const Dashboard = () => {
 
   const plugins = dashboardReactPlugins.map((plugin) => <ReactPlugin key={plugin.name} reactApp={plugin} />);
 
+  const variantProps: VariantProps = { endDate, startDate, timeRangeSelector, windowLabel };
+
   return (
     <Box overflow="auto" pb={24} px={{ base: 2, md: 4 }}>
       <VStack alignItems="stretch" gap={6}>
         {alertsBlock}
         {heading}
-        {variant === "v1" ? <V1Minimal /> : undefined}
-        {variant === "v2" ? <V2TriageHero /> : undefined}
-        {variant === "v3" ? <V3Split /> : undefined}
+        {variant === "v1" ? <V1Minimal {...variantProps} /> : undefined}
+        {variant === "v2" ? <V2TriageHero {...variantProps} /> : undefined}
+        {variant === "v3" ? <V3Split {...variantProps} /> : undefined}
         {plugins}
       </VStack>
       <DashboardVariantSwitcher />
@@ -98,13 +145,14 @@ export const Dashboard = () => {
   );
 };
 
-const V1Minimal = () => (
+const V1Minimal = ({ endDate, startDate, timeRangeSelector, windowLabel }: VariantProps) => (
   <>
     <Box>
       <Stats />
     </Box>
+    <Box>{timeRangeSelector}</Box>
     <Box>
-      <RecentFailures />
+      <RecentFailures endDate={endDate} startDate={startDate} windowLabel={windowLabel} />
     </Box>
     <Box>
       <FavoriteDags />
@@ -114,21 +162,22 @@ const V1Minimal = () => (
       <PoolSummary />
     </Box>
     <Box>
-      <HistoricalMetrics />
+      <HistoricalMetrics startDate={startDate} />
     </Box>
   </>
 );
 
-const V2TriageHero = () => (
+const V2TriageHero = ({ endDate, startDate, timeRangeSelector, windowLabel }: VariantProps) => (
   <>
     <Box>
       <Stats />
     </Box>
+    <Box>{timeRangeSelector}</Box>
     <Box>
-      <RecentFailures limit={10} />
+      <RecentFailures endDate={endDate} limit={10} startDate={startDate} windowLabel={windowLabel} />
     </Box>
     <Box>
-      <HistoricalMetrics />
+      <HistoricalMetrics startDate={startDate} />
     </Box>
     <Box>
       <FavoriteDags />
@@ -140,12 +189,13 @@ const V2TriageHero = () => (
   </>
 );
 
-const V3Split = () => (
+const V3Split = ({ endDate, startDate, timeRangeSelector, windowLabel }: VariantProps) => (
   <Box display="grid" gap={6} gridTemplateColumns={{ base: "1fr", xl: "minmax(0, 2fr) minmax(0, 1fr)" }}>
     <VStack alignItems="stretch" gap={6}>
       <Stats />
-      <RecentFailures />
-      <HistoricalMetrics />
+      {timeRangeSelector}
+      <RecentFailures endDate={endDate} startDate={startDate} windowLabel={windowLabel} />
+      <HistoricalMetrics startDate={startDate} />
     </VStack>
     <VStack alignItems="stretch" gap={6}>
       <FavoriteDags />
