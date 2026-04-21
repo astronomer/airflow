@@ -16,14 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, VStack, SimpleGrid, GridItem, Flex, Heading } from "@chakra-ui/react";
+import { Box, Flex, Heading, VStack } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PiBooks } from "react-icons/pi";
 
-import { useAssetServiceGetAssetEvents, useDashboardServiceHistoricalMetrics } from "openapi/queries";
-import { AssetEvents } from "src/components/Assets/AssetEvents";
+import { useDashboardServiceHistoricalMetrics } from "openapi/queries";
 import { ErrorAlert } from "src/components/ErrorAlert";
 import TimeRangeSelector from "src/components/TimeRangeSelector";
 import { useAutoRefresh } from "src/utils";
@@ -38,7 +37,6 @@ export const HistoricalMetrics = () => {
   const now = dayjs();
   const [startDate, setStartDate] = useState(now.subtract(Number(defaultHour), "hour").toISOString());
   const [endDate, setEndDate] = useState(now.toISOString());
-  const [assetSortBy, setAssetSortBy] = useState("-timestamp");
 
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
 
@@ -51,13 +49,6 @@ export const HistoricalMetrics = () => {
       refetchInterval,
     },
   );
-
-  const { data: assetEventsData, isLoading: isLoadingAssetEvents } = useAssetServiceGetAssetEvents({
-    limit: 6,
-    orderBy: [assetSortBy],
-    timestampGte: startDate,
-    timestampLte: endDate,
-  });
 
   return (
     <Box width="100%">
@@ -76,27 +67,14 @@ export const HistoricalMetrics = () => {
           setStartDate={setStartDate}
           startDate={startDate}
         />
-        <SimpleGrid columns={{ base: 1, lg: 10 }} gap={2}>
-          <GridItem colSpan={{ base: 1, lg: 7 }}>
-            {isLoading ? <MetricSectionSkeleton /> : undefined}
-            {!isLoading && data !== undefined && (
-              <Box>
-                <DagRunMetrics
-                  dagRunStates={data.dag_run_states}
-                  startDate={startDate}
-                  stateCountLimit={data.state_count_limit}
-                />
-              </Box>
-            )}
-          </GridItem>
-          <GridItem colSpan={{ base: 1, lg: 3 }}>
-            <AssetEvents
-              data={assetEventsData}
-              isLoading={isLoadingAssetEvents}
-              setOrderBy={setAssetSortBy}
-            />
-          </GridItem>
-        </SimpleGrid>
+        {isLoading ? <MetricSectionSkeleton /> : undefined}
+        {!isLoading && data !== undefined ? (
+          <DagRunMetrics
+            dagRunStates={data.dag_run_states}
+            startDate={startDate}
+            stateCountLimit={data.state_count_limit}
+          />
+        ) : undefined}
       </VStack>
     </Box>
   );
