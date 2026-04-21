@@ -33,18 +33,6 @@ type Alias = {
   };
 };
 
-export type NextRunEvent = {
-  id: number;
-  is_rollup?: boolean;
-  last_update: string | null;
-  name: string | null;
-  received_count?: number;
-  received_keys?: Array<string>;
-  required_count?: number;
-  required_keys?: Array<string>;
-  uri: string;
-};
-
 export type AssetSummary = Alias | Asset;
 
 export type ExpressionType =

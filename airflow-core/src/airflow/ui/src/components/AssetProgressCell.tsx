@@ -21,9 +21,8 @@ import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
 import { Link as RouterLink } from "react-router-dom";
 
 import { usePartitionedDagRunServiceGetPendingPartitionedDagRun } from "openapi/queries";
-import type { PartitionedDagRunAssetResponse } from "openapi/requests/types.gen";
+import type { NextRunAssetEventResponse, PartitionedDagRunAssetResponse } from "openapi/requests/types.gen";
 import { AssetExpression, type ExpressionType } from "src/components/AssetExpression";
-import type { NextRunEvent } from "src/components/AssetExpression/types";
 import { Popover } from "src/components/ui";
 
 type Props = {
@@ -41,7 +40,7 @@ export const AssetProgressCell = ({ dagId, partitionKey, totalReceived, totalReq
 
   const hasRollup = assets.some((ak) => ak.is_rollup);
 
-  const events: Array<NextRunEvent> = assets
+  const events: Array<NextRunAssetEventResponse> = assets
     .filter((ak: PartitionedDagRunAssetResponse) => ak.received_count > 0)
     .map((ak: PartitionedDagRunAssetResponse) => ({
       id: ak.asset_id,
