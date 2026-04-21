@@ -27,26 +27,44 @@ import type { NavItemResponse } from "src/utils/types";
 import { NavButton } from "./NavButton";
 import { PluginMenuItem } from "./PluginMenuItem";
 
-const links = [
+const links: Array<{
+  authMenuItem: MenuItem;
+  href: string;
+  key: string;
+  title: string;
+}> = [
   {
+    authMenuItem: "Audit Log",
     href: "/events",
     key: "auditLog",
     title: "Audit Log",
   },
   {
+    authMenuItem: "Jobs",
     href: "/jobs",
     key: "jobs",
     title: "Jobs",
   },
   {
+    authMenuItem: "XComs",
     href: "/xcoms",
     key: "xcoms",
     title: "XComs",
   },
   {
+    authMenuItem: "Required Actions",
     href: "/required_actions",
     key: "requiredActions",
     title: "Required Actions",
+  },
+  {
+    // Task Instances is not yet an independent menu item in the backend
+    // auth model, so we gate it on the user's Dags access (since TIs are
+    // sub-DAG data). Revisit once MenuItem.TASK_INSTANCES exists.
+    authMenuItem: "Dags",
+    href: "/task_instances",
+    key: "taskInstances",
+    title: "Task Instances",
   },
 ];
 
@@ -59,7 +77,7 @@ export const BrowseButton = ({
 }) => {
   const { t: translate } = useTranslation("common");
   const menuItems = links
-    .filter(({ title }) => authorizedMenuItems.includes(title as MenuItem))
+    .filter(({ authMenuItem }) => authorizedMenuItems.includes(authMenuItem))
     .map((link) => (
       <Menu.Item asChild key={link.key} value={translate(`browse.${link.key}`)}>
         <RouterLink aria-label={translate(`browse.${link.key}`)} to={link.href}>

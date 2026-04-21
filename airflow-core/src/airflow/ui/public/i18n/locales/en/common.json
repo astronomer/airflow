@@ -24,6 +24,7 @@
     "auditLog": "Audit Log",
     "jobs": "Jobs",
     "requiredActions": "Required Actions",
+    "taskInstances": "Task Instances",
     "xcoms": "XComs"
   },
   "collapseAllExtra": "Collapse all extra JSON",
