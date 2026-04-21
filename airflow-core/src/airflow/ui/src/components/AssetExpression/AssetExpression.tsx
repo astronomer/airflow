@@ -21,16 +21,18 @@ import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { TbLogicOr } from "react-icons/tb";
 
+import type { NextRunAssetEventResponse } from "openapi/requests/types.gen";
+
 import { AndGateNode } from "./AndGateNode";
 import { AssetNode } from "./AssetNode";
 import { OrGateNode } from "./OrGateNode";
-import type { ExpressionType, NextRunEvent } from "./types";
+import type { ExpressionType } from "./types";
 
 export const AssetExpression = ({
   events,
   expression,
 }: {
-  readonly events?: Array<NextRunEvent>;
+  readonly events?: Array<NextRunAssetEventResponse>;
   readonly expression: ExpressionType | undefined;
 }) => {
   const { t: translate } = useTranslation("common");

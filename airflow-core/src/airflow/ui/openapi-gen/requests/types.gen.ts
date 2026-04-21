@@ -2063,9 +2063,6 @@ export type EdgeResponse = {
     is_source_asset?: boolean | null;
 };
 
-/**
- * Define a menu item that can be added to the menu by auth managers or plugins.
- */
 export type ExtraMenuItem = {
     text: string;
     href: string;
@@ -2184,6 +2181,32 @@ export type MenuItem = 'Required Actions' | 'Assets' | 'Audit Log' | 'Config' | 
 export type MenuItemCollectionResponse = {
     authorized_menu_items: Array<MenuItem>;
     extra_menu_items: Array<ExtraMenuItem>;
+};
+
+/**
+ * One asset event in the ``next_run_assets`` payload.
+ */
+export type NextRunAssetEventResponse = {
+    id: number;
+    name: string | null;
+    uri: string;
+    last_update?: string | null;
+    received_count?: number;
+    required_count?: number;
+    received_keys?: Array<(string)>;
+    required_keys?: Array<(string)>;
+    is_rollup?: boolean;
+};
+
+/**
+ * Response for the ``next_run_assets`` endpoint.
+ */
+export type NextRunAssetsResponse = {
+    asset_expression?: {
+    [key: string]: unknown;
+} | null;
+    events: Array<NextRunAssetEventResponse>;
+    pending_partition_count?: number | null;
 };
 
 /**
@@ -2527,9 +2550,7 @@ export type NextRunAssetsData = {
     dagId: string;
 };
 
-export type NextRunAssetsResponse = {
-    [key: string]: unknown;
-};
+export type NextRunAssetsResponse2 = NextRunAssetsResponse;
 
 export type ListBackfillsData = {
     dagId: string;
@@ -4472,9 +4493,7 @@ export type $OpenApiTs = {
                 /**
                  * Successful Response
                  */
-                200: {
-                    [key: string]: unknown;
-                };
+                200: NextRunAssetsResponse;
                 /**
                  * Validation Error
                  */

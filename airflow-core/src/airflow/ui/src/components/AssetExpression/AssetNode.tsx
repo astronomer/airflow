@@ -21,10 +21,11 @@ import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
 import { PiRectangleDashed } from "react-icons/pi";
 import { Link as RouterLink } from "react-router-dom";
 
+import type { NextRunAssetEventResponse } from "openapi/requests/types.gen";
 import { Popover } from "src/components/ui";
 
 import Time from "../Time";
-import type { AssetSummary, NextRunEvent } from "./types";
+import type { AssetSummary } from "./types";
 
 const RollupKeyChecklistPopover = ({
   receivedCount,
@@ -84,7 +85,7 @@ export const AssetNode = ({
   event,
 }: {
   readonly asset: AssetSummary;
-  readonly event?: NextRunEvent;
+  readonly event?: NextRunAssetEventResponse;
 }) => {
   const isFullyReceived = Boolean(event?.last_update);
   const isPartial =

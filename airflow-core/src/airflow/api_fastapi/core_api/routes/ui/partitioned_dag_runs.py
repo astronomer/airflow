@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from contextlib import suppress
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeAlias, cast
 
 from fastapi import Depends, HTTPException, status
 from sqlalchemy import func, select
@@ -51,10 +51,16 @@ from airflow.models.serialized_dag import SerializedDagModel
 from airflow.timetables.simple import PartitionedAssetTimetable
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from airflow.partition_mappers.base import RollupMapper
 
 
-def _load_timetable(dag_id: str, session) -> PartitionedAssetTimetable | None:
+AssetNameUri: TypeAlias = tuple[str, str]
+"""A ``(name, uri)`` pair identifying an asset."""
+
+
+def _load_timetable(dag_id: str, session: Session) -> PartitionedAssetTimetable | None:
     """Return the PartitionedAssetTimetable for *dag_id*, or None if absent or not partitioned."""
     serdag = SerializedDagModel.get(dag_id=dag_id, session=session)
     if serdag is None:
@@ -66,8 +72,8 @@ def _load_timetable(dag_id: str, session) -> PartitionedAssetTimetable | None:
 
 
 def _load_timetable_and_assets(
-    dag_id: str, session
-) -> tuple[PartitionedAssetTimetable | None, list[tuple[str, str]], dict[int, tuple[str, str]]]:
+    dag_id: str, session: Session
+) -> tuple[PartitionedAssetTimetable | None, list[AssetNameUri], dict[int, AssetNameUri]]:
     """
     Load timetable and active required assets.
 
@@ -86,7 +92,7 @@ def _load_timetable_and_assets(
 
 def _compute_total_required(
     timetable: PartitionedAssetTimetable | None,
-    asset_info: list[tuple[str, str]],
+    asset_info: list[AssetNameUri],
     partition_key: str,
 ) -> int:
     """Sum required upstream events across all assets, using to_upstream for rollup mappers."""
@@ -102,7 +108,7 @@ def _compute_total_required(
 def _compute_received_count(
     received_by_asset: dict[int, set[str]],
     timetable: PartitionedAssetTimetable | None,
-    asset_id_to_info: dict[int, tuple[str, str]],
+    asset_id_to_info: dict[int, AssetNameUri],
     partition_key: str,
 ) -> int:
     """
@@ -155,12 +161,12 @@ def get_partitioned_dag_runs(
     """Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id."""
     if dag_id.value is not None:
         dag_info = session.execute(
-            select(DagModel.timetable_summary).where(DagModel.dag_id == dag_id.value)
+            select(DagModel.timetable_partitioned).where(DagModel.dag_id == dag_id.value)
         ).one_or_none()
 
         if dag_info is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id.value} was not found")
-        if dag_info.timetable_summary != "Partitioned Asset":
+        if not dag_info.timetable_partitioned:
             return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
     # Subquery for received count per partition (count of required assets that have any log).
@@ -210,7 +216,7 @@ def get_partitioned_dag_runs(
         # Batch-fetch all log entries for these APDRs in one query.
         apdr_ids = [row.id for row in rows]
         log_by_apdr: dict[int, dict[int, set[str]]] = {}
-        for log_row in session.execute(
+        for pakl_row in session.execute(
             select(
                 PartitionedAssetKeyLog.asset_partition_dag_run_id,
                 PartitionedAssetKeyLog.asset_id,
@@ -220,9 +226,9 @@ def get_partitioned_dag_runs(
                 PartitionedAssetKeyLog.asset_id.in_(list(asset_id_to_info)),
             )
         ).all():
-            log_by_apdr.setdefault(log_row.asset_partition_dag_run_id, {}).setdefault(
-                log_row.asset_id, set()
-            ).add(log_row.source_partition_key or "")
+            log_by_apdr.setdefault(pakl_row.asset_partition_dag_run_id, {}).setdefault(
+                pakl_row.asset_id, set()
+            ).add(pakl_row.source_partition_key or "")
 
         results = [
             _build_response(
@@ -240,7 +246,7 @@ def get_partitioned_dag_runs(
     # total_received is approximated via SQL for this global view.
     unique_dag_ids = list({row.target_dag_id for row in rows})
     dag_timetables_assets: dict[
-        str, tuple[PartitionedAssetTimetable | None, list[tuple[str, str]], dict[int, tuple[str, str]]]
+        str, tuple[PartitionedAssetTimetable | None, list[AssetNameUri], dict[int, AssetNameUri]]
     ] = {did: _load_timetable_and_assets(did, session) for did in unique_dag_ids}
     dag_rows = session.execute(
         select(DagModel.dag_id, DagModel.asset_expression).where(DagModel.dag_id.in_(unique_dag_ids))

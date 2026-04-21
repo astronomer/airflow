@@ -77,8 +77,19 @@ class TestNextRunAssets:
                 ]
             },
             "events": [
-                {"id": mock.ANY, "uri": "s3://bucket/next-run-asset/1", "name": "asset1", "last_update": None}
+                {
+                    "id": mock.ANY,
+                    "uri": "s3://bucket/next-run-asset/1",
+                    "name": "asset1",
+                    "last_update": None,
+                    "received_count": 0,
+                    "required_count": 1,
+                    "received_keys": [],
+                    "required_keys": [],
+                    "is_rollup": False,
+                }
             ],
+            "pending_partition_count": None,
         }
 
     def test_should_respond_401(self, unauthenticated_test_client):
@@ -141,9 +152,30 @@ class TestNextRunAssets:
             },
             # events are ordered by uri
             "events": [
-                {"id": mock.ANY, "uri": "s3://bucket/A", "name": "A", "last_update": mock.ANY},
-                {"id": mock.ANY, "uri": "s3://bucket/B", "name": "B", "last_update": None},
+                {
+                    "id": mock.ANY,
+                    "uri": "s3://bucket/A",
+                    "name": "A",
+                    "last_update": mock.ANY,
+                    "received_count": 0,
+                    "required_count": 1,
+                    "received_keys": [],
+                    "required_keys": [],
+                    "is_rollup": False,
+                },
+                {
+                    "id": mock.ANY,
+                    "uri": "s3://bucket/B",
+                    "name": "B",
+                    "last_update": None,
+                    "received_count": 0,
+                    "required_count": 1,
+                    "received_keys": [],
+                    "required_keys": [],
+                    "is_rollup": False,
+                },
             ],
+            "pending_partition_count": None,
         }
 
     def test_last_update_respects_latest_run_filter(self, test_client, dag_maker, session):

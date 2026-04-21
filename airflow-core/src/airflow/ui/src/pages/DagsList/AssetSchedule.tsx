@@ -24,8 +24,8 @@ import { FiCheck, FiDatabase, FiMinus } from "react-icons/fi";
 import { Link as RouterLink } from "react-router-dom";
 
 import { useAssetServiceGetDagAssetQueuedEvents, useAssetServiceNextRunAssets } from "openapi/queries";
+import type { NextRunAssetEventResponse } from "openapi/requests/types.gen";
 import { AssetExpression, type ExpressionType } from "src/components/AssetExpression";
-import type { NextRunEvent } from "src/components/AssetExpression/types";
 import { TruncatedText } from "src/components/TruncatedText";
 import { Popover } from "src/components/ui";
 
@@ -69,7 +69,7 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
     { enabled: !timetablePartitioned },
   );
 
-  const nextRunEvents = (nextRun?.events ?? []) as Array<NextRunEvent>;
+  const nextRunEvents: Array<NextRunAssetEventResponse> = nextRun?.events ?? [];
   const queuedAssetEvents = new Map<number, string>();
 
   if (!timetablePartitioned) {
@@ -124,7 +124,7 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
   }
 
   if (timetablePartitioned) {
-    const pendingCount = (nextRun?.pending_partition_count as number | undefined) ?? 0;
+    const pendingCount = nextRun?.pending_partition_count ?? 0;
 
     if (pendingCount === 0) {
       return (
@@ -227,7 +227,7 @@ export const AssetSchedule = ({ assetExpression, dagId, timetablePartitioned, ti
         <Popover.Body>
           <AssetExpression
             events={popoverEvents}
-            expression={(nextRun?.asset_expression ?? assetExpression) as ExpressionType}
+            expression={(nextRun?.asset_expression ?? assetExpression) as ExpressionType | undefined}
           />
         </Popover.Body>
       </Popover.Content>
