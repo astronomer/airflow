@@ -34,7 +34,6 @@ export const Stats = () => {
     refetchInterval,
   });
 
-  const failedDagsCount = statsData?.failed_dag_count ?? 0;
   const queuedDagsCount = statsData?.queued_dag_count ?? 0;
   const runningDagsCount = statsData?.running_dag_count ?? 0;
   const activeDagsCount = statsData?.active_dag_count ?? 0;
@@ -53,16 +52,6 @@ export const Stats = () => {
 
       <Flex flexWrap="wrap" gap={4}>
         <NeedsReviewButton />
-
-        <StatsCard
-          colorScheme="failed"
-          count={failedDagsCount}
-          isLoading={isStatsLoading}
-          isRTL={isRTL}
-          label={translate("stats.failedDags")}
-          link="dags?last_dag_run_state=failed"
-          state="failed"
-        />
 
         <DAGImportErrors />
 
