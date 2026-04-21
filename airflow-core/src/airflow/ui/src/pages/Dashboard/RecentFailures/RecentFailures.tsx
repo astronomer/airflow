@@ -182,14 +182,21 @@ export const RecentFailures = ({ compact = false, endDate, limit = 10, startDate
         </Link>
       </Flex>
       <Box borderColor="border" borderRadius="md" borderWidth={1} overflow="hidden">
-        <Table.Root size={compact ? "sm" : "md"} variant="outline">
+        <Table.Root
+          size={compact ? "sm" : "md"}
+          style={{ tableLayout: "fixed" }}
+          variant="outline"
+          width="100%"
+        >
           <Table.Header>
             <Table.Row>
-              <Table.ColumnHeader width="1" />
+              <Table.ColumnHeader width="40px" />
               <Table.ColumnHeader>Dag · Failures</Table.ColumnHeader>
-              <Table.ColumnHeader>Run After</Table.ColumnHeader>
-              <Table.ColumnHeader>Duration</Table.ColumnHeader>
-              <Table.ColumnHeader textAlign="end">Actions</Table.ColumnHeader>
+              <Table.ColumnHeader width="180px">Run After</Table.ColumnHeader>
+              <Table.ColumnHeader width="120px">Duration</Table.ColumnHeader>
+              <Table.ColumnHeader textAlign="end" width="140px">
+                Actions
+              </Table.ColumnHeader>
             </Table.Row>
           </Table.Header>
           <Table.Body>

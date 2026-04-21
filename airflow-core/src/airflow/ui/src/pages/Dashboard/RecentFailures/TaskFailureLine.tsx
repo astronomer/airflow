@@ -19,7 +19,7 @@
 
 /* eslint-disable i18next/no-literal-string --
    POC: strings will be localized before any real PR. */
-import { Flex, Link, Spinner, Text } from "@chakra-ui/react";
+import { Box, Flex, Link, Spinner, Text } from "@chakra-ui/react";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 
@@ -52,40 +52,33 @@ export const TaskFailureLine = ({ taskInstance, truncated = true }: Props) => {
   const taskLogsHref = getTaskInstanceLink(taskInstance);
 
   return (
-    <Flex align="baseline" fontFamily="mono" fontSize="xs" gap={2} minW={0}>
+    <Flex align="baseline" fontFamily="mono" fontSize="xs" gap={2} maxW="100%" minW={0}>
       <Link _hover={{ color: "fg", textDecoration: "underline" }} asChild color="fg.info" flexShrink={0}>
         <RouterLink to={taskLogsHref}>{taskInstance.task_id}</RouterLink>
       </Link>
       {isLoading ? (
-        <Flex align="center" gap={1}>
+        <Flex align="center" flexShrink={0} gap={1}>
           <Spinner size="xs" />
           <Text color="fg.muted">reading log…</Text>
         </Flex>
       ) : extracted ? (
-        <Flex
-          align="baseline"
-          gap={1}
+        <Box
+          color="fg"
+          flex="1 1 auto"
           minW={0}
           overflow="hidden"
+          textOverflow={truncated ? "ellipsis" : "clip"}
+          title={`${extracted.exceptionClass}: ${extracted.message}`}
           whiteSpace={truncated ? "nowrap" : "normal"}
-          wordBreak="break-word"
+          wordBreak={truncated ? "normal" : "break-word"}
         >
-          <Text as="span" color="red.fg" flexShrink={0} fontWeight="bold">
+          <Text as="span" color="red.fg" fontWeight="bold">
             {extracted.exceptionClass}:
-          </Text>
-          <Text
-            as="span"
-            color="fg"
-            minW={0}
-            overflow={truncated ? "hidden" : "visible"}
-            textOverflow={truncated ? "ellipsis" : "clip"}
-            whiteSpace={truncated ? "nowrap" : "normal"}
-          >
-            {extracted.message}
-          </Text>
-        </Flex>
+          </Text>{" "}
+          {extracted.message}
+        </Box>
       ) : (
-        <Text color="fg.muted" fontStyle="italic">
+        <Text color="fg.muted" flexShrink={0} fontStyle="italic">
           (no exception detected)
         </Text>
       )}
