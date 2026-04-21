@@ -18,9 +18,9 @@
  */
 import { Box, Flex, Heading } from "@chakra-ui/react";
 import { useTranslation } from "react-i18next";
-import { FiClipboard, FiZap } from "react-icons/fi";
+import { FiClipboard, FiPause, FiZap } from "react-icons/fi";
 
-import { useDashboardServiceDagStats } from "openapi/queries";
+import { useDagServiceGetDagsUi, useDashboardServiceDagStats } from "openapi/queries";
 import { NeedsReviewButton } from "src/components/NeedsReviewButton";
 import { StatsCard } from "src/components/StatsCard";
 import { useAutoRefresh } from "src/utils";
@@ -33,10 +33,15 @@ export const Stats = () => {
   const { data: statsData, isLoading: isStatsLoading } = useDashboardServiceDagStats(undefined, {
     refetchInterval,
   });
+  const { data: pausedData, isLoading: isPausedLoading } = useDagServiceGetDagsUi(
+    { limit: 1, paused: true },
+    undefined,
+    { refetchInterval },
+  );
 
   const queuedDagsCount = statsData?.queued_dag_count ?? 0;
-  const runningDagsCount = statsData?.running_dag_count ?? 0;
   const activeDagsCount = statsData?.active_dag_count ?? 0;
+  const pausedDagsCount = pausedData?.total_entries ?? 0;
   const { i18n, t: translate } = useTranslation("dashboard");
 
   const isRTL = i18n.dir() === "rtl";
@@ -70,16 +75,6 @@ export const Stats = () => {
         ) : undefined}
 
         <StatsCard
-          colorScheme="running"
-          count={runningDagsCount}
-          isLoading={isStatsLoading}
-          isRTL={isRTL}
-          label={translate("stats.runningDags")}
-          link="dags?last_dag_run_state=running"
-          state="running"
-        />
-
-        <StatsCard
           colorScheme="active"
           count={activeDagsCount}
           icon={<FiZap />}
@@ -87,6 +82,16 @@ export const Stats = () => {
           isRTL={isRTL}
           label={translate("stats.activeDags")}
           link="dags?paused=false"
+        />
+
+        <StatsCard
+          colorScheme="gray"
+          count={pausedDagsCount}
+          icon={<FiPause />}
+          isLoading={isPausedLoading}
+          isRTL={isRTL}
+          label={translate("stats.pausedDags")}
+          link="dags?paused=true"
         />
       </Flex>
     </Box>
