@@ -25,6 +25,7 @@ import { Link as RouterLink } from "react-router-dom";
 
 import type { TaskInstanceResponse } from "openapi/requests/types.gen";
 import { useLogs } from "src/queries/useLogs";
+import { getTaskInstanceLink } from "src/utils/links";
 import { parseStreamingLogContent } from "src/utils/logs";
 
 import { extractException } from "./extractException";
@@ -46,11 +47,13 @@ export const TaskFailureLine = ({ taskInstance, truncated = true }: Props) => {
 
   const extracted = useMemo(() => extractException(parseStreamingLogContent(fetchedData)), [fetchedData]);
 
-  const taskLogsHref = `/dags/${taskInstance.dag_id}/runs/${taskInstance.dag_run_id}/tasks/${taskInstance.task_id}/logs`;
+  // The Task Instance Logs view is the index route under /tasks/{task_id},
+  // so getTaskInstanceLink (no /logs suffix) lands directly on it.
+  const taskLogsHref = getTaskInstanceLink(taskInstance);
 
   return (
     <Flex align="baseline" fontFamily="mono" fontSize="xs" gap={2} minW={0}>
-      <Link asChild color="fg.muted" flexShrink={0}>
+      <Link _hover={{ color: "fg", textDecoration: "underline" }} asChild color="fg.info" flexShrink={0}>
         <RouterLink to={taskLogsHref}>{taskInstance.task_id}</RouterLink>
       </Link>
       {isLoading ? (
