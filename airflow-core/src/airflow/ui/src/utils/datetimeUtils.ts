@@ -47,6 +47,38 @@ export const renderDuration = (
     : dayjs.duration(durationSeconds, "seconds").format("D[d]HH:mm:ss");
 };
 
+// Short, scannable duration. Prefers the largest unit that keeps precision
+// meaningful for triage ("5.8s", "1m 32s", "2h 14m", "3d 5h") rather than the
+// HH:MM:SS format — a dashboard of dozens of rows reads faster this way.
+export const renderHumanizedDuration = (durationSeconds: number | null | undefined): string | undefined => {
+  if (durationSeconds === null || durationSeconds === undefined || durationSeconds <= 0.01) {
+    return undefined;
+  }
+
+  if (durationSeconds < 60) {
+    return `${Number(durationSeconds.toFixed(1))}s`;
+  }
+
+  if (durationSeconds < 3600) {
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = Math.round(durationSeconds - minutes * 60);
+
+    return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+  }
+
+  if (durationSeconds < 86_400) {
+    const wholeHours = Math.floor(durationSeconds / 3600);
+    const minutes = Math.round((durationSeconds - wholeHours * 3600) / 60);
+
+    return minutes === 0 ? `${wholeHours}h` : `${wholeHours}h ${minutes}m`;
+  }
+
+  const days = Math.floor(durationSeconds / 86_400);
+  const hours = Math.round((durationSeconds - days * 86_400) / 3600);
+
+  return hours === 0 ? `${days}d` : `${days}d ${hours}h`;
+};
+
 export const getDuration = (
   startDate?: string | null,
   endDate?: string | null,

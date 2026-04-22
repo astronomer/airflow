@@ -83,8 +83,9 @@ const TimeRangeSelector = ({
           ))}
         </Select.Content>
       </Select.Root>
-      <Text>
-        <Time datetime={startDate} /> - <Time datetime={endDate} />
+      <Text color="fg.muted" fontSize="sm">
+        <Time datetime={startDate} format="YYYY-MM-DD HH:mm" /> -{" "}
+        <Time datetime={endDate} format="YYYY-MM-DD HH:mm" />
       </Text>
     </HStack>
   );

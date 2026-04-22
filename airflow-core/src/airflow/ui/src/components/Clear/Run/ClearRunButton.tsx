@@ -29,9 +29,11 @@ import ClearRunDialog from "./ClearRunDialog";
 type Props = {
   readonly dagRun: DAGRunResponse;
   readonly isHotkeyEnabled?: boolean;
+  readonly size?: "2xs" | "lg" | "md" | "sm" | "xs";
+  readonly variant?: "ghost" | "outline" | "solid" | "subtle" | "surface";
 };
 
-const ClearRunButton = ({ dagRun, isHotkeyEnabled = false }: Props) => {
+const ClearRunButton = ({ dagRun, isHotkeyEnabled = false, size = "md", variant = "ghost" }: Props) => {
   const { onClose, onOpen, open } = useDisclosure();
   const { t: translate } = useTranslation();
 
@@ -58,8 +60,8 @@ const ClearRunButton = ({ dagRun, isHotkeyEnabled = false }: Props) => {
           aria-label={translate("dags:runAndTaskActions.clear.button", { type: translate("dagRun_one") })}
           colorPalette="brand"
           onClick={onOpen}
-          size="md"
-          variant="ghost"
+          size={size}
+          variant={variant}
         >
           <CgRedo />
         </IconButton>
