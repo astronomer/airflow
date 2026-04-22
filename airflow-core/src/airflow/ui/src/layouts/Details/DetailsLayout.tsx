@@ -53,6 +53,7 @@ import { SearchParamsKeys } from "src/constants/searchParams";
 import { VersionIndicatorOptions } from "src/constants/showVersionIndicatorOptions";
 import { HoverProvider, useHover } from "src/context/hover";
 import { OpenGroupsProvider } from "src/context/openGroups";
+import { StaleDagImportErrorBanner } from "src/pages/Dag/StaleDagImportErrorBanner";
 import { useGridRuns } from "src/queries/useGridRuns.ts";
 
 import { DagBreadcrumb } from "./DagBreadcrumb";
@@ -236,6 +237,7 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
         </HStack>
         <Toaster />
         <BackfillBanner dagId={dagId} />
+        {dag === undefined ? undefined : <StaleDagImportErrorBanner dag={dag} />}
         <Box flex={1} minH={0}>
           {isRightPanelCollapsed ? (
             <Tooltip content={translate("common:showDetailsPanel")}>
