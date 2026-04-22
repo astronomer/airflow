@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box } from "@chakra-ui/react";
+import { Box, useDisclosure } from "@chakra-ui/react";
+import { useTranslation } from "react-i18next";
 
 import { useImportErrorServiceGetImportErrors } from "openapi/queries";
 import type { DAGResponse } from "openapi/requests/types.gen";
-import { DagImportErrorAccordion } from "src/components/DagImportErrorAccordion";
+import { DagImportErrorsIconBadge } from "src/components/DagImportErrorsIconBadge";
 
+import { StaleDagImportErrorModal } from "./StaleDagImportErrorModal";
 import { selectLatestMatchingImportError } from "./selectLatestMatchingImportError";
 
 const IMPORT_ERROR_FETCH_LIMIT = 100;
@@ -30,7 +32,9 @@ type Props = {
   readonly dag: Pick<DAGResponse, "bundle_name" | "is_stale" | "relative_fileloc">;
 };
 
-export const StaleDagImportErrorBanner = ({ dag }: Props) => {
+export const DagImportError = ({ dag }: Props) => {
+  const { t: translate } = useTranslation("dashboard");
+  const { onClose, onOpen, open } = useDisclosure();
   const relativeFileloc = dag.relative_fileloc ?? "";
   const shouldFetch = dag.is_stale && relativeFileloc.length > 0;
 
@@ -55,11 +59,17 @@ export const StaleDagImportErrorBanner = ({ dag }: Props) => {
     return undefined;
   }
 
-  const itemValue = String(matched.import_error_id);
+  const importErrorLabel = translate("importErrors.dagImportError", { count: 1 });
 
   return (
-    <Box data-testid="stale-dag-import-error-banner" mb={2}>
-      <DagImportErrorAccordion defaultValue={[itemValue]} importErrors={[matched]} showFileErrorIndicator />
+    <Box flexShrink={0}>
+      <DagImportErrorsIconBadge
+        count={1}
+        data-testid="dag-import-error"
+        onClick={onOpen}
+        title={importErrorLabel}
+      />
+      <StaleDagImportErrorModal importError={matched} onClose={onClose} open={open} />
     </Box>
   );
 };

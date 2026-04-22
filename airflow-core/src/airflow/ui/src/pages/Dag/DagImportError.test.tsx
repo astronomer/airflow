@@ -17,12 +17,14 @@
  * under the License.
  */
 import "@testing-library/jest-dom";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import i18n from "src/i18n/config";
 import { Wrapper } from "src/utils/Wrapper";
 
-import { StaleDagImportErrorBanner } from "./StaleDagImportErrorBanner";
+import dashboardLocale from "../../../public/i18n/locales/en/dashboard.json";
+import { DagImportError } from "./DagImportError";
 
 const { mockUseImportErrorServiceGetImportErrors } = vi.hoisted(() => ({
   mockUseImportErrorServiceGetImportErrors: vi.fn(),
@@ -52,22 +54,23 @@ const staleDagFields = {
   relative_fileloc: "stale_dag.py",
 } as const;
 
-describe("StaleDagImportErrorBanner", () => {
+describe("DagImportError", () => {
   beforeEach(() => {
+    i18n.addResourceBundle("en", "dashboard", dashboardLocale, true, true);
     mockUseImportErrorServiceGetImportErrors.mockReturnValue(emptyImportErrorsQuery);
   });
 
   it("does not render when there is no matching import error", () => {
     render(
       <Wrapper>
-        <StaleDagImportErrorBanner dag={staleDagFields} />
+        <DagImportError dag={staleDagFields} />
       </Wrapper>,
     );
 
-    expect(screen.queryByTestId("stale-dag-import-error-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dag-import-error")).not.toBeInTheDocument();
   });
 
-  it("shows a matching import error when the API returns a file-scoped error", () => {
+  it("shows a matching import error when the API returns a file-scoped error", async () => {
     mockUseImportErrorServiceGetImportErrors.mockReturnValue({
       ...emptyImportErrorsQuery,
       data: {
@@ -86,11 +89,25 @@ describe("StaleDagImportErrorBanner", () => {
 
     render(
       <Wrapper>
-        <StaleDagImportErrorBanner dag={staleDagFields} />
+        <DagImportError dag={staleDagFields} />
       </Wrapper>,
     );
 
-    expect(screen.getByTestId("stale-dag-import-error-banner")).toBeInTheDocument();
+    expect(screen.getByTestId("dag-import-error")).toBeInTheDocument();
+    const openButton = screen.getByRole("button", {
+      name: i18n.t("importErrors.dagImportError", { count: 1, ns: "dashboard" }),
+    });
+
+    expect(openButton).toBeInTheDocument();
+    expect(screen.queryByText(/SyntaxError: invalid syntax/u)).not.toBeInTheDocument();
+
+    fireEvent.click(openButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(i18n.t("importErrors.dagImportError", { count: 1, ns: "dashboard" })),
+      ).toBeInTheDocument();
+    });
     expect(screen.getByText("stale_dag.py")).toBeInTheDocument();
     expect(screen.getByText(/SyntaxError: invalid syntax/u)).toBeInTheDocument();
   });
@@ -114,11 +131,11 @@ describe("StaleDagImportErrorBanner", () => {
 
     render(
       <Wrapper>
-        <StaleDagImportErrorBanner dag={{ ...staleDagFields, is_stale: false }} />
+        <DagImportError dag={{ ...staleDagFields, is_stale: false }} />
       </Wrapper>,
     );
 
-    expect(screen.queryByTestId("stale-dag-import-error-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dag-import-error")).not.toBeInTheDocument();
   });
 
   it("does not render when bundle_name does not match", () => {
@@ -140,10 +157,10 @@ describe("StaleDagImportErrorBanner", () => {
 
     render(
       <Wrapper>
-        <StaleDagImportErrorBanner dag={staleDagFields} />
+        <DagImportError dag={staleDagFields} />
       </Wrapper>,
     );
 
-    expect(screen.queryByTestId("stale-dag-import-error-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dag-import-error")).not.toBeInTheDocument();
   });
 });

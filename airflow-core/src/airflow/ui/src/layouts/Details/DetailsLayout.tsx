@@ -53,7 +53,7 @@ import { SearchParamsKeys } from "src/constants/searchParams";
 import { VersionIndicatorOptions } from "src/constants/showVersionIndicatorOptions";
 import { HoverProvider, useHover } from "src/context/hover";
 import { OpenGroupsProvider } from "src/context/openGroups";
-import { StaleDagImportErrorBanner } from "src/pages/Dag/StaleDagImportErrorBanner";
+import { DagImportError } from "src/pages/Dag/DagImportError";
 import { useGridRuns } from "src/queries/useGridRuns.ts";
 
 import { DagBreadcrumb } from "./DagBreadcrumb";
@@ -219,9 +219,12 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
   return (
     <HoverProvider>
       <OpenGroupsProvider dagId={dagId}>
-        <HStack justifyContent="space-between" mb={2}>
-          <DagBreadcrumb />
-          <Flex gap={1}>
+        <HStack alignItems="center" gap={2} justifyContent="space-between" mb={2}>
+          <Flex alignItems="center" gap={2}>
+            {dag === undefined ? undefined : <DagImportError dag={dag} />}
+            <DagBreadcrumb />
+          </Flex>
+          <Flex flexShrink={0} gap={1}>
             <SearchDagsButton />
             {dag === undefined ? undefined : (
               <TriggerDAGButton
@@ -237,7 +240,6 @@ export const DetailsLayout = ({ children, error, isLoading, tabs }: Props) => {
         </HStack>
         <Toaster />
         <BackfillBanner dagId={dagId} />
-        {dag === undefined ? undefined : <StaleDagImportErrorBanner dag={dag} />}
         <Box flex={1} minH={0}>
           {isRightPanelCollapsed ? (
             <Tooltip content={translate("common:showDetailsPanel")}>
