@@ -34,7 +34,7 @@ type Props = {
 
 type Status = {
   colorState: DagRunState;
-  link?: string;
+  link: string;
   tooltip: string;
 };
 
@@ -54,6 +54,7 @@ const describe = (
   if (!hasLaterRun) {
     return {
       colorState: "failed",
+      link: `/dags/${latestRun.dag_id}/runs/${latestRun.run_id}`,
       tooltip: "Still failed — no later dag runs",
     };
   }
@@ -103,15 +104,12 @@ export const RunStatusDot = ({ focusedRunId, runs }: Props) => {
   const dot = (
     <Box
       aria-label={status.tooltip}
+      backgroundImage="radial-gradient(circle at 35% 30%, color-mix(in oklch, white 35%, transparent) 0%, transparent 55%)"
       bg={`${status.colorState}.solid`}
       borderRadius="full"
       boxSize={DOT_SIZE}
     />
   );
-
-  if (status.link === undefined) {
-    return <Tooltip content={status.tooltip}>{dot}</Tooltip>;
-  }
 
   return (
     <Tooltip content={status.tooltip}>

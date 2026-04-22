@@ -102,7 +102,7 @@ export const FailureRow = ({ dagRuns, endDate, failedTis, owners, recentRuns, st
       <Table.Cell py={ROW_PY} verticalAlign="top">
         <Stack gap={1}>
           <Flex align="center" columnGap={2} flexWrap="wrap" minH={FIRST_ROW_MIN_H} rowGap={0.5}>
-            <Link asChild color="fg.info" fontWeight="medium">
+            <Link asChild color="fg.info" fontFamily="mono" fontWeight="semibold">
               <RouterLink to={`/dags/${mostRecent.dag_id}`}>{mostRecent.dag_display_name}</RouterLink>
             </Link>
             {owners.length > 0 ? (
@@ -189,7 +189,7 @@ export const FailureRow = ({ dagRuns, endDate, failedTis, owners, recentRuns, st
         </Stack>
       </Table.Cell>
       <Table.Cell py={ROW_PY} verticalAlign="top">
-        <Flex align="center" minH={FIRST_ROW_MIN_H}>
+        <Flex align="center" fontFamily="mono" fontVariantNumeric="tabular-nums" minH={FIRST_ROW_MIN_H}>
           {renderHumanizedDuration(mostRecent.duration)}
         </Flex>
       </Table.Cell>

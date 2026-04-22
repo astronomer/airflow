@@ -44,6 +44,21 @@ const generateSemanticTokens = (color: string, darkContrast: string = "white") =
 const defaultAirflowTheme = {
   // See https://chakra-ui.com/docs/theming/colors for more information on the colors used here.
   tokens: {
+    fonts: {
+      // Editorial control-room typography. Public Sans (OFL) is the display
+      // face — confident, slightly condensed, uncommon in devtools. JetBrains
+      // Mono (Apache 2.0) handles identifiers and tabular numerics. System
+      // stack remains the fallback if neither loads (air-gapped installs).
+      heading: {
+        value: '"Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
+      body: {
+        value: '"Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+      },
+      mono: {
+        value: '"JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", "Monaco", monospace',
+      },
+    },
     colors: {
       black: { value: "oklch(0.23185 0.0323 266.44)" }, // Custom value for dark mode
       brand: {
