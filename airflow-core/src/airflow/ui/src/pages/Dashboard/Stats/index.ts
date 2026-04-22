@@ -17,4 +17,5 @@
  * under the License.
  */
 
+export { DagsSummary } from "./DagsSummary";
 export { Stats } from "./Stats";

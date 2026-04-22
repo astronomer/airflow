@@ -16,13 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { Box, Flex, Heading } from "@chakra-ui/react";
-import { useTranslation } from "react-i18next";
-import { FiClipboard, FiPause, FiZap } from "react-icons/fi";
+import { Flex } from "@chakra-ui/react";
 
-import { useDagServiceGetDagsUi, useDashboardServiceDagStats } from "openapi/queries";
+import {
+  useImportErrorServiceGetImportErrors,
+  usePluginServiceImportErrors,
+  useTaskInstanceServiceGetHitlDetails,
+} from "openapi/queries";
 import { NeedsReviewButton } from "src/components/NeedsReviewButton";
-import { StatsCard } from "src/components/StatsCard";
 import { useAutoRefresh } from "src/utils";
 
 import { DAGImportErrors } from "./DAGImportErrors";
@@ -30,70 +31,27 @@ import { PluginImportErrors } from "./PluginImportErrors";
 
 export const Stats = () => {
   const refetchInterval = useAutoRefresh({ checkPendingRuns: true });
-  const { data: statsData, isLoading: isStatsLoading } = useDashboardServiceDagStats(undefined, {
-    refetchInterval,
-  });
-  const { data: pausedData, isLoading: isPausedLoading } = useDagServiceGetDagsUi(
-    { limit: 1, paused: true },
+  const { data: hitlData } = useTaskInstanceServiceGetHitlDetails(
+    { dagId: "~", dagRunId: "~", responseReceived: false, state: ["deferred"] },
     undefined,
     { refetchInterval },
   );
+  const { data: dagImportErrorsData } = useImportErrorServiceGetImportErrors({ limit: 1 });
+  const { data: pluginImportErrorsData } = usePluginServiceImportErrors();
 
-  const queuedDagsCount = statsData?.queued_dag_count ?? 0;
-  const activeDagsCount = statsData?.active_dag_count ?? 0;
-  const pausedDagsCount = pausedData?.total_entries ?? 0;
-  const { i18n, t: translate } = useTranslation("dashboard");
+  const hitlCount = hitlData?.hitl_details.length ?? 0;
+  const dagImportErrorsCount = dagImportErrorsData?.total_entries ?? 0;
+  const pluginImportErrorsCount = pluginImportErrorsData?.total_entries ?? 0;
 
-  const isRTL = i18n.dir() === "rtl";
+  if (hitlCount === 0 && dagImportErrorsCount === 0 && pluginImportErrorsCount === 0) {
+    return undefined;
+  }
 
   return (
-    <Box>
-      <Flex alignItems="center" color="fg.muted" my={2}>
-        <FiClipboard />
-        <Heading ml={1} size="xs">
-          {translate("stats.stats")}
-        </Heading>
-      </Flex>
-
-      <Flex flexWrap="wrap" gap={4}>
-        <NeedsReviewButton />
-
-        <DAGImportErrors />
-
-        <PluginImportErrors />
-
-        {queuedDagsCount > 0 ? (
-          <StatsCard
-            colorScheme="queued"
-            count={queuedDagsCount}
-            isLoading={isStatsLoading}
-            isRTL={isRTL}
-            label={translate("stats.queuedDags")}
-            link="dags?last_dag_run_state=queued"
-            state="queued"
-          />
-        ) : undefined}
-
-        <StatsCard
-          colorScheme="active"
-          count={activeDagsCount}
-          icon={<FiZap />}
-          isLoading={isStatsLoading}
-          isRTL={isRTL}
-          label={translate("stats.activeDags")}
-          link="dags?paused=false"
-        />
-
-        <StatsCard
-          colorScheme="gray"
-          count={pausedDagsCount}
-          icon={<FiPause />}
-          isLoading={isPausedLoading}
-          isRTL={isRTL}
-          label="Paused Dags"
-          link="dags?paused=true"
-        />
-      </Flex>
-    </Box>
+    <Flex flexWrap="wrap" gap={4}>
+      <NeedsReviewButton />
+      <DAGImportErrors />
+      <PluginImportErrors />
+    </Flex>
   );
 };
