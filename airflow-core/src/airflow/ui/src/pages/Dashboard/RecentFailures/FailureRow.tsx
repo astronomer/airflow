@@ -134,7 +134,7 @@ export const FailureRow = ({ dagRuns, endDate, failedTis, owners, recentRuns, st
             ) : undefined}
           </Flex>
           {failedTis.length === 0 ? undefined : (
-            <Stack gap={0.5} pl={2}>
+            <Stack gap={0.5} pl={4}>
               {visibleTis.map((ti) => (
                 <TaskFailureLine key={ti.id} taskInstance={ti} truncated={!expanded} />
               ))}
