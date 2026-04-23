@@ -27,7 +27,7 @@ from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, RootModel
 
-API_VERSION: Final[str] = "2026-07-01"
+API_VERSION: Final[str] = "2026-04-06"
 
 
 class AssetAliasReferenceAssetEventDagRun(BaseModel):
@@ -466,7 +466,6 @@ class TaskInstance(BaseModel):
     map_index: Annotated[int | None, Field(title="Map Index")] = -1
     hostname: Annotated[str | None, Field(title="Hostname")] = None
     context_carrier: Annotated[dict[str, Any] | None, Field(title="Context Carrier")] = None
-    sdk: Annotated[str | None, Field(title="Sdk")] = None
 
 
 class BundleInfo(BaseModel):
