@@ -130,3 +130,25 @@ class TestTemporalMappers:
         # 2026-02-11T06:00:00+00:00 UTC == 2026-02-11T01:00:00-05:00 New York
         # → start-of-day in New York is 2026-02-11
         assert pm.to_downstream("2026-02-11T06:00:00+0000") == "2026-02-11"
+
+
+class TestStartOfWeekMapperValidation:
+    @pytest.mark.parametrize("week_start", [-1, 7, 100])
+    def test_rejects_out_of_range(self, week_start):
+        with pytest.raises(ValueError, match="week_start must be between 0"):
+            StartOfWeekMapper(week_start=week_start)
+
+    @pytest.mark.parametrize("week_start", [0, 3, 6])
+    def test_accepts_valid_range(self, week_start):
+        assert StartOfWeekMapper(week_start=week_start).week_start == week_start
+
+
+class TestStartOfMonthMapperValidation:
+    @pytest.mark.parametrize("month_start_day", [0, 29, 31, -1])
+    def test_rejects_out_of_range(self, month_start_day):
+        with pytest.raises(ValueError, match="month_start_day must be between 1 and 28"):
+            StartOfMonthMapper(month_start_day=month_start_day)
+
+    @pytest.mark.parametrize("month_start_day", [1, 15, 28])
+    def test_accepts_valid_range(self, month_start_day):
+        assert StartOfMonthMapper(month_start_day=month_start_day).month_start_day == month_start_day

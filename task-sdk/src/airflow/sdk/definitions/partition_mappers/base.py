@@ -16,6 +16,11 @@
 # under the License.
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from airflow.sdk.definitions.partition_mappers.window import Window
+
 
 class PartitionMapper:
     """
@@ -29,12 +34,16 @@ class PartitionMapper:
 
 class RollupMapper(PartitionMapper):
     """
-    Partition mapper that supports rollup (many upstream keys → one downstream key).
+    Partition mapper that rolls up many upstream keys into one downstream key.
 
-    Subclass this when the downstream Dag should wait for a complete set of upstream
-    partition keys before triggering. The scheduler calls ``to_upstream`` to discover
-    which source keys are required and only creates a Dag run once all of them have
-    arrived in ``PartitionedAssetKeyLog``.
+    Compose a ``source_mapper`` (which normalizes each upstream key to the
+    downstream granularity) with a ``window`` that declares the full set of
+    upstream keys required for a given downstream key. The scheduler holds
+    the Dag run until every upstream key in the window has arrived.
     """
 
     is_rollup: bool = True
+
+    def __init__(self, *, source_mapper: PartitionMapper, window: Window) -> None:
+        self.source_mapper = source_mapper
+        self.window = window

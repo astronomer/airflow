@@ -23,7 +23,9 @@ import pytest
 from sqlalchemy import select
 
 from airflow.models.asset import AssetEvent, AssetModel, AssetPartitionDagRun, PartitionedAssetKeyLog
-from airflow.partition_mappers.temporal import WeeklyRollupMapper
+from airflow.partition_mappers.base import RollupMapper
+from airflow.partition_mappers.temporal import StartOfWeekMapper
+from airflow.partition_mappers.window import WeekWindow
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk.definitions.asset import Asset
 from airflow.sdk.definitions.timetables.assets import PartitionedAssetTimetable
@@ -321,7 +323,10 @@ class TestGetPartitionedDagRuns:
     def test_rollup_mapper_counts_received_upstream_keys(self, test_client, dag_maker, session):
         """For a rollup mapper, only upstream keys in to_upstream() are counted."""
         asset_def = Asset(uri="s3://bucket/daily", name="daily")
-        mapper = WeeklyRollupMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0)
+        mapper = RollupMapper(
+            source_mapper=StartOfWeekMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0),
+            window=WeekWindow(),
+        )
         with dag_maker(
             dag_id="rollup_dag",
             schedule=PartitionedAssetTimetable(assets=asset_def, partition_mapper_config={asset_def: mapper}),
@@ -515,7 +520,10 @@ class TestGetPendingPartitionedDagRun:
     def test_is_rollup_true_for_rollup_asset(self, test_client, dag_maker, session):
         """is_rollup is True for assets that use a RollupMapper, and keys are populated."""
         asset_def = Asset(uri="s3://bucket/weekly", name="weekly")
-        mapper = WeeklyRollupMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0)
+        mapper = RollupMapper(
+            source_mapper=StartOfWeekMapper(input_format="%Y-%m-%d", output_format="%Y-%m-%d", week_start=0),
+            window=WeekWindow(),
+        )
         with dag_maker(
             dag_id="rollup_detail_dag",
             schedule=PartitionedAssetTimetable(assets=asset_def, partition_mapper_config={asset_def: mapper}),

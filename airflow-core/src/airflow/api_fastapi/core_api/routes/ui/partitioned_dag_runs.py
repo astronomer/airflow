@@ -159,15 +159,11 @@ def get_partitioned_dag_runs(
     has_created_dag_run_id: QueryPartitionedDagRunHasCreatedDagRunIdFilter,
 ) -> PartitionedDagRunCollectionResponse:
     """Return PartitionedDagRuns. Filter by dag_id and/or has_created_dag_run_id."""
-    if dag_id.value is not None:
-        dag_info = session.execute(
-            select(DagModel.timetable_partitioned).where(DagModel.dag_id == dag_id.value)
-        ).one_or_none()
-
-        if dag_info is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id.value} was not found")
-        if not dag_info.timetable_partitioned:
-            return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
+    # The dag-existence / partitioned-timetable check is intentionally deferred to the
+    # empty-results branch below. In the happy path (rows exist), filtering by dag_id
+    # already restricts to that Dag, so an extra DagModel lookup just to validate
+    # existence wastes a query. We only consult DagModel when we have no rows to
+    # report — that's the only case where the distinction (404 vs empty) matters.
 
     # Subquery for received count per partition (count of required assets that have any log).
     # This matches the non-rollup contract "any event for an asset = that asset is satisfied".
@@ -208,6 +204,12 @@ def get_partitioned_dag_runs(
     query = query.order_by(AssetPartitionDagRun.created_at.desc())
 
     if not (rows := session.execute(query).all()):
+        if dag_id.value is not None:
+            dag_info = session.execute(
+                select(DagModel.timetable_partitioned).where(DagModel.dag_id == dag_id.value)
+            ).one_or_none()
+            if dag_info is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, f"Dag with id {dag_id.value} was not found")
         return PartitionedDagRunCollectionResponse(partitioned_dag_runs=[], total=0)
 
     if dag_id.value is not None:
