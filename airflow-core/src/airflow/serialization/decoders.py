@@ -49,6 +49,7 @@ from airflow.serialization.helpers import (
 
 if TYPE_CHECKING:
     from airflow.partition_mappers.base import PartitionMapper
+    from airflow.partition_mappers.window import Window
     from airflow.timetables.base import Timetable as CoreTimetable
 
 R = TypeVar("R")
@@ -201,3 +202,13 @@ def decode_partition_mapper(var: dict[str, Any]) -> PartitionMapper:
     else:
         partition_mapper_cls = find_registered_custom_partition_mapper(importable_string)
     return partition_mapper_cls.deserialize(var[Encoding.VAR])
+
+
+def decode_window(var: dict[str, Any]) -> Window:
+    """
+    Decode a previously serialized :class:`Window`.
+
+    :meta private:
+    """
+    window_cls: type[Window] = import_string(var[Encoding.TYPE])
+    return window_cls.deserialize(var[Encoding.VAR])

@@ -16,7 +16,7 @@
 # under the License.
 from __future__ import annotations
 
-from airflow.sdk.definitions.partition_mappers.base import PartitionMapper, RollupMapper
+from airflow.sdk.definitions.partition_mappers.base import PartitionMapper
 
 
 class _BaseTemporalMapper(PartitionMapper):
@@ -49,17 +49,10 @@ class StartOfWeekMapper(_BaseTemporalMapper):
     default_output_format = "%Y-%m-%d (W%V)"
 
     def __init__(self, *, week_start: int = 0, **kwargs) -> None:
+        if not 0 <= week_start <= 6:
+            raise ValueError(f"week_start must be between 0 (Monday) and 6 (Sunday), got {week_start!r}")
         super().__init__(**kwargs)
         self.week_start = week_start
-
-
-class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
-    """
-    Map a time-based partition key to the start of its week, requiring all 7 daily keys.
-
-    Use this when a partitioned Dag should only run once every daily asset partition
-    for a full week has been produced.
-    """
 
 
 class StartOfMonthMapper(_BaseTemporalMapper):
@@ -68,17 +61,10 @@ class StartOfMonthMapper(_BaseTemporalMapper):
     default_output_format = "%Y-%m"
 
     def __init__(self, *, month_start_day: int = 1, **kwargs) -> None:
+        if not 1 <= month_start_day <= 28:
+            raise ValueError(f"month_start_day must be between 1 and 28, got {month_start_day!r}")
         super().__init__(**kwargs)
         self.month_start_day = month_start_day
-
-
-class MonthlyRollupMapper(StartOfMonthMapper, RollupMapper):
-    """
-    Map a time-based partition key to the start of its month, requiring all daily keys in that month.
-
-    Use this when a partitioned Dag should only run once every daily asset partition
-    for a full calendar month has been produced.
-    """
 
 
 class StartOfQuarterMapper(_BaseTemporalMapper):

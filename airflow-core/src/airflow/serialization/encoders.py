@@ -37,20 +37,26 @@ from airflow.sdk import (
     ChainMapper,
     CronDataIntervalTimetable,
     CronTriggerTimetable,
+    DayWindow,
     DeltaDataIntervalTimetable,
     DeltaTriggerTimetable,
     EventsTimetable,
+    HourWindow,
     IdentityMapper,
-    MonthlyRollupMapper,
+    MonthWindow,
     MultipleCronTriggerTimetable,
     PartitionMapper,
     ProductMapper,
+    QuarterWindow,
+    RollupMapper,
     StartOfDayMapper,
     StartOfMonthMapper,
     StartOfQuarterMapper,
     StartOfWeekMapper,
     StartOfYearMapper,
-    WeeklyRollupMapper,
+    WeekWindow,
+    Window,
+    YearWindow,
 )
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions.asset import AssetRef
@@ -84,6 +90,7 @@ from airflow.utils.docs import get_docs_url
 if TYPE_CHECKING:
     from dateutil.relativedelta import relativedelta
 
+    from airflow.partition_mappers.window import Window as CoreWindow
     from airflow.sdk.definitions._internal.expandinput import ExpandInput
     from airflow.sdk.definitions.asset import BaseAsset
     from airflow.sdk.definitions.deadline import DeadlineAlert
@@ -408,14 +415,22 @@ class _Serializer:
         ChainMapper: "airflow.partition_mappers.chain.ChainMapper",
         IdentityMapper: "airflow.partition_mappers.identity.IdentityMapper",
         ProductMapper: "airflow.partition_mappers.product.ProductMapper",
+        RollupMapper: "airflow.partition_mappers.base.RollupMapper",
         StartOfDayMapper: "airflow.partition_mappers.temporal.StartOfDayMapper",
         StartOfHourMapper: "airflow.partition_mappers.temporal.StartOfHourMapper",
         StartOfMonthMapper: "airflow.partition_mappers.temporal.StartOfMonthMapper",
         StartOfQuarterMapper: "airflow.partition_mappers.temporal.StartOfQuarterMapper",
         StartOfWeekMapper: "airflow.partition_mappers.temporal.StartOfWeekMapper",
         StartOfYearMapper: "airflow.partition_mappers.temporal.StartOfYearMapper",
-        WeeklyRollupMapper: "airflow.partition_mappers.temporal.WeeklyRollupMapper",
-        MonthlyRollupMapper: "airflow.partition_mappers.temporal.MonthlyRollupMapper",
+    }
+
+    BUILTIN_WINDOWS: dict[type, str] = {
+        HourWindow: "airflow.partition_mappers.window.HourWindow",
+        DayWindow: "airflow.partition_mappers.window.DayWindow",
+        WeekWindow: "airflow.partition_mappers.window.WeekWindow",
+        MonthWindow: "airflow.partition_mappers.window.MonthWindow",
+        QuarterWindow: "airflow.partition_mappers.window.QuarterWindow",
+        YearWindow: "airflow.partition_mappers.window.YearWindow",
     }
 
     @functools.singledispatchmethod
@@ -464,6 +479,31 @@ class _Serializer:
     @serialize_partition_mapper.register
     def _(self, partition_mapper: AllowedKeyMapper) -> dict[str, Any]:
         return {"allowed_keys": partition_mapper.allowed_keys}
+
+    @serialize_partition_mapper.register
+    def _(self, partition_mapper: RollupMapper) -> dict[str, Any]:
+        return {
+            "source_mapper": encode_partition_mapper(partition_mapper.source_mapper),
+            "window": encode_window(partition_mapper.window),
+        }
+
+    @functools.singledispatchmethod
+    def serialize_window(self, window) -> dict[str, Any]:
+        if hasattr(window, "serialize"):
+            return window.serialize()
+        return {}
+
+    @serialize_window.register(HourWindow)
+    @serialize_window.register(DayWindow)
+    @serialize_window.register(WeekWindow)
+    @serialize_window.register(MonthWindow)
+    @serialize_window.register(QuarterWindow)
+    @serialize_window.register(YearWindow)
+    def _(
+        self,
+        window: HourWindow | DayWindow | WeekWindow | MonthWindow | QuarterWindow | YearWindow,
+    ) -> dict[str, Any]:
+        return {}
 
 
 _serializer = _Serializer()
@@ -553,4 +593,26 @@ def encode_partition_mapper(var: PartitionMapper | CorePartitionMapper) -> dict[
     return {
         Encoding.TYPE: qn,
         Encoding.VAR: _serializer.serialize_partition_mapper(var),
+    }
+
+
+def encode_window(var: Window | CoreWindow) -> dict[str, Any]:
+    """
+    Encode a :class:`Window` instance.
+
+    :meta private:
+    """
+    var_type = type(var)
+    importable_string = _serializer.BUILTIN_WINDOWS.get(var_type)
+    if importable_string is not None:
+        return {
+            Encoding.TYPE: importable_string,
+            Encoding.VAR: _serializer.serialize_window(var),
+        }
+
+    # Custom Window subclasses must live at an importable path so the
+    # scheduler can reconstruct them via import_string during deserialization.
+    return {
+        Encoding.TYPE: qualname(var),
+        Encoding.VAR: _serializer.serialize_window(var),
     }

@@ -128,6 +128,11 @@ DM = DagModel
 TASK_STUCK_IN_QUEUED_RESCHEDULE_EVENT = "stuck in queued reschedule"
 """:meta private:"""
 
+# Per-tick cap on pending ``AssetPartitionDagRun`` rows the scheduler will evaluate.
+# Bounds the transaction size so other scheduling work isn't starved; remaining
+# rows drain across subsequent ticks.
+MAX_PARTITION_DAG_RUNS_PER_TICK = 500
+
 
 def _eager_load_dag_run_for_validation() -> tuple[LoaderOption, LoaderOption]:
     """
@@ -1877,13 +1882,18 @@ class SchedulerJobRunner(BaseJobRunner, LoggingMixin):
 
         # Cap per-tick work so the scheduler transaction stays bounded and other
         # scheduling work isn't starved. Remaining APDRs drain across subsequent ticks.
-        # Note: with strict FIFO ordering, >BATCH persistently-unsatisfied APDRs would
-        # block newer ones; switch to updated_at-based ordering if that becomes an issue.
+        # Note: with strict FIFO ordering, persistently-unsatisfied APDRs at the head
+        # of the queue would block newer ones; switch to updated_at-based ordering if
+        # that becomes an issue.
         pending_apdrs = session.scalars(
             select(AssetPartitionDagRun)
-            .where(AssetPartitionDagRun.created_dag_run_id.is_(None))
+            .join(DagModel, DagModel.dag_id == AssetPartitionDagRun.target_dag_id)
+            .where(
+                AssetPartitionDagRun.created_dag_run_id.is_(None),
+                DagModel.is_stale.is_(False),
+            )
             .order_by(AssetPartitionDagRun.created_at)
-            .limit(500)
+            .limit(MAX_PARTITION_DAG_RUNS_PER_TICK)
         ).all()
         if not pending_apdrs:
             return partition_dag_ids

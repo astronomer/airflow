@@ -22,9 +22,7 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from airflow._shared.timezones.timezone import make_aware, parse_timezone
-from airflow.partition_mappers.base import PartitionMapper, RollupMapper
-
-_YMD_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+from airflow.partition_mappers.base import PartitionMapper
 
 if TYPE_CHECKING:
     from pendulum import FixedTimezone, Timezone
@@ -65,6 +63,29 @@ class _BaseTemporalMapper(PartitionMapper, ABC):
         """Format the normalized datetime."""
         return dt.strftime(self.output_format)
 
+    def decode_downstream(self, downstream_key: str) -> datetime:
+        """
+        Recover the period-start datetime from a previously formatted downstream key.
+
+        Inverse of ``format``. The default implementation uses ``strptime`` with
+        ``output_format``, which works for any format made of standard strptime
+        directives. Subclasses with custom format markers (e.g. ``{quarter}``) or
+        ambiguous directives (e.g. bare ``%V``) override this.
+        """
+        return datetime.strptime(downstream_key, self.output_format)
+
+    def encode_upstream(self, dt: datetime) -> str:
+        """
+        Format *dt* as an upstream partition key string.
+
+        Pair of :meth:`decode_downstream`: takes a (decoded) period-start
+        datetime and produces a key string in the upstream's ``input_format``
+        with ``timezone`` applied. Used by :class:`RollupMapper` to render each
+        upstream member yielded by the window back into the form upstream
+        producers actually emit.
+        """
+        return make_aware(dt, self._timezone).strftime(self.input_format)
+
     def serialize(self) -> dict[str, Any]:
         from airflow.serialization.encoders import encode_timezone
 
@@ -101,6 +122,9 @@ class StartOfDayMapper(_BaseTemporalMapper):
         return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+_YMD_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
 class StartOfWeekMapper(_BaseTemporalMapper):
     """Map a time-based partition key to the start of its week."""
 
@@ -114,6 +138,8 @@ class StartOfWeekMapper(_BaseTemporalMapper):
         input_format: str = "%Y-%m-%dT%H:%M:%S",
         output_format: str | None = None,
     ) -> None:
+        if not 0 <= week_start <= 6:
+            raise ValueError(f"week_start must be between 0 (Monday) and 6 (Sunday), got {week_start!r}")
         super().__init__(timezone=timezone, input_format=input_format, output_format=output_format)
         self.week_start = week_start  # 0 = Monday (ISO default), 6 = Sunday
 
@@ -121,6 +147,18 @@ class StartOfWeekMapper(_BaseTemporalMapper):
         days_since_start = (dt.weekday() - self.week_start) % 7
         start = dt - timedelta(days=days_since_start)
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def decode_downstream(self, downstream_key: str) -> datetime:
+        # %V (ISO week) cannot be parsed by strptime without %G+%u, so locate
+        # the YYYY-MM-DD slice with a regex. Robust across formats that mix
+        # the date with extras like "(W%V)".
+        match = _YMD_RE.search(downstream_key)
+        if match is None:
+            raise ValueError(
+                f"StartOfWeekMapper.decode_downstream could not locate YYYY-MM-DD in {downstream_key!r}; "
+                "output_format must include '%Y-%m-%d'."
+            )
+        return datetime.strptime(match.group(), "%Y-%m-%d")
 
     def serialize(self) -> dict[str, Any]:
         return {**super().serialize(), "week_start": self.week_start}
@@ -132,42 +170,6 @@ class StartOfWeekMapper(_BaseTemporalMapper):
             timezone=parse_timezone(data.get("timezone", "UTC")),
             input_format=data["input_format"],
             output_format=data["output_format"],
-        )
-
-
-class WeeklyRollupMapper(StartOfWeekMapper, RollupMapper):
-    """
-    Map a time-based partition key to the start of its week, requiring all 7 daily keys.
-
-    Use this when a partitioned Dag should only run once every daily asset partition
-    for a full week has been produced. Configure ``week_start`` to set which day begins
-    the week (0 = Monday, 6 = Sunday).
-    """
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        if "%Y-%m-%d" not in self.output_format:
-            raise ValueError(
-                f"WeeklyRollupMapper requires output_format to contain '%Y-%m-%d' so that "
-                f"to_upstream() can recover the week-start date, got: {self.output_format!r}"
-            )
-
-    def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        # strptime cannot consume %V (ISO week) without %G+weekday, so parse by
-        # locating the YYYY-MM-DD slice directly. Regex is robust against
-        # variable-width directives (e.g. %B, %A, %Z) appearing elsewhere in the key.
-        match = _YMD_RE.search(downstream_key)
-        if match is None:
-            raise ValueError(
-                f"WeeklyRollupMapper.to_upstream could not locate YYYY-MM-DD in {downstream_key!r}"
-            )
-        week_start_naive = datetime.strptime(match.group(), "%Y-%m-%d")
-        # Arithmetic stays on naive datetimes to keep day-counting unambiguous across
-        # DST transitions; each result is made timezone-aware before formatting so that
-        # %z in input_format produces the correct offset.
-        return frozenset(
-            make_aware(week_start_naive + timedelta(days=i), self._timezone).strftime(self.input_format)
-            for i in range(7)
         )
 
 
@@ -184,6 +186,8 @@ class StartOfMonthMapper(_BaseTemporalMapper):
         input_format: str = "%Y-%m-%dT%H:%M:%S",
         output_format: str | None = None,
     ) -> None:
+        if not 1 <= month_start_day <= 28:
+            raise ValueError(f"month_start_day must be between 1 and 28, got {month_start_day!r}")
         super().__init__(timezone=timezone, input_format=input_format, output_format=output_format)
         self.month_start_day = month_start_day  # 1–28; use >1 for fiscal-month offsets
 
@@ -195,6 +199,11 @@ class StartOfMonthMapper(_BaseTemporalMapper):
         else:
             start = dt.replace(day=self.month_start_day)
         return start.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def decode_downstream(self, downstream_key: str) -> datetime:
+        # The default strptime returns day=1; pin to month_start_day so fiscal
+        # months recover the correct period start.
+        return super().decode_downstream(downstream_key).replace(day=self.month_start_day)
 
     def serialize(self) -> dict[str, Any]:
         return {**super().serialize(), "month_start_day": self.month_start_day}
@@ -209,29 +218,7 @@ class StartOfMonthMapper(_BaseTemporalMapper):
         )
 
 
-class MonthlyRollupMapper(StartOfMonthMapper, RollupMapper):
-    """
-    Map a time-based partition key to the start of its month, requiring all daily keys in that month.
-
-    Use this when a partitioned Dag should only run once every daily asset partition
-    for a full calendar month has been produced. Configure ``month_start_day`` for
-    fiscal-month offsets (e.g. ``month_start_day=15`` for a mid-month period).
-    """
-
-    def to_upstream(self, downstream_key: str) -> frozenset[str]:
-        # Use naive datetimes for day-counting to avoid DST ambiguity, then make
-        # each result timezone-aware before formatting so %z produces the correct offset.
-        period_start_naive = datetime.strptime(downstream_key, self.output_format).replace(
-            day=self.month_start_day
-        )
-        next_month = period_start_naive.month % 12 + 1
-        next_year = period_start_naive.year + (1 if period_start_naive.month == 12 else 0)
-        next_start_naive = period_start_naive.replace(year=next_year, month=next_month)
-        days = (next_start_naive - period_start_naive).days
-        return frozenset(
-            make_aware(period_start_naive + timedelta(days=i), self._timezone).strftime(self.input_format)
-            for i in range(days)
-        )
+_YEAR_QUARTER_RE = re.compile(r"(\d{4}).*?Q([1-4])")
 
 
 class StartOfQuarterMapper(_BaseTemporalMapper):
@@ -254,6 +241,19 @@ class StartOfQuarterMapper(_BaseTemporalMapper):
     def format(self, dt: datetime) -> str:
         quarter = (dt.month - 1) // 3 + 1
         return dt.strftime(self.output_format).format(quarter=quarter)
+
+    def decode_downstream(self, downstream_key: str) -> datetime:
+        # output_format carries a ``{quarter}`` placeholder, so strptime doesn't
+        # apply directly. Locate ``YYYY...Q<digit>`` and rebuild the period start.
+        match = _YEAR_QUARTER_RE.search(downstream_key)
+        if match is None:
+            raise ValueError(
+                f"StartOfQuarterMapper.decode_downstream could not locate YYYY...Q<quarter> in "
+                f"{downstream_key!r}; output_format must include the year and 'Q{{quarter}}'."
+            )
+        year = int(match.group(1))
+        quarter = int(match.group(2))
+        return datetime(year, (quarter - 1) * 3 + 1, 1)
 
 
 class StartOfYearMapper(_BaseTemporalMapper):

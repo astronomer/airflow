@@ -56,7 +56,7 @@ const RollupKeyChecklistPopover = ({
       <Popover.Content css={{ "--popover-bg": "colors.bg.emphasized" }} width="fit-content">
         <Popover.Arrow />
         <Popover.Body>
-          <VStack align="start" gap={1}>
+          <VStack align="start" gap={1} maxH="300px" overflowY="auto">
             {requiredKeys.map((key) => {
               const isReceived = receivedKeySet.has(key);
 
