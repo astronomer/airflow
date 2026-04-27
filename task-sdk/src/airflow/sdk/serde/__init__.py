@@ -302,12 +302,17 @@ def deserialize(o: T | None, full=True, type_hint: Any = None) -> object:
     raise TypeError(f"No deserializer found for {classname}")
 
 
+_UNSUPPORTED_OLD_TYPES: frozenset[str] = frozenset({"base_trigger", "airflow_exc_ser"})
+
+
 def _convert(old: dict) -> dict:
     """Convert an old style serialization to new style."""
     if OLD_TYPE in old and OLD_DATA in old:
         # Return old style dicts directly as they do not need wrapping
         if old[OLD_TYPE] == OLD_DICT:
             return old[OLD_DATA]
+        if old[OLD_TYPE] in _UNSUPPORTED_OLD_TYPES:
+            raise ValueError(f"Deserialization of type '{old[OLD_TYPE]}' is not supported.")
         return {
             CLASSNAME: OLD_TYPE_TO_FULL_QUALNAME.get(old[OLD_TYPE], old[OLD_TYPE]),
             VERSION: DEFAULT_VERSION,

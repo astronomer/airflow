@@ -479,6 +479,13 @@ class TestSerDe:
         result = deserialize(data)
         assert result == datetime.timedelta(seconds=3600)
 
+    @pytest.mark.parametrize("old_type", ["base_trigger", "airflow_exc_ser"])
+    def test_unsupported_old_types_raise(self, old_type):
+        """Old-format type tags that cannot be safely deserialized must raise ValueError."""
+        data = {"__type": old_type, "__var": ["subprocess.Popen", {"args": ["id"]}]}
+        with pytest.raises(ValueError, match=f"Deserialization of type '{old_type}' is not supported"):
+            deserialize(data)
+
     def test_encode_asset(self):
         asset = Asset(uri="mytest://asset", name="test")
         obj = deserialize(serialize(asset))
