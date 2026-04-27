@@ -122,13 +122,11 @@ class StartOfDayMapper(_BaseTemporalMapper):
         return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-_YMD_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
-
-
 class StartOfWeekMapper(_BaseTemporalMapper):
     """Map a time-based partition key to the start of its week."""
 
     default_output_format = "%Y-%m-%d (W%V)"
+    _YMD_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
     def __init__(
         self,
@@ -152,7 +150,7 @@ class StartOfWeekMapper(_BaseTemporalMapper):
         # %V (ISO week) cannot be parsed by strptime without %G+%u, so locate
         # the YYYY-MM-DD slice with a regex. Robust across formats that mix
         # the date with extras like "(W%V)".
-        match = _YMD_RE.search(downstream_key)
+        match = self._YMD_RE.search(downstream_key)
         if match is None:
             raise ValueError(
                 f"StartOfWeekMapper.decode_downstream could not locate YYYY-MM-DD in {downstream_key!r}; "
@@ -218,13 +216,11 @@ class StartOfMonthMapper(_BaseTemporalMapper):
         )
 
 
-_YEAR_QUARTER_RE = re.compile(r"(\d{4}).*?Q([1-4])")
-
-
 class StartOfQuarterMapper(_BaseTemporalMapper):
     """Map a time-based partition key to quarter."""
 
     default_output_format = "%Y-Q{quarter}"
+    _YEAR_QUARTER_RE = re.compile(r"(\d{4}).*?Q([1-4])")
 
     def normalize(self, dt: datetime) -> datetime:
         quarter = (dt.month - 1) // 3
@@ -245,7 +241,7 @@ class StartOfQuarterMapper(_BaseTemporalMapper):
     def decode_downstream(self, downstream_key: str) -> datetime:
         # output_format carries a ``{quarter}`` placeholder, so strptime doesn't
         # apply directly. Locate ``YYYY...Q<digit>`` and rebuild the period start.
-        match = _YEAR_QUARTER_RE.search(downstream_key)
+        match = self._YEAR_QUARTER_RE.search(downstream_key)
         if match is None:
             raise ValueError(
                 f"StartOfQuarterMapper.decode_downstream could not locate YYYY...Q<quarter> in "
