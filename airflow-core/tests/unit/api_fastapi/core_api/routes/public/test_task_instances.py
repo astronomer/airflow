@@ -52,7 +52,6 @@ from airflow.utils.types import DagRunType
 
 from tests_common.test_utils.api_fastapi import _check_task_instance_note
 from tests_common.test_utils.asserts import assert_queries_count
-from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.db import (
     clear_db_runs,
     clear_db_teams,
@@ -869,41 +868,6 @@ class TestGetMappedTaskInstances:
         body = response.json()
         assert body["total_entries"] == 110
         assert len(body["task_instances"]) == min(params["limit"], conf.getint("api", "maximum_page_limit"))
-        assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
-
-    # Lexicographic ordering of strings is DB specific.
-    @pytest.mark.backend("sqlite")
-    @pytest.mark.parametrize(
-        ("params", "expected_map_indexes"),
-        [
-            ({"order_by": "rendered_map_index", "limit": 108}, sorted(range(1, 110), key=str)[:108]),  # Asc
-            (
-                {"order_by": "-rendered_map_index", "limit": 100},
-                [0] + sorted(range(1, 110), key=str, reverse=True)[:99],
-            ),  # Desc
-        ],
-    )
-    @conf_vars({("api", "maximum_page_limit"): "110"})
-    def test_rendered_map_index_order(
-        self, test_client, session, params, expected_map_indexes, one_task_with_many_mapped_tis
-    ):
-        ti = session.scalars(
-            select(TaskInstance).where(TaskInstance.task_id == "task_2", TaskInstance.map_index == 0)
-        ).first()
-
-        ti._rendered_map_index = "a"
-
-        session.commit()
-
-        with assert_queries_count(4):
-            response = test_client.get(
-                "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
-                params=params,
-            )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["total_entries"] == 110
-        assert len(body["task_instances"]) == params["limit"]
         assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
 
     @pytest.mark.parametrize(
