@@ -285,6 +285,9 @@ def test_create_backfill_partitioned(reverse, existing, start_date, dag_maker, s
     assert partition_keys == expected_dates
     assert all(x.state == DagRunState.QUEUED for x in dag_runs)
     assert all(x.conf == expected_run_conf for x in dag_runs)
+    # Calendar view filters partitioned Dags by partition_date, so the backfill
+    # path must populate it alongside partition_key.
+    assert all(x.partition_date is not None for x in dag_runs)
 
 
 @pytest.mark.parametrize(
