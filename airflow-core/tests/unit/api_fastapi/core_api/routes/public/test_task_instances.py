@@ -871,16 +871,22 @@ class TestGetMappedTaskInstances:
         assert len(body["task_instances"]) == min(params["limit"], conf.getint("api", "maximum_page_limit"))
         assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
 
+    # Ordering of nulls values is DB specific.
     @pytest.mark.backend("sqlite")
     @pytest.mark.parametrize(
-        "params",
+        ("params", "expected_map_indexes"),
         [
-            {"order_by": "rendered_map_index", "limit": 108},  # Asc
-            {"order_by": "-rendered_map_index", "limit": 100},  # Desc
+            ({"order_by": "rendered_map_index", "limit": 108}, list(range(1, 109))),  # Asc
+            (
+                {"order_by": "-rendered_map_index", "limit": 100},
+                [0] + list(range(11, 110)[::-1]),
+            ),  # Desc
         ],
     )
     @conf_vars({("api", "maximum_page_limit"): "110"})
-    def test_rendered_map_index_order(self, test_client, session, params, one_task_with_many_mapped_tis):
+    def test_rendered_map_index_order(
+        self, test_client, session, params, expected_map_indexes, one_task_with_many_mapped_tis
+    ):
         ti = session.scalars(
             select(TaskInstance).where(TaskInstance.task_id == "task_2", TaskInstance.map_index == 0)
         ).first()
@@ -898,10 +904,6 @@ class TestGetMappedTaskInstances:
         body = response.json()
         assert body["total_entries"] == 110
         assert len(body["task_instances"]) == params["limit"]
-
-        rendered = [(0, "a")] + [(i, str(i)) for i in range(1, 110)]
-        rendered.sort(key=lambda x: x[1], reverse=params["order_by"].startswith("-"))
-        expected_map_indexes = [mi for mi, _ in rendered[: params["limit"]]]
         assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
 
     @pytest.mark.parametrize(
