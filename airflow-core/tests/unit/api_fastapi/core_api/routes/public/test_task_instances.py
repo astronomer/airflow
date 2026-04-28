@@ -851,6 +851,11 @@ class TestGetMappedTaskInstances:
             ({"order_by": "-logical_date", "limit": 100}, list(range(109, 9, -1))),
             ({"order_by": "data_interval_start", "limit": 100}, list(range(100))),
             ({"order_by": "-data_interval_start", "limit": 100}, list(range(109, 9, -1))),
+            ({"order_by": "rendered_map_index", "limit": 100}, sorted(range(110), key=str)[:100]),
+            (
+                {"order_by": "-rendered_map_index", "limit": 100},
+                sorted(range(110), key=str, reverse=True)[:100],
+            ),
         ],
     )
     def test_mapped_instances_order(
@@ -1809,6 +1814,30 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
         field_desc = [ti["id"] for ti in response_desc.json()["task_instances"]]
         assert len(field_desc) == ti_count
         assert field_asc == list(reversed(field_desc))
+
+    @pytest.mark.parametrize(
+        ("order_by", "expected_map_indexes"),
+        [
+            ("rendered_map_index", [2, 3, 0, 1]),
+            ("-rendered_map_index", [1, 0, 3, 2]),
+        ],
+    )
+    def test_should_respond_200_for_rendered_map_index_order(
+        self, test_client, session, order_by, expected_map_indexes
+    ):
+        self.create_task_instances(
+            session,
+            update_extras=True,
+            task_instances=[
+                {"map_index": 0, "_rendered_map_index": "table_orders"},
+                {"map_index": 1, "_rendered_map_index": "table_users"},
+                {"map_index": 2, "_rendered_map_index": None},
+                {"map_index": 3, "_rendered_map_index": None},
+            ],
+        )
+        response = test_client.get("/dags/~/dagRuns/~/taskInstances", params={"order_by": order_by})
+        assert response.status_code == 200
+        assert [ti["map_index"] for ti in response.json()["task_instances"]] == expected_map_indexes
 
     def test_should_respond_200_for_pagination(self, test_client, session):
         dag_id = "example_python_operator"
