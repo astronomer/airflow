@@ -6884,6 +6884,14 @@ paths:
           items:
             type: integer
           title: Map Index
+      - name: rendered_map_index
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+          title: Rendered Map Index
       - name: limit
         in: query
         required: false
@@ -8001,6 +8009,14 @@ paths:
           items:
             type: integer
           title: Map Index
+      - name: rendered_map_index
+        in: query
+        required: false
+        schema:
+          type: array
+          items:
+            type: string
+          title: Rendered Map Index
       - name: limit
         in: query
         required: false

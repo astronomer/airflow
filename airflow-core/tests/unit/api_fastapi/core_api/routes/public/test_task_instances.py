@@ -52,7 +52,6 @@ from airflow.utils.types import DagRunType
 
 from tests_common.test_utils.api_fastapi import _check_task_instance_note
 from tests_common.test_utils.asserts import assert_queries_count
-from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.db import (
     clear_db_runs,
     clear_db_teams,
@@ -871,37 +870,90 @@ class TestGetMappedTaskInstances:
         assert len(body["task_instances"]) == min(params["limit"], conf.getint("api", "maximum_page_limit"))
         assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
 
-    # Ordering of nulls values is DB specific.
-    @pytest.mark.backend("sqlite")
     @pytest.mark.parametrize(
-        ("params", "expected_map_indexes"),
+        ("order_by", "expected_renderings"),
         [
-            ({"order_by": "rendered_map_index", "limit": 108}, list(range(1, 109))),  # Asc
-            ({"order_by": "-rendered_map_index", "limit": 100}, [0] + list(range(11, 110)[::-1])),  # Desc
+            # Ascending — lexicographic on the displayed value, which is
+            # ``_rendered_map_index`` when set and ``str(map_index)``
+            # otherwise. So the explicit "a" sorts after the digit-strings
+            # of the unstamped rows, e.g. "10" < "11" < "2" < "a".
+            ("rendered_map_index", ["10", "11", "2", "a"]),
+            # Descending — same semantics, reversed.
+            ("-rendered_map_index", ["a", "2", "11", "10"]),
         ],
     )
-    @conf_vars({("api", "maximum_page_limit"): "110"})
     def test_rendered_map_index_order(
-        self, test_client, session, params, expected_map_indexes, one_task_with_many_mapped_tis
+        self, test_client, session, order_by, expected_renderings, one_task_with_many_mapped_tis
     ):
-        ti = session.scalars(
+        # Stamp one row with an explicit rendered name; leave the others NULL
+        # so the SQL-level fallback to ``str(map_index)`` is exercised in the
+        # ORDER BY too.
+        explicit_ti = session.scalars(
             select(TaskInstance).where(TaskInstance.task_id == "task_2", TaskInstance.map_index == 0)
         ).first()
-
-        ti._rendered_map_index = "a"
-
+        explicit_ti._rendered_map_index = "a"
         session.commit()
 
-        with assert_queries_count(4):
-            response = test_client.get(
-                "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
-                params=params,
-            )
+        # Restrict to a small set of map_indexes so the assertion stays
+        # readable. (Using ``map_index`` filter — unrelated to the feature
+        # under test — keeps total_entries small.)
+        response = test_client.get(
+            "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
+            params={"order_by": order_by, "map_index": [0, 2, 10, 11]},
+        )
         assert response.status_code == 200
         body = response.json()
-        assert body["total_entries"] == 110
-        assert len(body["task_instances"]) == params["limit"]
-        assert expected_map_indexes == [ti["map_index"] for ti in body["task_instances"]]
+        assert body["total_entries"] == 4
+        assert [ti["rendered_map_index"] for ti in body["task_instances"]] == expected_renderings
+
+    @pytest.mark.parametrize(
+        ("param_value", "expected_map_indexes"),
+        [
+            # Explicit named values (rows where ``_rendered_map_index`` is set).
+            (["table_orders"], [0]),
+            (["table_orders", "metrics_daily"], [0, 2]),
+            (["table"], []),  # exact match — no partial / prefix matching
+            (["nope"], []),
+            # Fallback path: rows with ``_rendered_map_index`` NULL must be
+            # findable by ``str(map_index)``, since that's what the API
+            # response shows. This is the original customer-reported case.
+            (["7"], [7]),
+            (["7", "table_orders"], [0, 7]),
+        ],
+    )
+    def test_rendered_map_index_filter(
+        self,
+        test_client,
+        session,
+        one_task_with_many_mapped_tis,
+        param_value,
+        expected_map_indexes,
+    ):
+        # Stamp distinct rendered_map_index values on a few of the fixture's mapped TIs;
+        # leave the rest with NULL so the fallback path is exercised too.
+        rendered_by_map_index = {
+            0: "table_orders",
+            1: "table_users",
+            2: "metrics_daily",
+            3: "metrics_hourly",
+        }
+        for map_index, rendered in rendered_by_map_index.items():
+            ti = session.scalars(
+                select(TaskInstance).where(
+                    TaskInstance.task_id == "task_2", TaskInstance.map_index == map_index
+                )
+            ).first()
+            ti._rendered_map_index = rendered
+        session.commit()
+
+        response = test_client.get(
+            "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
+            params={"rendered_map_index": param_value, "order_by": "map_index"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["total_entries"] == len(expected_map_indexes)
+        assert [ti["map_index"] for ti in body["task_instances"]] == expected_map_indexes
 
     def test_with_date(self, test_client, one_task_with_mapped_tis):
         response = test_client.get(
@@ -1483,6 +1535,34 @@ class TestGetTaskInstances(TestTaskInstanceEndpoint):
                 2,
                 3,
                 id="test map_index filter",
+            ),
+            pytest.param(
+                [
+                    {"map_index": 0, "_rendered_map_index": "table_orders"},
+                    {"map_index": 1, "_rendered_map_index": "table_users"},
+                    {"map_index": 2, "_rendered_map_index": "metrics_daily"},
+                    {"map_index": 3, "_rendered_map_index": "metrics_hourly"},
+                ],
+                True,
+                "/dags/~/dagRuns/~/taskInstances",
+                {"rendered_map_index": ["table_orders"]},
+                1,
+                3,
+                id="test rendered_map_index filter (single value)",
+            ),
+            pytest.param(
+                [
+                    {"map_index": 0, "_rendered_map_index": "table_orders"},
+                    {"map_index": 1, "_rendered_map_index": "table_users"},
+                    {"map_index": 2, "_rendered_map_index": "metrics_daily"},
+                    {"map_index": 3, "_rendered_map_index": "metrics_hourly"},
+                ],
+                True,
+                "/dags/~/dagRuns/~/taskInstances",
+                {"rendered_map_index": ["table_orders", "metrics_daily"]},
+                2,
+                3,
+                id="test rendered_map_index filter (multiple values OR'd)",
             ),
             pytest.param(
                 [

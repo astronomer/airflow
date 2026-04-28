@@ -236,6 +236,12 @@ export const useFilterConfigs = () => {
       label: translate("common:taskInstance.queue"),
       type: FilterTypes.TEXT,
     },
+    [SearchParamsKeys.RENDERED_MAP_INDEX]: {
+      hotkeyDisabled: true,
+      icon: <MdSearch />,
+      label: translate("common:taskInstance.renderedMapIndex"),
+      type: FilterTypes.TEXT,
+    },
     [SearchParamsKeys.RESPONDED_BY_USER_NAME]: {
       hotkeyDisabled: true,
       icon: <FiUser />,

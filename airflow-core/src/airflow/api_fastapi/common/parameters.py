@@ -1356,6 +1356,18 @@ QueryTIMapIndexFilter = Annotated[
         )
     ),
 ]
+QueryTIRenderedMapIndexFilter = Annotated[
+    FilterParam[list[str]],
+    Depends(
+        filter_param_factory(
+            TaskInstance.rendered_map_index,
+            list[str],
+            FilterOptionEnum.ANY_EQUAL,
+            default_factory=list,
+            filter_name="rendered_map_index",
+        )
+    ),
+]
 
 # XCom
 QueryXComKeyPatternSearch = Annotated[

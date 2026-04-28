@@ -60,6 +60,7 @@ from airflow.api_fastapi.common.parameters import (
     QueryTIQueueFilter,
     QueryTIQueueNamePatternSearch,
     QueryTIQueueNamePrefixPatternSearch,
+    QueryTIRenderedMapIndexFilter,
     QueryTIStateFilter,
     QueryTITaskDisplayNamePatternSearch,
     QueryTITaskDisplayNamePrefixPatternSearch,
@@ -180,6 +181,7 @@ def get_mapped_task_instances(
     operator_name_pattern: QueryTIOperatorNamePatternSearch,
     operator_name_prefix_pattern: QueryTIOperatorNamePrefixPatternSearch,
     map_index: QueryTIMapIndexFilter,
+    rendered_map_index: QueryTIRenderedMapIndexFilter,
     limit: QueryLimit,
     offset: QueryOffset,
     order_by: Annotated[
@@ -256,6 +258,7 @@ def get_mapped_task_instances(
             operator_name_pattern,
             operator_name_prefix_pattern,
             map_index,
+            rendered_map_index,
         ],
         order_by=order_by,
         offset=offset,
@@ -468,6 +471,7 @@ def get_task_instances(
     operator_name_pattern: QueryTIOperatorNamePatternSearch,
     operator_name_prefix_pattern: QueryTIOperatorNamePrefixPatternSearch,
     map_index: QueryTIMapIndexFilter,
+    rendered_map_index: QueryTIRenderedMapIndexFilter,
     limit: QueryLimit,
     offset: QueryOffset,
     order_by: Annotated[
@@ -575,6 +579,7 @@ def get_task_instances(
         operator_name_pattern,
         operator_name_prefix_pattern,
         map_index,
+        rendered_map_index,
     ]
 
     if use_cursor:
