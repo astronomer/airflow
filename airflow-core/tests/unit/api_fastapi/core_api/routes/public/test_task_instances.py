@@ -873,30 +873,19 @@ class TestGetMappedTaskInstances:
     @pytest.mark.parametrize(
         ("order_by", "expected_renderings"),
         [
-            # Ascending — lexicographic on the displayed value, which is
-            # ``_rendered_map_index`` when set and ``str(map_index)``
-            # otherwise. So the explicit "a" sorts after the digit-strings
-            # of the unstamped rows, e.g. "10" < "11" < "2" < "a".
             ("rendered_map_index", ["10", "11", "2", "a"]),
-            # Descending — same semantics, reversed.
             ("-rendered_map_index", ["a", "2", "11", "10"]),
         ],
     )
     def test_rendered_map_index_order(
         self, test_client, session, order_by, expected_renderings, one_task_with_many_mapped_tis
     ):
-        # Stamp one row with an explicit rendered name; leave the others NULL
-        # so the SQL-level fallback to ``str(map_index)`` is exercised in the
-        # ORDER BY too.
         explicit_ti = session.scalars(
             select(TaskInstance).where(TaskInstance.task_id == "task_2", TaskInstance.map_index == 0)
         ).first()
         explicit_ti._rendered_map_index = "a"
         session.commit()
 
-        # Restrict to a small set of map_indexes so the assertion stays
-        # readable. (Using ``map_index`` filter — unrelated to the feature
-        # under test — keeps total_entries small.)
         response = test_client.get(
             "/dags/mapped_tis/dagRuns/run_mapped_tis/taskInstances/task_2/listMapped",
             params={"order_by": order_by, "map_index": [0, 2, 10, 11]},
@@ -909,14 +898,11 @@ class TestGetMappedTaskInstances:
     @pytest.mark.parametrize(
         ("param_value", "expected_map_indexes"),
         [
-            # Explicit named values (rows where ``_rendered_map_index`` is set).
             (["table_orders"], [0]),
             (["table_orders", "metrics_daily"], [0, 2]),
-            (["table"], []),  # exact match — no partial / prefix matching
+            (["table"], []),
             (["nope"], []),
-            # Fallback path: rows with ``_rendered_map_index`` NULL must be
-            # findable by ``str(map_index)``, since that's what the API
-            # response shows. This is the original customer-reported case.
+            # Fallback to str(map_index) when _rendered_map_index is NULL.
             (["7"], [7]),
             (["7", "table_orders"], [0, 7]),
         ],
@@ -929,8 +915,6 @@ class TestGetMappedTaskInstances:
         param_value,
         expected_map_indexes,
     ):
-        # Stamp distinct rendered_map_index values on a few of the fixture's mapped TIs;
-        # leave the rest with NULL so the fallback path is exercised too.
         rendered_by_map_index = {
             0: "table_orders",
             1: "table_users",

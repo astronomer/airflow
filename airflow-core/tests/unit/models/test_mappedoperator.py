@@ -421,10 +421,6 @@ def _create_named_map_index_renders_on_failure_taskflow(*, task_id, map_names, t
 @pytest.mark.parametrize(
     ("template", "expected_rendered_names"),
     [
-        # When no template is set, the explicit ``_rendered_map_index``
-        # column is NULL but the ``rendered_map_index`` hybrid (Python and
-        # SQL) falls back to ``str(map_index)`` — matching what the API
-        # response shows.
         pytest.param(None, ["0", "1"], id="unset"),
         pytest.param("", ["", ""], id="constant"),
         pytest.param("{{ ti.task_id }}-{{ ti.map_index }}", ["task1-0", "task1-1"], id="builtin"),
