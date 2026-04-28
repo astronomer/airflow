@@ -126,7 +126,7 @@ def dag_delete(args) -> None:
 @providers_configuration_loaded
 @provide_session
 def dag_clear(args, session: Session = NEW_SESSION) -> None:
-    """Clear DAG runs whose partition_date falls in [partition_start, partition_end]."""
+    """Clear Dag runs whose partition_date falls in [partition_start, partition_end]."""
     logging.basicConfig(level=logging.INFO, format=settings.SIMPLE_LOG_FORMAT)
     if args.partition_start is None and args.partition_end is None:
         raise SystemExit("At least one of --partition-start or --partition-end must be provided.")
@@ -151,14 +151,14 @@ def dag_clear(args, session: Session = NEW_SESSION) -> None:
 
     runs = list(session.scalars(query).all())
     if not runs:
-        print("No matching DAG runs found in the given partition window.")
+        print("No matching Dag runs found in the given partition window.")
         return
 
     run_ids = [run.run_id for run in runs]
     if not args.yes:
         listing = "\n".join(f"  {run.run_id}  partition_date={run.partition_date}" for run in runs)
         question = (
-            f"You are about to clear {len(runs)} DAG run(s) of {args.dag_id!r}:\n"
+            f"You are about to clear {len(runs)} Dag run(s) of {args.dag_id!r}:\n"
             f"{listing}\n\nAre you sure? [y/n]"
         )
         if not ask_yesno(question):
@@ -173,7 +173,7 @@ def dag_clear(args, session: Session = NEW_SESSION) -> None:
             only_running=args.only_running,
             session=session,
         )
-    print(f"Cleared {cleared} task instance(s) across {len(run_ids)} DAG run(s).")
+    print(f"Cleared {cleared} task instance(s) across {len(run_ids)} Dag run(s).")
 
 
 @cli_utils.action_cli

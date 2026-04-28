@@ -1105,14 +1105,15 @@ class TestCliDagsReserialize:
 class TestCliDagsClear:
     """Tests for the `airflow dags clear` partition-range subcommand."""
 
-    parser: argparse.ArgumentParser
     DAG_ID = "test_dags_clear_partitioned"
 
-    @classmethod
-    def setup_class(cls) -> None:
-        cls.parser = cli_parser.get_parser()
+    @pytest.fixture
+    def parser(self) -> argparse.ArgumentParser:
+        return cli_parser.get_parser()
 
-    def teardown_method(self) -> None:
+    @pytest.fixture(autouse=True)
+    def _clear_db(self):
+        yield
         clear_db_runs()
         clear_db_dags()
 
@@ -1165,14 +1166,14 @@ class TestCliDagsClear:
                 for row in session.scalars(select(DagRun).where(DagRun.dag_id == self.DAG_ID)).all()
             }
 
-    def test_requires_at_least_one_bound(self):
-        args = self.parser.parse_args(["dags", "clear", self.DAG_ID, "--yes"])
+    def test_requires_at_least_one_bound(self, parser):
+        args = parser.parse_args(["dags", "clear", self.DAG_ID, "--yes"])
         with pytest.raises(SystemExit, match="At least one of --partition-start"):
             dag_command.dag_clear(args)
 
-    def test_rejects_inverted_window(self, dag_maker):
+    def test_rejects_inverted_window(self, parser, dag_maker):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1187,9 +1188,9 @@ class TestCliDagsClear:
         with pytest.raises(SystemExit, match="--partition-start must be on or before"):
             dag_command.dag_clear(args)
 
-    def test_clears_runs_in_window_inclusive(self, dag_maker):
+    def test_clears_runs_in_window_inclusive(self, parser, dag_maker):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1211,9 +1212,9 @@ class TestCliDagsClear:
         # Run with NULL partition_date is never matched.
         assert states["non_partitioned"] == DagRunState.SUCCESS
 
-    def test_open_lower_bound(self, dag_maker):
+    def test_open_lower_bound(self, parser, dag_maker):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1230,9 +1231,9 @@ class TestCliDagsClear:
         assert states["part_2026_03_10"] == DagRunState.FAILED
         assert states["part_2026_03_14"] == DagRunState.SUCCESS
 
-    def test_open_upper_bound(self, dag_maker):
+    def test_open_upper_bound(self, parser, dag_maker):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1249,9 +1250,9 @@ class TestCliDagsClear:
         assert states["part_2026_03_10"] == DagRunState.FAILED
         assert states["part_2026_03_14"] == DagRunState.QUEUED
 
-    def test_no_matching_runs_is_a_no_op(self, dag_maker, capsys):
+    def test_no_matching_runs_is_a_no_op(self, parser, dag_maker, capsys):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1265,13 +1266,13 @@ class TestCliDagsClear:
         )
         dag_command.dag_clear(args)
         out = capsys.readouterr().out
-        assert "No matching DAG runs" in out
+        assert "No matching Dag runs" in out
         assert self._run_states()["part_2026_03_10"] == DagRunState.FAILED
 
     @mock.patch("airflow.cli.commands.dag_command.ask_yesno", return_value=False)
-    def test_prompt_decline_does_not_clear(self, mock_ask, dag_maker):
+    def test_prompt_decline_does_not_clear(self, mock_ask, parser, dag_maker):
         self._seed_partitioned_runs(dag_maker)
-        args = self.parser.parse_args(
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",
@@ -1289,8 +1290,8 @@ class TestCliDagsClear:
         assert states["part_2026_03_10"] == DagRunState.FAILED
         assert states["part_2026_03_14"] == DagRunState.SUCCESS
 
-    def test_missing_dag_raises(self):
-        args = self.parser.parse_args(
+    def test_missing_dag_raises(self, parser):
+        args = parser.parse_args(
             [
                 "dags",
                 "clear",

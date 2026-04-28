@@ -1112,14 +1112,14 @@ DAGS_COMMANDS = (
     ),
     ActionCommand(
         name="clear",
-        help="Clear DAG runs whose partition_date falls in a given window",
+        help="Clear Dag runs whose partition_date falls in a given window",
         description=(
-            "Clear all DAG runs of the given dag_id whose partition_date falls within "
+            "Clear all Dag runs of the given dag_id whose partition_date falls within "
             "[--partition-start, --partition-end] (inclusive on both ends). Resets the "
             "matched task instances and re-queues the runs for reprocessing. Intended for "
-            "partitioned DAGs where partition_date may diverge from logical_date "
+            "partitioned Dags where partition_date may diverge from logical_date "
             "(for example, rollup or offset partitions). For traditional, non-partitioned "
-            "DAGs, use `airflow tasks clear --start-date / --end-date`."
+            "Dags, use `airflow tasks clear --start-date / --end-date`."
         ),
         func=lazy_load_command("airflow.cli.commands.dag_command.dag_clear"),
         args=(
