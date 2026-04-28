@@ -646,15 +646,7 @@ class TestTriggerRunner:
         session.commit()
 
         stored_kwargs = trigger_orm.kwargs
-        assert stored_kwargs == {
-            "Encoding.TYPE": "dict",
-            "Encoding.VAR": {
-                "dict": {"Encoding.TYPE": "dict", "Encoding.VAR": {}},
-                "list": [],
-                "simple": "test",
-                "tuple": {"Encoding.TYPE": "tuple", "Encoding.VAR": []},
-            },
-        }
+        assert stored_kwargs == kw
 
         runner = TriggerRunner()
         runner.to_create.append(
