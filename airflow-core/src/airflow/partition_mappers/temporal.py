@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +27,8 @@ from airflow.partition_mappers.base import PartitionMapper
 
 if TYPE_CHECKING:
     from pendulum import FixedTimezone, Timezone
+
+    from airflow.partition_mappers.window import Window
 
 
 class _BaseTemporalMapper(PartitionMapper, ABC):
@@ -266,3 +269,109 @@ class StartOfYearMapper(_BaseTemporalMapper):
             second=0,
             microsecond=0,
         )
+
+
+class FanOutMapper(PartitionMapper):
+    """
+    Partition mapper that fans one upstream key out into multiple downstream keys.
+
+    Compose an ``upstream_mapper`` (parses the coarse-granularity upstream key
+    and normalizes it to its period start) with a ``window`` (enumerates the
+    fine-granularity members of that period). ``fine_mapper`` formats each
+    member into a downstream key string; if omitted, a default fine mapper is
+    chosen from the window class.
+
+    Symmetric to :class:`~airflow.partition_mappers.base.RollupMapper`: rollup
+    is N→1 (downstream waits until all members arrive), fanout is 1→N (one
+    upstream event creates one downstream Dag run per fine member).
+
+    .. code-block:: python
+
+        # Weekly upstream → 7 daily downstream Dag runs
+        FanOutMapper(upstream_mapper=StartOfWeekMapper(), window=WeekWindow())
+    """
+
+    def __init__(
+        self,
+        *,
+        upstream_mapper: PartitionMapper,
+        window: Window,
+        fine_mapper: PartitionMapper | None = None,
+    ) -> None:
+        self.upstream_mapper = upstream_mapper
+        self.window = window
+        self.fine_mapper = fine_mapper or _resolve_default_fine_mapper(window)
+
+    def to_downstream(self, key: str) -> Iterable[str]:
+        # Round-trip the upstream key through its mapper to obtain the
+        # period-start datetime (decoded form). This keeps the upstream_mapper
+        # opaque — we don't need to know whether it's temporal or segment.
+        formatted = self.upstream_mapper.to_downstream(key)
+        if not isinstance(formatted, str):
+            raise TypeError(
+                "FanOutMapper.upstream_mapper must produce a single key from "
+                "to_downstream; chained fan-out (mapper that itself returns multiple keys) "
+                "is not supported."
+            )
+        coarse = self.upstream_mapper.decode_downstream(formatted)
+        return [_format_with(self.fine_mapper, item) for item in self.window.to_upstream(coarse)]
+
+    def serialize(self) -> dict[str, Any]:
+        from airflow.serialization.encoders import encode_partition_mapper, encode_window
+
+        return {
+            "upstream_mapper": encode_partition_mapper(self.upstream_mapper),
+            "window": encode_window(self.window),
+            "fine_mapper": encode_partition_mapper(self.fine_mapper),
+        }
+
+    @classmethod
+    def deserialize(cls, data: dict[str, Any]) -> PartitionMapper:
+        from airflow.serialization.decoders import decode_partition_mapper, decode_window
+
+        return cls(
+            upstream_mapper=decode_partition_mapper(data["upstream_mapper"]),
+            window=decode_window(data["window"]),
+            fine_mapper=decode_partition_mapper(data["fine_mapper"]),
+        )
+
+
+def _format_with(mapper: PartitionMapper, decoded: Any) -> str:
+    """
+    Format *decoded* using *mapper*'s downstream format.
+
+    Temporal mappers expose ``format(dt) -> str`` which uses ``output_format``;
+    that's the natural "datetime → key string" operation for fanout. For
+    non-temporal mappers (segment, custom) we fall back to ``str(decoded)``;
+    they can override by providing their own ``format`` method.
+    """
+    formatter = getattr(mapper, "format", None)
+    if callable(formatter):
+        return formatter(decoded)
+    return str(decoded)
+
+
+_DEFAULT_FINE_MAPPER_BY_WINDOW_NAME: dict[str, type[_BaseTemporalMapper]] = {
+    "DayWindow": StartOfHourMapper,
+    "WeekWindow": StartOfDayMapper,
+    "MonthWindow": StartOfDayMapper,
+    "QuarterWindow": StartOfMonthMapper,
+    "YearWindow": StartOfMonthMapper,
+}
+
+
+def _resolve_default_fine_mapper(window: Window) -> PartitionMapper:
+    """
+    Return the conventional fine-grained mapper for *window*.
+
+    Looked up by the window's class **name** rather than identity so that the
+    SDK ``Window`` classes (used in Dag-author code) and the core ``Window``
+    classes (used after deserialization) both resolve to the same default.
+    """
+    cls = _DEFAULT_FINE_MAPPER_BY_WINDOW_NAME.get(type(window).__name__)
+    if cls is None:
+        raise ValueError(
+            f"FanOutMapper has no default fine_mapper for window type "
+            f"{type(window).__name__}; pass fine_mapper explicitly."
+        )
+    return cls()

@@ -41,6 +41,7 @@ from airflow.sdk import (
     DeltaDataIntervalTimetable,
     DeltaTriggerTimetable,
     EventsTimetable,
+    FanOutMapper,
     HourWindow,
     IdentityMapper,
     MonthWindow,
@@ -413,6 +414,7 @@ class _Serializer:
     BUILTIN_PARTITION_MAPPERS: dict[type, str] = {
         AllowedKeyMapper: "airflow.partition_mappers.allowed_key.AllowedKeyMapper",
         ChainMapper: "airflow.partition_mappers.chain.ChainMapper",
+        FanOutMapper: "airflow.partition_mappers.temporal.FanOutMapper",
         IdentityMapper: "airflow.partition_mappers.identity.IdentityMapper",
         ProductMapper: "airflow.partition_mappers.product.ProductMapper",
         RollupMapper: "airflow.partition_mappers.base.RollupMapper",
@@ -485,6 +487,14 @@ class _Serializer:
         return {
             "source_mapper": encode_partition_mapper(partition_mapper.source_mapper),
             "window": encode_window(partition_mapper.window),
+        }
+
+    @serialize_partition_mapper.register
+    def _(self, partition_mapper: FanOutMapper) -> dict[str, Any]:
+        return {
+            "upstream_mapper": encode_partition_mapper(partition_mapper.upstream_mapper),
+            "window": encode_window(partition_mapper.window),
+            "fine_mapper": encode_partition_mapper(partition_mapper.fine_mapper),
         }
 
     @functools.singledispatchmethod

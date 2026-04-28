@@ -25,6 +25,7 @@ from airflow.sdk import (
     Asset,
     CronPartitionTimetable,
     DayWindow,
+    FanOutMapper,
     IdentityMapper,
     MonthWindow,
     PartitionedAssetTimetable,
@@ -33,7 +34,9 @@ from airflow.sdk import (
     StartOfDayMapper,
     StartOfHourMapper,
     StartOfMonthMapper,
+    StartOfWeekMapper,
     StartOfYearMapper,
+    WeekWindow,
     asset,
     task,
 )
@@ -302,3 +305,56 @@ with DAG(
         print(f"All daily partitions received. Month: {dag_run.partition_key}")
 
     summarise_team_a_month()
+
+
+# --- Fan-out: one weekly upstream → seven daily downstream Dag runs ----------
+
+weekly_model_artifact = Asset(uri="file://artifacts/models/weekly.bin", name="weekly_model_artifact")
+
+
+with DAG(
+    dag_id="train_weekly_model",
+    schedule=CronPartitionTimetable("0 0 * * 1", timezone="UTC"),
+    tags=["model", "training"],
+):
+    """Train a weekly model artifact every Monday at 00:00 UTC."""
+
+    @task(outlets=[weekly_model_artifact])
+    def train_model():
+        """Materialize the model artifact for the current weekly partition."""
+        pass
+
+    train_model()
+
+
+with DAG(
+    dag_id="daily_inference",
+    schedule=PartitionedAssetTimetable(
+        assets=weekly_model_artifact,
+        # FanOutMapper composes upstream_mapper + window + (optional) fine_mapper.
+        # WeekWindow.to_upstream() yields seven daily datetimes inside one week,
+        # and the default fine_mapper for WeekWindow is StartOfDayMapper, so a
+        # weekly upstream key fans out to seven ``%Y-%m-%d`` downstream keys.
+        default_partition_mapper=FanOutMapper(
+            upstream_mapper=StartOfWeekMapper(),
+            window=WeekWindow(),
+        ),
+    ),
+    catchup=False,
+    tags=["model", "inference"],
+):
+    """
+    Run daily inference using the latest weekly model.
+
+    A single weekly model artifact fans out to seven daily inference Dag runs
+    via ``FanOutMapper(upstream_mapper=StartOfWeekMapper(), window=WeekWindow())``.
+    """
+
+    @task
+    def run_inference(dag_run=None):
+        """Run inference for one daily partition derived from the weekly model."""
+        if TYPE_CHECKING:
+            assert dag_run
+        print(dag_run.partition_key)
+
+    run_inference()

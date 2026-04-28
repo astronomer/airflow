@@ -52,6 +52,7 @@ __all__ = [
     "DeltaTriggerTimetable",
     "EdgeModifier",
     "EventsTimetable",
+    "FanOutMapper",
     "HourWindow",
     "IdentityMapper",
     "Label",
@@ -139,6 +140,7 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.partition_mappers.identity import IdentityMapper
     from airflow.sdk.definitions.partition_mappers.product import ProductMapper
     from airflow.sdk.definitions.partition_mappers.temporal import (
+        FanOutMapper,
         StartOfDayMapper,
         StartOfHourMapper,
         StartOfMonthMapper,
@@ -213,6 +215,7 @@ __lazy_imports: dict[str, str] = {
     "DeltaTriggerTimetable": ".definitions.timetables.trigger",
     "EdgeModifier": ".definitions.edges",
     "EventsTimetable": ".definitions.timetables.events",
+    "FanOutMapper": ".definitions.partition_mappers.temporal",
     "HourWindow": ".definitions.partition_mappers.window",
     "IdentityMapper": ".definitions.partition_mappers.identity",
     "Label": ".definitions.edges",

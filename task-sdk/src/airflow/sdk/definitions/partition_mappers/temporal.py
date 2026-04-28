@@ -16,7 +16,12 @@
 # under the License.
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from airflow.sdk.definitions.partition_mappers.base import PartitionMapper
+
+if TYPE_CHECKING:
+    from airflow.sdk.definitions.partition_mappers.window import Window
 
 
 class _BaseTemporalMapper(PartitionMapper):
@@ -77,3 +82,61 @@ class StartOfYearMapper(_BaseTemporalMapper):
     """Map a time-based partition key to year."""
 
     default_output_format = "%Y"
+
+
+class FanOutMapper(PartitionMapper):
+    """
+    Partition mapper that fans one upstream key out into multiple downstream keys.
+
+    Compose an ``upstream_mapper`` (which parses the coarse-granularity upstream
+    key and normalizes it to a period start) with a ``window`` that enumerates
+    the fine-granularity members of that period. ``fine_mapper`` formats each
+    member into a downstream key string; if omitted, a default fine mapper is
+    chosen from the window class (e.g. ``WeekWindow`` → ``StartOfDayMapper``).
+
+    Symmetric to :class:`~airflow.sdk.RollupMapper`: rollup is N→1 (downstream
+    waits for all members), fanout is 1→N (one upstream event creates many
+    downstream Dag runs).
+
+    .. code-block:: python
+
+        # Weekly upstream → 7 daily downstream Dag runs
+        FanOutMapper(upstream_mapper=StartOfWeekMapper(), window=WeekWindow())
+    """
+
+    def __init__(
+        self,
+        *,
+        upstream_mapper: PartitionMapper,
+        window: Window,
+        fine_mapper: PartitionMapper | None = None,
+    ) -> None:
+        self.upstream_mapper = upstream_mapper
+        self.window = window
+        self.fine_mapper = fine_mapper or _resolve_default_fine_mapper(window)
+
+
+_DEFAULT_FINE_MAPPER_BY_WINDOW_NAME: dict[str, type[_BaseTemporalMapper]] = {
+    "DayWindow": StartOfHourMapper,
+    "WeekWindow": StartOfDayMapper,
+    "MonthWindow": StartOfDayMapper,
+    "QuarterWindow": StartOfMonthMapper,
+    "YearWindow": StartOfMonthMapper,
+}
+
+
+def _resolve_default_fine_mapper(window: Window) -> PartitionMapper:
+    """
+    Return the conventional fine-grained mapper for *window*.
+
+    Looked up by the window's class **name** rather than identity so that the
+    SDK ``Window`` classes (used in Dag-author code) and the core ``Window``
+    classes (used after deserialization) both resolve to the same default.
+    """
+    cls = _DEFAULT_FINE_MAPPER_BY_WINDOW_NAME.get(type(window).__name__)
+    if cls is None:
+        raise ValueError(
+            f"FanOutMapper has no default fine_mapper for window type "
+            f"{type(window).__name__}; pass fine_mapper explicitly."
+        )
+    return cls()
