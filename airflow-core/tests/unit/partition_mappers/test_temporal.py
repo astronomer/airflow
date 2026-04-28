@@ -57,7 +57,7 @@ class TestTemporalMappers:
         ],
     )
     @pytest.mark.parametrize(
-        ("mapper_cls", "expected_outut_format", "extra_kwargs"),
+        ("mapper_cls", "expected_output_format", "extra_kwargs"),
         [
             (StartOfHourMapper, "%Y-%m-%dT%H", {}),
             (StartOfDayMapper, "%Y-%m-%d", {}),
@@ -70,7 +70,7 @@ class TestTemporalMappers:
     def test_serialize(
         self,
         mapper_cls: type[_BaseTemporalMapper],
-        expected_outut_format: str,
+        expected_output_format: str,
         extra_kwargs: dict[str, int],
         timezone: str | None,
         expected_timezone: str,
@@ -81,7 +81,7 @@ class TestTemporalMappers:
             == {
                 "timezone": expected_timezone,
                 "input_format": "%Y-%m-%dT%H:%M:%S",
-                "output_format": expected_outut_format,
+                "output_format": expected_output_format,
             }
             | extra_kwargs
         )
