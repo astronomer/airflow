@@ -261,6 +261,9 @@ labelPRBasedOnFilePath:
   provider:samba:
     - providers/samba/**
 
+  provider:sdk-executable:
+    - providers/sdk/executable/**
+
   provider:segment:
     - providers/segment/**
 
