@@ -110,6 +110,15 @@ class _DataIntervalTimetable(Timetable):
             else:
                 # Data interval starts from the end of the previous interval.
                 start = align_last_data_interval_end
+            # A zero-length previous interval (start == end) collapses logical_date
+            # onto the existing run; advance one period so we don't re-emit it.
+            # This shape comes from CronTriggerTimetable runs scheduled before a
+            # switch to a CronDataIntervalTimetable.
+            if (
+                last_automated_data_interval.start == last_automated_data_interval.end
+                and start == last_automated_data_interval.start
+            ):
+                start = self._get_next(start)
         if restriction.latest is not None and start > restriction.latest:
             return None
         end = self._get_next(start)
