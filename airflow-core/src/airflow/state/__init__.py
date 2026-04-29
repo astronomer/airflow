@@ -36,3 +36,14 @@ def resolve_state_backend() -> type[BaseStateBackend]:
             f"Your custom state backend `{clazz.__name__}` is not a subclass of `BaseStateBackend`."
         )
     return clazz
+
+
+_backend_instance: BaseStateBackend | None = None
+
+
+def get_state_backend() -> BaseStateBackend:
+    """Return a cached instance of the configured state backend."""
+    global _backend_instance
+    if _backend_instance is None:
+        _backend_instance = resolve_state_backend()()
+    return _backend_instance
