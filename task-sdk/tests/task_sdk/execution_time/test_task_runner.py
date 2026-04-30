@@ -54,7 +54,6 @@ from airflow.sdk import (
     task as task_decorator,
     timezone,
 )
-from airflow.sdk._shared.workloads import TaskInstanceDTO
 from airflow.sdk.api.datamodels._generated import (
     AssetProfile,
     AssetResponse,
@@ -146,6 +145,7 @@ from airflow.sdk.execution_time.task_runner import (
     run,
     startup,
 )
+from airflow.sdk.execution_time.workloads.task import TaskInstanceDTO
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import deserialize
 from airflow.triggers.base import BaseEventTrigger, BaseTrigger, TriggerEvent

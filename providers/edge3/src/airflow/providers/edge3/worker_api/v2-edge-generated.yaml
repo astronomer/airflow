@@ -1259,12 +1259,18 @@ components:
       - queue
       - priority_weight
       title: TaskInstanceDTO
-      description: 'TaskInstanceDTO with executor-specific ``key`` property.
+      description: 'Concrete TaskInstanceDTO used by executors and the Task SDK.
 
 
-        Extends the shared :class:`~airflow._shared.workloads.TaskInstanceDTO`
+        The fields declared on this class are kept identical to the duplicate
 
-        to add the :attr:`key` property used by executors for workload tracking.'
+        in :mod:`airflow.sdk.execution_time.workloads.task` by the
+
+        ``check-task-instance-dto-sync`` prek hook. Update both files together.
+
+        Methods (such as :attr:`key`) are airflow-core-specific and are not
+
+        checked by the hook.'
     TaskInstanceState:
       type: string
       enum:
