@@ -20,7 +20,7 @@ from typing import Annotated
 from uuid import UUID
 
 from cadwyn import VersionedAPIRouter
-from fastapi import HTTPException, Path, Security, status
+from fastapi import HTTPException, Path, Query, Security, status
 from sqlalchemy.orm import Session
 
 from airflow._shared.state import TaskScope
@@ -103,13 +103,16 @@ def delete_task_state(
 def clear_task_state(
     task_instance_id: UUID,
     session: SessionDep,
+    all_map_indices: Annotated[bool, Query()] = False,
 ) -> None:
     """
-    Delete all task state keys for this task.
+    Delete all task state keys for this task instance.
 
-    For mapped tasks this clears state across every map_index of the task; the
-    requesting worker's ``map_index`` is intentionally dropped from the scope. In short,
-    this wipe's off a task's state entirely.
+    By default, only keys for the requesting TI's exact ``map_index`` are
+    cleared — same isolation as single-key DELETE. Pass
+    ``?all_map_indices=true`` to wipe state across every mapped instance of
+    the task; the SDK forwards this when the caller asks for a fleet-wide
+    reset.
     """
     ti = session.get(TI, task_instance_id)
     if ti is None:
@@ -120,5 +123,5 @@ def clear_task_state(
                 "message": f"Task instance {task_instance_id} not found",
             },
         )
-    scope = TaskScope(dag_id=ti.dag_id, run_id=ti.run_id, task_id=ti.task_id)
-    get_state_backend().clear(scope)
+    scope = TaskScope(dag_id=ti.dag_id, run_id=ti.run_id, task_id=ti.task_id, map_index=ti.map_index)
+    get_state_backend().clear(scope, all_map_indices=all_map_indices)

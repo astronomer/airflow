@@ -179,14 +179,10 @@ class TestClearTaskState:
 
         assert response.status_code == 204
 
-    def test_clear_from_mapped_ti_wipes_all_map_indices(
-        self, client: TestClient, create_task_instance: CreateTaskInstance
-    ):
-        """Clear-all from a mapped instance wipes state across mapped tasks."""
-        ti = create_task_instance(map_index=2)
+    def _seed_fleet_rows(self, ti, indices: tuple[int, ...]) -> None:
         with create_session() as session:
             now = timezone.utcnow()
-            for idx in (0, 1, 2):
+            for idx in indices:
                 session.add(
                     TaskStateModel(
                         dag_run_id=ti.dag_run.id,
@@ -201,7 +197,35 @@ class TestClearTaskState:
                 )
             session.commit()
 
+    def test_clear_default_only_clears_this_map_index(
+        self, client: TestClient, create_task_instance: CreateTaskInstance
+    ):
+        """Clear without the query param only wipes the requesting TI's own map_index."""
+        ti = create_task_instance(map_index=2)
+        self._seed_fleet_rows(ti, (0, 1, 2))
+
         response = client.delete(_api_url(ti.id))
+
+        assert response.status_code == 204
+        with create_session() as session:
+            remaining_indices = sorted(
+                session.scalars(
+                    select(TaskStateModel.map_index).where(
+                        TaskStateModel.dag_id == ti.dag_id,
+                        TaskStateModel.task_id == ti.task_id,
+                    )
+                ).all()
+            )
+            assert remaining_indices == [0, 1]
+
+    def test_clear_with_all_map_indices_query_param_wipes_fleet(
+        self, client: TestClient, create_task_instance: CreateTaskInstance
+    ):
+        """Clear with ?all_map_indices=true wipes state for every mapped instance."""
+        ti = create_task_instance(map_index=2)
+        self._seed_fleet_rows(ti, (0, 1, 2))
+
+        response = client.delete(_api_url(ti.id), params={"all_map_indices": "true"})
 
         assert response.status_code == 204
         with create_session() as session:
