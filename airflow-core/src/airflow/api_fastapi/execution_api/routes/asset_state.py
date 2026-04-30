@@ -17,10 +17,13 @@
 """
 Execution API routes for asset state.
 
-Per-task asset registration checks (i.e. enforcing that the requesting task
-references the asset as inlet or outlet) are intentionally not implemented
-here. AIP-103 sketches a write/read asymmetry but explicitly defers the
-precise authorization rules to AIP-93 as mentioned in AIP-103.
+Asset state is keyed by asset *name* (not integer id) in the URL — asset names
+are unique, and callers (task SDK accessors) have the name from their Asset
+object without needing a DB lookup.  The route resolves name → asset_id
+internally for the state backend scope.
+
+Per-task asset registration checks are intentionally not implemented here
+(deferred to AIP-93 — see TODO comment below).
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from typing import Annotated
 
 from cadwyn import VersionedAPIRouter
 from fastapi import HTTPException, Path, status
+from sqlalchemy import select
 
 from airflow._shared.state import AssetScope
 from airflow.api_fastapi.common.db.common import SessionDep
@@ -53,12 +57,25 @@ router = VersionedAPIRouter(
 )
 
 
-@router.get("/{asset_id}/{key}")
+def _resolve_asset_id(name: str, session: SessionDep) -> int:
+    """Resolve asset name → integer asset_id, 404 if not found."""
+    asset_id = session.scalar(select(AssetModel.id).where(AssetModel.name == name))
+    if asset_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"reason": "not_found", "message": f"Asset {name!r} not found"},
+        )
+    return asset_id
+
+
+@router.get("/{name}/{key}")
 def get_asset_state(
-    asset_id: int,
+    name: Annotated[str, Path(min_length=1)],
     key: Annotated[str, Path(min_length=1)],
+    session: SessionDep,
 ) -> AssetStateResponse:
-    """Get an asset state."""
+    """Get an asset state value."""
+    asset_id = _resolve_asset_id(name, session)
     value = get_state_backend().get(AssetScope(asset_id=asset_id), key)
     if value is None:
         raise HTTPException(
@@ -71,34 +88,34 @@ def get_asset_state(
     return AssetStateResponse(value=value)
 
 
-@router.put("/{asset_id}/{key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.put("/{name}/{key}", status_code=status.HTTP_204_NO_CONTENT)
 def set_asset_state(
-    asset_id: int,
+    name: Annotated[str, Path(min_length=1)],
     key: Annotated[str, Path(min_length=1)],
     body: AssetStatePutBody,
     session: SessionDep,
 ) -> None:
-    """Set an asset state."""
-    if session.get(AssetModel, asset_id) is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"reason": "not_found", "message": f"Asset {asset_id} not found"},
-        )
+    """Set an asset state value."""
+    asset_id = _resolve_asset_id(name, session)
     get_state_backend().set(AssetScope(asset_id=asset_id), key, body.value)
 
 
-@router.delete("/{asset_id}/{key}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{name}/{key}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_asset_state(
-    asset_id: int,
+    name: Annotated[str, Path(min_length=1)],
     key: Annotated[str, Path(min_length=1)],
+    session: SessionDep,
 ) -> None:
-    """Delete an asset state."""
+    """Delete a single asset state key."""
+    asset_id = _resolve_asset_id(name, session)
     get_state_backend().delete(AssetScope(asset_id=asset_id), key)
 
 
-@router.delete("/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{name}", status_code=status.HTTP_204_NO_CONTENT)
 def clear_asset_state(
-    asset_id: int,
+    name: Annotated[str, Path(min_length=1)],
+    session: SessionDep,
 ) -> None:
     """Delete all state keys for an asset."""
+    asset_id = _resolve_asset_id(name, session)
     get_state_backend().clear(AssetScope(asset_id=asset_id))
