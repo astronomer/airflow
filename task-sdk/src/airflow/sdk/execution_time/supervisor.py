@@ -132,6 +132,12 @@ try:
 except ImportError:
     send_fds = None  # type: ignore[assignment]
 
+from opentelemetry import context as otel_context, trace
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+tracer = trace.get_tracer(__name__)
+_trace_propagator = TraceContextTextMapPropagator()
+
 if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger, WrappedLogger
     from typing_extensions import Self
@@ -738,6 +744,13 @@ class WatchedSubprocess:
                 log.exception("Unable to decode message", body=request.body)
                 continue
 
+            # Restore the task runner's trace context so that any outbound HTTP calls made while
+            # handling this request are linked to the correct task span, not the supervisor's own span.
+            token = None
+            if request.traceparent:
+                ctx = _trace_propagator.extract({"traceparent": request.traceparent})
+                token = otel_context.attach(ctx)
+
             try:
                 self._handle_request(msg, log, request.id)
             except ServerResponseError as e:
@@ -762,6 +775,9 @@ class WatchedSubprocess:
                     ),
                     request_id=request.id,
                 )
+            finally:
+                if token is not None:
+                    otel_context.detach(token)
 
     def _handle_request(self, msg, log: FilteringBoundLogger, req_id: int) -> None:
         raise NotImplementedError()
@@ -1154,41 +1170,46 @@ class ActivitySubprocess(WatchedSubprocess):
     ) -> None:
         """Send startup message to the subprocess."""
         self.ti = ti  # type: ignore[assignment]
-        try:
-            # We've forked, but the task won't start doing anything until we send it the StartupDetails
-            # message. But before we do that, we need to tell the server it's started (so it has the chance to
-            # tell us "no, stop!" for any reason)
-            ti_context = self.client.task_instances.start(ti.id, self.pid, datetime.now(tz=timezone.utc))
-            self._should_retry = ti_context.should_retry
-            self._last_successful_heartbeat = time.monotonic()
-        except Exception:
-            # On any error kill that subprocess!
-            self.kill(signal.SIGKILL)
-            raise
+        _ti_ctx = _trace_propagator.extract(ti.context_carrier) if ti.context_carrier else None
+        with tracer.start_as_current_span("supervisor.task_startup", context=_ti_ctx):
+            try:
+                # We've forked, but the task won't start doing anything until we send it the StartupDetails
+                # message. But before we do that, we need to tell the server it's started (so it has the chance to
+                # tell us "no, stop!" for any reason)
+                with tracer.start_as_current_span("client.task_instances.start"):
+                    ti_context = self.client.task_instances.start(
+                        ti.id, self.pid, datetime.now(tz=timezone.utc)
+                    )
+                self._should_retry = ti_context.should_retry
+                self._last_successful_heartbeat = time.monotonic()
+            except Exception:
+                # On any error kill that subprocess!
+                self.kill(signal.SIGKILL)
+                raise
 
-        # ti_context.start_date is only populated by the server when resuming from a deferral (to preserve the
-        # original start_date rather than using the resume time). We fall back to now() otherwise. This ensures
-        # that `context["ti"].start_date` always reflects the *first* start time. See TIRunContext.start_date
-        # for more context. Do not remove this without updating related comments and deferral handling.
-        start_date = ti_context.start_date or datetime.now(tz=timezone.utc)
+            # ti_context.start_date is only populated by the server when resuming from a deferral (to preserve the
+            # original start_date rather than using the resume time). We fall back to now() otherwise. This ensures
+            # that `context["ti"].start_date` always reflects the *first* start time. See TIRunContext.start_date
+            # for more context. Do not remove this without updating related comments and deferral handling.
+            start_date = ti_context.start_date or datetime.now(tz=timezone.utc)
 
-        msg = StartupDetails.model_construct(
-            ti=ti,
-            dag_rel_path=os.fspath(dag_rel_path),
-            bundle_info=bundle_info,
-            ti_context=ti_context,
-            start_date=start_date,
-            sentry_integration=sentry_integration,
-        )
+            msg = StartupDetails.model_construct(
+                ti=ti,
+                dag_rel_path=os.fspath(dag_rel_path),
+                bundle_info=bundle_info,
+                ti_context=ti_context,
+                start_date=start_date,
+                sentry_integration=sentry_integration,
+            )
 
-        # Send the message to tell the process what it needs to execute
-        log.debug("Sending", msg=msg)
+            # Send the message to tell the process what it needs to execute
+            log.debug("Sending", msg=msg)
 
-        try:
-            self.send_msg(msg, request_id=0)
-        except (BrokenPipeError, ConnectionResetError):
-            # Debug is fine, the process will have shown _something_ in it's last_chance exception handler
-            log.debug("Couldn't send startup message to Subprocess - it died very early", pid=self.pid)
+            try:
+                self.send_msg(msg, request_id=0)
+            except (BrokenPipeError, ConnectionResetError):
+                # Debug is fine, the process will have shown _something_ in it's last_chance exception handler
+                log.debug("Couldn't send startup message to Subprocess - it died very early", pid=self.pid)
 
     def wait(self) -> int:
         if self._exit_code is not None:
@@ -2244,6 +2265,9 @@ def supervise_task(
         finally:
             if log_path and log_file_descriptor:
                 log_file_descriptor.close()
+            provider = trace.get_tracer_provider()
+            if hasattr(provider, "force_flush"):
+                provider.force_flush(timeout_millis=5000)
 
 
 def supervise(**kwargs) -> int:
