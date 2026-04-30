@@ -30,9 +30,6 @@ class Encoding(str, Enum):
     TYPE = "__type"
     VAR = "__var"
 
-    def __str__(self) -> str:
-        return self.value
-
 
 # Supported types for encoding. primitives and list are not encoded.
 @unique

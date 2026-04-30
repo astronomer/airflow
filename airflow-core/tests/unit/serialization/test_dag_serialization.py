@@ -815,6 +815,8 @@ class TestStringifiedDAGs:
                 "on_failure_fail_dagrun",
                 "_needs_expansion",
                 "_is_sensor",
+                # trigger_kwargs is kept as raw JSON after deserialization; checked separately
+                "start_trigger_args",
             }
         else:  # Promised to be mapped by the assert above.
             assert isinstance(serialized_task, SerializedMappedOperator)
@@ -854,6 +856,20 @@ class TestStringifiedDAGs:
             assert task.resources is None or task.resources == []
         else:
             assert serialized_task.resources == task.resources
+
+        # start_trigger_args: trigger_kwargs is kept as raw JSON after deserialization;
+        # compare after deserializing both sides
+        if task.start_trigger_args is not None:
+            from airflow.serialization.serialized_objects import BaseSerialization
+
+            s = serialized_task.start_trigger_args
+            o = task.start_trigger_args
+            assert s.trigger_cls == o.trigger_cls
+            assert s.next_method == o.next_method
+            assert s.timeout == o.timeout
+            assert BaseSerialization.deserialize(s.trigger_kwargs or {}) == BaseSerialization.deserialize(
+                o.trigger_kwargs or {}
+            )
 
         assert [ensure_serialized_asset(i) for i in task.inlets] == serialized_task.inlets
         assert [ensure_serialized_asset(o) for o in task.outlets] == serialized_task.outlets
