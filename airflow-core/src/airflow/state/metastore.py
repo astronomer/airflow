@@ -20,7 +20,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select
-from typing_extensions import assert_never
 
 from airflow._shared.state import AssetScope, BaseStateBackend, StateScope, TaskScope
 from airflow._shared.timezones import timezone
