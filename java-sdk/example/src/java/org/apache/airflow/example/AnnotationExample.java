@@ -23,24 +23,47 @@ import org.apache.airflow.sdk.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Date;
+
 @DagBuilder(id = "java_annotation_example")
 public class AnnotationExample {
   private static final Logger logger = LoggerFactory.getLogger(AnnotationExample.class);
 
   @DagBuilder.Task(id = "extract")
-  public void extractValue(Client client) {
+  public long extractValue(Client client) throws InterruptedException {
     logger.info("Hello from task");
+
+    var pythonXcom = client.getXCom("python_task_1");
+    logger.info("Got XCom from Python Task 'python_task_1' {}", pythonXcom);
+
     var connection = client.getConnection("test_http");
     logger.info("Got con {}", connection);
+
+    for (var i = 0; i < 3; i++) {
+      logger.info("Beep {}, next time will be {}", i, new Date());
+      Thread.sleep(2 * 1000);
+    }
+
+    logger.info("Goodbye from task");
+    return new Date().getTime();
   }
 
   @DagBuilder.Task(id = "transform", depends = {"extract"})
-  public void transformValue() {
-    logger.info("Transforming...");
+  public long transformValue(Client client) {
+    var extracted = client.getXCom("extract");
+    logger.info("Got XCom from 'extract' {}", extracted);
+
+    var variable = client.getVariable("my_variable");
+    logger.info("Got variable {}", variable);
+
+    logger.info("Push XCom to python task 2");
+    return new Date().getTime();
   }
 
   @DagBuilder.Task(depends = {"transform"})
-  public void load() {
-    logger.info("Done!");
+  public void load(Client client) {
+    var transformed = client.getXCom("transform");
+    logger.info("Got XCom from 'transform' {}", transformed);
+    throw new RuntimeException("I failed");
   }
 }

@@ -34,6 +34,7 @@ import javax.lang.model.SourceVersion
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.Modifier
 import javax.lang.model.element.TypeElement
+import javax.lang.model.type.TypeKind
 import javax.tools.Diagnostic
 import java.util.List as JavaList
 
@@ -162,12 +163,18 @@ class DagBuilderProcessor : AbstractProcessor() {
           }
         }
       }
-    executeSpec.addStatement(
-      $$"new $T().$L($L)", // TODO: Set XCom from return value.
-      ClassName.get(parent),
-      inner.simpleName,
-      innerArgs,
-    )
+    if (inner.returnType.kind == TypeKind.VOID) {
+      $$"new $T().$L($L)"
+    } else {
+      $$"client.setXCom(new $T().$L($L))"
+    }.also {
+      executeSpec.addStatement(
+        it,
+        ClassName.get(parent),
+        inner.simpleName,
+        innerArgs,
+      )
+    }
 
     return TypeSpec
       .classBuilder(name)
