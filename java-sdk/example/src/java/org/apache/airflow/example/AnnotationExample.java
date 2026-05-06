@@ -20,18 +20,27 @@
 package org.apache.airflow.example;
 
 import org.apache.airflow.sdk.*;
-import org.jetbrains.annotations.NotNull;
-import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-public class ExampleBundleBuilder implements BundleBuilder {
-  @NotNull
-  @Override
-  public Iterable<Dag> getDags() {
-    return List.of(JavaExampleBuilder.build(), AnnotationExampleBuilder.build());
+@DagBuilder(id = "java_annotation_example")
+public class AnnotationExample {
+  private static final Logger logger = LoggerFactory.getLogger(AnnotationExample.class);
+
+  @DagBuilder.Task(id = "extract")
+  public void extractValue(Client client) {
+    logger.info("Hello from task");
+    var connection = client.getConnection("test_http");
+    logger.info("Got con {}", connection);
   }
 
-  public static void main(String[] args) {
-    var bundle = new ExampleBundleBuilder().build();
-    Server.create(args).serve(bundle);
+  @DagBuilder.Task(id = "transform", depends = {"extract"})
+  public void transformValue() {
+    logger.info("Transforming...");
+  }
+
+  @DagBuilder.Task(depends = {"transform"})
+  public void load() {
+    logger.info("Done!");
   }
 }
