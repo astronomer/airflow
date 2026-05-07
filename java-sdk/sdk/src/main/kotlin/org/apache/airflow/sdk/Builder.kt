@@ -38,7 +38,6 @@ import javax.lang.model.element.TypeElement
 import javax.lang.model.type.TypeKind
 import javax.lang.model.type.TypeMirror
 import javax.tools.Diagnostic
-import java.util.List as JavaList
 
 class Builder internal constructor() {
   /**
@@ -48,11 +47,13 @@ class Builder internal constructor() {
    * to create the Dag structure automatically.
    *
    * @param id Override the Dag ID. If empty or not provided, the annotated class's name is used by default.
+   * @param to Name of the Dag-builder class. If empty or not provided, use the annotated class name + "Builder".
    */
   @Target(AnnotationTarget.CLASS)
   @MustBeDocumented
   annotation class Dag(
     val id: String = "",
+    val to: String = "",
   )
 
   /**
@@ -91,23 +92,32 @@ class BuilderProcessor : AbstractProcessor() {
   ): Boolean {
     if (annotations.isEmpty()) return false
     roundEnv.getElementsAnnotatedWith(Builder.Dag::class.java).filterIsInstance<TypeElement>().forEach { el ->
-      runCatching { generateDagBuilder(el) }.onFailure { e ->
-        processingEnv.messager.printMessage(
-          Diagnostic.Kind.ERROR,
-          e.message ?: "Unknown error",
-          el,
-        )
+      with(processingEnv) {
+        runCatching {
+          JavaFile
+            .builder(
+              elementUtils.getPackageOf(el).qualifiedName.toString(),
+              buildDag(el),
+            ).build()
+            .writeTo(filer)
+        }.onFailure { e ->
+          messager.printMessage(
+            Diagnostic.Kind.ERROR,
+            e.message ?: "Unknown error",
+            el,
+          )
+        }
       }
     }
     return true
   }
 
-  private fun generateDagBuilder(el: TypeElement) {
-    val dagId = el.getAnnotation(Builder.Dag::class.java)!!.id.ifBlank { el.simpleName.toString() }
+  private fun buildDag(el: TypeElement): TypeSpec {
+    val ann = el.getAnnotation(Builder.Dag::class.java)!!
 
     val builderClass =
       TypeSpec
-        .classBuilder("${el.simpleName}Builder")
+        .classBuilder(ann.to.ifBlank { "${el.simpleName}Builder" })
         .addModifiers(Modifier.PUBLIC, Modifier.FINAL)
 
     val buildMethod =
@@ -115,7 +125,7 @@ class BuilderProcessor : AbstractProcessor() {
         .methodBuilder("build")
         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
         .returns(ClassName.get(Dag::class.java))
-        .addStatement($$"var dag = new $T($S)", ClassName.get(Dag::class.java), dagId)
+        .addStatement($$"var dag = new $T($S)", ClassName.get(Dag::class.java), ann.id.ifBlank { el.simpleName })
 
     for (inner in el.enclosedElements) {
       if (inner !is ExecutableElement) continue
@@ -125,31 +135,22 @@ class BuilderProcessor : AbstractProcessor() {
       val innerName = inner.simpleName.toString().replaceFirstChar(Char::uppercase)
       val dependsPlaceholder = ann.depends.joinToString { $$"$S" }
 
-      builderClass.addType(generateTask(innerName, inner, el))
+      builderClass.addType(buildTask(innerName, inner, el))
       buildMethod.addStatement(
         $$"dag.addTask($S, $L.class, $L.of($${dependsPlaceholder}))",
-        ann.id.ifBlank { inner.simpleName.toString() },
+        ann.id.ifBlank { inner.simpleName },
         innerName,
-        ClassName.get(JavaList::class.java),
+        ClassName.get(java.util.List::class.java),
         *ann.depends,
       )
     }
 
     buildMethod.addStatement("return dag")
     builderClass.addMethod(buildMethod.build())
-
-    JavaFile
-      .builder(
-        processingEnv.elementUtils
-          .getPackageOf(el)
-          .qualifiedName
-          .toString(),
-        builderClass.build(),
-      ).build()
-      .writeTo(processingEnv.filer)
+    return builderClass.build()
   }
 
-  private fun generateTask(
+  private fun buildTask(
     name: String,
     inner: ExecutableElement,
     parent: TypeElement,

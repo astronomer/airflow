@@ -60,7 +60,7 @@ public class AnnotationExample {
   }
 
   @Builder.Task(depends = {"transform"})
-  public void load(Client client, @Builder.XCom(task = "transform") long transformed) {
+  public void load(@Builder.XCom(task = "transform") long transformed) {
     logger.info("Got XCom from 'transform' {}", transformed);
     throw new RuntimeException("I failed");
   }
