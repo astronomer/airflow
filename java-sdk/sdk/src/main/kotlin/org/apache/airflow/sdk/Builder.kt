@@ -133,15 +133,24 @@ class BuilderProcessor : AbstractProcessor() {
 
       val ann = inner.getAnnotation(Builder.Task::class.java) ?: continue
       val innerName = inner.simpleName.toString().replaceFirstChar(Char::uppercase)
-      val dependsPlaceholder = ann.depends.joinToString { $$"$S" }
 
-      builderClass.addType(buildTask(innerName, inner, el))
+      val task = buildTask(innerName, inner, el)
+      builderClass.addType(task.spec)
+
+      val depends =
+        task.required
+          .map { it.taskId }
+          .plus(ann.depends)
+          .toTypedArray()
       buildMethod.addStatement(
-        $$"dag.addTask($S, $L.class, $L.of($${dependsPlaceholder}))",
+        if (depends.isEmpty()) {
+          $$"dag.addTask($S, $L.class)"
+        } else {
+          $$"dag.addTask($S, $L.class, new String[]{$${depends.joinToString { $$"$S" }}})"
+        },
         ann.id.ifBlank { inner.simpleName },
         innerName,
-        ClassName.get(java.util.List::class.java),
-        *ann.depends,
+        *depends,
       )
     }
 
@@ -154,7 +163,7 @@ class BuilderProcessor : AbstractProcessor() {
     name: String,
     inner: ExecutableElement,
     parent: TypeElement,
-  ): TypeSpec {
+  ): BuildTaskResult {
     val clientType = ClassName.get(Client::class.java)
     val contextType = ClassName.get(Context::class.java)
 
@@ -181,7 +190,7 @@ class BuilderProcessor : AbstractProcessor() {
               }
             isType(type, clientType) -> "client"
             isType(type, contextType) -> "context"
-            else -> throw IllegalArgumentException("Unsupported parameter type: $type")
+            else -> throw IllegalArgumentException("Unsupported task parameter '${param.simpleName}' with type: $type")
           }
         }
       }
@@ -206,12 +215,14 @@ class BuilderProcessor : AbstractProcessor() {
       )
     }
 
-    return TypeSpec
-      .classBuilder(name)
-      .addSuperinterface(Task::class.java)
-      .addModifiers(Modifier.PUBLIC, Modifier.FINAL, Modifier.STATIC)
-      .addMethod(executeSpec.build())
-      .build()
+    val spec =
+      TypeSpec
+        .classBuilder(name)
+        .addSuperinterface(Task::class.java)
+        .addModifiers(Modifier.PUBLIC, Modifier.FINAL, Modifier.STATIC)
+        .addMethod(executeSpec.build())
+        .build()
+    return BuildTaskResult(spec, required)
   }
 }
 
@@ -224,4 +235,9 @@ private data class RequiredXCom(
   val paramType: TypeMirror,
   val paramName: String,
   val taskId: String,
+)
+
+private data class BuildTaskResult(
+  val spec: TypeSpec,
+  val required: List<RequiredXCom>,
 )
