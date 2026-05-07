@@ -25,11 +25,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.Date;
 
-@DagBuilder(id = "java_annotation_example")
+@Builder.Dag(id = "java_annotation_example")
 public class AnnotationExample {
   private static final Logger logger = LoggerFactory.getLogger(AnnotationExample.class);
 
-  @DagBuilder.Task(id = "extract")
+  @Builder.Task(id = "extract")
   public long extractValue(Client client) throws InterruptedException {
     logger.info("Hello from task");
 
@@ -48,8 +48,8 @@ public class AnnotationExample {
     return new Date().getTime();
   }
 
-  @DagBuilder.Task(id = "transform", depends = {"extract"})
-  public long transformValue(Client client, @DagBuilder.XCom(task = "extract") long extracted) {
+  @Builder.Task(id = "transform", depends = {"extract"})
+  public long transformValue(Client client, @Builder.XCom(task = "extract") long extracted) {
     logger.info("Got XCom from 'extract' {}", extracted);
 
     var variable = client.getVariable("my_variable");
@@ -59,8 +59,8 @@ public class AnnotationExample {
     return new Date().getTime();
   }
 
-  @DagBuilder.Task(depends = {"transform"})
-  public void load(Client client, @DagBuilder.XCom(task = "transform") long transformed) {
+  @Builder.Task(depends = {"transform"})
+  public void load(Client client, @Builder.XCom(task = "transform") long transformed) {
     logger.info("Got XCom from 'transform' {}", transformed);
     throw new RuntimeException("I failed");
   }

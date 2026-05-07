@@ -1,1 +1,1 @@
-org.apache.airflow.sdk.DagBuilderProcessor
+org.apache.airflow.sdk.BuilderProcessor

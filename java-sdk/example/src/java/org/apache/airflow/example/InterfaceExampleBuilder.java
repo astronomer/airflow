@@ -26,8 +26,8 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class JavaExampleBuilder {
-  private static final Logger logger = LoggerFactory.getLogger(JavaExampleBuilder.class);
+public class InterfaceExampleBuilder {
+  private static final Logger logger = LoggerFactory.getLogger(InterfaceExampleBuilder.class);
 
   public static class Extract implements Task {
     public void execute(@NotNull Context context, Client client) throws Exception {

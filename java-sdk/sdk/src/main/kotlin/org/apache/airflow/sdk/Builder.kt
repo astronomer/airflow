@@ -40,19 +40,21 @@ import javax.lang.model.type.TypeMirror
 import javax.tools.Diagnostic
 import java.util.List as JavaList
 
-/**
- * Annotation to automate a Dag-builder pattern.
- *
- * When applied on a class Foo, this generates a FooBuilder class with a static build method
- * to create the Dag structure automatically.
- *
- * @param id Override the Dag ID. If empty or not provided, the annotated class's name is used by default.
- */
-@Target(AnnotationTarget.CLASS)
-@MustBeDocumented
-annotation class DagBuilder(
-  val id: String = "",
-) {
+class Builder internal constructor() {
+  /**
+   * Annotation to automate a Dag-builder pattern.
+   *
+   * When applied on a class Foo, this generates a FooBuilder class with a static build method
+   * to create the Dag structure automatically.
+   *
+   * @param id Override the Dag ID. If empty or not provided, the annotated class's name is used by default.
+   */
+  @Target(AnnotationTarget.CLASS)
+  @MustBeDocumented
+  annotation class Dag(
+    val id: String = "",
+  )
+
   /**
    * Annotation to automate task definition in a Dag-builder pattern.
    *
@@ -67,25 +69,28 @@ annotation class DagBuilder(
   )
 
   /**
-   * Annotation to mark a method parameter as an XCom input.
+   * Annotation to mark a task definition's method parameter as an XCom input.
+   *
+   * @param task The task ID to pull. If empty or not given, the annotated parameter's name is used by default.
+   * @param key The XCom key to pull. Defaults to the task's return value.
    */
   @Target(AnnotationTarget.VALUE_PARAMETER)
   @MustBeDocumented
   annotation class XCom(
-    val task: String,
+    val task: String = "",
     val key: String = Client.XCOM_RETURN_KEY,
   )
 }
 
-@SupportedAnnotationTypes("org.apache.airflow.sdk.DagBuilder")
+@SupportedAnnotationTypes("org.apache.airflow.sdk.Builder.Dag")
 @SupportedSourceVersion(SourceVersion.RELEASE_11)
-class DagBuilderProcessor : AbstractProcessor() {
+class BuilderProcessor : AbstractProcessor() {
   override fun process(
     annotations: Set<TypeElement>,
     roundEnv: RoundEnvironment,
   ): Boolean {
     if (annotations.isEmpty()) return false
-    roundEnv.getElementsAnnotatedWith(DagBuilder::class.java).filterIsInstance<TypeElement>().forEach { el ->
+    roundEnv.getElementsAnnotatedWith(Builder.Dag::class.java).filterIsInstance<TypeElement>().forEach { el ->
       runCatching { generateDagBuilder(el) }.onFailure { e ->
         processingEnv.messager.printMessage(
           Diagnostic.Kind.ERROR,
@@ -98,7 +103,7 @@ class DagBuilderProcessor : AbstractProcessor() {
   }
 
   private fun generateDagBuilder(el: TypeElement) {
-    val dagId = el.getAnnotation(DagBuilder::class.java)!!.id.ifBlank { el.simpleName.toString() }
+    val dagId = el.getAnnotation(Builder.Dag::class.java)!!.id.ifBlank { el.simpleName.toString() }
 
     val builderClass =
       TypeSpec
@@ -116,7 +121,7 @@ class DagBuilderProcessor : AbstractProcessor() {
       if (inner !is ExecutableElement) continue
       if (inner.isVarArgs) throw IllegalArgumentException("Cannot create task from vararg function ${inner.simpleName}")
 
-      val ann = inner.getAnnotation(DagBuilder.Task::class.java) ?: continue
+      val ann = inner.getAnnotation(Builder.Task::class.java) ?: continue
       val innerName = inner.simpleName.toString().replaceFirstChar(Char::uppercase)
       val dependsPlaceholder = ann.depends.joinToString { $$"$S" }
 
@@ -166,7 +171,7 @@ class DagBuilderProcessor : AbstractProcessor() {
     val innerArgs =
       with(processingEnv) {
         inner.parameters.joinToString { param ->
-          val anno = param.getAnnotation(DagBuilder.XCom::class.java)
+          val anno = param.getAnnotation(Builder.XCom::class.java)
           val type = param.asType()
           when {
             anno != null ->
