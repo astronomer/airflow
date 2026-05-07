@@ -27,6 +27,7 @@ import com.squareup.javapoet.MethodSpec
 import com.squareup.javapoet.TypeName
 import com.squareup.javapoet.TypeSpec
 import javax.annotation.processing.AbstractProcessor
+import javax.annotation.processing.ProcessingEnvironment
 import javax.annotation.processing.RoundEnvironment
 import javax.annotation.processing.SupportedAnnotationTypes
 import javax.annotation.processing.SupportedSourceVersion
@@ -35,6 +36,7 @@ import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.Modifier
 import javax.lang.model.element.TypeElement
 import javax.lang.model.type.TypeKind
+import javax.lang.model.type.TypeMirror
 import javax.tools.Diagnostic
 import java.util.List as JavaList
 
@@ -62,6 +64,16 @@ annotation class DagBuilder(
   annotation class Task(
     val id: String = "",
     val depends: Array<String> = [],
+  )
+
+  /**
+   * Annotation to mark a method parameter as an XCom input.
+   */
+  @Target(AnnotationTarget.VALUE_PARAMETER)
+  @MustBeDocumented
+  annotation class XCom(
+    val task: String,
+    val key: String = Client.XCOM_RETURN_KEY,
   )
 }
 
@@ -150,19 +162,31 @@ class DagBuilderProcessor : AbstractProcessor() {
         .addParameter(clientType, "client")
         .addException(Exception::class.java)
 
+    val required = mutableListOf<RequiredXCom>()
     val innerArgs =
       with(processingEnv) {
-        val clientTypeMirror = elementUtils.getTypeElement(clientType.canonicalName()).asType()
-        val contextTypeMirror = elementUtils.getTypeElement(contextType.canonicalName()).asType()
-        inner.parameters.joinToString { parameter ->
+        inner.parameters.joinToString { param ->
+          val anno = param.getAnnotation(DagBuilder.XCom::class.java)
+          val type = param.asType()
           when {
-            // TODO: Support XComArgs.
-            typeUtils.isSameType(parameter.asType(), clientTypeMirror) -> "client"
-            typeUtils.isSameType(parameter.asType(), contextTypeMirror) -> "context"
-            else -> throw IllegalArgumentException("Unsupported parameter type: ${parameter.asType()}")
+            anno != null ->
+              param.simpleName.toString().also {
+                required += RequiredXCom(type, it, anno.task.ifBlank { it })
+              }
+            isType(type, clientType) -> "client"
+            isType(type, contextType) -> "context"
+            else -> throw IllegalArgumentException("Unsupported parameter type: $type")
           }
         }
       }
+    required.forEach {
+      executeSpec.addStatement(
+        $$"var $L = ($T) client.getXCom($S)",
+        it.paramName,
+        with(TypeName.get(it.paramType)) { if (isPrimitive) box() else this },
+        it.taskId,
+      )
+    }
     if (inner.returnType.kind == TypeKind.VOID) {
       $$"new $T().$L($L)"
     } else {
@@ -184,3 +208,14 @@ class DagBuilderProcessor : AbstractProcessor() {
       .build()
   }
 }
+
+private fun ProcessingEnvironment.isType(
+  t: TypeMirror,
+  c: ClassName,
+): Boolean = typeUtils.isSameType(t, elementUtils.getTypeElement(c.canonicalName()).asType())
+
+private data class RequiredXCom(
+  val paramType: TypeMirror,
+  val paramName: String,
+  val taskId: String,
+)

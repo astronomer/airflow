@@ -49,8 +49,7 @@ public class AnnotationExample {
   }
 
   @DagBuilder.Task(id = "transform", depends = {"extract"})
-  public long transformValue(Client client) {
-    var extracted = client.getXCom("extract");
+  public long transformValue(Client client, @DagBuilder.XCom(task = "extract") long extracted) {
     logger.info("Got XCom from 'extract' {}", extracted);
 
     var variable = client.getVariable("my_variable");
@@ -61,8 +60,7 @@ public class AnnotationExample {
   }
 
   @DagBuilder.Task(depends = {"transform"})
-  public void load(Client client) {
-    var transformed = client.getXCom("transform");
+  public void load(Client client, @DagBuilder.XCom(task = "transform") long transformed) {
     logger.info("Got XCom from 'transform' {}", transformed);
     throw new RuntimeException("I failed");
   }
