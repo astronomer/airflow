@@ -26,14 +26,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from airflow.sdk.coordinators.java.bundle_scanner import BundleScanner, read_dag_code
-from airflow.sdk.execution_time.coordinator import BaseCoordinator
+from airflow.sdk.execution_time.coordinator import SubprocessCoordinator
 
 if TYPE_CHECKING:
     from airflow.sdk.api.datamodels._generated import BundleInfo
     from airflow.sdk.execution_time.workloads.task import TaskInstanceDTO
 
 
-class JavaCoordinator(BaseCoordinator):
+class JavaCoordinator(SubprocessCoordinator):
     """
     Coordinator that launches a JVM subprocess for DAG parsing and task execution.
 

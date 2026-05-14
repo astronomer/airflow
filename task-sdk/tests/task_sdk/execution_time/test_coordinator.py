@@ -30,6 +30,7 @@ import pytest
 from airflow.sdk.execution_time.coordinator import (
     BaseCoordinator,
     CoordinatorManager,
+    SubprocessCoordinator,
     _bridge,
     _send_startup_details,
     _start_server,
@@ -92,7 +93,7 @@ class TestSendStartupDetails:
         assert length == len(sent_bytes) - 4
 
     def test_frame_contains_response_id_zero(self):
-        import msgpack
+        from msgspec import msgpack
 
         mock_startup = MagicMock()
         mock_startup.model_dump.return_value = {"type": "StartupDetails"}
@@ -102,11 +103,11 @@ class TestSendStartupDetails:
         _send_startup_details(mock_socket, mock_startup)
 
         sent_bytes = mock_socket.sendall.call_args[0][0]
-        frame = msgpack.unpackb(sent_bytes[4:])
+        frame = msgpack.decode(sent_bytes[4:])
         assert frame[0] == 0
 
     def test_frame_body_matches_model_dump(self):
-        import msgpack
+        from msgspec import msgpack
 
         body = {"type": "StartupDetails", "ti": {"task_id": "t1"}, "dag_rel_path": "test.jar"}
         mock_startup = MagicMock()
@@ -117,11 +118,11 @@ class TestSendStartupDetails:
         _send_startup_details(mock_socket, mock_startup)
 
         sent_bytes = mock_socket.sendall.call_args[0][0]
-        frame = msgpack.unpackb(sent_bytes[4:])
+        frame = msgpack.decode(sent_bytes[4:])
         assert frame[1] == body
 
     def test_real_socket_roundtrip(self):
-        import msgpack
+        from msgspec import msgpack
 
         server = socket.socket()
         server.bind(("127.0.0.1", 0))
@@ -143,7 +144,7 @@ class TestSendStartupDetails:
             length = int.from_bytes(length_bytes, "big")
 
             data = client.recv(length)
-            frame = msgpack.unpackb(data)
+            frame = msgpack.decode(data)
             assert frame[0] == 0
             assert frame[1] == body
         finally:
@@ -160,9 +161,29 @@ class TestBaseCoordinatorDefaults:
         with pytest.raises(NotImplementedError):
             BaseCoordinator().get_code_from_file("/path/to/dag.jar")
 
+    def test_base_coordinator_does_not_expose_subprocess_transport_hooks(self):
+        assert not hasattr(BaseCoordinator, "dag_parsing_cmd")
+        assert not hasattr(BaseCoordinator, "task_execution_cmd")
+        assert not hasattr(BaseCoordinator, "_runtime_subprocess_entrypoint")
+
+    def test_run_dag_parsing_raises_not_implemented(self):
+        with pytest.raises(NotImplementedError):
+            BaseCoordinator().run_dag_parsing(path="/dag.jar", bundle_name="b", bundle_path="/path")
+
+    def test_run_task_execution_raises_not_implemented(self):
+        with pytest.raises(NotImplementedError):
+            BaseCoordinator().run_task_execution(
+                what=MagicMock(),
+                dag_rel_path="/dag.jar",
+                bundle_info=MagicMock(),
+                startup_details=MagicMock(),
+            )
+
+
+class TestSubprocessCoordinatorDefaults:
     def test_dag_parsing_cmd_raises_not_implemented(self):
         with pytest.raises(NotImplementedError):
-            BaseCoordinator().dag_parsing_cmd(
+            SubprocessCoordinator().dag_parsing_cmd(
                 dag_file_path="/dag.jar",
                 bundle_name="b",
                 bundle_path="/path",
@@ -172,7 +193,7 @@ class TestBaseCoordinatorDefaults:
 
     def test_task_execution_cmd_raises_not_implemented(self):
         with pytest.raises(NotImplementedError):
-            BaseCoordinator().task_execution_cmd(
+            SubprocessCoordinator().task_execution_cmd(
                 what=MagicMock(),
                 dag_file_path="/dag.jar",
                 bundle_path="/path",
@@ -296,7 +317,7 @@ class TestBridge:
         mock_sel.close.assert_called_once()
 
 
-class _StubCoordinator(BaseCoordinator):
+class _StubCoordinator(SubprocessCoordinator):
     sdk = "test"
     file_extension = ".test"
 
@@ -312,7 +333,7 @@ class _StubCoordinator(BaseCoordinator):
 
 
 class TestRunDagParsing:
-    @patch.object(BaseCoordinator, "_runtime_subprocess_entrypoint")
+    @patch.object(SubprocessCoordinator, "_runtime_subprocess_entrypoint")
     def test_run_dag_parsing_creates_dag_parsing_info(self, mock_entrypoint):
         coordinator = _StubCoordinator()
         coordinator.run_dag_parsing(
@@ -331,7 +352,7 @@ class TestRunDagParsing:
 
 
 class TestRunTaskExecution:
-    @patch.object(BaseCoordinator, "_runtime_subprocess_entrypoint")
+    @patch.object(SubprocessCoordinator, "_runtime_subprocess_entrypoint")
     def test_run_task_execution_creates_task_execution_info(self, mock_entrypoint):
         mock_ti = MagicMock()
         mock_bundle_info = MagicMock()

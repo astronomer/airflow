@@ -16,29 +16,12 @@
 # specific language governing permissions and limitations
 # under the License.
 """
-Runtime coordinator for non-Python DAG file processing and task execution.
+Runtime coordinator interfaces for non-Python Dag file processing and task execution.
 
-Provides :class:`BaseCoordinator`, the base class for
-SDK-specific coordinators that bridge subprocess I/O between the
-Airflow supervisor and an external-SDK runtime (Java, Go, Rust, etc.),
-and :class:`CoordinatorManager`, the registry that loads coordinator
-instances from the ``[sdk] coordinators`` configuration.
-
-The coordinator's :meth:`~BaseCoordinator.run_dag_parsing` and
-:meth:`~BaseCoordinator.run_task_execution` methods handle the full lifecycle:
-
-1. Creates TCP servers for comm and logs channels, and a socketpair for stderr.
-2. Calls :meth:`~BaseCoordinator.dag_parsing_cmd` or
-   :meth:`~BaseCoordinator.task_execution_cmd` (provided by the subclass) to
-   obtain the subprocess command.
-3. Spawns the subprocess and accepts TCP connections from it.
-4. Runs a selector-based bridge that transparently forwards bytes
-   between fd 0 (supervisor) and the subprocess comm socket, and
-   re-emits the subprocess's log and stderr output through structlog.
-
-I/O multiplexing uses the same selector-based loop as
-:class:`~airflow.sdk.execution_time.supervisor.WatchedSubprocess`,
-driven by :func:`~airflow.sdk.execution_time.selector_loop.service_selector`.
+Provides :class:`BaseCoordinator`, the transport-neutral base class for
+SDK-specific coordinators, :class:`SubprocessCoordinator`, the reusable
+subprocess/socket implementation, and :class:`CoordinatorManager`, the registry
+that loads coordinator instances from the ``[sdk] coordinators`` configuration.
 """
 
 from __future__ import annotations
@@ -182,11 +165,10 @@ class BaseCoordinator:
     via :func:`~airflow.sdk._shared.module_loading.import_string` and
     constructed with the entry's ``kwargs``.
 
-    Subclasses represent a specific SDK runtime (Java, Go, etc.) and only
-    need to implement :meth:`can_handle_dag_file`, :meth:`dag_parsing_cmd`
-    and :meth:`task_execution_cmd`.  The base class owns the entire bridge
-    lifecycle: TCP servers, subprocess management, selector-based I/O loop,
-    and cleanup.
+    Subclasses represent a specific SDK runtime (Java, Go, etc.).  The base
+    class exposes only high-level operations such as Dag parsing and task
+    execution; concrete coordinators choose their own process model and
+    communication transport.
     """
 
     sdk: ClassVar[str]
@@ -237,6 +219,25 @@ class BaseCoordinator:
         """
         raise NotImplementedError
 
+    def run_dag_parsing(self, *, path: str, bundle_name: str, bundle_path: str) -> None:
+        """Entry point for running runtime-specific Dag File Processing."""
+        raise NotImplementedError
+
+    def run_task_execution(
+        self,
+        *,
+        what: TaskInstanceDTO,
+        dag_rel_path: str | os.PathLike[str],
+        bundle_info: BundleInfo,
+        startup_details: StartupDetails,
+    ) -> None:
+        """Entry point for running runtime-specific task execution."""
+        raise NotImplementedError
+
+
+class SubprocessCoordinator(BaseCoordinator):
+    """Coordinator base class for runtimes launched as socket-connected subprocesses."""
+
     def dag_parsing_cmd(
         self,
         *,
@@ -247,11 +248,11 @@ class BaseCoordinator:
         logs_addr: str,
     ) -> list[str]:
         """
-        Return the subprocess command for DAG file parsing.
+        Return the subprocess command for Dag file parsing.
 
-        :param dag_file_path: Absolute path to the DAG file to parse.
-        :param bundle_name: Name of the DAG bundle.
-        :param bundle_path: Root path of the DAG bundle.
+        :param dag_file_path: Absolute path to the Dag file to parse.
+        :param bundle_name: Name of the Dag bundle.
+        :param bundle_path: Root path of the Dag bundle.
         :param comm_addr: ``host:port`` the subprocess must connect to
             for the bidirectional msgpack comm channel.
         :param logs_addr: ``host:port`` the subprocess must connect to
@@ -274,8 +275,8 @@ class BaseCoordinator:
         Return the subprocess command for task execution.
 
         :param what: The task instance to execute.
-        :param dag_file_path: Absolute path to the DAG file.
-        :param bundle_path: Root path of the DAG bundle.
+        :param dag_file_path: Absolute path to the Dag file.
+        :param bundle_path: Root path of the Dag bundle.
         :param bundle_info: Bundle metadata.
         :param comm_addr: ``host:port`` the subprocess must connect to
             for the bidirectional msgpack comm channel.
@@ -286,7 +287,7 @@ class BaseCoordinator:
         raise NotImplementedError
 
     def run_dag_parsing(self, *, path: str, bundle_name: str, bundle_path: str) -> None:
-        """Entry point for running runtime-specific Dag File Processing."""
+        """Run Dag File Processing in a socket-connected subprocess."""
         self._runtime_subprocess_entrypoint(
             self.DagParsingInfo(
                 dag_file_path=path,
@@ -303,6 +304,7 @@ class BaseCoordinator:
         bundle_info: BundleInfo,
         startup_details: StartupDetails,
     ) -> None:
+        """Run task execution in a socket-connected subprocess."""
         self._runtime_subprocess_entrypoint(
             self.TaskExecutionInfo(
                 what=what,
@@ -312,7 +314,9 @@ class BaseCoordinator:
             )
         )
 
-    def _runtime_subprocess_entrypoint(self, entrypoint_info: DagParsingInfo | TaskExecutionInfo) -> None:
+    def _runtime_subprocess_entrypoint(
+        self, entrypoint_info: BaseCoordinator.DagParsingInfo | BaseCoordinator.TaskExecutionInfo
+    ) -> None:
         """
         Spawn the runtime subprocess and bridge I/O with the supervisor.
 
@@ -546,6 +550,7 @@ def reset_coordinator_manager() -> None:
 
 __all__ = [
     "BaseCoordinator",
+    "SubprocessCoordinator",
     "CoordinatorManager",
     "get_coordinator_manager",
     "reset_coordinator_manager",
