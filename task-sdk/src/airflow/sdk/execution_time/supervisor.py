@@ -1415,6 +1415,7 @@ class ActivitySubprocess(WatchedSubprocess):
                 when=msg.end_date,
                 task_outlets=msg.task_outlets,
                 outlet_events=msg.outlet_events,
+                serialized_lineage=msg.serialized_lineage,
                 rendered_map_index=self._rendered_map_index,
             )
         elif isinstance(msg, RetryTask):

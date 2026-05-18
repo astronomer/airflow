@@ -49,7 +49,10 @@ import selectors
 import socket
 import subprocess
 import time
-from typing import TYPE_CHECKING, NamedTuple
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple
+
+import msgspec
 
 from airflow.sdk._shared.module_loading import import_string, qualname
 
@@ -98,6 +101,7 @@ def _bridge(
     runtime_stderr: socket.socket,
     proc: subprocess.Popen,
     log: FilteringBoundLogger,
+    lineage_payload_handler: Callable[[Any], None] | None = None,
 ) -> None:
     """
     Multiplex I/O between the supervisor and a runtime subprocess.
@@ -133,7 +137,11 @@ def _bridge(
 
     # Comm: bidirectional raw byte forwarding.
     sel.register(supervisor_comm, selectors.EVENT_READ, make_raw_forwarder(runtime_comm, on_close))
-    sel.register(runtime_comm, selectors.EVENT_READ, make_raw_forwarder(supervisor_comm, on_close))
+    sel.register(
+        runtime_comm,
+        selectors.EVENT_READ,
+        _make_lineage_observing_forwarder(supervisor_comm, on_close, lineage_payload_handler),
+    )
 
     # TCP logs channel: line-buffered JSON from the runtime SDK's LogSender,
     # processed with the same handler as WatchedSubprocess (level mapping,
@@ -170,6 +178,50 @@ def _bridge(
     for sock in (supervisor_comm, runtime_comm, runtime_logs, runtime_stderr):
         with contextlib.suppress(OSError):
             sock.close()
+
+
+def _make_lineage_observing_forwarder(
+    dest: socket.socket,
+    on_close: Callable[[socket.socket], None],
+    lineage_payload_handler: Callable[[Any], None] | None,
+) -> tuple[Callable[[socket.socket], bool], Callable[[socket.socket], None]]:
+    """Forward raw comm bytes while observing optional success lineage payloads."""
+    buffer = bytearray()
+
+    def _observe(data: bytes) -> None:
+        if lineage_payload_handler is None:
+            return
+
+        buffer.extend(data)
+        while len(buffer) >= 4:
+            length = int.from_bytes(buffer[:4], byteorder="big")
+            if len(buffer) < length + 4:
+                return
+            frame = bytes(buffer[4 : length + 4])
+            del buffer[: length + 4]
+            try:
+                unpacked = msgspec.msgpack.decode(frame)
+                body = unpacked[1] if isinstance(unpacked, (list, tuple)) and len(unpacked) > 1 else None
+                if isinstance(body, dict) and body.get("type") == "SucceedTask":
+                    payload = body.get("serialized_lineage")
+                    if payload is not None:
+                        lineage_payload_handler(payload)
+            except Exception:
+                buffer.clear()
+                return
+
+    def cb(sock: socket.socket) -> bool:
+        data = sock.recv(65536)
+        if not data:
+            return False
+        try:
+            dest.sendall(data)
+            _observe(data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            return False
+        return True
+
+    return cb, on_close
 
 
 class BaseCoordinator:
@@ -244,6 +296,15 @@ class BaseCoordinator:
         :returns: Full command list.
         """
         raise NotImplementedError
+
+    def handle_serialized_lineage(self, payload: Any) -> None:
+        """
+        Handle serialized lineage emitted by a runtime SDK task.
+
+        Runtime SDKs send this optional payload in ``SucceedTask.serialized_lineage``.
+        The base hook is intentionally a no-op so SDKs that do not emit lineage
+        keep the same wire traffic and coordinator behavior.
+        """
 
     def run_task_execution(
         self,
@@ -379,7 +440,15 @@ class BaseCoordinator:
             # fd 0 is the bidirectional comms socket to the supervisor.
             supervisor_comm = socket.socket(fileno=os.dup(0))
 
-            _bridge(supervisor_comm, runtime_comm, runtime_logs, read_stderr, proc, log)
+            _bridge(
+                supervisor_comm,
+                runtime_comm,
+                runtime_logs,
+                read_stderr,
+                proc,
+                log,
+                self.handle_serialized_lineage,
+            )
 
 
 class CoordinatorManager:

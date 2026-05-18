@@ -1246,6 +1246,7 @@ class TestTIUpdateState:
                 "end_date": DEFAULT_END_DATE.isoformat(),
                 "task_outlets": task_outlets,
                 "outlet_events": outlet_events,
+                "serialized_lineage": {"runId": "123"},
             },
         )
 

@@ -1874,9 +1874,29 @@ REQUEST_TEST_CASES = [
                 "task_outlets": None,
                 "when": timezone.parse("2024-10-31T12:00:00Z"),
                 "rendered_map_index": "test success task",
+                "serialized_lineage": None,
             },
         ),
         test_id="succeed_task",
+    ),
+    RequestTestCase(
+        message=SucceedTask(
+            end_date=timezone.parse("2024-10-31T12:00:00Z"),
+            rendered_map_index="test success task",
+            serialized_lineage={"runId": "123"},
+        ),
+        client_mock=ClientMock(
+            method_path="task_instances.succeed",
+            kwargs={
+                "id": TI_ID,
+                "outlet_events": None,
+                "task_outlets": None,
+                "when": timezone.parse("2024-10-31T12:00:00Z"),
+                "rendered_map_index": "test success task",
+                "serialized_lineage": {"runId": "123"},
+            },
+        ),
+        test_id="succeed_task_with_serialized_lineage",
     ),
     RequestTestCase(
         message=GetAssetByName(name="asset"),

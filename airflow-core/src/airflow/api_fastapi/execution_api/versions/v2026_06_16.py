@@ -19,7 +19,10 @@ from __future__ import annotations
 
 from cadwyn import VersionChange, schema
 
-from airflow.api_fastapi.execution_api.datamodels.taskinstance import TIRetryStatePayload
+from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
+    TIRetryStatePayload,
+    TISuccessStatePayload,
+)
 
 
 class AddRetryPolicyFields(VersionChange):
@@ -30,4 +33,14 @@ class AddRetryPolicyFields(VersionChange):
     instructions_to_migrate_to_previous_version = (
         schema(TIRetryStatePayload).field("retry_delay_seconds").didnt_exist,
         schema(TIRetryStatePayload).field("retry_reason").didnt_exist,
+    )
+
+
+class AddSerializedLineageToTaskSuccess(VersionChange):
+    """Add optional serialized lineage payload to task success state updates."""
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = (
+        schema(TISuccessStatePayload).field("serialized_lineage").didnt_exist,
     )

@@ -106,6 +106,8 @@ class TISuccessStatePayload(StrictBaseModel):
 
     task_outlets: Annotated[list[AssetProfile], Field(default_factory=list)]
     outlet_events: Annotated[list[dict[str, Any]], Field(default_factory=list)]
+    serialized_lineage: JsonValue | None = None
+    """Optional serialized lineage payload reported by non-Python SDKs."""
     rendered_map_index: str | None = None
 
 

@@ -405,7 +405,13 @@ def ti_update_state(
 
     # We exclude_unset to avoid updating fields that are not set in the payload
     data = ti_patch_payload.model_dump(
-        exclude={"task_outlets", "outlet_events", "retry_delay_seconds", "retry_reason"},
+        exclude={
+            "task_outlets",
+            "outlet_events",
+            "serialized_lineage",
+            "retry_delay_seconds",
+            "retry_reason",
+        },
         exclude_unset=True,
     )
     query = update(TI).where(TI.id == task_instance_id).values(data)

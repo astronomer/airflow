@@ -324,6 +324,7 @@ class TISuccessStatePayload(BaseModel):
     end_date: Annotated[AwareDatetime, Field(title="End Date")]
     task_outlets: Annotated[list[AssetProfile] | None, Field(title="Task Outlets")] = None
     outlet_events: Annotated[list[dict[str, Any]] | None, Field(title="Outlet Events")] = None
+    serialized_lineage: JsonValue | None = None
     rendered_map_index: Annotated[str | None, Field(title="Rendered Map Index")] = None
 
 

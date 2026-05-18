@@ -22,15 +22,18 @@ import json
 import os
 import socket
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from airflow.sdk.execution_time.comms import SucceedTask, _RequestFrame
 from airflow.sdk.execution_time.coordinator import (
     BaseCoordinator,
     CoordinatorManager,
     _bridge,
+    _make_lineage_observing_forwarder,
     _send_startup_details,
     _start_server,
     get_coordinator_manager,
@@ -168,6 +171,9 @@ class TestBaseCoordinatorDefaults:
                 logs_addr="127.0.0.1:1235",
             )
 
+    def test_handle_serialized_lineage_is_noop_by_default(self):
+        assert BaseCoordinator().handle_serialized_lineage({"openlineage": {}}) is None
+
 
 class TestCoordinatorNamedTuples:
     def test_dag_parsing_info_defaults(self):
@@ -194,6 +200,58 @@ class TestCoordinatorNamedTuples:
         assert info.mode == "task-execution"
         assert info.what is mock_ti
         assert info.dag_rel_path == "dags/example.jar"
+
+
+class TestLineageObservingForwarder:
+    def test_forwards_bytes_and_observes_success_lineage_payload(self):
+        src_write, src_read = socket.socketpair()
+        dest_read, dest_write = socket.socketpair()
+        observed = []
+
+        payload = {"runId": "123"}
+        frame = _RequestFrame(
+            1,
+            SucceedTask(
+                end_date=datetime(2024, 10, 31, 12, 0, tzinfo=timezone.utc),
+                serialized_lineage=payload,
+            ).model_dump(),
+        ).as_bytes()
+        cb, _ = _make_lineage_observing_forwarder(dest_write, lambda _: None, observed.append)
+
+        try:
+            src_write.sendall(frame)
+
+            assert cb(src_read) is True
+
+            assert dest_read.recv(len(frame)) == frame
+            assert observed == [payload]
+        finally:
+            for sock in (src_write, src_read, dest_read, dest_write):
+                with contextlib.suppress(OSError):
+                    sock.close()
+
+    def test_does_not_call_handler_without_lineage_payload(self):
+        src_write, src_read = socket.socketpair()
+        dest_read, dest_write = socket.socketpair()
+        observed = []
+
+        frame = _RequestFrame(
+            1,
+            SucceedTask(end_date=datetime(2024, 10, 31, 12, 0, tzinfo=timezone.utc)).model_dump(),
+        ).as_bytes()
+        cb, _ = _make_lineage_observing_forwarder(dest_write, lambda _: None, observed.append)
+
+        try:
+            src_write.sendall(frame)
+
+            assert cb(src_read) is True
+
+            assert dest_read.recv(len(frame)) == frame
+            assert observed == []
+        finally:
+            for sock in (src_write, src_read, dest_read, dest_write):
+                with contextlib.suppress(OSError):
+                    sock.close()
 
 
 class TestBridge:

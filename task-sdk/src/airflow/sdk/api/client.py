@@ -285,12 +285,21 @@ class TaskInstanceOperations:
         )
         self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
 
-    def succeed(self, id: uuid.UUID, when: datetime, task_outlets, outlet_events, rendered_map_index):
+    def succeed(
+        self,
+        id: uuid.UUID,
+        when: datetime,
+        task_outlets,
+        outlet_events,
+        rendered_map_index,
+        serialized_lineage=None,
+    ):
         """Tell the API server that this TI has succeeded."""
         body = TISuccessStatePayload(
             end_date=when,
             task_outlets=task_outlets,
             outlet_events=outlet_events,
+            serialized_lineage=serialized_lineage,
             rendered_map_index=rendered_map_index,
         )
         self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
