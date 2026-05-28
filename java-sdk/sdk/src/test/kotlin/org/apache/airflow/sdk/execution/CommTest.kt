@@ -19,6 +19,8 @@
 
 package org.apache.airflow.sdk.execution
 
+import org.apache.airflow.sdk.execution.api.model.StartupDetails
+import org.apache.airflow.sdk.execution.api.model.SucceedTask
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -70,7 +72,7 @@ class CommsTest {
   @DisplayName("Should serialize all fields")
   fun shouldEncodeSucceedTask() {
     val endDate = OffsetDateTime.of(2024, 12, 1, 1, 0, 0, 0, ZoneOffset.UTC)
-    val bytes = CoordinatorComm.encode(OutgoingFrame(3, SucceedTask(endDate)))
+    val bytes = CoordinatorComm.encode(OutgoingFrame(3, SucceedTask().also { it.endDate = endDate }))
     val actual = bytes.toHexString(HexFormat { bytes { byteSeparator = " " } })
 
     val expected =

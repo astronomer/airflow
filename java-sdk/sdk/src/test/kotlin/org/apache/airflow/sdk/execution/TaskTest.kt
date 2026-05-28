@@ -26,8 +26,11 @@ import org.apache.airflow.sdk.Dag
 import org.apache.airflow.sdk.Task
 import org.apache.airflow.sdk.execution.api.model.BundleInfo
 import org.apache.airflow.sdk.execution.api.model.DagRun
+import org.apache.airflow.sdk.execution.api.model.StartupDetails
+import org.apache.airflow.sdk.execution.api.model.SucceedTask
 import org.apache.airflow.sdk.execution.api.model.TIRunContext
-import org.apache.airflow.sdk.execution.api.model.TaskInstance
+import org.apache.airflow.sdk.execution.api.model.TaskInstanceDTO
+import org.apache.airflow.sdk.execution.api.model.TaskState
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -73,7 +76,7 @@ class TaskTest {
   private fun startupDetails(taskId: String): StartupDetails =
     StartupDetails().also {
       it.ti =
-        TaskInstance().also { o ->
+        TaskInstanceDTO().also { o ->
           o.id = UUID.randomUUID()
           o.taskId = taskId
           o.dagId = "test_dag"
@@ -89,12 +92,13 @@ class TaskTest {
         }
       it.startDate = OffsetDateTime.parse("2026-03-31T00:00:00Z")
       it.tiContext =
-        TIRunContext().dagRun(
-          DagRun().also { o ->
-            o.dagId = "test_dag"
-            o.runId = "manual__2026-03-31T00:00:00+00:00"
-          },
-        )
+        TIRunContext().apply {
+          dagRun =
+            DagRun().apply {
+              dagId = "test_dag"
+              runId = "manual__2026-03-31T00:00:00+00:00"
+            }
+        }
       it.sentryIntegration = ""
     }
 

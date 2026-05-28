@@ -58,9 +58,9 @@ dependencies {
 }
 
 // jsonSchema2Pojo does not accept the single JSON Schema file directly.
-// It needs a list of "$ref" files that each points to a $def. This task
-// walks over all $ref items in the Supervisor Schema file and generates
-// one JSON file with $ref for each one.
+// It needs a list of schema files, each containing a "$ref" pointer to
+// a $def. This task walks over all $ref items in the Supervisor Schema
+// file and generates one JSON file with $ref for each one.
 abstract class GeneratePointersTask : DefaultTask() {
     @get:InputFile
     abstract val schemaFile: RegularFileProperty
@@ -89,6 +89,7 @@ abstract class GeneratePointersTask : DefaultTask() {
 }
 
 tasks.register<GeneratePointersTask>("generatePointers") {
+    description = "Generate pointer files for jsonSchema2Pojo"
     schemaFile = layout.file(provider { schemaInput })
     outputDir = pointersDir
 }
