@@ -104,14 +104,15 @@ jsonSchema2Pojo {
             .asFile
     setAnnotationStyle("jackson")
     dateTimeType = "java.time.OffsetDateTime"
+    generateBuilders = false
     includeAdditionalProperties = false
     includeConstructors = false
-    generateBuilders = false
-    initializeCollections = true
     includeHashcodeAndEquals = true
-    includeToString = true
-    useTitleAsClassname = true
     includeJsr305Annotations = true
+    includeToString = true
+    initializeCollections = true
+    removeOldOutput = true
+    useTitleAsClassname = true
 }
 
 sourceSets {
