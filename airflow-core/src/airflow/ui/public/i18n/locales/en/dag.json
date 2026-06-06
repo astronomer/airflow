@@ -103,6 +103,19 @@
       "placeholder": "Search logs..."
     },
     "settings": "Log Settings",
+    "steps": {
+      "interrupted": "interrupted",
+      "stepCount_one": "{{count}} step",
+      "stepCount_other": "{{count}} steps",
+      "title": "Steps",
+      "untracked": "untracked",
+      "untrackedTooltip": "Time spent in code that wasn't wrapped in a step(). It isn't checkpointed, so it re-runs on every retry.",
+      "viewLogs": "Show this step's logs below"
+    },
+    "stepsOnly": {
+      "hide": "Show all logs",
+      "show": "Steps only"
+    },
     "viewInExternal": "View logs in {{name}} (attempt {{attempt}})",
     "warning": "WARNING"
   },

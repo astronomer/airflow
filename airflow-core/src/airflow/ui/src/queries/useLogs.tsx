@@ -34,9 +34,150 @@ import { isStatePending, useAutoRefresh } from "src/utils";
 import { getTaskInstanceLink } from "src/utils/links";
 import { parseStreamingLogContent } from "src/utils/logs";
 
+export type StepStatus = "cached" | "failed" | "success";
+
+type LogDatum = TaskInstancesLogResponse["content"][number];
+
+// Live progress for a running step (from s.progress()); display-only, read from log markers.
+export type StepProgress = { done: number; message?: string; total?: number };
+
 export type ParsedLogEntry = {
   element: JSX.Element | string | undefined;
-  group?: { id: number; level: number; parentId?: number; type: "header" | "line" };
+  group?: {
+    id: number;
+    // AIP-103 Task Steps: a group header whose name starts with STEP_HEADER_PREFIX is a step.
+    // stepStatus/stepDurationMs/stepOutputs come from the closing ::endgroup:: marker's fields;
+    // stepStartTs/stepEndTs are the marker timestamps, used to detect untracked gaps between steps;
+    // stepProgress is the latest ::step-progress:: marker seen while the step is running.
+    isStep?: boolean;
+    level: number;
+    parentId?: number;
+    stepDurationMs?: number;
+    stepEndTs?: string;
+    stepName?: string;
+    stepOutputs?: Record<string, unknown>;
+    stepProgress?: StepProgress;
+    stepStartTs?: string;
+    stepStatus?: StepStatus;
+    type: "header" | "line";
+  };
+};
+
+// One entry in the steps summary timeline: either a step, or an "untracked" gap between two steps
+// (time spent in code that wasn't wrapped in a step()).
+export type StepsTimelineEntry =
+  | { durationMs: number; kind: "gap" }
+  | {
+      durationMs?: number;
+      // The id of the step's log group, so the panel can expand/scroll to it in the raw log.
+      groupId: number;
+      kind: "step";
+      name: string;
+      outputs?: Record<string, unknown>;
+      progress?: StepProgress;
+      status?: StepStatus;
+    };
+
+// Build the steps summary from parsed logs: top-level steps in order, with an "untracked" gap entry
+// inserted whenever the time between one step ending and the next starting exceeds the threshold.
+export const buildStepsTimeline = (
+  parsedLogs: Array<ParsedLogEntry>,
+  gapThresholdMs = 5000,
+): Array<StepsTimelineEntry> => {
+  const stepGroups = parsedLogs
+    .map((entry) => entry.group)
+    .filter(
+      (group): group is NonNullable<ParsedLogEntry["group"]> =>
+        group?.type === "header" && group.isStep === true && group.level === 0,
+    );
+  const timeline: Array<StepsTimelineEntry> = [];
+  let previousEndMs: number | undefined;
+
+  for (const group of stepGroups) {
+    const startMs = group.stepStartTs === undefined ? undefined : Date.parse(group.stepStartTs);
+    const gap = previousEndMs === undefined || startMs === undefined ? undefined : startMs - previousEndMs;
+
+    if (gap !== undefined && !Number.isNaN(gap) && gap >= gapThresholdMs) {
+      timeline.push({ durationMs: gap, kind: "gap" });
+    }
+
+    timeline.push({
+      durationMs: group.stepDurationMs,
+      groupId: group.id,
+      kind: "step",
+      name: group.stepName ?? "",
+      outputs: group.stepOutputs,
+      // Only show progress while the step is still running (no terminal status yet).
+      progress: group.stepStatus === undefined ? group.stepProgress : undefined,
+      status: group.stepStatus,
+    });
+
+    // Reset (do not carry forward) when a step has no usable end time -- e.g. a step that never
+    // closed because the worker was killed mid-step. Carrying the previous step's end forward would
+    // make the next gap swallow this step's runtime and mislabel it as "untracked".
+    const endMs = group.stepEndTs === undefined ? undefined : Date.parse(group.stepEndTs);
+
+    previousEndMs = endMs === undefined || Number.isNaN(endMs) ? undefined : endMs;
+  }
+
+  return timeline;
+};
+
+// Must match STEP_HEADER_PREFIX in airflow.sdk.execution_time.step.
+const STEP_HEADER_PREFIX = "Step: ";
+
+// The step outcome rides on the closing ::endgroup:: marker as structured fields (it is consumed,
+// never rendered). Reading the raw datum -- not the rendered text -- keeps the data clean and
+// independent of the source/timestamp toggles.
+const readStepEndFields = (
+  datum: LogDatum,
+): { durationMs?: number; outputs?: Record<string, unknown>; status?: StepStatus } => {
+  if (typeof datum === "string") {
+    return {};
+  }
+  const status = datum.step_status;
+  const durationMs = datum.step_duration_ms;
+  const outputs = datum.step_outputs;
+
+  return {
+    durationMs: typeof durationMs === "number" ? durationMs : undefined,
+    outputs:
+      typeof outputs === "object" && outputs !== null && !Array.isArray(outputs)
+        ? (outputs as Record<string, unknown>)
+        : undefined,
+    status: status === "success" || status === "cached" || status === "failed" ? status : undefined,
+  };
+};
+
+// Read a ::step-progress:: marker's fields off the raw datum (same approach as the end marker).
+const readStepProgress = (datum: LogDatum): StepProgress | undefined => {
+  if (typeof datum === "string" || typeof datum.step_progress_done !== "number") {
+    return undefined;
+  }
+
+  return {
+    done: datum.step_progress_done,
+    message: typeof datum.step_progress_message === "string" ? datum.step_progress_message : undefined,
+    total: typeof datum.step_progress_total === "number" ? datum.step_progress_total : undefined,
+  };
+};
+
+// The outermost open step on the group stack. A ::step-progress:: marker is attached here (not the
+// innermost) so progress reported from a step nested inside another lands on the top-level step the
+// panel actually renders, rather than on a nested step that the timeline filters out.
+const outermostOpenStepHeader = (
+  groupStack: Array<{ id: number }>,
+  headerById: Map<number, ParsedLogEntry>,
+): ParsedLogEntry | undefined => {
+  for (const open of groupStack) {
+    const header = headerById.get(open.id);
+
+    if (header?.group?.isStep) {
+      return header;
+    }
+  }
+
+  return undefined;
 };
 
 type Props = {
@@ -83,7 +224,7 @@ const parseLogs = ({
     const lineNumbers = data.map((datum) => {
       const text = typeof datum === "string" ? datum : datum.event;
 
-      if (text.includes("::group::") || text.includes("::endgroup::")) {
+      if (text.includes("::group::") || text.includes("::endgroup::") || text.includes("::step-progress::")) {
         return undefined;
       }
       const current = lineNumber;
@@ -103,19 +244,25 @@ const parseLogs = ({
           }
         }
 
-        return renderStructuredLog({
-          index: lineNumbers[index] ?? index,
-          logLevelFilters,
-          logLink,
-          logMessage: datum,
-          renderingMode: "jsx",
-          showSource,
-          showTimestamp,
-          sourceFilters,
-          translate,
-        });
+        // Keep the raw datum alongside the rendered element: step boundaries and step fields are
+        // read from the raw event/fields, not the rendered text (which the source/timestamp toggles
+        // would otherwise leak into the parsed step name).
+        return {
+          datum,
+          element: renderStructuredLog({
+            index: lineNumbers[index] ?? index,
+            logLevelFilters,
+            logLink,
+            logMessage: datum,
+            renderingMode: "jsx",
+            showSource,
+            showTimestamp,
+            sourceFilters,
+            translate,
+          }),
+        };
       })
-      .filter((parsedLine) => parsedLine !== "");
+      .filter((parsedLine) => parsedLine.element !== "");
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "An error occurred.";
 
@@ -130,13 +277,16 @@ const parseLogs = ({
     type Group = { id: number; level: number; name: string };
     const groupStack: Array<Group> = [];
     const result: Array<ParsedLogEntry> = [];
+    const headerById = new Map<number, ParsedLogEntry>();
     let nextGroupId = 0;
 
-    parsedLines.forEach((line) => {
-      const text = innerText(line);
+    parsedLines.forEach(({ datum, element }) => {
+      // Detect group boundaries on the RAW event (clean), not the rendered text. The raw event has
+      // no appended source/loc fields, so a step name is never polluted by the source toggle.
+      const event = typeof datum === "string" ? datum : datum.event;
 
-      if (text.includes("::group::")) {
-        const groupName = text.split("::group::")[1] as string;
+      if (event.includes("::group::")) {
+        const groupName = event.split("::group::")[1] as string;
         const id = nextGroupId;
 
         nextGroupId += 1;
@@ -144,16 +294,53 @@ const parseLogs = ({
         const parentGroup = groupStack[groupStack.length - 1];
 
         groupStack.push({ id, level, name: groupName });
-        result.push({
-          element: groupName,
-          group: { id, level, parentId: parentGroup?.id, type: "header" },
-        });
+
+        const isStep = groupName.startsWith(STEP_HEADER_PREFIX);
+        const stepName = isStep ? groupName.slice(STEP_HEADER_PREFIX.length) : undefined;
+        const startTs = typeof datum === "string" ? undefined : (datum.timestamp ?? undefined);
+        const headerEntry: ParsedLogEntry = {
+          element: stepName ?? groupName,
+          group: {
+            id,
+            isStep,
+            level,
+            parentId: parentGroup?.id,
+            stepName,
+            stepStartTs: isStep ? startTs : undefined,
+            type: "header",
+          },
+        };
+
+        result.push(headerEntry);
+        headerById.set(id, headerEntry);
 
         return;
       }
 
-      if (text.includes("::endgroup::")) {
-        groupStack.pop();
+      if (event.includes("::step-progress::")) {
+        // Attach the latest progress to the open top-level step (consumed, not rendered as a line).
+        const progress = readStepProgress(datum);
+        const header = outermostOpenStepHeader(groupStack, headerById);
+
+        if (progress !== undefined && header?.group) {
+          header.group.stepProgress = progress;
+        }
+
+        return;
+      }
+
+      if (event.includes("::endgroup::")) {
+        const closed = groupStack.pop();
+        const header = closed ? headerById.get(closed.id) : undefined;
+
+        if (header?.group?.isStep) {
+          const { durationMs, outputs, status } = readStepEndFields(datum);
+
+          header.group.stepStatus = status;
+          header.group.stepDurationMs = durationMs;
+          header.group.stepOutputs = outputs;
+          header.group.stepEndTs = typeof datum === "string" ? undefined : (datum.timestamp ?? undefined);
+        }
 
         return;
       }
@@ -162,11 +349,11 @@ const parseLogs = ({
 
       if (groupStack.length > 0 && currentGroup) {
         result.push({
-          element: line,
+          element,
           group: { id: currentGroup.id, level: currentGroup.level, type: "line" },
         });
       } else {
-        result.push({ element: line });
+        result.push({ element });
       }
     });
 

@@ -294,6 +294,7 @@
     "queuedWhen": "Queued At",
     "renderedMapIndex": "Rendered Map Index",
     "scheduledWhen": "Scheduled At",
+    "step": "Step",
     "triggerer": {
       "assigned": "Assigned triggerer",
       "class": "Trigger class",

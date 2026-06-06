@@ -306,6 +306,12 @@ For a complete list of available context variables (such as ``dag_run``,
 
 .. autodata:: airflow.sdk.NEVER_EXPIRE
 
+.. rubric:: Steps
+
+.. autofunction:: airflow.sdk.step
+
+.. autoclass:: airflow.sdk.Step
+
 .. rubric:: Logging
 
 .. autofunction:: airflow.sdk.log.mask_secret

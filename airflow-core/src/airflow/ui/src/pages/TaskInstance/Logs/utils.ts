@@ -49,7 +49,16 @@ export const getDownloadText = ({
   sourceFilters,
   translate,
 }: GetDownloadTextOptions): Array<string> => {
-  const lines = parseStreamingLogContent(fetchedData);
+  // Drop ::step-progress:: control markers: like the live view, they are consumed (not log content),
+  // and a long running step emits many of them -- they should not flood the downloaded log.
+  // The cast restores the disjoint `string[] | StructuredLogMessage[]` that .filter() widens to a
+  // union-element array; filtering removes elements without changing their type, so it is sound.
+  const raw = parseStreamingLogContent(fetchedData);
+  const lines = raw.filter((line) => {
+    const text = typeof line === "string" ? line : line.event;
+
+    return !text.includes("::step-progress::");
+  }) as typeof raw;
   const tiContext = extractTIContext(lines);
 
   const rendered = lines.map((line) =>

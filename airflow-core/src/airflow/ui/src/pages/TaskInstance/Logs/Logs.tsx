@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Box, Heading } from "@chakra-ui/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { useTranslation } from "react-i18next";
 import { useParams, useSearchParams } from "react-router-dom";
@@ -25,12 +25,18 @@ import { useLocalStorage } from "usehooks-ts";
 
 import { useTaskInstanceServiceGetMappedTaskInstance } from "openapi/queries";
 import { Dialog } from "src/components/ui";
-import { LOG_SHOW_SOURCE_KEY, LOG_SHOW_TIMESTAMP_KEY, LOG_WRAP_KEY } from "src/constants/localStorage";
+import {
+  LOG_SHOW_SOURCE_KEY,
+  LOG_SHOW_TIMESTAMP_KEY,
+  LOG_STEPS_ONLY_KEY,
+  LOG_WRAP_KEY,
+} from "src/constants/localStorage";
 import { SearchParamsKeys } from "src/constants/searchParams";
 import { useConfig } from "src/queries/useConfig";
-import { useLogs } from "src/queries/useLogs";
+import { buildStepsTimeline, useLogs } from "src/queries/useLogs";
 
 import { ExternalLogLink } from "./ExternalLogLink";
+import { StepsSummary } from "./StepsSummary";
 import { TaskLogContent, type TaskLogContentProps } from "./TaskLogContent";
 import { TaskLogHeader, type TaskLogHeaderProps } from "./TaskLogHeader";
 import { getDownloadText } from "./utils";
@@ -78,6 +84,7 @@ export const Logs = () => {
   const [wrap, setWrap] = useLocalStorage<boolean>(LOG_WRAP_KEY, defaultWrap);
   const [showTimestamp, setShowTimestamp] = useLocalStorage<boolean>(LOG_SHOW_TIMESTAMP_KEY, true);
   const [showSource, setShowSource] = useLocalStorage<boolean>(LOG_SHOW_SOURCE_KEY, false);
+  const [stepsOnly, setStepsOnly] = useLocalStorage<boolean>(LOG_STEPS_ONLY_KEY, false);
   const [fullscreen, setFullscreen] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
@@ -107,8 +114,38 @@ export const Logs = () => {
 
   const getLogString = () => downloadTextLines.filter((line) => line !== "").join("\n");
 
+  const parsedLogs = parsedData.parsedLogs ?? [];
+  const hasSteps = parsedLogs.some((entry) => entry.group?.isStep);
+  // Only take effect when the log actually has steps, so the persisted (global) flag can never
+  // blank out the log on a step-less task where the toggle to turn it off isn't shown.
+  const effectiveStepsOnly = stepsOnly && hasSteps;
+  const stepsTimeline = hasSteps ? buildStepsTimeline(parsedLogs) : [];
+  // A step still open when the task instance itself has ended is "interrupted", not "running".
+  const taskTerminal = ["failed", "removed", "skipped", "success", "upstream_failed"].includes(
+    taskInstance?.state ?? "",
+  );
+
+  // Clicking a step in the panel expands + scrolls the raw log to that step's group. The seq lets a
+  // repeat click (after the user manually collapsed it) re-fire the expand/scroll effect.
+  const focusSeq = useRef(0);
+  const [focusedStep, setFocusedStep] = useState<{ groupId: number; seq: number } | undefined>(undefined);
+  const handleStepClick = (groupId: number) => {
+    focusSeq.current += 1;
+    setFocusedStep({ groupId, seq: focusSeq.current });
+    // Asking to see a step's logs implies leaving the summary-only view (which hides all lines).
+    setStepsOnly(false);
+  };
+
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
+
+  // In steps-only mode only step headers are visible (searchableText is 1:1 with parsedLogs), so a
+  // match in a hidden line would advance the counter with no scroll target. Restrict matches to them.
+  const visibleStepHeaderIndices = new Set(
+    parsedLogs
+      .map((entry, index) => (entry.group?.isStep === true && entry.group.type === "header" ? index : -1))
+      .filter((index) => index !== -1),
+  );
 
   const searchMatchIndices = (() => {
     if (!searchQuery) {
@@ -118,6 +155,9 @@ export const Logs = () => {
     const indices: Array<number> = [];
 
     parsedData.searchableText.forEach((line, index) => {
+      if (effectiveStepsOnly && !visibleStepHeaderIndices.has(index)) {
+        return;
+      }
       if (line.toLowerCase().includes(query)) {
         indices.push(index);
       }
@@ -157,6 +197,7 @@ export const Logs = () => {
   const toggleWrap = () => setWrap(!wrap);
   const toggleTimestamp = () => setShowTimestamp(!showTimestamp);
   const toggleSource = () => setShowSource(!showSource);
+  const toggleStepsOnly = () => setStepsOnly((act) => !act);
   const toggleFullscreen = () => setFullscreen(!fullscreen);
   const toggleExpanded = () => setExpanded((act) => !act);
 
@@ -178,6 +219,7 @@ export const Logs = () => {
     downloadLogs,
     expanded,
     getLogString,
+    hasSteps,
     onSelectTryNumber,
     search: {
       currentMatchIndex: activeSearchIndex,
@@ -190,10 +232,12 @@ export const Logs = () => {
     showSource,
     showTimestamp,
     sourceOptions: parsedData.sources,
+    stepsOnly,
     taskInstance,
     toggleExpanded,
     toggleFullscreen,
     toggleSource,
+    toggleStepsOnly,
     toggleTimestamp,
     toggleWrap,
     tryNumber,
@@ -204,11 +248,13 @@ export const Logs = () => {
     currentMatchLineIndex: searchMatchIndices[activeSearchIndex],
     error,
     expanded,
+    focusedStep,
     isLoading: isLoading || isLoadingLogs,
     logError,
-    parsedLogs: parsedData.parsedLogs ?? [],
+    parsedLogs,
     searchMatchIndices: searchQuery ? new Set(searchMatchIndices) : undefined,
     searchQuery: searchQuery || undefined,
+    stepsOnly: effectiveStepsOnly,
     wrap,
   };
 
@@ -226,6 +272,7 @@ export const Logs = () => {
           />
         )
       ) : undefined}
+      <StepsSummary onStepClick={handleStepClick} taskTerminal={taskTerminal} timeline={stepsTimeline} />
       <TaskLogContent {...logContentProps} />
       <Dialog.Root onOpenChange={onOpenChange} open={fullscreen} scrollBehavior="inside" size="full">
         {fullscreen ? (
@@ -242,6 +289,11 @@ export const Logs = () => {
             <Dialog.CloseTrigger />
 
             <Dialog.Body display="flex" flexDirection="column">
+              <StepsSummary
+                onStepClick={handleStepClick}
+                taskTerminal={taskTerminal}
+                timeline={stepsTimeline}
+              />
               <TaskLogContent {...logContentProps} />
             </Dialog.Body>
           </Dialog.Content>

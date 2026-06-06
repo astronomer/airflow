@@ -30,13 +30,17 @@ type VisibleItem = { entry: ParsedLogEntry; originalIndex: number };
 export const useLogGroups = ({
   currentMatchLineIndex,
   expanded,
+  focusedStep,
   parsedLogs,
   searchMatchIndices,
+  stepsOnly = false,
 }: {
   currentMatchLineIndex?: number;
   expanded: boolean;
+  focusedStep?: { groupId: number; seq: number };
   parsedLogs: Array<ParsedLogEntry>;
   searchMatchIndices?: Set<number>;
+  stepsOnly?: boolean;
 }) => {
   // Build parent map for nested visibility checks
   const groupHeaders = parsedLogs.filter(
@@ -90,6 +94,12 @@ export const useLogGroups = ({
   };
 
   const isEntryVisible = (entry: ParsedLogEntry): boolean => {
+    // "Steps only" view: collapse everything down to the step headers, hiding loose lines and
+    // non-step groups -- a compact CI-pipeline-style summary.
+    if (stepsOnly) {
+      return entry.group?.type === "header" && Boolean(entry.group.isStep);
+    }
+
     if (!entry.group) {
       return true;
     }
@@ -125,6 +135,36 @@ export const useLogGroups = ({
 
   const visibleCurrentMatchIndex =
     currentMatchLineIndex === undefined ? undefined : originalToVisibleIndex.get(currentMatchLineIndex);
+
+  // Visible index of the step header the panel asked to focus (a header is always visible once its
+  // ancestry is expanded), so the log view can scroll to it.
+  const focusedHeaderOriginalIndex =
+    focusedStep === undefined
+      ? -1
+      : parsedLogs.findIndex(
+          (entry) => entry.group?.type === "header" && entry.group.id === focusedStep.groupId,
+        );
+  const focusVisibleIndex =
+    focusedHeaderOriginalIndex === -1 ? undefined : originalToVisibleIndex.get(focusedHeaderOriginalIndex);
+
+  // Expand the focused step group (and its ancestors) ONCE per panel click. It depends only on the
+  // focusedStep object (new identity per click via its seq), NOT on expandedGroups -- otherwise it
+  // would re-assert expansion whenever the set changed and the user could never collapse the group
+  // again. The chain is added with a functional update so expandedGroups isn't needed in the closure.
+  useEffect(() => {
+    if (focusedStep === undefined) {
+      return;
+    }
+    const chain: Array<number> = [];
+    let currentId: number | undefined = focusedStep.groupId;
+
+    while (currentId !== undefined) {
+      chain.push(currentId);
+      currentId = groupParentMap.get(currentId);
+    }
+
+    setExpandedGroups((prev) => new Set([...prev, ...chain]));
+  }, [focusedStep, groupParentMap]);
 
   // Auto-expand group (and all ancestors) when search navigates to a match inside a collapsed group
   useEffect(() => {
@@ -162,6 +202,7 @@ export const useLogGroups = ({
 
   return {
     expandedGroups,
+    focusVisibleIndex,
     originalToVisibleIndex,
     toggleGroup,
     visibleCurrentMatchIndex,

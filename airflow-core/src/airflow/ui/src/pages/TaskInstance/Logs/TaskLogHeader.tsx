@@ -26,6 +26,7 @@ import {
   MdOutlineFileDownload,
   MdOutlineOpenInFull,
   MdSettings,
+  MdViewList,
   MdWrapText,
 } from "react-icons/md";
 import { useSearchParams } from "react-router-dom";
@@ -44,16 +45,19 @@ export type TaskLogHeaderProps = {
   readonly downloadLogs?: () => void;
   readonly expanded?: boolean;
   readonly getLogString: () => string;
+  readonly hasSteps?: boolean;
   readonly isFullscreen?: boolean;
   readonly onSelectTryNumber: (tryNumber: number) => void;
   readonly search: LogSearchInputProps;
   readonly showSource: boolean;
   readonly showTimestamp: boolean;
   readonly sourceOptions?: Array<string>;
+  readonly stepsOnly?: boolean;
   readonly taskInstance?: TaskInstanceResponse;
   readonly toggleExpanded?: () => void;
   readonly toggleFullscreen: () => void;
   readonly toggleSource: () => void;
+  readonly toggleStepsOnly?: () => void;
   readonly toggleTimestamp: () => void;
   readonly toggleWrap: () => void;
   readonly tryNumber?: number;
@@ -64,16 +68,19 @@ export const TaskLogHeader = ({
   downloadLogs,
   expanded,
   getLogString,
+  hasSteps = false,
   isFullscreen = false,
   onSelectTryNumber,
   search,
   showSource,
   showTimestamp,
   sourceOptions,
+  stepsOnly = false,
   taskInstance,
   toggleExpanded,
   toggleFullscreen,
   toggleSource,
+  toggleStepsOnly,
   toggleTimestamp,
   toggleWrap,
   tryNumber,
@@ -231,6 +238,12 @@ export const TaskLogHeader = ({
                 <MdCode /> {showSource ? translate("source.hide") : translate("source.show")}
                 <Menu.ItemCommand>{translate("source.hotkey")}</Menu.ItemCommand>
               </Menu.Item>
+              {hasSteps && toggleStepsOnly ? (
+                <Menu.Item data-testid="log-settings-steps-only" onClick={toggleStepsOnly} value="steps-only">
+                  <MdViewList />{" "}
+                  {stepsOnly ? translate("dag:logs.stepsOnly.hide") : translate("dag:logs.stepsOnly.show")}
+                </Menu.Item>
+              ) : undefined}
             </Menu.Content>
           </Menu.Root>
           {!isFullscreen && (

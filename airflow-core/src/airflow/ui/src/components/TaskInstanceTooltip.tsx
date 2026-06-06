@@ -17,13 +17,16 @@
  * under the License.
  */
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useParams } from "react-router-dom";
 
 import type {
   LightGridTaskInstanceSummary,
   TaskInstanceHistoryResponse,
   TaskInstanceResponse,
 } from "openapi/requests/types.gen";
+import StepProgressHint from "src/components/StepProgressHint";
 import Time from "src/components/Time";
 import { Tooltip, type TooltipProps } from "src/components/ui";
 import { getDuration, renderDuration, sortStateEntries } from "src/utils";
@@ -35,6 +38,10 @@ type LightGridTaskInstanceSummaryWithWhen = {
 } & LightGridTaskInstanceSummary;
 
 type Props = {
+  // Opt out of the live step-progress hover hint. The grid passes false for group and mapped-summary
+  // rows: those have no single (task_id, map_index) the step-state key is written under, so a query
+  // would 404. A concrete single task instance (the default) is eligible.
+  readonly enableStepProgress?: boolean;
   readonly runId?: string | null;
   readonly taskInstance?:
     | LightGridTaskInstanceSummaryWithWhen
@@ -43,8 +50,20 @@ type Props = {
   readonly tooltip?: string | null;
 } & Omit<TooltipProps, "content">;
 
-const TaskInstanceTooltip = ({ children, positioning, runId, taskInstance, tooltip, ...rest }: Props) => {
+const TaskInstanceTooltip = ({
+  children,
+  enableStepProgress = true,
+  positioning,
+  runId,
+  taskInstance,
+  tooltip,
+  ...rest
+}: Props) => {
   const { t: translate } = useTranslation("common");
+  const { dagId } = useParams();
+  // Track open state so the step-progress query only fires while the tooltip is actually open over a
+  // running cell -- one request per hover, not one per grid cell.
+  const [isOpen, setIsOpen] = useState(false);
 
   const hasTooltip = tooltip !== undefined && tooltip !== null;
 
@@ -52,6 +71,21 @@ const TaskInstanceTooltip = ({ children, positioning, runId, taskInstance, toolt
     taskInstance !== undefined && "child_states" in taskInstance && taskInstance.child_states !== null
       ? sortStateEntries(taskInstance.child_states)
       : [];
+
+  const stepRunId =
+    taskInstance !== undefined && "dag_run_id" in taskInstance ? taskInstance.dag_run_id : runId;
+  const stepMapIndex =
+    taskInstance !== undefined && "map_index" in taskInstance ? taskInstance.map_index : -1;
+  const showStepHint =
+    enableStepProgress &&
+    isOpen &&
+    taskInstance?.state === "running" &&
+    dagId !== undefined &&
+    dagId !== "" &&
+    stepRunId !== undefined &&
+    stepRunId !== null &&
+    stepRunId !== "" &&
+    taskInstance.task_id !== "";
 
   return taskInstance === undefined && !hasTooltip ? (
     children
@@ -152,11 +186,23 @@ const TaskInstanceTooltip = ({ children, positioning, runId, taskInstance, toolt
                   ))}
                 </VStack>
               ) : undefined}
+              {showStepHint ? (
+                <StepProgressHint
+                  dagId={dagId}
+                  mapIndex={stepMapIndex}
+                  runId={stepRunId}
+                  taskId={taskInstance.task_id}
+                />
+              ) : undefined}
             </>
           ) : undefined}
         </VStack>
       }
       key={taskInstance?.task_id}
+      onOpenChange={(details) => {
+        setIsOpen(details.open);
+        rest.onOpenChange?.(details);
+      }}
       portalled
       positioning={{
         offset: {

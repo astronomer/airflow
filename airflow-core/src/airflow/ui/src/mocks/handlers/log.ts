@@ -199,6 +199,110 @@ export const handlers: Array<HttpHandler> = [
       continuation_token: null,
     }),
   ),
+  // AIP-103 Task Steps: a task whose logs contain step markers (::group::Step: <name> /
+  // ::endgroup:: step_status=... step_duration_ms=...) plus a loose top-level line.
+  http.get("/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps/-1", () =>
+    HttpResponse.json({
+      ...ti,
+      dag_run_id: "manual__2025-02-18T12:19",
+      task_display_name: "steps",
+      task_id: "steps",
+    }),
+  ),
+  http.get("/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps/logs/1", () =>
+    HttpResponse.json({
+      content: [
+        { event: "Starting build pipeline", timestamp: "2025-02-18T12:19:56.100Z" },
+        { event: "::group::Step: extract", timestamp: "2025-02-18T12:19:56.110Z" },
+        { event: "extracted 7013 rows", timestamp: "2025-02-18T12:19:56.120Z" },
+        {
+          airflow_step: "end",
+          event: "::endgroup::",
+          step_duration_ms: 4,
+          step_outputs: { rows: 7013, source: "api://orders" },
+          step_status: "cached",
+          timestamp: "2025-02-18T12:19:56.130Z",
+        },
+        { event: "::group::Step: transform", timestamp: "2025-02-18T12:19:56.140Z" },
+        { event: "transformed total = 14026", timestamp: "2025-02-18T12:19:56.150Z" },
+        {
+          airflow_step: "end",
+          event: "::endgroup::",
+          step_duration_ms: 1200,
+          step_status: "success",
+          timestamp: "2025-02-18T12:19:56.160Z",
+        },
+        // ~6s of untracked work (no step wrapper) before the next step -> an "untracked" gap row.
+        { event: "::group::Step: load", timestamp: "2025-02-18T12:20:02.200Z" },
+        {
+          airflow_step: "end",
+          event: "::endgroup::",
+          step_duration_ms: 9,
+          step_status: "success",
+          timestamp: "2025-02-18T12:20:02.210Z",
+        },
+      ],
+      continuation_token: null,
+    }),
+  ),
+  // A task whose "load" step is still running and reporting progress (no ::endgroup:: yet).
+  http.get("/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps_running/-1", () =>
+    HttpResponse.json({
+      ...ti,
+      dag_run_id: "manual__2025-02-18T12:19",
+      state: "running",
+      task_display_name: "steps_running",
+      task_id: "steps_running",
+    }),
+  ),
+  http.get(
+    "/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps_running/logs/1",
+    () =>
+      HttpResponse.json({
+        content: [
+          { event: "::group::Step: load", timestamp: "2025-02-18T12:19:56.110Z" },
+          {
+            airflow_step: "progress",
+            event: "::step-progress::",
+            step_name: "load",
+            step_progress_done: 5,
+            step_progress_message: "copying orders_2026_05.parquet",
+            step_progress_total: 8,
+            timestamp: "2025-02-18T12:19:57.000Z",
+          },
+        ],
+        continuation_token: null,
+      }),
+  ),
+  // A FAILED task: one step failed (red), and a later step was left open when the task ended
+  // (interrupted), to exercise the failed + interrupted visual states.
+  http.get("/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps_failed/-1", () =>
+    HttpResponse.json({
+      ...ti,
+      dag_run_id: "manual__2025-02-18T12:19",
+      state: "failed",
+      task_display_name: "steps_failed",
+      task_id: "steps_failed",
+    }),
+  ),
+  http.get(
+    "/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/steps_failed/logs/1",
+    () =>
+      HttpResponse.json({
+        content: [
+          { event: "::group::Step: validate", timestamp: "2025-02-18T12:19:56.100Z" },
+          {
+            airflow_step: "end",
+            event: "::endgroup::",
+            step_duration_ms: 120,
+            step_status: "failed",
+            timestamp: "2025-02-18T12:19:56.220Z",
+          },
+          { event: "::group::Step: cleanup", timestamp: "2025-02-18T12:19:56.300Z" },
+        ],
+        continuation_token: null,
+      }),
+  ),
   http.get("/api/v2/dags/log_grouping/dagRuns/manual__2025-02-18T12:19/taskInstances/ti_context/-1", () =>
     HttpResponse.json({
       ...ti,

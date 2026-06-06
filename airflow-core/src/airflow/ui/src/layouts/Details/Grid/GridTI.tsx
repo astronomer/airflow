@@ -81,6 +81,7 @@ export const GridTI = ({ dagId, instance, isGroup, isMapped, onClick, runId, tas
       transition="background-color 0.2s"
     >
       <TaskInstanceTooltip
+        enableStepProgress={!isGroup && !isMapped}
         openDelay={500}
         positioning={{ placement: "bottom" }}
         runId={runId}

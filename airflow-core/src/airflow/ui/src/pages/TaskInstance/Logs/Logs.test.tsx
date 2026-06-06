@@ -180,6 +180,115 @@ describe("Task log grouping", () => {
   }, 10_000);
 });
 
+describe("Task steps (AIP-103)", () => {
+  it("renders step headers with status duration, mixed with loose lines, and a steps-only toggle", async () => {
+    render(<AppWrapper initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps"]} />);
+
+    await waitForLogs();
+
+    // Step group headers show the step name (without the "Step: " prefix) and are always visible.
+    expect(screen.getByTestId("summary-extract")).toBeVisible();
+    expect(screen.getByTestId("summary-transform")).toBeVisible();
+
+    // The closing ::endgroup:: marker's duration is rendered on the header.
+    expect(await screen.findByText(/\(4ms\)/u)).toBeVisible();
+    expect(screen.getByText(/\(1\.2s\)/u)).toBeVisible();
+
+    // The step status (from the end marker) drives the header icon: extract was a cache hit,
+    // transform/load did real work (success appears on more than one header).
+    expect(screen.getByTestId("step-status-cached")).toBeVisible();
+    expect(screen.getAllByTestId("step-status-success").length).toBeGreaterThanOrEqual(1);
+
+    // step.output(...) metadata renders as a chip (also mirrored in the steps panel, hence getAllBy).
+    expect(screen.getAllByText("rows: 7,013").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("source: api://orders").length).toBeGreaterThanOrEqual(1);
+
+    // A line emitted outside any step renders as a loose top-level line (mixed mode).
+    expect(screen.getByText(/Starting build pipeline/u)).toBeVisible();
+
+    // The "Steps only" toggle is offered in the settings menu when the log has steps.
+    fireEvent.click(screen.getByTestId("log-settings-button"));
+    expect(await screen.findByTestId("log-settings-steps-only")).toBeInTheDocument();
+  }, 10_000);
+
+  it("renders the steps summary panel with an untracked gap between steps", async () => {
+    render(<AppWrapper initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps"]} />);
+
+    await waitForLogs();
+
+    // The dedicated panel lists each step as its own row.
+    expect(screen.getByTestId("steps-summary")).toBeVisible();
+    expect(screen.getByTestId("steps-summary-row-extract")).toBeVisible();
+    expect(screen.getByTestId("steps-summary-row-transform")).toBeVisible();
+    expect(screen.getByTestId("steps-summary-row-load")).toBeVisible();
+
+    // ~6s of un-wrapped work between transform and load surfaces as an "untracked" gap row.
+    expect(screen.getByText(/untracked/iu)).toBeVisible();
+    expect(screen.getByText("6.0s")).toBeVisible();
+
+    // Metadata chips also appear in the panel.
+    expect(screen.getByTestId("steps-summary-output-rows")).toHaveTextContent("rows: 7,013");
+  }, 10_000);
+
+  it("expands a step's logs in the raw view when its panel row is clicked", async () => {
+    render(<AppWrapper initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps"]} />);
+
+    await waitForLogs();
+
+    // The extract step's group starts collapsed, so its log line is not in the DOM.
+    expect(screen.queryByText(/extracted 7013 rows/u)).toBeNull();
+
+    // Clicking the panel row expands that step's group in the raw log below.
+    fireEvent.click(screen.getByTestId("steps-summary-row-extract"));
+
+    await waitFor(() => expect(screen.getByText(/extracted 7013 rows/u)).toBeInTheDocument());
+  }, 10_000);
+
+  it("lets a focused step be manually collapsed again (focus does not re-assert expansion)", async () => {
+    render(<AppWrapper initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps"]} />);
+
+    await waitForLogs();
+
+    fireEvent.click(screen.getByTestId("steps-summary-row-extract"));
+    await waitFor(() => expect(screen.getByText(/extracted 7013 rows/u)).toBeInTheDocument());
+
+    // Collapsing the group in the raw log must stick -- the focus effect must not snap it back open.
+    fireEvent.click(screen.getByTestId("summary-extract"));
+    await waitFor(() => expect(screen.queryByText(/extracted 7013 rows/u)).toBeNull());
+  }, 10_000);
+
+  it("renders failed (red) and interrupted step states", async () => {
+    render(
+      <AppWrapper initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps_failed"]} />,
+    );
+
+    await waitForLogs();
+
+    // validate closed with status=failed -> failed icon.
+    expect(screen.getByTestId("steps-summary-status-failed")).toBeVisible();
+    // cleanup was left open and the task ended (failed) -> interrupted, not "running".
+    expect(screen.getByTestId("steps-summary-status-interrupted")).toBeVisible();
+    expect(screen.getByText(/interrupted/iu)).toBeVisible();
+  }, 10_000);
+
+  it("shows a live progress bar on a running step", async () => {
+    render(
+      <AppWrapper
+        initialEntries={["/dags/log_grouping/runs/manual__2025-02-18T12:19/tasks/steps_running"]}
+      />,
+    );
+
+    await waitForLogs();
+
+    expect(screen.getByTestId("steps-summary-row-load")).toBeVisible();
+    const progress = screen.getByTestId("steps-summary-progress");
+
+    expect(progress).toBeVisible();
+    // Count + percent, with the current item appended (e.g. the file being copied).
+    expect(progress).toHaveTextContent("5/8 (63%) · copying orders_2026_05.parquet");
+  }, 10_000);
+});
+
 describe("Task Identity preamble", () => {
   it("renders Task Identity preamble after the 'Pre Execute' group header as first group element", async () => {
     render(

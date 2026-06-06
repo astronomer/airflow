@@ -27,6 +27,7 @@ import type { ParsedLogEntry } from "src/queries/useLogs";
 
 import { HighlightedText } from "./HighlightedText";
 import { ScrollToButton } from "./ScrollToButton";
+import { STEP_STATUS_VISUALS, formatStepDuration, outputChipLabel } from "./stepVisuals";
 import { useLogGroups } from "./useLogGroups";
 import { getHighlightColor, scrollToBottom, scrollToTop } from "./utils";
 
@@ -34,11 +35,13 @@ export type TaskLogContentProps = {
   readonly currentMatchLineIndex?: number;
   readonly error: unknown;
   readonly expanded: boolean;
+  readonly focusedStep?: { groupId: number; seq: number };
   readonly isLoading: boolean;
   readonly logError: unknown;
   readonly parsedLogs: Array<ParsedLogEntry>;
   readonly searchMatchIndices?: Set<number>;
   readonly searchQuery?: string;
+  readonly stepsOnly?: boolean;
   readonly wrap: boolean;
 };
 
@@ -49,11 +52,13 @@ export const TaskLogContent = ({
   currentMatchLineIndex,
   error,
   expanded,
+  focusedStep,
   isLoading,
   logError,
   parsedLogs,
   searchMatchIndices,
   searchQuery,
+  stepsOnly = false,
   wrap,
 }: TaskLogContentProps) => {
   const hash = location.hash.replace("#", "");
@@ -61,12 +66,20 @@ export const TaskLogContent = ({
 
   const {
     expandedGroups,
+    focusVisibleIndex,
     originalToVisibleIndex,
     toggleGroup,
     visibleCurrentMatchIndex,
     visibleItems,
     visibleSearchMatchIndices,
-  } = useLogGroups({ currentMatchLineIndex, expanded, parsedLogs, searchMatchIndices });
+  } = useLogGroups({
+    currentMatchLineIndex,
+    expanded,
+    focusedStep,
+    parsedLogs,
+    searchMatchIndices,
+    stepsOnly,
+  });
 
   const isAtBottomRef = useRef<boolean>(true);
   const prevVisibleCountRef = useRef<number>(0);
@@ -130,6 +143,17 @@ export const TaskLogContent = ({
     // React Compiler auto-memoizes; safe to include in deps
   }, [visibleCurrentMatchIndex, isLoading, rowVirtualizer, visibleItems]);
 
+  // Scroll the log to the step the panel asked to focus (useLogGroups expands it). Fires ONCE per
+  // click (keyed on the focusedStep object, new identity per click). Marking "not at bottom" stops
+  // the auto-scroll-to-bottom effect from overriding this when expanding the step adds lines.
+  useLayoutEffect(() => {
+    if (focusedStep !== undefined && focusVisibleIndex !== undefined) {
+      isAtBottomRef.current = false;
+      rowVirtualizer.scrollToIndex(focusVisibleIndex, { align: "start" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot per click; do not re-fire when focusVisibleIndex shifts
+  }, [focusedStep, rowVirtualizer]);
+
   const handleScrollTo = (to: "bottom" | "top") => {
     if (visibleItems.length === 0) {
       return;
@@ -192,7 +216,10 @@ export const TaskLogContent = ({
               const indent = entry.group ? groupLevel * 4 + (isGroupHeader ? 0 : 4) : 0;
 
               if (isGroupHeader && entry.group) {
-                const isExpanded = expandedGroups.has(entry.group.id);
+                const { id: groupId, isStep, stepDurationMs, stepOutputs, stepStatus } = entry.group;
+                const isExpanded = expandedGroups.has(groupId);
+                const stepVisual = isStep ? STEP_STATUS_VISUALS[stepStatus ?? "running"] : undefined;
+                const StepIcon = stepVisual?.icon;
 
                 return (
                   <Box
@@ -208,7 +235,7 @@ export const TaskLogContent = ({
                     data-index={virtualRow.index}
                     data-testid={`group-header-${virtualRow.index}`}
                     key={virtualRow.key}
-                    onClick={() => entry.group && toggleGroup(entry.group.id)}
+                    onClick={() => toggleGroup(groupId)}
                     pl={indent}
                     position="absolute"
                     ref={rowVirtualizer.measureElement}
@@ -217,9 +244,11 @@ export const TaskLogContent = ({
                     width={wrap ? "100%" : "max-content"}
                   >
                     <Box
+                      alignItems="center"
                       as="span"
-                      color="fg.info"
+                      color={stepVisual ? stepVisual.color : "fg.info"}
                       data-testid={`summary-${typeof entry.element === "string" ? entry.element : ""}`}
+                      display="inline-flex"
                     >
                       <Box
                         as="span"
@@ -230,6 +259,16 @@ export const TaskLogContent = ({
                       >
                         {"\u25B6"}
                       </Box>
+                      {StepIcon ? (
+                        <Box
+                          as="span"
+                          data-testid={`step-status-${stepStatus ?? "running"}`}
+                          display="inline-flex"
+                          mr={1}
+                        >
+                          <StepIcon />
+                        </Box>
+                      ) : undefined}
                       {visibleSearchMatchIndices?.has(virtualRow.index) ? (
                         <HighlightedText query={searchQuery}>
                           {typeof entry.element === "string" ? entry.element : undefined}
@@ -237,6 +276,33 @@ export const TaskLogContent = ({
                       ) : (
                         entry.element
                       )}
+                      {isStep && stepOutputs
+                        ? Object.entries(stepOutputs).map(([outputKey, outputValue]) => {
+                            const { full, label } = outputChipLabel(outputKey, outputValue);
+
+                            return (
+                              <Box
+                                as="span"
+                                bg="bg.muted"
+                                borderRadius="sm"
+                                color="fg.muted"
+                                data-testid={`step-output-${groupId}-${outputKey}`}
+                                fontSize="xs"
+                                key={outputKey}
+                                ml={2}
+                                px={1.5}
+                                title={full}
+                              >
+                                {label}
+                              </Box>
+                            );
+                          })
+                        : undefined}
+                      {isStep && stepDurationMs !== undefined ? (
+                        <Box as="span" color="fg.muted" data-testid={`step-duration-${groupId}`} ml={2}>
+                          ({formatStepDuration(stepDurationMs)})
+                        </Box>
+                      ) : undefined}
                     </Box>
                   </Box>
                 );
