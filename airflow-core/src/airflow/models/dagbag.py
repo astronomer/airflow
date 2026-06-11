@@ -21,7 +21,7 @@ import hashlib
 from collections.abc import MutableMapping
 from contextlib import nullcontext
 from threading import RLock
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 from uuid import UUID
 
 from cachetools import LRUCache, TTLCache
@@ -40,6 +40,13 @@ if TYPE_CHECKING:
     from airflow.models import DagRun
     from airflow.models.serialized_dag import SerializedDagModel
     from airflow.serialization.definitions.dag import SerializedDAG
+
+
+class _CacheEntry(NamedTuple):
+    """A cached deserialized DAG plus the ``dag_hash`` needed to detect staleness on lookup."""
+
+    dag: SerializedDAG
+    dag_hash: str
 
 
 class DBDagBag:
@@ -67,7 +74,7 @@ class DBDagBag:
         :param cache_ttl: Time-to-live for cache entries in seconds. If None or 0, no TTL (LRU only).
         """
         self.load_op_links = load_op_links
-        self._dags: MutableMapping[UUID | str, SerializedDAG] = {}
+        self._dags: MutableMapping[UUID | str, _CacheEntry] = {}
         self._use_cache = False
 
         # Initialize bounded cache if cache_size is provided and > 0
@@ -84,27 +91,43 @@ class DBDagBag:
         self._lock: RLock | nullcontext = RLock() if self._use_cache else nullcontext()
 
     def _read_dag(self, serdag: SerializedDagModel) -> SerializedDAG | None:
-        """Read and optionally cache a SerializedDAG from a SerializedDagModel."""
+        """Read and cache a SerializedDAG (with its ``dag_hash`` for staleness detection)."""
         serdag.load_op_links = self.load_op_links
         dag = serdag.dag
         if not dag:
             return None
         with self._lock:
-            self._dags[serdag.dag_version_id] = dag
+            self._dags[serdag.dag_version_id] = _CacheEntry(dag, serdag.dag_hash)
             cache_size = len(self._dags)
         if self._use_cache:
             stats.gauge("api_server.dag_bag.cache_size", cache_size, rate=0.1)
         return dag
 
-    def _get_dag(self, version_id: UUID | str, session: Session) -> SerializedDAG | None:
-        # Check cache first
-        with self._lock:
-            dag = self._dags.get(version_id)
+    @staticmethod
+    def _current_dag_hash(version_id: UUID | str, session: Session) -> str | None:
+        """Return the current ``dag_hash`` of the serialized DAG for ``version_id``, or None."""
+        from airflow.models.serialized_dag import SerializedDagModel
 
-        if dag:
-            if self._use_cache:
-                stats.incr("api_server.dag_bag.cache_hit")
-            return dag
+        return session.scalar(
+            select(SerializedDagModel.dag_hash).where(SerializedDagModel.dag_version_id == version_id)
+        )
+
+    def _get_dag(self, version_id: UUID | str, session: Session) -> SerializedDAG | None:
+        with self._lock:
+            cached = self._dags.get(version_id)
+
+        if cached is not None:
+            # A version may have been updated in place (same dag_version_id, new content + new
+            # dag_hash) by SerializedDagModel.write_dag, so validate the cached copy against the
+            # current dag_hash before serving it. That validation is a single-row lookup on the
+            # uniquely-indexed serialized_dag.dag_version_id column.
+            if self._current_dag_hash(version_id, session) == cached.dag_hash:
+                if self._use_cache:
+                    stats.incr("api_server.dag_bag.cache_hit")
+                return cached.dag
+            # Stale (updated in place) or the version no longer exists: drop and reload below.
+            with self._lock:
+                self._dags.pop(version_id, None)
 
         dag_version = session.get(DagVersion, version_id, options=[joinedload(DagVersion.serialized_dag)])
         if not dag_version:
@@ -117,9 +140,9 @@ class DBDagBag:
         # counting a single lookup as both a miss and a hit.
         if self._use_cache:
             with self._lock:
-                if dag := self._dags.get(version_id):
+                if (cached := self._dags.get(version_id)) is not None:
                     stats.incr("api_server.dag_bag.cache_hit")
-                    return dag
+                    return cached.dag
             stats.incr("api_server.dag_bag.cache_miss")
         return self._read_dag(serdag)
 
