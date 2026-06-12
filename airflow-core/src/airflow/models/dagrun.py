@@ -152,6 +152,25 @@ def _creator_note(val):
     return DagRunNote(*val)
 
 
+def dagrun_trace_attributes(dr) -> dict[str, str]:
+    """
+    Run-identity attributes for a DAG run's trace.
+
+    Defined once and used in two places: forwarded to the sampler at carrier
+    creation (so a custom sampler can differentiate the head-sampling decision by
+    run kind) and set on the emitted ``dag_run`` span. ``getattr`` guards because
+    the values may not be populated yet at ``__init__``/clear time.
+    """
+    attributes: dict[str, str] = {}
+    dag_id = getattr(dr, "dag_id", None)
+    if dag_id is not None:
+        attributes["airflow.dag_id"] = str(dag_id)
+    run_type = getattr(dr, "run_type", None)
+    if run_type is not None:
+        attributes["airflow.run_type"] = str(run_type)
+    return attributes
+
+
 class DagRun(Base, LoggingMixin):
     """
     Invocation instance of a DAG.
@@ -383,7 +402,8 @@ class DagRun(Base, LoggingMixin):
         self.triggering_user_name = triggering_user_name
         self.scheduled_by_job_id = None
         self.context_carrier: dict[str, str] = new_dagrun_trace_carrier(
-            task_span_detail_level=self.conf.get(TASK_SPAN_DETAIL_LEVEL_KEY, None)
+            task_span_detail_level=self.conf.get(TASK_SPAN_DETAIL_LEVEL_KEY, None),
+            attributes=dagrun_trace_attributes(self),
         )
 
         if not isinstance(partition_key, str | None):
@@ -1084,7 +1104,7 @@ class DagRun(Base, LoggingMixin):
 
         with override_ids(span_context.trace_id, span_context.span_id):
             attributes: dict[str, str] = {
-                "airflow.dag_id": str(self.dag_id),
+                **dagrun_trace_attributes(self),
                 "airflow.dag_run.run_id": self.run_id,
             }
             if self.start_date:
