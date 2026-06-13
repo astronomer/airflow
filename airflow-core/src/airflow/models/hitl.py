@@ -123,6 +123,14 @@ class HITLDetailPropertyMixin:
             for assignee in self.assignees
         ]
 
+    @assigned_users.expression  # type: ignore[no-redef]
+    def assigned_users(cls):
+        # Without this, class-level access (e.g. ``select(HITLDetail.assigned_users)``, or
+        # anything that walks class attributes such as ``dir()`` / ``Mock(spec=...)``) falls
+        # back to the instance getter, whose ``for assignee in self.assignees`` then iterates
+        # a JSON column expression -- which yields ``col[0]``, ``col[1]``, ... forever.
+        return cls.assignees
+
     @hybrid_property
     def responded_by_user(self) -> HITLUser | None:
         if self.responded_by is None:
