@@ -239,6 +239,11 @@ def reject_shared_stream_event() -> None:
     if ctx is None:
         log.warning("reject_shared_stream_event called outside an ack-mode binding window; ignored")
         return
+    log.info(
+        "Rejecting shared-stream event",
+        trigger_id=ctx.trigger_id,
+        event_id=ctx.event_id,
+    )
     ctx.group._reject_pending_event(trigger_id=ctx.trigger_id, event_id=ctx.event_id)
 
 
