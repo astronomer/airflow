@@ -592,8 +592,7 @@ def _validate_outlet_event_partition_keys(outlet_events: list[dict[str, Any]]) -
     ``ID_LEN`` column width used in the metadata database.
     """
     for event in outlet_events:
-        pk = event.get("partition_key")
-        if pk is None:
+        if (pk := event.get("partition_key")) is None:
             continue
         if not pk.strip():
             raise InvalidPartitionKeyError(
