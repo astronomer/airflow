@@ -2085,7 +2085,9 @@ def _run_execute_callable(
     if task.execution_timeout:
         from airflow.sdk.execution_time.timeout import timeout
 
-        # TODO: handle timeout in case of deferral
+        # TODO: the full timeout restarts on each resume after a deferral, so it
+        # doesn't bound a task's total execution across defer/resume cycles.
+        # Fixing it needs a decision on whether time spent deferred counts.
         timeout_seconds = task.execution_timeout.total_seconds()
         try:
             # It's possible we're already timed out, so fast-fail if true
