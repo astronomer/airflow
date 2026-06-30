@@ -470,6 +470,105 @@ def test_upstream_mapped_expanded(
     assert finished_tis_states == expected_finished_tis_states
 
 
+def _build_mapped_dag(dag_maker, session: Session) -> DagRun:
+    """Build a DAG with a mapped task ``m`` whose expansion source (``t1``/``t2``) is its mapped dep."""
+    from airflow.sdk import task
+
+    with dag_maker(session=session):
+
+        @task
+        def t():
+            return [1, 2, 3, 4]
+
+        @task
+        def m(x, y):
+            return x + y
+
+        m.expand(x=t.override(task_id="t1")(), y=t.override(task_id="t2")())
+
+    return dag_maker.create_dagrun()
+
+
+def _count_upstream_selects(session: Session):
+    """Context manager-ish helper: returns a list that accumulates upstream-TI SELECT statements."""
+    from sqlalchemy import event
+
+    statements: list[str] = []
+    engine = session.get_bind()
+
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+        normalized = " ".join(statement.split())
+        if "FROM task_instance" in normalized and "map_index" in normalized and "task_id IN" in normalized:
+            statements.append(normalized)
+
+    event.listen(engine, "after_cursor_execute", _after_cursor_execute)
+    return statements, lambda: event.remove(engine, "after_cursor_execute", _after_cursor_execute)
+
+
+def test_cache_collapses_upstream_query_to_one_select(dag_maker, session: Session):
+    """All mapped TIs of one task sharing a DepContext should trigger a single upstream SELECT."""
+    dr = _build_mapped_dag(dag_maker, session)
+
+    # Expand the mapped task so we have multiple map indexes to evaluate.
+    tis = {ti.task_id: ti for ti in dr.get_task_instances(session=session)}
+    for upstream in ("t1", "t2"):
+        tis[upstream].set_state(SUCCESS, session=session)
+        tis[upstream].xcom_push(XCOM_RETURN_KEY, [1, 2, 3, 4], session=session)
+        session.add(TaskMap.from_task_instance_xcom(tis[upstream], [1, 2, 3, 4]))
+    session.flush()
+
+    schedulable_tis, _ = _one_scheduling_decision_iteration(dr, session)
+    mapped_tis = [ti for key, ti in schedulable_tis.items() if key.startswith("m_")]
+    assert len(mapped_tis) >= 2
+
+    dep = MappedTaskUpstreamDep()
+    dep_context = DepContext()
+
+    statements, remove_listener = _count_upstream_selects(session)
+    try:
+        for ti in mapped_tis:
+            list(dep._get_dep_statuses(ti=ti, dep_context=dep_context, session=session))
+    finally:
+        remove_listener()
+
+    assert len(statements) == 1, (
+        f"expected a single upstream SELECT for {len(mapped_tis)} mapped TIs sharing a DepContext, "
+        f"got {len(statements)}: {statements}"
+    )
+
+
+def test_warm_cache_matches_fresh_context(dag_maker, session: Session):
+    """A warm (cached) DepContext yields identical dep statuses and the same downstream ti.state side
+    effect as a fresh (cold) DepContext, exercising the set_state path with one failed upstream."""
+    dr = _build_mapped_dag(dag_maker, session)
+    tis = {ti.task_id: ti for ti in dr.get_task_instances(session=session)}
+    # Make one upstream fail so the UPSTREAM_FAILED set_state side effect fires.
+    tis["t1"].set_state(FAILED, session=session)
+    tis["t2"].set_state(SUCCESS, session=session)
+    session.flush()
+
+    dep = MappedTaskUpstreamDep()
+    m_ti = tis["m"]
+
+    # Cold: fresh DepContext (no cache). Capture statuses + the resulting downstream state.
+    cold_statuses = list(dep._get_dep_statuses(ti=m_ti, dep_context=DepContext(), session=session))
+    session.refresh(m_ti)
+    cold_state = m_ti.state
+    assert cold_state == UPSTREAM_FAILED
+
+    # Warm: a shared DepContext. The first call populates the cache; the second hits it. Both must
+    # produce the same statuses and leave the downstream state unchanged (idempotent set_state).
+    shared_context = DepContext()
+    first = list(dep._get_dep_statuses(ti=m_ti, dep_context=shared_context, session=session))
+    assert shared_context._mapped_upstream_tis_cache, "cache should be populated after the first call"
+    warm = list(dep._get_dep_statuses(ti=m_ti, dep_context=shared_context, session=session))
+    session.refresh(m_ti)
+
+    assert first == cold_statuses
+    assert warm == cold_statuses
+    assert m_ti.state == cold_state == UPSTREAM_FAILED
+
+
 def _one_scheduling_decision_iteration(
     dr: DagRun, session: Session
 ) -> tuple[dict[str, TaskInstance], dict[str, str]]:

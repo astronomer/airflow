@@ -69,18 +69,29 @@ class MappedTaskUpstreamDep(BaseTIDep):
         # only interested in it if it hasn't been expanded yet, i.e., we filter by map_index=-1. This is
         # because if it has been expanded, it did not fail and was not skipped outright which is all we need
         # to know for the purposes of this check.
-        mapped_dependency_tis = (
-            session.scalars(
-                select(TaskInstance).where(
-                    TaskInstance.task_id.in_(operator.task_id for operator in mapped_dependencies),
-                    TaskInstance.dag_id == ti.dag_id,
-                    TaskInstance.run_id == ti.run_id,
-                    TaskInstance.map_index == -1,
-                )
-            ).all()
-            if mapped_dependencies
-            else []
-        )
+        #
+        # This dependency is evaluated once per mapped task instance during a scheduling cycle, but the
+        # query below does not depend on ``ti.map_index`` -- it returns identical rows for every mapped
+        # index of the same task within the cycle. Memoize the (read-only) result on the per-cycle
+        # ``DepContext`` to collapse that N+1 into a single SELECT. The cache is keyed by the values the
+        # query actually filters on; a fresh ``DepContext`` next cycle gives a fresh cache.
+        dep_task_ids = frozenset(operator.task_id for operator in mapped_dependencies)
+        if dep_task_ids:
+            cache_key = (ti.dag_id, ti.run_id, dep_task_ids)
+            cache = dep_context._mapped_upstream_tis_cache
+            try:
+                mapped_dependency_tis = cache[cache_key]
+            except KeyError:
+                mapped_dependency_tis = cache[cache_key] = session.scalars(
+                    select(TaskInstance).where(
+                        TaskInstance.task_id.in_(dep_task_ids),
+                        TaskInstance.dag_id == ti.dag_id,
+                        TaskInstance.run_id == ti.run_id,
+                        TaskInstance.map_index == -1,
+                    )
+                ).all()
+        else:
+            mapped_dependency_tis = []
         if not mapped_dependency_tis:
             yield self._passing_status(reason="There are no (unexpanded) mapped dependencies!")
             return

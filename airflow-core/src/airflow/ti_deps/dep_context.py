@@ -85,6 +85,16 @@ class DepContext:
     have_changed_ti_states: bool = False
     """Have any of the TIs state's been changed as a result of evaluating dependencies"""
 
+    _mapped_upstream_tis_cache: dict = attr.ib(factory=dict, init=False, repr=False)
+    """Per-context cache of mapped-dependency upstream TIs, keyed by (dag_id, run_id, frozenset(task_ids)).
+
+    A single ``DepContext`` is created once per scheduling cycle (see ``DagRun._get_ready_tis``) and
+    reused to evaluate every schedulable task instance of that cycle. Caching here scopes the cache to
+    one cycle and discards it (via a fresh ``DepContext``) on the next cycle, which is exactly the right
+    invalidation. Used by ``MappedTaskUpstreamDep`` to avoid re-running an identical upstream query once
+    per mapped index.
+    """
+
     def ensure_finished_tis(self, dag_run: DagRun, session: Session) -> list[TaskInstance]:
         """
         Ensure finished_tis is populated if it's currently None, which allows running tasks without dag_run.
