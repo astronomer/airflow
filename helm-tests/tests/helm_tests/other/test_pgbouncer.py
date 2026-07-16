@@ -509,6 +509,42 @@ class TestPgbouncerConfig:
             in ini
         )
 
+    def test_databases_pool_size_override_via_extra_ini(self):
+        # When extraIni already sets pool_size, the structured pool size must
+        # not also be emitted (which would produce a duplicate pool_size token).
+        values = {
+            "pgbouncer": {
+                "enabled": True,
+                "metadataPoolSize": 12,
+                "resultBackendPoolSize": 7,
+                "extraIniMetadata": "pool_size=30",
+                "extraIniResultBackend": "pool_size=40",
+            },
+            "data": {
+                "metadataConnection": {"host": "meta_host", "db": "meta_db", "port": 1111},
+                "resultBackendConnection": {
+                    "protocol": "postgresql",
+                    "host": "rb_host",
+                    "user": "someuser",
+                    "pass": "someuser",
+                    "db": "rb_db",
+                    "port": 2222,
+                    "sslmode": "disabled",
+                },
+            },
+        }
+        ini = self._get_pgbouncer_ini(values)
+
+        assert (
+            "release-name-metadata = host=meta_host dbname=meta_db port=1111 pool_size=30" in ini
+        )
+        assert (
+            "release-name-result-backend = host=rb_host dbname=rb_db port=2222 pool_size=40" in ini
+        )
+        # The structured pool sizes are suppressed, so no duplicate token.
+        assert "pool_size=12" not in ini
+        assert "pool_size=7" not in ini
+
     def test_config_defaults(self):
         ini = self._get_pgbouncer_ini({"pgbouncer": {"enabled": True}})
 
