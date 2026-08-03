@@ -91,6 +91,20 @@ const createColumns = (translate: (key: string) => string): Array<ColumnDef<Asse
     header: () => translate("producingTasks"),
   },
   {
+    accessorKey: "aliases",
+    cell: ({ row: { original } }: AssetRow) =>
+      original.aliases.length ? original.aliases.map((alias) => alias.name).join(", ") : undefined,
+    enableSorting: false,
+    header: () => translate("aliases"),
+  },
+  {
+    accessorKey: "watchers",
+    cell: ({ row: { original } }: AssetRow) =>
+      original.watchers.length ? original.watchers.map((watcher) => watcher.name).join(", ") : undefined,
+    enableSorting: false,
+    header: () => translate("watchers"),
+  },
+  {
     accessorKey: "trigger",
     cell: ({ row }) => <CreateAssetEvent asset={row.original} />,
     enableSorting: false,
