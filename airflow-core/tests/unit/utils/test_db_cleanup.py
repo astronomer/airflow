@@ -551,6 +551,71 @@ class TestDBCleanup:
         assert latest_id in remaining  # kept by keep_last
         assert orphan_id not in remaining  # old and unreferenced -> pruned
 
+    def test_dag_cleanup_skips_dags_with_remaining_task_instances(self):
+        """db clean must skip dag rows whose task instances still pin a dag_version.
+
+        Deleting a ``dag`` row cascades into ``dag_version``, and ``task_instance.dag_version_id``
+        is ``ON DELETE RESTRICT`` — so the cascade fails while any task instance of the dag
+        remains (e.g. never-started ones with NULL ``start_date``, which task_instance cleanup
+        never removes). Cleanup must skip those dags while still pruning stale dags without
+        task instances.
+        """
+        base_date = pendulum.DateTime(2022, 1, 1, tzinfo=pendulum.timezone("UTC"))
+        bundle_name = f"testing-{uuid4()}"
+        pinned_dag_id = f"test_dag_{uuid4()}"
+        orphan_dag_id = f"test_dag_{uuid4()}"
+
+        with create_session() as session:
+            session.add(DagBundleModel(name=bundle_name))
+            session.flush()
+            session.add_all(
+                [
+                    DagModel(dag_id=pinned_dag_id, bundle_name=bundle_name, last_parsed_time=base_date),
+                    DagModel(dag_id=orphan_dag_id, bundle_name=bundle_name, last_parsed_time=base_date),
+                ]
+            )
+            session.flush()
+
+            version = DagVersion(
+                dag_id=pinned_dag_id,
+                version_number=1,
+                bundle_name=bundle_name,
+                created_at=base_date,
+                last_updated=base_date,
+            )
+            session.add(version)
+            session.flush()
+
+            dag_run = DagRun(pinned_dag_id, run_id="run-1", run_type=DagRunType.MANUAL, start_date=base_date)
+            ti = create_task_instance(
+                PythonOperator(task_id="dummy-task", python_callable=print),
+                run_id=dag_run.run_id,
+                dag_version_id=version.id,
+            )
+            ti.dag_id = pinned_dag_id
+            ti.start_date = None  # never started: task_instance cleanup cannot remove it
+            session.add_all([dag_run, ti])
+            session.commit()
+
+            # Previously the dag delete cascaded into dag_version and failed the RESTRICT FK.
+            _cleanup_table(
+                **config_dict["dag"].__dict__,
+                clean_before_timestamp=base_date.add(days=10),
+                dry_run=False,
+                session=session,
+                table_names=["dag"],
+                skip_archive=True,
+            )
+
+            remaining = set(
+                session.scalars(
+                    select(DagModel.dag_id).where(DagModel.dag_id.in_([pinned_dag_id, orphan_dag_id]))
+                ).all()
+            )
+
+        assert pinned_dag_id in remaining  # its task instance pins a dag_version -> skipped
+        assert orphan_dag_id not in remaining  # stale and unreferenced -> pruned
+
     def test_table_config_skip_if_referenced_requires_pk_column(self):
         """A misconfigured skip_if_referenced (pk not in columns) must fail fast at construction."""
         with pytest.raises(ValueError, match="referenced_pk_column"):

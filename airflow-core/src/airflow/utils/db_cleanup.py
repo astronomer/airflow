@@ -93,12 +93,15 @@ class _TableConfig:
     :param keep_last_group_by: if keeping the last record, can keep the last record for each group
     :param dependent_tables: list of tables which have FK relationship with this table
     :param extra_filters: SQLAlchemy expressions ANDed with the recency filter; referenced columns must be in ``extra_columns``.
-    :param skip_if_referenced: list of ``(referencing_table, fk_column)`` pairs whose FK points at this
-        table's ``referenced_pk_column``. A row that is still referenced by any of these is excluded from
-        deletion. This avoids issuing deletes that would violate an ``ON DELETE RESTRICT`` foreign key
-        (e.g. ``task_instance.dag_version_id``) — such deletes fail and, on MySQL, can leave the cleanup
-        command blocked on metadata locks. ``referenced_pk_column`` must be listed in ``extra_columns``.
-    :param referenced_pk_column: the primary-key column of this table that ``skip_if_referenced`` FKs point at.
+    :param skip_if_referenced: list of ``(referencing_table, fk_column)`` pairs whose column matches this
+        table's ``referenced_pk_column`` — either a direct FK, or a column that pins rows this table's
+        delete would cascade into (e.g. ``task_instance.dag_id`` pins ``dag`` because deleting a dag
+        cascades into ``dag_version``, which ``task_instance.dag_version_id`` references with RESTRICT).
+        A row that is still referenced by any of these is excluded from deletion. This avoids issuing
+        deletes that would violate an ``ON DELETE RESTRICT`` foreign key — such deletes fail and, on
+        MySQL, can leave the cleanup command blocked on metadata locks. ``referenced_pk_column`` must be
+        a column of the table's query model (via ``extra_columns`` or ``dag_id_column_name``).
+    :param referenced_pk_column: the column of this table that ``skip_if_referenced`` columns point at.
     """
 
     table_name: str
@@ -173,6 +176,12 @@ config_list: list[_TableConfig] = [
         recency_column_name="last_parsed_time",
         dependent_tables=["dag_version", "deadline"],
         dag_id_column_name="dag_id",
+        # Deleting a dag cascades into dag_version, and task_instance.dag_version_id is
+        # ON DELETE RESTRICT — so the cascade fails while any task instance of the dag remains
+        # (e.g. never-started ones with NULL start_date, which task_instance cleanup never
+        # removes). Skip such dags; they become eligible once their task instances are gone.
+        skip_if_referenced=[("task_instance", "dag_id")],
+        referenced_pk_column="dag_id",
     ),
     _TableConfig(
         table_name="dag_run",
