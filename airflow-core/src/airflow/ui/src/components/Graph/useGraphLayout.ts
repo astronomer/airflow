@@ -21,7 +21,7 @@ import ELK, { type ElkNode } from "elkjs";
 // ?raw imports the file content as a plain string without any transformation.
 // We create a blob: URL from it so the Worker is always same-origin to the
 // page — avoiding the cross-origin SecurityError that occurs in Airflow's dev
-// setup where Vite (5173) and Flask (28080) run on different ports, and all
+// setup where the Vite dev server and the api-server run on different ports, and all
 // URL-based worker approaches (?worker, ?worker&inline, new URL()) resolve to
 // the Vite origin which browsers reject for Workers.
 import ElkWorkerSource from "elkjs/lib/elk-worker.min.js?raw";

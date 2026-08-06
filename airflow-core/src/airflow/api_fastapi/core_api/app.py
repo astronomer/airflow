@@ -35,6 +35,49 @@ log = logging.getLogger(__name__)
 
 _AIRFLOW_PATH = Path(__file__).parents[3]
 
+DEFAULT_VITE_DEV_PORT = 5173
+VITE_DEV_PORT_COOKIE = "airflow_vite_dev_port"
+
+
+def _parse_vite_dev_port(raw: str | None) -> int | None:
+    """
+    Parse a Vite dev server port, returning ``None`` when it is absent or unusable.
+
+    Only a port number is accepted — never a full origin — because the result is interpolated
+    into ``<script src>`` in the dev shell. Restricting the input to an integer in the
+    unprivileged range means a caller cannot steer the shell at an arbitrary host or smuggle
+    markup into the page.
+    """
+    if raw is None:
+        return None
+    try:
+        port = int(raw)
+    except ValueError:
+        return None
+    return port if 1024 <= port <= 65535 else None
+
+
+def _resolve_vite_dev_origin(request: Request) -> tuple[str, int | None]:
+    """
+    Resolve the Vite dev server the shell should load the SPA from.
+
+    Precedence is ``?vite=<port>`` (an explicit switch), then the cookie set by a previous
+    switch, then the port breeze started its own dev server on, then the floor port. The query
+    parameter exists so several worktrees can serve one breeze backend: each is a dev server on
+    its own port, and the browser picks which one it is looking at.
+
+    Returns the origin along with the port to persist as a cookie, or ``None`` when nothing
+    needs persisting.
+    """
+    from_query = _parse_vite_dev_port(request.query_params.get("vite"))
+    port = (
+        from_query
+        or _parse_vite_dev_port(request.cookies.get(VITE_DEV_PORT_COOKIE))
+        or _parse_vite_dev_port(os.environ.get("VITE_DEV_PORT"))
+        or DEFAULT_VITE_DEV_PORT
+    )
+    return f"http://localhost:{port}", from_query
+
 
 def init_views(app: FastAPI) -> None:
     """Init views by registering the different routers."""
@@ -98,12 +141,22 @@ def init_views(app: FastAPI) -> None:
 
     @app.get("/{rest_of_path:path}", response_class=HTMLResponse, include_in_schema=False)
     def webapp(request: Request, rest_of_path: str):
-        return templates.TemplateResponse(
+        context = {"backend_server_base_url": request.base_url.path}
+        port_to_persist = None
+        if dev_mode:
+            context["vite_dev_origin"], port_to_persist = _resolve_vite_dev_origin(request)
+
+        response = templates.TemplateResponse(
             request,
             "/index.html",
-            {"backend_server_base_url": request.base_url.path},
+            context,
             media_type="text/html",
         )
+        if port_to_persist is not None:
+            # Client-side routing means the SPA is reloaded from paths that carry no query
+            # string, so the choice has to outlive the URL that made it.
+            response.set_cookie(VITE_DEV_PORT_COOKIE, str(port_to_persist), samesite="lax")
+        return response
 
 
 def init_flask_plugins(app: FastAPI) -> None:

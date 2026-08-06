@@ -16,13 +16,18 @@
 # under the License.
 from __future__ import annotations
 
+import socket
 import stat
+from contextlib import closing
 from unittest import mock
+
+import pytest
 
 from airflow_breeze.utils.run_utils import (
     change_directory_permission,
     change_file_permission,
     check_if_buildx_plugin_installed,
+    find_free_port,
     run_command,
 )
 
@@ -108,3 +113,54 @@ def test_check_buildx_not_detected(mock_console_print, mock_run_command):
         check=False,
     )
     mock_console_print.assert_not_called()
+
+
+def test_find_free_port_returns_the_floor_when_it_is_free():
+    with closing(socket.socket()) as probe:
+        probe.bind(("127.0.0.1", 0))
+        probe.listen(1)
+        occupied = probe.getsockname()[1]
+
+    # Nothing is listening on `occupied` any more, so it is the first free port from itself upwards.
+    assert find_free_port(occupied) == occupied
+
+
+def test_find_free_port_walks_past_ports_in_use():
+    """
+    Several worktrees run a UI dev server at once, so the floor port is routinely taken by another
+    one and the next free port above it has to be found.
+    """
+    with closing(socket.socket()) as first, closing(socket.socket()) as second:
+        first.bind(("127.0.0.1", 0))
+        first.listen(1)
+        floor = first.getsockname()[1]
+        second.bind(("127.0.0.1", floor + 1))
+        second.listen(1)
+
+        assert find_free_port(floor) == floor + 2
+
+
+def test_find_free_port_skips_a_port_held_on_ipv6_only():
+    """
+    A dev server bound only to ``::1`` still stops another one binding ``localhost``, so a port
+    held on IPv6 alone must not be reported as free.
+    """
+    with closing(socket.socket(socket.AF_INET6)) as ipv6_only:
+        ipv6_only.bind(("::1", 0))
+        ipv6_only.listen(1)
+        occupied = ipv6_only.getsockname()[1]
+
+        assert find_free_port(occupied) != occupied
+
+
+@mock.patch("airflow_breeze.utils.run_utils.console_print")
+def test_find_free_port_exits_when_the_range_is_exhausted(mock_console_print):
+    with closing(socket.socket()) as probe:
+        probe.bind(("127.0.0.1", 0))
+        probe.listen(1)
+        occupied = probe.getsockname()[1]
+
+        with pytest.raises(SystemExit):
+            find_free_port(occupied, attempts=1)
+
+    mock_console_print.assert_called_once()

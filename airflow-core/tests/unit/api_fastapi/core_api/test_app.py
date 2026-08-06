@@ -18,17 +18,26 @@ from __future__ import annotations
 
 import contextlib
 import inspect
+import os
 import typing
+from unittest import mock
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.params import Depends as DependsClass
 from fastapi.responses import StreamingResponse
+from fastapi.testclient import TestClient
 from starlette.routing import Mount
 
 from airflow.api_fastapi.app import create_app
-from airflow.api_fastapi.core_api.app import init_config
+from airflow.api_fastapi.core_api.app import (
+    VITE_DEV_PORT_COOKIE,
+    _parse_vite_dev_port,
+    _resolve_vite_dev_origin,
+    init_config,
+    init_views,
+)
 from airflow.api_fastapi.core_api.routes.public import authenticated_router
 from airflow.api_fastapi.core_api.routes.ui import ui_router
 from airflow.api_fastapi.core_api.security import get_user
@@ -177,3 +186,147 @@ class TestCorsMiddlewareConfig:
             app = FastAPI()
             with pytest.raises(AirflowConfigException, match=r"must not contain `\*`"):
                 init_config(app)
+
+
+def _make_request(query: str = "", cookies: dict[str, str] | None = None) -> Request:
+    headers = []
+    if cookies:
+        headers.append((b"cookie", "; ".join(f"{k}={v}" for k, v in cookies.items()).encode()))
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": query.encode(),
+            "headers": headers,
+        }
+    )
+
+
+class TestViteDevPortParsing:
+    """
+    The parsed port is interpolated into a ``<script src>`` in the dev shell, so anything that is
+    not a plain unprivileged port number must be rejected rather than coerced.
+    """
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            pytest.param("5273", 5273, id="port"),
+            pytest.param("1024", 1024, id="lowest-allowed"),
+            pytest.param("65535", 65535, id="highest-allowed"),
+            pytest.param(None, None, id="absent"),
+            pytest.param("", None, id="empty"),
+            pytest.param("not-a-port", None, id="non-numeric"),
+            pytest.param("80", None, id="privileged-port"),
+            pytest.param("70000", None, id="above-range"),
+            pytest.param("-1", None, id="negative"),
+            pytest.param("http://evil.example.com", None, id="full-origin"),
+            pytest.param('5273"></script><script>alert(1)</script>', None, id="markup-injection"),
+        ],
+    )
+    def test_parse_vite_dev_port(self, raw, expected):
+        assert _parse_vite_dev_port(raw) == expected
+
+
+class TestViteDevOriginResolution:
+    @pytest.mark.parametrize(
+        ("query", "cookies", "env", "expected_origin", "expected_persist"),
+        [
+            pytest.param("", {}, {}, "http://localhost:5173", None, id="falls-back-to-floor-port"),
+            pytest.param(
+                "",
+                {},
+                {"VITE_DEV_PORT": "5174"},
+                "http://localhost:5174",
+                None,
+                id="uses-port-breeze-started-on",
+            ),
+            pytest.param(
+                "vite=5273",
+                {},
+                {"VITE_DEV_PORT": "5174"},
+                "http://localhost:5273",
+                5273,
+                id="query-overrides-env-and-persists",
+            ),
+            pytest.param(
+                "",
+                {VITE_DEV_PORT_COOKIE: "5273"},
+                {"VITE_DEV_PORT": "5174"},
+                "http://localhost:5273",
+                None,
+                id="cookie-overrides-env-without-repersisting",
+            ),
+            pytest.param(
+                "vite=5373",
+                {VITE_DEV_PORT_COOKIE: "5273"},
+                {},
+                "http://localhost:5373",
+                5373,
+                id="query-overrides-cookie",
+            ),
+            pytest.param(
+                "vite=notaport",
+                {VITE_DEV_PORT_COOKIE: "5273"},
+                {},
+                "http://localhost:5273",
+                None,
+                id="invalid-query-falls-through-to-cookie",
+            ),
+            pytest.param(
+                "vite=notaport",
+                {},
+                {"VITE_DEV_PORT": "garbage"},
+                "http://localhost:5173",
+                None,
+                id="all-invalid-falls-back-to-floor-port",
+            ),
+        ],
+    )
+    def test_resolve_vite_dev_origin(self, query, cookies, env, expected_origin, expected_persist):
+        with mock.patch.dict(os.environ, env, clear=False):
+            if "VITE_DEV_PORT" not in env:
+                os.environ.pop("VITE_DEV_PORT", None)
+            origin, persist = _resolve_vite_dev_origin(_make_request(query, cookies))
+
+        assert origin == expected_origin
+        assert persist == expected_persist
+
+
+class TestDevModeShell:
+    """
+    The dev shell is the only thing the api-server serves in dev mode — every line of the SPA comes
+    from a host-side Vite dev server. Templating that server's port lets one breeze backend serve
+    the UI from any number of worktrees, each running its own dev server.
+    """
+
+    @pytest.fixture
+    def dev_mode_client(self):
+        app = FastAPI()
+        with mock.patch.dict(os.environ, {"DEV_MODE": "true"}):
+            os.environ.pop("VITE_DEV_PORT", None)
+            init_views(app)
+            with TestClient(app) as client:
+                yield client
+
+    def test_requested_vite_port_is_rendered_and_persisted(self, dev_mode_client):
+        response = dev_mode_client.get("/dags?vite=5273")
+
+        assert 'src="http://localhost:5273/src/main.tsx"' in response.text
+        assert dev_mode_client.cookies[VITE_DEV_PORT_COOKIE] == "5273"
+
+    def test_persisted_port_survives_a_reload_without_the_query_parameter(self, dev_mode_client):
+        dev_mode_client.get("/dags?vite=5273")
+
+        # Client-side routing reloads the SPA from paths that carry no query string.
+        response = dev_mode_client.get("/dags/some_dag/runs")
+
+        assert 'src="http://localhost:5273/src/main.tsx"' in response.text
+
+    def test_rejected_vite_port_is_neither_rendered_nor_persisted(self, dev_mode_client):
+        response = dev_mode_client.get("/dags?vite=http://evil.example.com")
+
+        assert "evil.example.com" not in response.text
+        assert 'src="http://localhost:5173/src/main.tsx"' in response.text
+        assert VITE_DEV_PORT_COOKIE not in dev_mode_client.cookies

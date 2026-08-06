@@ -25,6 +25,7 @@ import re
 import shlex
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -500,6 +501,37 @@ def _run_compile_internally(
         console_print(compile_lock)
         console_print()
         sys.exit(1)
+
+
+def is_port_in_use(port: int) -> bool:
+    """
+    Whether anything is listening on ``port`` on the loopback interface.
+
+    Every address family ``localhost`` resolves to is checked: a server bound only to ``::1``
+    still stops another one binding ``localhost``, so probing IPv4 alone would report a port as
+    free that cannot actually be used.
+    """
+    for family, socket_type, proto, _, address in socket.getaddrinfo(
+        "localhost", port, type=socket.SOCK_STREAM
+    ):
+        with socket.socket(family, socket_type, proto) as sock:
+            if sock.connect_ex(address) == 0:
+                return True
+    return False
+
+
+def find_free_port(floor: int, attempts: int = 50) -> int:
+    """
+    Return the first port from ``floor`` upwards that nothing is listening on.
+
+    :param floor: lowest port to consider
+    :param attempts: how many consecutive ports to try before giving up
+    """
+    for port in range(floor, floor + attempts):
+        if not is_port_in_use(port):
+            return port
+    console_print(f"[error]No free port available between {floor} and {floor + attempts - 1}.[/]")
+    sys.exit(1)
 
 
 def kill_process_group(gid: int):

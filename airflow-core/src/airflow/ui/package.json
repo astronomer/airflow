@@ -8,7 +8,7 @@
   },
   "homepage": "/ui",
   "scripts": {
-    "dev": "vite --port 5173 --strictPort",
+    "dev": "vite",
     "build": "vite build",
     "lint": "eslint --quiet && tsc --p tsconfig.app.json",
     "lint:fix": "eslint --fix && tsc --p tsconfig.app.json",

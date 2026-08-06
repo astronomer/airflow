@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 
 from common_prek_utils import AIRFLOW_CORE_SOURCES_PATH, AIRFLOW_ROOT_PATH
@@ -51,6 +52,24 @@ SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_FILE = UI_CACHE_DIR / "simple_auth_manager_asse
 SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_DEV_MODE_FILE = (
     UI_CACHE_DIR / "simple_auth_manager_asset_compile_dev_mode.out"
 )
+
+# Sits one below the main UI's floor port. The main UI walks upward from 5173 to give every
+# worktree its own dev server, so keeping the auth UI below that floor means an incrementing
+# main UI can never take its port, however many worktrees are running.
+SIMPLE_AUTH_MANAGER_VITE_DEV_PORT = 5172
+
+
+def is_port_in_use(port: int) -> bool:
+    # Every address family localhost resolves to is checked: a dev server bound only to ::1 still
+    # stops another one binding localhost, so probing IPv4 alone would miss a running instance.
+    for family, socket_type, proto, _, address in socket.getaddrinfo(
+        "localhost", port, type=socket.SOCK_STREAM
+    ):
+        with socket.socket(family, socket_type, proto) as sock:
+            if sock.connect_ex(address) == 0:
+                return True
+    return False
+
 
 if __name__ == "__main__":
     UI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -85,22 +104,30 @@ if __name__ == "__main__":
         stderr=subprocess.STDOUT,
     )
 
-    with open(SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_DEV_MODE_FILE, "w") as f:
-        subprocess.run(
-            ["pnpm", "install", "--frozen-lockfile", "--config.confirmModulesPurge=false"],
+    # The login page is the same for every worktree and only one instance can bind the port, so a
+    # second breeze reuses the running one instead of fighting it and dying on --strictPort.
+    if is_port_in_use(SIMPLE_AUTH_MANAGER_VITE_DEV_PORT):
+        print(
+            f"Simple auth manager UI already running on port {SIMPLE_AUTH_MANAGER_VITE_DEV_PORT} "
+            f"- reusing it instead of starting another one."
+        )
+    else:
+        with open(SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_DEV_MODE_FILE, "w") as f:
+            subprocess.run(
+                ["pnpm", "install", "--frozen-lockfile", "--config.confirmModulesPurge=false"],
+                cwd=os.fspath(SIMPLE_AUTH_MANAGER_UI_DIRECTORY),
+                check=True,
+                stdout=f,
+                stderr=subprocess.STDOUT,
+            )
+
+        subprocess.Popen(
+            ["pnpm", "dev"],
             cwd=os.fspath(SIMPLE_AUTH_MANAGER_UI_DIRECTORY),
-            check=True,
-            stdout=f,
+            env=env,
+            stdout=open(SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_DEV_MODE_FILE, "a"),
             stderr=subprocess.STDOUT,
         )
-
-    subprocess.Popen(
-        ["pnpm", "dev"],
-        cwd=os.fspath(SIMPLE_AUTH_MANAGER_UI_DIRECTORY),
-        env=env,
-        stdout=open(SIMPLE_AUTH_MANAGER_UI_ASSET_OUT_DEV_MODE_FILE, "a"),
-        stderr=subprocess.STDOUT,
-    )
 
     # Keep script alive so child processes stay in the same process group.
     # When breeze exits, kill_process_group() will terminate all processes together.

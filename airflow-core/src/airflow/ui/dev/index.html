@@ -4,10 +4,10 @@
   <head>
     <meta charset="UTF-8" />
     <base href="{{ backend_server_base_url }}" />
-    <link rel="icon" type="image/png" href="http://localhost:5173/pin_32.png" />
-    <script type="module" src="http://localhost:5173/@vite/client"></script>
+    <link rel="icon" type="image/png" href="{{ vite_dev_origin }}/pin_32.png" />
+    <script type="module" src="{{ vite_dev_origin }}/@vite/client"></script>
     <script type="module">
-      import RefreshRuntime from "http://localhost:5173/@react-refresh";
+      import RefreshRuntime from "{{ vite_dev_origin }}/@react-refresh";
 
       RefreshRuntime.injectIntoGlobalHook(window);
       window.$RefreshReg$ = () => {};
@@ -19,6 +19,6 @@
   </head>
   <body style="height: 100%">
     <div id="root" style="height: 100%"></div>
-    <script type="module" src="http://localhost:5173/src/main.tsx"></script>
+    <script type="module" src="{{ vite_dev_origin }}/src/main.tsx"></script>
   </body>
 </html>

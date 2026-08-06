@@ -73,6 +73,7 @@ from airflow_breeze.global_constants import (
     TESTABLE_CORE_INTEGRATIONS,
     TESTABLE_PROVIDERS_INTEGRATIONS,
     USE_AIRFLOW_MOUNT_SOURCES,
+    VITE_DEV_PORT,
     WEB_HOST_PORT,
     GithubEvents,
     GroupOfTests,
@@ -741,6 +742,7 @@ services:
         _set_var(_env, "VERBOSE", get_verbose())
         _set_var(_env, "VERBOSE_COMMANDS", self.verbose_commands)
         _set_var(_env, "VERSION_SUFFIX", self.version_suffix)
+        _set_var(_env, "VITE_DEV_PORT", None, VITE_DEV_PORT)
         _set_var(_env, "WEB_HOST_PORT", None, WEB_HOST_PORT)
         _set_var(_env, "_AIRFLOW_RUN_DB_TESTS_ONLY", self.run_db_tests_only)
         _set_var(_env, "_AIRFLOW_SKIP_DB_TESTS", self.skip_db_tests)

@@ -107,6 +107,8 @@ from airflow_breeze.global_constants import (
     MOUNT_ALL,
     START_AIRFLOW_ALLOWED_EXECUTORS,
     START_AIRFLOW_DEFAULT_ALLOWED_EXECUTOR,
+    VITE_DEV_PORT,
+    WEB_HOST_PORT,
     get_java_sdk_version,
 )
 from airflow_breeze.params.build_ci_params import BuildCiParams
@@ -134,6 +136,7 @@ from airflow_breeze.utils.path_utils import (
 from airflow_breeze.utils.platforms import get_normalized_platform
 from airflow_breeze.utils.run_utils import (
     assert_prek_installed,
+    find_free_port,
     run_command,
     run_compile_ui_assets,
 )
@@ -657,6 +660,23 @@ def start_airflow(
         os.environ["CHOKIDAR_USEPOLLING"] = "true"
         console_print(
             "[info]Detected WSL environment. Automatically enabled CHOKIDAR_USEPOLLING for hot reloading."
+        )
+
+    if dev_mode:
+        if "VITE_DEV_PORT" not in os.environ:
+            # Picked here rather than left to Vite so the same port reaches both the dev server and
+            # the api-server that templates it into the dev shell. Another worktree may already
+            # hold the floor port.
+            os.environ["VITE_DEV_PORT"] = str(find_free_port(int(VITE_DEV_PORT)))
+        # Dev servers run on the host, so they cannot read the container env; export the api-server
+        # origin their proxies target rather than leaving each config to hardcode a port.
+        os.environ.setdefault("AIRFLOW_API_SERVER_ORIGIN", f"http://localhost:{WEB_HOST_PORT}")
+        console_print(
+            f"[info]UI dev server for this worktree will run on port {os.environ['VITE_DEV_PORT']}."
+        )
+        console_print(
+            f"[info]To view another worktree's UI against this backend, run 'pnpm dev' there and open "
+            f"http://localhost:{WEB_HOST_PORT}/?vite=<its port>.\n"
         )
 
     perform_environment_checks(quiet=False)

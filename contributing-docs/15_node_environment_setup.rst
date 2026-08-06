@@ -19,7 +19,7 @@ Node.js Environment Setup
 =========================
 
 Contributing to the REST API in Airflow
----------------------------------
+---------------------------------------
 
 Committers will exercise their judgement on what endpoints should exist in the public ``airflow/api_fastapi/public`` versus the private ``airflow/api_fastapi/ui``
 
@@ -31,6 +31,68 @@ Make sure you are using recent versions of ``pnpm>=9`` and ``node>=20``. ``breez
 Adding the ``--dev-mode`` flag will automatically run the vite dev server for hot reloading the UI during local development.
 
 In certain WSL environments, you will need to set ``CHOKIDAR_USEPOLLING=true`` in your environment variables for hot reloading to work.
+
+Editing multiple UI worktrees against a single breeze instance
+--------------------------------------------------------------
+
+You only ever need **one** breeze instance. In dev mode the api-server serves a small shell page and
+nothing else — every line of the SPA comes from a Vite dev server on your host — so a single backend
+can serve the UI from any number of worktrees. That is much cheaper than one breeze per worktree, and
+handy when you are reviewing one branch while developing another.
+
+The first worktree
+^^^^^^^^^^^^^^^^^^
+
+Nothing new here, carry on as usual:
+
+.. code-block:: bash
+
+    breeze start-airflow --dev-mode
+
+Then open ``http://localhost:28080``.
+
+The second and later worktrees
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Do **not** start another breeze. Start only the UI dev server:
+
+.. code-block:: bash
+
+    cd airflow-core/src/airflow/ui && pnpm install && pnpm dev
+
+It claims the first free port from ``5173`` upwards and prints it:
+
+.. code-block:: text
+
+    ➜  Local:   http://localhost:5174/
+
+Read the port off that line, but **do not open it**. Vite has no api-server behind it, so it serves
+the page template unprocessed and you get 404s against a literal ``{{ backend_server_base_url }}``
+path. Open the api-server with that port in the query string instead:
+
+.. code-block:: text
+
+    http://localhost:28080/?vite=5174
+
+That tab now runs the second worktree's UI against the first worktree's backend. The port is
+remembered in a cookie, so navigating and reloading stay put. Pass ``?vite=<port>`` again to switch,
+and use a second browser profile to see two worktrees side by side.
+
+Two things always come from the breeze worktree
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+- **The login page.** The simple auth manager UI is a singleton on port ``5172`` — the first breeze
+  to start it wins and later ones reuse it. Edit the login page in the worktree running breeze, or
+  your change will not show up.
+- **Translations.** These are served by the api-server, not by Vite. A branch that adds new
+  translation keys renders the bare key names until that branch is the one running breeze.
+
+Tips
+^^^^
+
+- Which worktree is this tab showing? Run ``document.querySelector('script[src*="main.tsx"]').src``
+  in the browser console.
+- Want a fixed port instead of reading it off the console? ``VITE_DEV_PORT=5273 pnpm dev``.
 
 System Requirements
 -------------------
@@ -59,8 +121,9 @@ Follow the `nvm docs <https://github.com/nvm-sh/nvm>`__ to manage your node vers
     pnpm install
 
     # Run vite dev server for local development.
-    # The dev server will run on a different port than Airflow. To use the UI, access it through wherever your Airflow webserver is running, usually 8080 or 28080.
-    # Trying to use the UI from the Vite port (5173) will lead to auth errors.
+    # The dev server will run on a different port than Airflow (the first free one from 5173 up, printed on start).
+    # To use the UI, access it through wherever your Airflow webserver is running, usually 8080 or 28080.
+    # Trying to use the UI from the Vite port will lead to auth errors.
     pnpm dev
 
     # Generate production build files will be at airflow/ui/dist
