@@ -248,9 +248,7 @@ class AnthropicAgentSessionOperator(BaseOperator):
         self._push_usage(context, self.session_id)
         return self.session_id
 
-    def _push_usage(
-        self, context: Context, session_id: str | None, session: Any = None
-    ) -> None:
+    def _push_usage(self, context: Context, session_id: str | None, session: Any = None) -> None:
         """
         Push the session's token/cost usage to XCom under ``usage``, best effort.
 

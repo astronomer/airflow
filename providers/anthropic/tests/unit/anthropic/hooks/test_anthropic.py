@@ -361,9 +361,7 @@ class TestGetSessionUsage:
             cache_creation=BetaManagedAgentsCacheCreationUsage(
                 ephemeral_5m_input_tokens=120, ephemeral_1h_input_tokens=340
             ),
-            server_tool_use=BetaManagedAgentsServerToolUsage(
-                web_search_requests=3, web_fetch_requests=5
-            ),
+            server_tool_use=BetaManagedAgentsServerToolUsage(web_search_requests=3, web_fetch_requests=5),
         )
         usage = hook.get_session_usage("s")
         assert usage["cache_creation"] == {
