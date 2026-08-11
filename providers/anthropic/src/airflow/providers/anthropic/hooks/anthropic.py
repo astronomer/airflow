@@ -38,6 +38,7 @@ from airflow.providers.anthropic.exceptions import (
     AnthropicBatchJobError,
     AnthropicBatchTimeout,
     AnthropicError,
+    AnthropicSessionBudgetExceeded,
     AnthropicTriggerEventError,
 )
 from airflow.providers.common.compat.sdk import AirflowSkipException, BaseHook
@@ -118,6 +119,22 @@ class SessionStatus(str, Enum):
 
 #: ``outcome_evaluations[].result`` values that mean the outcome did NOT succeed.
 OUTCOME_FAILURE_RESULTS = frozenset({"failed", "max_iterations_reached", "interrupted"})
+
+#: ``session.status_idle`` stop reason emitted when a session stops against its budget.
+BUDGET_REACHED = "budget_reached"
+
+
+def session_error(message: str, stop_reason: str | None) -> AnthropicAgentSessionError:
+    """
+    Return the session error class matching an idle ``stop_reason``.
+
+    Keyed on the SDK's own ``stop_reason`` value rather than on the message text, so the
+    synchronous path and the deferrable path (which only carries the reason as a string
+    through the trigger event) raise the same type for the same cause.
+    """
+    if stop_reason == BUDGET_REACHED:
+        return AnthropicSessionBudgetExceeded(message)
+    return AnthropicAgentSessionError(message)
 
 
 def evaluate_session_state(
@@ -587,13 +604,24 @@ class AnthropicHook(BaseHook):
 
     def poll_session_completion(
         self, session_id: str, *, expect_outcome: bool = False, kickoff_event_id: str | None = None
-    ) -> tuple[bool, str | None]:
+    ) -> tuple[bool, str | None, str | None]:
         """
-        Return ``(done, error_message)`` for one poll of a session.
+        Return ``(done, error_message, stop_reason)`` for one poll of a session.
 
         Combines the session object (status / outcome verdict) with the event log
         (``stop_reason`` of the latest idle) so a ``message`` run distinguishes genuine
-        ``end_turn`` completion from ``requires_action`` / ``retries_exhausted``.
+        ``end_turn`` completion from ``requires_action`` / ``retries_exhausted`` /
+        ``budget_reached``.
+
+        ``stop_reason`` is the SDK's own idle stop reason, or ``None`` when the verdict did
+        not come from an idle event (a ``terminated`` session, or an outcome verdict). It
+        exists so callers can pick an error class without matching on the message text; pass
+        it to :func:`session_error`.
+
+        .. note::
+            A budget stop is classified on ``message`` runs only. An ``outcome`` run is
+            judged from ``outcome_evaluations`` before the event log is consulted, so a
+            budget stop there surfaces as whatever verdict the outcome recorded.
         """
         session = self.get_session(session_id)
         done, error_message, needs_event_check = evaluate_session_state(
@@ -607,15 +635,33 @@ class AnthropicHook(BaseHook):
             needs_event_check,
         )
         if not needs_event_check:
-            return done, error_message
+            return done, error_message, None
         reason = self._latest_idle_reason(session_id, kickoff_event_id)
         if reason is None:
-            return False, None
+            return False, None, None
         if reason == "end_turn":
-            return True, None
-        return True, (
-            f"Session {session_id} is idle but did not complete ({reason}); "
-            "configure an autonomous agent or use an outcome run."
+            return True, None, reason
+        if reason == BUDGET_REACHED:
+            # Both causes are worth naming: a session also stops with ``budget_reached``
+            # when its usage includes a model with no list price, because the budget cannot
+            # measure that spend -- and then raising the ceiling does not unblock it.
+            return (
+                True,
+                (
+                    f"Session {session_id} stopped against its budget: the tracked list cost "
+                    "reached the configured ceiling, or its usage included a model with no "
+                    "list price (which a budget cannot measure). Raise the session's budget "
+                    "to continue, or remove the budget if a model has no list price."
+                ),
+                reason,
+            )
+        return (
+            True,
+            (
+                f"Session {session_id} is idle but did not complete ({reason}); "
+                "configure an autonomous agent or use an outcome run."
+            ),
+            reason,
         )
 
     def wait_for_session(
@@ -636,12 +682,13 @@ class AnthropicHook(BaseHook):
             idle event on a ``message`` run (defeats the start race).
         :param poll_interval: Seconds to sleep between polls.
         :param timeout: Maximum seconds to wait before raising :class:`AnthropicAgentSessionTimeout`.
+        :raises AnthropicSessionBudgetExceeded: If the session stopped against its budget.
         """
         start = time.monotonic()
         consecutive_failures = 0
         while True:
             try:
-                done, error_message = self.poll_session_completion(
+                done, error_message, stop_reason = self.poll_session_completion(
                     session_id, expect_outcome=expect_outcome, kickoff_event_id=kickoff_event_id
                 )
             except Exception as e:
@@ -659,7 +706,7 @@ class AnthropicHook(BaseHook):
             consecutive_failures = 0
             if done:
                 if error_message:
-                    raise AnthropicAgentSessionError(error_message)
+                    raise session_error(error_message, stop_reason)
                 return
             if time.monotonic() - start > timeout:
                 raise AnthropicAgentSessionTimeout(

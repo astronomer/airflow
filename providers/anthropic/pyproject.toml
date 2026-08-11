@@ -61,17 +61,19 @@ requires-python = ">=3.10"
 dependencies = [
     "apache-airflow>=3.0.0",
     "apache-airflow-providers-common-compat>=1.12.0",
-    # 0.101.0 is the first release that ships AnthropicAWS, the newest of the platform
-    # client classes the hook imports at module top.
-    "anthropic>=0.101.0",
+    # 0.121.0 is the first release that ships Managed Agents session budgets
+    # (``sessions.create(budget=...)`` and the ``budget_reached`` idle stop reason).
+    # It also carries AnthropicAWS, the newest of the platform client classes the
+    # hook imports at module top, which arrived in 0.101.0.
+    "anthropic>=0.121.0",
 ]
 
 # The optional dependencies should be modified in place in the generated file
 # Any change in the dependencies is preserved when the file is regenerated
 [project.optional-dependencies]
-"bedrock" = ["anthropic[bedrock]>=0.101.0"]
-"vertex" = ["anthropic[vertex]>=0.101.0"]
-"aws" = ["anthropic[aws]>=0.101.0"]
+"bedrock" = ["anthropic[bedrock]>=0.121.0"]
+"vertex" = ["anthropic[vertex]>=0.121.0"]
+"aws" = ["anthropic[aws]>=0.121.0"]
 
 [dependency-groups]
 dev = [

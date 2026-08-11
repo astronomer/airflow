@@ -66,7 +66,7 @@ async def test_on_kill_archives_session(mock_hook_cls):
 @pytest.mark.asyncio
 @mock.patch(POLL)
 async def test_done_success_yields_success(mock_poll):
-    mock_poll.return_value = (True, None)
+    mock_poll.return_value = (True, None, "end_turn")
     event = await _trigger().run().__anext__()
     assert event.payload["status"] == "success"
     assert event.payload["session_id"] == "sess_1"
@@ -75,7 +75,7 @@ async def test_done_success_yields_success(mock_poll):
 @pytest.mark.asyncio
 @mock.patch(POLL)
 async def test_done_error_yields_error(mock_poll):
-    mock_poll.return_value = (True, "Session sess_1 terminated.")
+    mock_poll.return_value = (True, "Session sess_1 terminated.", None)
     event = await _trigger().run().__anext__()
     assert event.payload["status"] == "error"
     assert "terminated" in event.payload["message"]
@@ -84,7 +84,7 @@ async def test_done_error_yields_error(mock_poll):
 @pytest.mark.asyncio
 @mock.patch(POLL)
 async def test_timeout_yields_timeout(mock_poll):
-    mock_poll.return_value = (False, None)
+    mock_poll.return_value = (False, None, None)
     event = await _trigger(end_time=time.time() - 1).run().__anext__()
     assert event.payload["status"] == "timeout"
 
@@ -93,7 +93,7 @@ async def test_timeout_yields_timeout(mock_poll):
 @mock.patch(f"{TRIGGER_PATH}.asyncio.sleep")
 @mock.patch(POLL)
 async def test_polls_until_done(mock_poll, mock_sleep):
-    mock_poll.side_effect = [(False, None), (False, None), (True, None)]
+    mock_poll.side_effect = [(False, None, None), (False, None, None), (True, None, "end_turn")]
     event = await _trigger().run().__anext__()
     assert event.payload["status"] == "success"
     assert mock_poll.call_count == 3
@@ -114,15 +114,26 @@ async def test_persistent_error_yields_error_after_retries(mock_poll, mock_sleep
 @mock.patch(f"{TRIGGER_PATH}.asyncio.sleep")
 @mock.patch(POLL)
 async def test_transient_error_then_success(mock_poll, mock_sleep):
-    mock_poll.side_effect = [RuntimeError("blip"), (True, None)]
+    mock_poll.side_effect = [RuntimeError("blip"), (True, None, "end_turn")]
     event = await _trigger().run().__anext__()
     assert event.payload["status"] == "success"
 
 
 @pytest.mark.asyncio
+@mock.patch(POLL, autospec=True)
+async def test_budget_stop_carries_stop_reason(mock_poll):
+    # The resuming worker needs the reason to raise AnthropicSessionBudgetExceeded rather
+    # than the generic session error; the message text is not a classification channel.
+    mock_poll.return_value = (True, "Session sess_1 stopped against its budget.", "budget_reached")
+    event = await _trigger().run().__anext__()
+    assert event.payload["status"] == "error"
+    assert event.payload["stop_reason"] == "budget_reached"
+
+
+@pytest.mark.asyncio
 @mock.patch(POLL)
 async def test_outcome_failure_yields_error(mock_poll):
-    mock_poll.return_value = (True, "Outcome not satisfied for session sess_1: max_iterations_reached.")
+    mock_poll.return_value = (True, "Outcome not satisfied for session sess_1: max_iterations_reached.", None)
     event = await _trigger(expect_outcome=True).run().__anext__()
     assert event.payload["status"] == "error"
     assert "max_iterations_reached" in event.payload["message"]

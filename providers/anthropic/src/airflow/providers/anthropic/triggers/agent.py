@@ -94,7 +94,7 @@ class AnthropicAgentSessionTrigger(BaseTrigger):
         while True:
             try:
                 # poll_session_completion does blocking SDK HTTP calls; run off the event loop.
-                done, error_message = await asyncio.to_thread(
+                done, error_message, stop_reason = await asyncio.to_thread(
                     hook.poll_session_completion,
                     self.session_id,
                     expect_outcome=self.expect_outcome,
@@ -113,8 +113,18 @@ class AnthropicAgentSessionTrigger(BaseTrigger):
             consecutive_failures = 0
             if done:
                 if error_message:
+                    # ``stop_reason`` is the SDK's idle stop reason; it lets the resuming
+                    # worker raise the same exception class the synchronous path would,
+                    # without matching on the message text. A trigger serialized before this
+                    # field existed simply omits it, and the operator falls back to the
+                    # generic session error.
                     yield TriggerEvent(
-                        {"status": "error", "session_id": self.session_id, "message": error_message}
+                        {
+                            "status": "error",
+                            "session_id": self.session_id,
+                            "message": error_message,
+                            "stop_reason": stop_reason,
+                        }
                     )
                 else:
                     yield TriggerEvent(

@@ -155,10 +155,61 @@ Parameters
 
     Completion is detected accurately for both modes. A ``message`` run inspects the
     terminal ``session.status_idle`` event's ``stop_reason`` (correlated against the
-    kickoff event): ``end_turn`` succeeds; ``requires_action`` and ``retries_exhausted``
-    raise an error. An ``outcome`` run is judged from the ``outcome_evaluations`` verdict.
-    The agent must still be configured for autonomous operation (no client-side custom
-    tools / ``always_ask``).
+    kickoff event): ``end_turn`` succeeds; ``requires_action``, ``retries_exhausted`` and
+    ``budget_reached`` raise an error. An ``outcome`` run is judged from the
+    ``outcome_evaluations`` verdict. The agent must still be configured for autonomous
+    operation (no client-side custom tools / ``always_ask``).
+
+Session budgets
+"""""""""""""""
+
+Pass a `session budget
+<https://platform.claude.com/docs/en/managed-agents/overview>`__ through
+``session_kwargs`` to cap what a single session may spend. The session stops issuing new
+model requests once its tracked list cost reaches the ceiling:
+
+.. code-block:: python
+
+    AnthropicAgentSessionOperator(
+        task_id="research",
+        agent_id="agt_...",
+        environment_id="env_...",
+        message="Summarise yesterday's incidents.",
+        session_kwargs={
+            "budget": {
+                "type": "limit",
+                # Minor units as an integer string: "2500" is $25.00.
+                "max_list_cost": {"amount": "2500", "currency": "USD"},
+            }
+        },
+    )
+
+A session that stops this way raises
+:class:`~airflow.providers.anthropic.exceptions.AnthropicSessionBudgetExceeded`, a subclass
+of ``AnthropicAgentSessionError``, so it can be caught on its own and routed to review
+rather than treated as a fault.
+
+.. warning::
+
+    **A budget is a stop trigger, not a spend cap.** The ceiling is checked *between*
+    model requests, so a request already in flight runs to completion and the session can
+    finish well above the limit. Testing against the live API, a ``"1"`` ($0.01) ceiling
+    admitted $0.44 and $0.61 of usage on two runs, because a single long generation
+    overshot it before the next request could be blocked. Size the ceiling as a circuit
+    breaker rather than a guarantee, and read the session's ``usage.list_cost`` for what
+    was actually spent.
+
+.. warning::
+
+    A session also stops with ``budget_reached`` when its usage includes a model with **no
+    list price**, because a budget cannot measure that spend. Raising the ceiling does not
+    unblock that case; remove the budget instead.
+
+.. warning::
+
+    Airflow ``retries`` multiply spend. Each retry starts a **new** session with a **fresh**
+    budget, so ``retries=2`` with a $25 ceiling can spend $75. Prefer ``retries=0`` on
+    budgeted sessions, or raise the budget on the existing session rather than retrying.
 
 .. exampleinclude:: /../tests/system/anthropic/example_anthropic_agent.py
     :language: python
