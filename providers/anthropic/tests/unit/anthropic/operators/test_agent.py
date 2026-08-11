@@ -34,8 +34,10 @@ from airflow.providers.anthropic.triggers.agent import AnthropicAgentSessionTrig
 pytest.importorskip("anthropic")
 
 
-def _context():
-    return {"ti": mock.MagicMock()}
+def _context(try_number=1):
+    ti = mock.MagicMock()
+    ti.try_number = try_number
+    return {"ti": ti}
 
 
 def test_requires_exactly_one_of_message_or_outcome():
@@ -98,7 +100,7 @@ class TestExecute:
             "sess_1", {"type": "user.message", "content": [{"type": "text", "text": "summarize"}]}
         )
         hook.wait_for_session.assert_called_once()
-        context["ti"].xcom_push.assert_called_once_with(key="session_id", value="sess_1")
+        context["ti"].xcom_push.assert_any_call(key="session_id", value="sess_1")
 
     @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
     def test_outcome_sends_define_outcome(self, mock_hook_prop):
@@ -260,10 +262,141 @@ class TestBudgetParam:
         assert "budget" in AnthropicAgentSessionOperator.template_fields
 
 
+class TestUsageXCom:
+    USAGE = {
+        "input_tokens": 827,
+        "output_tokens": 17065,
+        "cache_read_input_tokens": 0,
+        "active_seconds": 91.2,
+        "list_cost": {"amount": "44", "currency": "USD"},
+    }
+
+    @staticmethod
+    def _op(**kwargs):
+        return AnthropicAgentSessionOperator(
+            task_id="a",
+            agent_id="ag",
+            environment_id="env",
+            message="hi",
+            deferrable=False,
+            **kwargs,
+        )
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_pushed_on_success(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.get_session_usage.return_value = self.USAGE
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        self._op().execute(context)
+        context["ti"].xcom_push.assert_any_call(key="usage", value={**self.USAGE, "try_number": 1})
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_read_from_the_archive_response_after_teardown(self, mock_hook_prop):
+        # Teardown is the time-critical call on a failure path, so it goes first; its
+        # response carries the usage, so recording spend costs no extra request.
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.wait_for_session.side_effect = AnthropicSessionBudgetExceeded("over budget")
+        archived = object()
+        calls = []
+        hook.archive_session.side_effect = lambda *a, **k: calls.append("archive") or archived
+        hook.summarize_usage.side_effect = lambda *a, **k: calls.append("usage") or self.USAGE
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        with pytest.raises(AnthropicSessionBudgetExceeded):
+            self._op().execute(context)
+        context["ti"].xcom_push.assert_any_call(key="usage", value={**self.USAGE, "try_number": 1})
+        assert calls == ["archive", "usage"]
+        hook.summarize_usage.assert_called_once_with(archived)
+        hook.get_session_usage.assert_not_called()
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_falls_back_to_a_fetch_when_archiving_fails(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.wait_for_session.side_effect = AnthropicSessionBudgetExceeded("over budget")
+        hook.archive_session.side_effect = RuntimeError("archive 500")
+        hook.get_session_usage.return_value = self.USAGE
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        with pytest.raises(AnthropicSessionBudgetExceeded, match="over budget"):
+            self._op().execute(context)
+        context["ti"].xcom_push.assert_any_call(key="usage", value={**self.USAGE, "try_number": 1})
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_read_failure_does_not_mask_the_real_error(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.wait_for_session.side_effect = AnthropicSessionBudgetExceeded("over budget")
+        hook.get_session_usage.side_effect = RuntimeError("usage api 500")
+        mock_hook_prop.return_value = hook
+
+        with pytest.raises(AnthropicSessionBudgetExceeded, match="over budget"):
+            self._op().execute(_context())
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_read_failure_does_not_break_success(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.get_session_usage.side_effect = RuntimeError("usage api 500")
+        mock_hook_prop.return_value = hook
+
+        assert self._op().execute(_context()) == "sess_1"
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_missing_list_cost_is_logged_as_unavailable(self, mock_hook_prop):
+        # list_cost is absent when usage includes a model with no list price.
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.create_session.return_value.id = "sess_1"
+        hook.get_session_usage.return_value = {**self.USAGE, "list_cost": None}
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        self._op().execute(context)
+        context["ti"].xcom_push.assert_any_call(
+            key="usage", value={**self.USAGE, "list_cost": None, "try_number": 1}
+        )
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_pushed_on_deferrable_success(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.get_session_usage.return_value = self.USAGE
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        op = self._op()
+        assert op.execute_complete(context, {"status": "success", "session_id": "sess_1"}) == "sess_1"
+        context["ti"].xcom_push.assert_any_call(key="usage", value={**self.USAGE, "try_number": 1})
+
+    @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
+    def test_usage_pushed_on_deferrable_budget_error(self, mock_hook_prop):
+        hook = mock.MagicMock(spec=AnthropicHook)
+        hook.summarize_usage.return_value = self.USAGE
+        mock_hook_prop.return_value = hook
+
+        context = _context()
+        with pytest.raises(AnthropicSessionBudgetExceeded):
+            self._op().execute_complete(
+                context,
+                {
+                    "status": "error",
+                    "session_id": "sess_1",
+                    "message": "over budget",
+                    "stop_reason": "budget_reached",
+                },
+            )
+        context["ti"].xcom_push.assert_any_call(key="usage", value={**self.USAGE, "try_number": 1})
+
+
 class TestExecuteComplete:
     def test_success_returns_session_id(self):
         op = AnthropicAgentSessionOperator(task_id="a", agent_id="ag", environment_id="env", message="hi")
-        assert op.execute_complete({}, {"status": "success", "session_id": "sess_1"}) == "sess_1"
+        assert op.execute_complete(_context(), {"status": "success", "session_id": "sess_1"}) == "sess_1"
 
     @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
     def test_error_archives_and_raises(self, mock_hook_prop):
@@ -273,7 +406,7 @@ class TestExecuteComplete:
         mock_hook_prop.return_value = hook
         op = AnthropicAgentSessionOperator(task_id="a", agent_id="ag", environment_id="env", message="hi")
         with pytest.raises(AnthropicAgentSessionError, match="boom"):
-            op.execute_complete({}, {"status": "error", "session_id": "s", "message": "boom"})
+            op.execute_complete(_context(), {"status": "error", "session_id": "s", "message": "boom"})
         hook.archive_session.assert_called_once_with("s")
 
     @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
@@ -302,7 +435,7 @@ class TestExecuteComplete:
         mock_hook_prop.return_value = hook
         op = AnthropicAgentSessionOperator(task_id="a", agent_id="ag", environment_id="env", message="hi")
         with pytest.raises(AnthropicAgentSessionError) as exc:
-            op.execute_complete({}, {"status": "error", "session_id": "s", "message": "boom"})
+            op.execute_complete(_context(), {"status": "error", "session_id": "s", "message": "boom"})
         assert not isinstance(exc.value, AnthropicSessionBudgetExceeded)
 
     @mock.patch.object(AnthropicAgentSessionOperator, "hook", new_callable=mock.PropertyMock)
@@ -311,7 +444,7 @@ class TestExecuteComplete:
         mock_hook_prop.return_value = hook
         op = AnthropicAgentSessionOperator(task_id="a", agent_id="ag", environment_id="env", message="hi")
         with pytest.raises(AnthropicAgentSessionTimeout):
-            op.execute_complete({}, {"status": "timeout", "session_id": "s", "message": "slow"})
+            op.execute_complete(_context(), {"status": "timeout", "session_id": "s", "message": "slow"})
         hook.archive_session.assert_called_once_with("s")
 
     @pytest.mark.parametrize(
@@ -328,7 +461,7 @@ class TestExecuteComplete:
     def test_invalid_event_raises(self, event, match):
         op = AnthropicAgentSessionOperator(task_id="a", agent_id="ag", environment_id="env", message="hi")
         with pytest.raises(AnthropicTriggerEventError, match=match):
-            op.execute_complete({}, event)
+            op.execute_complete(_context(), event)
 
 
 class TestOnKill:

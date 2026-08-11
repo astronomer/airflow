@@ -646,6 +646,56 @@ class AnthropicHook(BaseHook):
         self._require_first_party("Managed Agents")
         return self._first_party_conn.beta.sessions.retrieve(session_id)
 
+    def get_session_usage(self, session_id: str) -> dict[str, Any]:
+        """
+        Return a JSON-serializable token/cost summary for a session.
+
+        Plain scalars and a nested ``list_cost`` mapping rather than SDK models, so the
+        result survives XCom serialization and stays queryable across runs. ``amount`` is
+        kept as the API's **minor-unit string** (``"44"`` is $0.44) rather than converted to
+        a float, so no rounding is applied to a cost figure.
+
+        Every field is optional server-side -- ``list_cost`` is absent when usage includes a
+        model with no list price -- so missing values come back as ``None``. That absence is
+        why every billable dimension is reported and not just the token totals: it is
+        exactly when a caller has to reconstruct cost from usage that the breakdown must be
+        complete. Cache *writes* (``cache_creation``) are billed above base input, and
+        server tool calls are billed per request.
+        """
+        return self.summarize_usage(self.get_session(session_id))
+
+    @staticmethod
+    def summarize_usage(session: BetaManagedAgentsSession) -> dict[str, Any]:
+        """
+        Flatten an already-retrieved session's usage; see :meth:`get_session_usage`.
+
+        Split out because ``sessions.archive`` also returns the session, so a caller that
+        is tearing a session down can report its usage without a second request.
+        """
+        usage = session.usage
+        cost = usage.list_cost
+        cache_creation = usage.cache_creation
+        server_tool_use = usage.server_tool_use
+        return {
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "cache_read_input_tokens": usage.cache_read_input_tokens,
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": cache_creation.ephemeral_5m_input_tokens,
+                "ephemeral_1h_input_tokens": cache_creation.ephemeral_1h_input_tokens,
+            }
+            if cache_creation
+            else None,
+            "server_tool_use": {
+                "web_search_requests": server_tool_use.web_search_requests,
+                "web_fetch_requests": server_tool_use.web_fetch_requests,
+            }
+            if server_tool_use
+            else None,
+            "active_seconds": usage.active_seconds,
+            "list_cost": {"amount": cost.amount, "currency": cost.currency} if cost else None,
+        }
+
     def send_event(self, session_id: str, event: dict[str, Any]) -> Any:
         """Send a single event (e.g. a ``user.message`` or ``user.define_outcome``)."""
         self._require_first_party("Managed Agents")
@@ -654,8 +704,13 @@ class AnthropicHook(BaseHook):
             session_id, events=cast("list[BetaManagedAgentsEventParams]", [event])
         )
 
-    def archive_session(self, session_id: str) -> Any:
-        """Archive a session (frees the server-side container). Best-effort teardown."""
+    def archive_session(self, session_id: str) -> BetaManagedAgentsSession:
+        """
+        Archive a session (frees the server-side container). Best-effort teardown.
+
+        Returns the archived session, which carries its final ``usage`` -- so a caller
+        tearing a session down does not need a separate retrieve to report what it spent.
+        """
         self._require_first_party("Managed Agents")
         return self._first_party_conn.beta.sessions.archive(session_id)
 

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -42,6 +43,12 @@ from airflow.providers.anthropic.hooks.anthropic import (
 )
 
 pytest.importorskip("anthropic")
+
+from anthropic.types import BetaMonetaryAmount
+from anthropic.types.beta import BetaManagedAgentsServerToolUsage, BetaManagedAgentsSessionUsage
+from anthropic.types.beta.beta_managed_agents_cache_creation_usage import (
+    BetaManagedAgentsCacheCreationUsage,
+)
 
 HOOK_PATH = "airflow.providers.anthropic.hooks.anthropic"
 
@@ -306,6 +313,79 @@ class TestCreateSessionBudget:
         hook, client = _make_hook()
         hook.create_session(agent="ag", environment_id="env", budget=None)
         assert "budget" not in client.beta.sessions.create.call_args.kwargs
+
+
+class TestGetSessionUsage:
+    """
+    Built on the real SDK usage models rather than mocks.
+
+    A mock would agree with whatever field names this test asserts, which is the class of
+    assumption that needs pinning to the actual schema. Only the session wrapper is a
+    stand-in, since ``get_session_usage`` reads nothing from it but ``.usage``.
+    """
+
+    @staticmethod
+    def _session(list_cost, cache_creation=None, server_tool_use=None):
+        usage = BetaManagedAgentsSessionUsage(
+            input_tokens=827,
+            output_tokens=17065,
+            cache_read_input_tokens=0,
+            active_seconds=91.2,
+            list_cost=list_cost,
+            cache_creation=cache_creation,
+            server_tool_use=server_tool_use,
+        )
+        return SimpleNamespace(usage=usage)
+
+    def test_flattens_to_json_safe_scalars(self):
+        hook, client = _make_hook()
+        client.beta.sessions.retrieve.return_value = self._session(
+            BetaMonetaryAmount(amount="44", currency="USD")
+        )
+        assert hook.get_session_usage("s") == {
+            "input_tokens": 827,
+            "output_tokens": 17065,
+            "cache_read_input_tokens": 0,
+            "cache_creation": None,
+            "server_tool_use": None,
+            "active_seconds": 91.2,
+            "list_cost": {"amount": "44", "currency": "USD"},
+        }
+
+    def test_reports_every_billable_dimension(self):
+        # list_cost is None exactly when a caller must price the run from usage, so the
+        # expensive side (cache writes, server tool calls) cannot be missing.
+        hook, client = _make_hook()
+        client.beta.sessions.retrieve.return_value = self._session(
+            None,
+            cache_creation=BetaManagedAgentsCacheCreationUsage(
+                ephemeral_5m_input_tokens=120, ephemeral_1h_input_tokens=340
+            ),
+            server_tool_use=BetaManagedAgentsServerToolUsage(
+                web_search_requests=3, web_fetch_requests=5
+            ),
+        )
+        usage = hook.get_session_usage("s")
+        assert usage["cache_creation"] == {
+            "ephemeral_5m_input_tokens": 120,
+            "ephemeral_1h_input_tokens": 340,
+        }
+        assert usage["server_tool_use"] == {"web_search_requests": 3, "web_fetch_requests": 5}
+        assert usage["list_cost"] is None
+
+    def test_amount_stays_a_minor_unit_string(self):
+        # Never floated: a cost figure must not pick up binary rounding.
+        hook, client = _make_hook()
+        client.beta.sessions.retrieve.return_value = self._session(
+            BetaMonetaryAmount(amount="44", currency="USD")
+        )
+        assert hook.get_session_usage("s")["list_cost"]["amount"] == "44"
+
+    def test_absent_list_cost_is_none(self):
+        # Happens when usage includes a model with no list price.
+        hook, client = _make_hook()
+        client.beta.sessions.retrieve.return_value = self._session(None)
+        assert hook.get_session_usage("s")["list_cost"] is None
 
 
 class TestSessionError:
