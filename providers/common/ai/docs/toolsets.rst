@@ -792,6 +792,52 @@ Constructor parameters:
   guarantee this backend cannot make. Set ``"deny-all"`` after running
   ``sbx policy init deny-all``, or ``"allow-all"`` to state that egress is open.
 
+islo backend
+^^^^^^^^^^^^
+
+:class:`~airflow.providers.common.ai.sandbox.IsloSandboxBackend` runs each
+sandbox in an `islo.dev <https://islo.dev>`__ microVM. There is no local daemon
+and no host virtualisation requirement, so unlike ``sbx`` this works from a
+worker running in a container, which makes it the backend to reach for on
+Kubernetes.
+
+Requires the ``sandbox-islo`` extra::
+
+    pip install "apache-airflow-providers-common-ai[sandbox-islo]"
+
+.. code-block:: python
+
+    from airflow.providers.common.ai.sandbox import IsloSandboxBackend
+
+    SandboxToolset(IsloSandboxBackend(islo_conn_id="islo_default"))
+
+Credentials come from a generic Airflow connection, resolved lazily on first
+use, so the API key lives in your configured secrets backend rather than the
+worker environment:
+
+- ``password``: the islo API key. Required.
+- ``host``: the compute URL. Optional.
+- Extra: optional ``base_url`` and ``timeout`` (request timeout in seconds).
+
+Constructor parameters:
+
+- ``islo_conn_id``: Connection ID. Default ``"islo_default"``. ``None`` lets the
+  SDK resolve credentials from its own environment variables.
+- ``image``, ``vcpus``, ``memory_mb``: image and sizing. ``None`` (default) uses
+  the server default for each.
+- ``delete_after``: Server-side TTL in seconds, after which the sandbox is
+  deleted even if the worker never got to destroy it. Default ``3600``. This is
+  the backstop the ``sbx`` backend lacks.
+
+``SandboxSpec.env`` is passed at creation, and ``block_network`` maps to the
+API's ``internet_enabled``. A per-domain ``allow_egress_to`` is refused: the API
+can turn outbound access on or off, not scope it to named hosts.
+
+The command timeout is enforced by the backend, not the islo API, whose
+``timeout_secs`` is only a hint. If no terminal command state arrives within the
+timeout plus a short grace period, the backend deletes the microVM, marks the
+sandbox terminated and reports a timeout.
+
 Bringing your own backend
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
