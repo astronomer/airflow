@@ -18,6 +18,7 @@
  */
 import { expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import { DATA_ROWS } from "tests/e2e/utils/ui/selectors";
 
 import { BasePage } from "./BasePage";
 
@@ -35,7 +36,7 @@ export class ProvidersPage extends BasePage {
     this.heading = page.getByRole("heading", { name: /^providers$/i });
     this.providersMenuItem = page.getByRole("menuitem", { name: /^providers$/i });
     this.table = page.getByTestId("table-list");
-    this.rows = this.table.locator("tbody tr").filter({
+    this.rows = this.table.locator(DATA_ROWS).filter({
       has: page.locator("td"),
     });
   }

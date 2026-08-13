@@ -57,6 +57,8 @@
       "successTitle": "XCom Updated",
       "title": "Edit XCom"
     },
+    "entry_one": "XCom Entry",
+    "entry_other": "XCom Entries",
     "key": "Key",
     "title": "XCom",
     "value": "Value"
