@@ -331,7 +331,7 @@ connection-types:
             - 'null'
       vertexai:
         label: Force Vertex AI Mode
-        description: "Force Vertex AI mode. Auto-detected when project/location/credentials are set."
+        description: "Ignored (kept for compatibility); mode is now selected via the Model field's prefix."
         schema:
           type:
             - boolean
