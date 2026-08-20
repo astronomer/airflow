@@ -168,7 +168,8 @@ class FileParseResult(NamedTuple):
     """One file's finished parse, carried from stat handling to persistence."""
 
     file: DagFileInfo
-    parsing_result: DagFileParsingResult
+    parsing_result: DagFileParsingResult | None
+    """What the parse produced, or ``None`` for a callback-only run or a parse that failed."""
     run_duration: float
     stat: DagFileStat
     """The stat to record once this file's results are persisted."""
@@ -1311,8 +1312,10 @@ class DagFileProcessorManager(LoggingMixin):
         """
         Work out what a finished parse leaves to persist.
 
-        Files with nothing to write -- callback-only runs and failed parses -- have their stat
-        recorded here and return ``None``; the rest carry their Dags to whoever writes them.
+        Every finished file comes back. One with nothing to write -- a callback-only run or a
+        parse that failed -- carries ``parsing_result=None`` and has its stat recorded here, since
+        what a write does to a file's stat is not what should happen to a file that never produced
+        one. The rest carry their Dags to whoever writes them.
         """
         is_callback_only = proc.had_callbacks and proc.parsing_result is None
         if is_callback_only:
@@ -1333,8 +1336,9 @@ class DagFileProcessorManager(LoggingMixin):
         )
 
         if proc.parsing_result is None:
+            # Recorded here rather than after the write: there is nothing to write, and a
+            # callback-only run must keep its timestamps whatever the rest of the sweep does.
             self._file_stats[file] = next_stat
-            return None
 
         return FileParseResult(
             file=file,
@@ -1476,6 +1480,8 @@ class DagFileProcessorManager(LoggingMixin):
         """
         if self._has_per_file_persist_override():
             for item in results:
+                if item.parsing_result is None:
+                    continue
                 self.persist_parsing_result(
                     bundle_name=item.file.bundle_name,
                     bundle_version=item.bundle_version,
@@ -1514,10 +1520,11 @@ class DagFileProcessorManager(LoggingMixin):
         run_ended = False
 
         for item in results:
-            dags = item.parsing_result.serialized_dags
+            dags = item.parsing_result.serialized_dags if item.parsing_result else []
+            import_errors = item.parsing_result.import_errors if item.parsing_result else None
             dag_ids = {dag.dag_id for dag in dags}
             dag_locs = {dag.relative_fileloc for dag in dags if dag.relative_fileloc}
-            file_locs = {str(item.file.rel_path), *(item.parsing_result.import_errors or ())}
+            file_locs = {str(item.file.rel_path), *(import_errors or ())}
             bundle_name = item.file.bundle_name
             bundle_key = (bundle_name, item.bundle_version, item.version_data)
 
@@ -1544,7 +1551,7 @@ class DagFileProcessorManager(LoggingMixin):
             claimed_dag_ids[-1].update(dag_ids)
             dag_locs_claimed[-1].update(dag_locs)
             file_locs_claimed[-1].update(file_locs)
-            run_ended = bool(item.parsing_result.import_errors)
+            run_ended = bool(import_errors)
         return groups
 
     def _persist_bundle_group(
@@ -1565,6 +1572,10 @@ class DagFileProcessorManager(LoggingMixin):
 
         for item in items:
             parsing_result = item.parsing_result
+            if parsing_result is None:
+                # Nothing to write, and it must not be recorded as parsed: ``files_parsed`` clears
+                # import errors, and the error recording a failed parse is the thing to keep.
+                continue
             relative_fileloc = str(item.file.rel_path)
 
             file_errors = {
@@ -1594,6 +1605,11 @@ class DagFileProcessorManager(LoggingMixin):
             defined = {dag.dag_id for dag in parsing_result.serialized_dags}
             dag_warnings = {warning for warning in dag_warnings if warning.dag_id not in defined}
             dag_warnings.update(file_warnings)
+
+        if not files_parsed:
+            # Every file here produced nothing, so there is nothing to write. The call is not free
+            # when handed nothing: it still reads the import-error and warning tables.
+            return
 
         reported_by_parsing = set(import_errors)
         update_dag_parsing_results_in_db(
@@ -1710,6 +1726,8 @@ class DagFileProcessorManager(LoggingMixin):
                         len(group),
                     )
                     for item in group:
+                        if item.parsing_result is None:
+                            continue
                         self._throttle_retry(item.file, item.stat.last_finish_time, item.stat.last_duration)
                     continue
                 self.log.exception(
@@ -1748,8 +1766,13 @@ class DagFileProcessorManager(LoggingMixin):
         Record a failed write without claiming its results.
 
         Keeps the last persisted counts and only moves the timestamps, so the file is not parsed
-        again immediately while the rest of the cycle carries on.
+        again immediately while the rest of the cycle carries on. A file that produced no result
+        is left alone: it had nothing in the write, so the failure says nothing about it, and
+        moving a callback-only run's timestamps would advertise a parse that never happened.
         """
+        if item.parsing_result is None:
+            return
+
         self.log.exception(
             "Failed to persist parsing result for %s in bundle %s; "
             "keeping previous persisted stats while throttling retries. "

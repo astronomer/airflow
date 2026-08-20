@@ -5070,6 +5070,107 @@ class TestDagFileProcessorManager:
 
         assert manager._processors == {}
 
+    def test_a_sweep_with_nothing_to_write_does_not_write(self, session, testing_dag_bundle, tmp_path):
+        """
+        A sweep of callback-only runs had nothing to persist and persisted nothing.
+
+        Delivering those completions to the seam must not turn them into a write: an empty one
+        still scans the import-error table.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        nothing = self._persisted_result(tmp_path, "callbacks")._replace(parsing_result=None)
+
+        with _count_statements(session) as counts:
+            manager.persist_parsing_results([nothing], session=session)
+
+        assert sum(counts.values()) == 0, (
+            f"an empty group still went to the database:\n{_statement_breakdown(counts)}"
+        )
+
+    # --- the team reaches the hook without a query ---
+
+    # --- every completion reaches the batch seam ---
+
+    def _finished_processor(self, manager, rel_path: str, *, parsing_result, had_callbacks=False):
+        """Register a finished processor whose parse produced ``parsing_result`` (possibly None)."""
+        file = DagFileInfo(bundle_name="testing", rel_path=Path(rel_path), bundle_path=TEST_DAGS_FOLDER)
+        manager._file_stats.setdefault(file, DagFileStat())
+        processor, _ = self.mock_processor(start_time=time.monotonic() - 1)
+        processor.had_callbacks = had_callbacks
+        processor.parsing_result = parsing_result
+        manager._processors[file] = processor
+        return file
+
+    @pytest.mark.parametrize(
+        ("had_callbacks", "label"),
+        [
+            pytest.param(True, "callback-only", id="callback-only"),
+            pytest.param(False, "failed", id="failed-parse"),
+        ],
+    )
+    def test_a_completion_with_no_result_still_reaches_the_batch_seam(self, had_callbacks, label, tmp_path):
+        """``handle_parsing_result`` saw every finished file; the group seam has to as well."""
+        seen: list[tuple[str, object]] = []
+
+        class BatchApiManager(DagFileProcessorManager):
+            def persist_parsing_results(self, results, *, session):
+                seen.extend((str(i.file.rel_path), i.parsing_result) for i in results)
+
+        manager = BatchApiManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        self._finished_processor(manager, "nothing.py", parsing_result=None, had_callbacks=had_callbacks)
+        self._ready_processor(manager, "parsed.py", num_dags=1)
+
+        manager._collect_results()
+
+        assert ("nothing.py", None) in seen, f"the {label} completion never arrived: {seen}"
+        assert any(name == "parsed.py" and result is not None for name, result in seen)
+
+    def test_a_completion_with_no_result_is_not_recorded_as_parsed(
+        self, session, testing_dag_bundle, tmp_path
+    ):
+        """
+        ``files_parsed`` is what clears import errors, so a failed parse must stay out of it.
+
+        Recording it would clear the very error that says the file is broken.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+
+        manager.persist_parsing_results(
+            [self._persisted_result(tmp_path, "broken", import_errors={"broken.py": "it broke"})],
+            session=session,
+        )
+        session.commit()
+        assert {e.filename for e in session.scalars(select(ParseImportError))} == {"broken.py"}
+
+        failed = self._persisted_result(tmp_path, "broken")._replace(parsing_result=None)
+        manager.persist_parsing_results([failed], session=session)
+        session.commit()
+
+        assert {e.filename for e in session.scalars(select(ParseImportError))} == {"broken.py"}, (
+            "a parse that produced nothing cleared the error recording that it failed"
+        )
+
+    def test_a_completion_with_no_result_is_not_throttled_by_a_failed_write(self, tmp_path):
+        """It was not in the write, so the failure says nothing about it."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+
+        nothing = self._persisted_result(tmp_path, "nothing")._replace(parsing_result=None)
+        original = DagFileStat(run_count=3, last_finish_time=timezone.utcnow() - timedelta(hours=2))
+        manager._file_stats[nothing.file] = original
+
+        with mock.patch.object(
+            manager, "persist_parsing_results", autospec=True, side_effect=RuntimeError("boom")
+        ):
+            manager._persist_sweep([nothing])
+
+        assert manager._file_stats[nothing.file] is original, (
+            "a callback-only run must keep its timestamps whatever the sweep does"
+        )
+
     # --- statement budget ---
     #
     # A change that adds round trips to persistence has to move a number here and account for it in
