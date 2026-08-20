@@ -5090,6 +5090,65 @@ class TestDagFileProcessorManager:
 
     # --- the team reaches the hook without a query ---
 
+    # --- the team reaches the hook without a query ---
+
+    def test_a_result_carries_the_team_its_bundle_belonged_to_when_it_started(self):
+        """The team is resolved where the processor is started, and travels with the result."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._multi_team = True
+        manager._bundle_versions["testing"] = None
+        file = DagFileInfo(bundle_name="testing", rel_path=Path("a.py"), bundle_path=TEST_DAGS_FOLDER)
+        manager._add_files_to_queue([file], mode="front")
+
+        with (
+            mock.patch.object(DagBundleModel, "get_team_names", return_value={"testing": "team_alpha"}),
+            mock.patch.object(manager, "_create_process", autospec=True),
+        ):
+            manager._start_new_processes()
+
+        assert manager._processor_teams[file] == "team_alpha"
+
+    def test_collecting_a_result_does_not_ask_the_database_for_the_team(self):
+        """
+        A replaced write is not reachable if resolving the team can stop the file getting there.
+
+        The team was resolved when the processor started, so the database going down between then
+        and the sweep must not lose the result.
+        """
+        seen: list[tuple[str, str | None]] = []
+
+        class BatchApiManager(DagFileProcessorManager):
+            def persist_parsing_results(self, results, *, session):
+                seen.extend((str(i.file.rel_path), i.team_name) for i in results)
+
+        manager = BatchApiManager(max_runs=1)
+        manager._multi_team = True
+        manager._bundle_versions["testing"] = None
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        manager._processor_teams[file] = "team_alpha"
+        # Whatever the cache holds is irrelevant; asking at all is the failure.
+        manager._bundle_name_to_team_name = {}
+
+        with mock.patch.object(
+            DagBundleModel, "get_team_names", side_effect=AssertionError("the team was queried")
+        ):
+            manager._collect_results()
+
+        assert seen == [("a.py", "team_alpha")]
+
+    def test_a_finished_processor_does_not_leave_its_team_behind(self):
+        """The record is per running processor, so it has to go when the processor does."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        manager._processor_teams[file] = "team_alpha"
+
+        with mock.patch.object(manager, "_persist_sweep", autospec=True):
+            manager._collect_results()
+
+        assert manager._processors == {}
+        assert manager._processor_teams == {}, "the team record outlived the processor it described"
+
     # --- every completion reaches the batch seam ---
 
     def _finished_processor(self, manager, rel_path: str, *, parsing_result, had_callbacks=False):
@@ -5101,6 +5160,24 @@ class TestDagFileProcessorManager:
         processor.parsing_result = parsing_result
         manager._processors[file] = processor
         return file
+
+    def test_a_completion_with_no_result_still_claims_the_file_it_spoke_for(self):
+        """
+        A file that produced nothing still holds its own path against the rest of the group.
+
+        Whatever was filed under that path before is now unaccounted for, so a later file filing
+        Dags there is written separately rather than merged in beside it.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        nothing = self._item("gone.py", [])._replace(parsing_result=None)
+        filed_there = self._item("other.py", ["moved_dag"], filed_under="gone.py")
+
+        groups = manager._build_persistence_groups([nothing, filed_there])
+
+        assert [[str(item.file.rel_path) for item in group] for group in groups] == [
+            ["gone.py"],
+            ["other.py"],
+        ]
 
     @pytest.mark.parametrize(
         ("had_callbacks", "label"),

@@ -176,6 +176,9 @@ class FileParseResult(NamedTuple):
     bundle_version: str | None = None
     version_data: dict | None = None
     """The bundle's version when the file was collected, which a write needs and DagFileInfo lacks."""
+    team_name: str | None = None
+    """The team the bundle belonged to when the file was started, resolved there so that reaching
+    a replaced write does not depend on the metadata DB being up."""
 
 
 def _config_int_factory(section: str, key: str):
@@ -287,6 +290,8 @@ class DagFileProcessorManager(LoggingMixin):
     _bundle_version_data: dict[str, dict | None] = attrs.field(factory=dict, init=False)
     _multi_team: bool = attrs.field(factory=lambda: conf.getboolean("core", "multi_team"), init=False)
     _bundle_name_to_team_name: dict[str, str | None] = attrs.field(factory=dict, init=False)
+    _processor_teams: dict[DagFileInfo, str | None] = attrs.field(factory=dict, init=False)
+    """The team each running processor's bundle belonged to when it was started."""
 
     _max_dags_per_group: int = attrs.field(
         factory=_config_int_factory("dag_processor", "max_dags_per_persistence_group"), init=False
@@ -1255,6 +1260,7 @@ class DagFileProcessorManager(LoggingMixin):
         for file in list(self._processors.keys()):
             if file.presence_key not in present_keys:
                 processor = self._processors.pop(file, None)
+                self._processor_teams.pop(file, None)
                 if not processor:
                     continue
                 file_name = str(file.rel_path)
@@ -1323,7 +1329,7 @@ class DagFileProcessorManager(LoggingMixin):
 
         run_duration = time.monotonic() - proc.start_time
         finish_time = timezone.utcnow()
-        team_name = self._get_team_name(file.bundle_name)
+        team_name = self._processor_teams.get(file)
         next_stat = process_parse_results(
             run_duration=run_duration,
             finish_time=finish_time,
@@ -1347,6 +1353,7 @@ class DagFileProcessorManager(LoggingMixin):
             stat=next_stat,
             bundle_version=self._bundle_versions[file.bundle_name],
             version_data=self._bundle_version_data.get(file.bundle_name),
+            team_name=team_name,
         )
 
     def persist_parsing_result(
@@ -1673,6 +1680,7 @@ class DagFileProcessorManager(LoggingMixin):
             # may have dropped one, and dropping it is not closing it.
             for file, processor in finished:
                 self._processors.pop(file, None)
+                self._processor_teams.pop(file, None)
                 processor.close()
 
     def _persist_sweep(self, to_persist: list[FileParseResult]) -> None:
@@ -1896,6 +1904,8 @@ class DagFileProcessorManager(LoggingMixin):
             )
 
             self._processors[file] = processor
+            # Resolved here, where it is already known, so collecting the result never has to ask.
+            self._processor_teams[file] = bundle_to_team.get(file.bundle_name)
             stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
     def _add_new_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
@@ -2100,6 +2110,7 @@ class DagFileProcessorManager(LoggingMixin):
         # Clean up `self._processors` after iterating over it
         for proc in processors_to_remove:
             processor = self._processors.pop(proc)
+            self._processor_teams.pop(proc, None)
             processor.close()
 
     def _add_files_to_queue(
