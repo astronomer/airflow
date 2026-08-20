@@ -2155,14 +2155,19 @@ class TestDagFileProcessorManager:
         ("overrides", "warns"),
         [
             pytest.param((), False, id="nothing-overridden"),
-            pytest.param(("handle_parsing_result",), False, id="handling-a-file-has-no-replacement"),
+            pytest.param(("handle_parsing_result",), True, id="handling-a-file-is-replaced"),
             pytest.param(("persist_parsing_result",), True, id="the-per-file-write-is-replaced"),
             pytest.param(("persist_parsing_results",), False, id="the-batch-write-is-the-replacement"),
             pytest.param(("persist_parsing_result", "persist_parsing_results"), False, id="both-writes"),
         ],
     )
-    def test_only_the_write_with_a_replacement_is_deprecated(self, overrides, warns):
-        """Handling a file in full has nothing to move to, so overriding it is supported, not deprecated."""
+    def test_every_per_file_hook_is_deprecated_and_the_group_seam_is_not(self, overrides, warns):
+        """
+        The group seam sees every file that finished, so both per-file hooks have somewhere to go.
+
+        A deployment carrying a per-file hook alongside the group seam keeps its batching, and is
+        not warned for the hook it kept for compatibility with an older Airflow.
+        """
         subclass = type(
             "Subclass", (DagFileProcessorManager,), {name: lambda *a, **kw: None for name in overrides}
         )
@@ -5088,7 +5093,49 @@ class TestDagFileProcessorManager:
             f"an empty group still went to the database:\n{_statement_breakdown(counts)}"
         )
 
-    # --- the team reaches the hook without a query ---
+    # --- the per-file hooks are deprecated, and the group seam stands alone ---
+
+    def test_a_sweep_reaches_a_replacement_with_the_database_unreachable(self, tmp_path):
+        """
+        The acceptance test for the seam being transport-neutral.
+
+        A deployment forwarding parse results elsewhere should not need the metadata database at
+        all, so every way the sweep could reach it is made to raise. Every completion still has to
+        arrive -- the parsed file, the callback-only run and the failed parse alike.
+        """
+        seen: list[tuple[str, bool]] = []
+
+        class ApiBackedManager(DagFileProcessorManager):
+            def persist_parsing_results(self, results, *, session):
+                seen.extend((str(i.file.rel_path), i.parsing_result is not None) for i in results)
+
+        manager = ApiBackedManager(max_runs=1)
+        manager._multi_team = True
+        manager._bundle_versions["testing"] = None
+        sweep_dir = tmp_path / "unreachable"
+        sweep_dir.mkdir()
+
+        parsed = self._ready_processor(manager, "parsed.py", num_dags=1, dag_dir=sweep_dir)
+        callback_only = self._finished_processor(
+            manager, "callbacks.py", parsing_result=None, had_callbacks=True
+        )
+        failed = self._finished_processor(manager, "failed.py", parsing_result=None)
+        for file in (parsed, callback_only, failed):
+            manager._processor_teams[file] = "team_alpha"
+
+        unreachable = AssertionError("the metadata database was reached")
+        with (
+            mock.patch.object(DagBundleModel, "get_team_names", side_effect=unreachable),
+            mock.patch(
+                "airflow.dag_processing.manager.update_dag_parsing_results_in_db",
+                autospec=True,
+                side_effect=unreachable,
+            ),
+        ):
+            manager._collect_results()
+
+        assert sorted(seen) == [("callbacks.py", False), ("failed.py", False), ("parsed.py", True)]
+        assert manager._processors == {}, "finished processors are still closed"
 
     # --- the team reaches the hook without a query ---
 

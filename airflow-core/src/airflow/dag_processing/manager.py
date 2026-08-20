@@ -1293,12 +1293,12 @@ class DagFileProcessorManager(LoggingMixin):
         Detects callback-only processing, updates file stats, emits metrics, and writes through
         :meth:`persist_parsing_results`. Owns its session, so an override need not inherit one.
 
-        Still supported, but overriding it means a sweep is no longer persisted a group at a time.
-        Prefer :meth:`persist_parsing_results` where it is enough.
+        .. deprecated:: 3.4.0
+            Override :meth:`persist_parsing_results` instead. It is now handed every file that
+            finished, callback-only runs and failed parses included, so nothing this sees is lost
+            by moving; overriding this one costs the Dag processor its batching.
         """
         result = self._build_parse_result(file, proc)
-        if result is None:
-            return
 
         try:
             self.persist_parsing_results([result], session=session)
@@ -1314,7 +1314,7 @@ class DagFileProcessorManager(LoggingMixin):
         self,
         file: DagFileInfo,
         proc: DagFileProcessorProcess,
-    ) -> FileParseResult | None:
+    ) -> FileParseResult:
         """
         Work out what a finished parse leaves to persist.
 
@@ -1441,8 +1441,15 @@ class DagFileProcessorManager(LoggingMixin):
                 type(self).__name__,
             )
         if self._has_handle_parsing_result_override():
-            # Not deprecated: nothing replaces handling a file in full. Reported on its own,
-            # since a manager may replace this and the write below it for the same deployment.
+            # Reported on its own, since a manager may replace this and the write below it for the
+            # same deployment.
+            warnings.warn(
+                f"{type(self).__name__} overrides handle_parsing_result, which is deprecated. "
+                "Override persist_parsing_results instead, which is handed every file that "
+                "finished parsing together.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self.log.warning(
                 "%s overrides handle_parsing_result, so parse results are persisted one file at a "
                 "time rather than a group at a time.",
@@ -1669,8 +1676,7 @@ class DagFileProcessorManager(LoggingMixin):
                     # A callback-only run leaves the timestamps alone; failing to handle one must
                     # too, or it advertises a parse that never happened and its Dags go stale.
                     continue
-                if result is not None:
-                    to_persist.append(result)
+                to_persist.append(result)
 
             if to_persist:
                 self._persist_sweep(to_persist)

@@ -6,15 +6,16 @@ group instead of once per file.
 
 **What changed:**
 
-- ``DagFileProcessorManager.persist_parsing_results`` is the seam for replacing the write.
-  It is handed one group of ``FileParseResult`` at a time, together with the session to write on.
-  A file that parsed and defined no Dags is in the group like any other, since its import errors
-  still have to be cleared.
-- ``DagFileProcessorManager.persist_parsing_result``, which took one file at a time, is
-  deprecated and will be removed in Airflow 4.0. Overriding it still works until then, but parse
-  results are persisted one file at a time and batching is skipped for the whole Dag processor.
-- Overriding ``handle_parsing_result`` is still supported and also skips batching. It remains the
-  only hook that sees every completion, including callback-only runs and failed parses.
+- ``DagFileProcessorManager.persist_parsing_results`` is the seam for replacing the write. It is
+  handed one group of ``FileParseResult`` at a time, together with the session to write on, and it
+  sees every file that finished: one that defined no Dags, a callback-only run and a parse that
+  failed all arrive, the last two carrying no ``parsing_result``. The team the file's bundle
+  belongs to travels with it, so a replacement need not query the metadata database to find out.
+- ``DagFileProcessorManager.persist_parsing_result`` and
+  ``DagFileProcessorManager.handle_parsing_result``, which took one file at a time, are both
+  deprecated and will be removed in Airflow 4.0. Overriding either still works until then, but
+  parse results are persisted one file at a time and batching is skipped for the whole Dag
+  processor.
 
 - ``[dag_processor] max_dags_per_persistence_group`` bounds how many Dags one write may carry,
   defaulting to 32. A file is never split, so a single file defining more is still written in one
@@ -30,8 +31,10 @@ group instead of once per file.
 
 **Migration:**
 
-- Move a ``persist_parsing_result`` override to ``persist_parsing_results``, which receives a
-  sequence of results and a session instead of one file's arguments.
+- Move a ``persist_parsing_result`` or ``handle_parsing_result`` override to
+  ``persist_parsing_results``, which receives a sequence of results and a session instead of one
+  file's arguments. Check for ``parsing_result is None`` before reading a result's Dags: that is a
+  callback-only run or a parse that failed, which the per-file hooks were never handed.
 
 * Types of change
 
@@ -45,5 +48,6 @@ group instead of once per file.
 
 * Migration rules needed
 
-  * Replace ``DagFileProcessorManager.persist_parsing_result`` overrides with
+  * Replace ``DagFileProcessorManager.persist_parsing_result`` and
+    ``DagFileProcessorManager.handle_parsing_result`` overrides with
     ``DagFileProcessorManager.persist_parsing_results``, which is handed a group of parse results.
