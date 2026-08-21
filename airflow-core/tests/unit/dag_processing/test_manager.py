@@ -5252,6 +5252,36 @@ class TestDagFileProcessorManager:
 
         assert (result.bundle_version, result.version_data) == ("v1", {"sha": "aaa"})
 
+    def test_a_bundle_with_no_recorded_version_is_not_written_unpinned(self, tmp_path):
+        """
+        A bundle whose state failed to persist keeps scanning, but its version is unknown.
+
+        Writing its Dags with no version would leave a task free to run code the parse never saw,
+        so the file is thrown back instead.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        # No entry for "testing" in _bundle_versions: update_bundle_state raised for it.
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        manager._processor_bundles.pop(file, None)
+
+        with mock.patch.object(manager, "_persist_sweep", autospec=True) as sweep:
+            manager._collect_results()
+
+        sweep.assert_not_called()
+        assert manager._file_stats[file].run_count == 1, "the file is thrown back, not written"
+
+    def test_the_per_file_seam_still_gets_the_version_when_called_directly(self, tmp_path):
+        """The retained seam is reachable outside a sweep, where nothing recorded the bundle."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = "v1"
+        manager._bundle_version_data["testing"] = {"sha": "aaa"}
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        manager._processor_bundles.pop(file, None)
+
+        result = manager._build_parse_result(file, manager._processors[file])
+
+        assert (result.bundle_version, result.version_data) == ("v1", {"sha": "aaa"})
+
     # --- every completion reaches the batch seam ---
 
     def _finished_processor(self, manager, rel_path: str, *, parsing_result, had_callbacks=False):

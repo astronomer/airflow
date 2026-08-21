@@ -1338,7 +1338,17 @@ class DagFileProcessorManager(LoggingMixin):
 
         run_duration = time.monotonic() - proc.start_time
         finish_time = timezone.utcnow()
-        bundle = self._processor_bundles.get(file, BundleContext())
+        bundle = self._processor_bundles.get(file)
+        if bundle is None:
+            # Either the version was unknown when the processor started, or this is the per-file
+            # seam called directly rather than through a sweep. Both want the live lookup, and
+            # both want its KeyError: a versioned Dag written unpinned would let a task run code
+            # the parse never saw.
+            bundle = BundleContext(
+                team_name=self._get_team_name(file.bundle_name),
+                bundle_version=self._bundle_versions[file.bundle_name],
+                version_data=self._bundle_version_data.get(file.bundle_name),
+            )
         team_name = bundle.team_name
         next_stat = process_parse_results(
             run_duration=run_duration,
@@ -1923,17 +1933,22 @@ class DagFileProcessorManager(LoggingMixin):
             # Resolved here, where it is already known, so collecting the result never has to ask.
             # A callback asks for the revision it was queued against, and the bundle was checked
             # out at it; anything else is parsed at whatever the bundle is on now.
+            team_name = bundle_to_team.get(file.bundle_name)
             if file.bundle_version is not None:
-                version = file.bundle_version
-                version_data = requests[0].version_data if requests else None
-            else:
-                version = self._bundle_versions.get(file.bundle_name)
-                version_data = self._bundle_version_data.get(file.bundle_name)
-            self._processor_bundles[file] = BundleContext(
-                team_name=bundle_to_team.get(file.bundle_name),
-                bundle_version=version,
-                version_data=version_data,
-            )
+                self._processor_bundles[file] = BundleContext(
+                    team_name=team_name,
+                    bundle_version=file.bundle_version,
+                    version_data=requests[0].version_data if requests else None,
+                )
+            elif file.bundle_name in self._bundle_versions:
+                self._processor_bundles[file] = BundleContext(
+                    team_name=team_name,
+                    bundle_version=self._bundle_versions[file.bundle_name],
+                    version_data=self._bundle_version_data.get(file.bundle_name),
+                )
+            # Otherwise the bundle has no recorded version -- its state failed to persist, and
+            # scanning carried on regardless. Nothing is recorded, so building the result fails
+            # and the file is thrown back rather than written unpinned.
             stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
     def _add_new_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
