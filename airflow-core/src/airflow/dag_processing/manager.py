@@ -164,6 +164,14 @@ class DagFileInfo:
         return normalize_name_for_stats(str(self.rel_path), log_warning=False)
 
 
+class BundleContext(NamedTuple):
+    """What a running processor's bundle was, resolved when it started."""
+
+    team_name: str | None = None
+    bundle_version: str | None = None
+    version_data: dict | None = None
+
+
 class FileParseResult(NamedTuple):
     """One file's finished parse, carried from stat handling to persistence."""
 
@@ -291,8 +299,8 @@ class DagFileProcessorManager(LoggingMixin):
     _bundle_version_data: dict[str, dict | None] = attrs.field(factory=dict, init=False)
     _multi_team: bool = attrs.field(factory=lambda: conf.getboolean("core", "multi_team"), init=False)
     _bundle_name_to_team_name: dict[str, str | None] = attrs.field(factory=dict, init=False)
-    _processor_teams: dict[DagFileInfo, str | None] = attrs.field(factory=dict, init=False)
-    """The team each running processor's bundle belonged to when it was started."""
+    _processor_bundles: dict[DagFileInfo, BundleContext] = attrs.field(factory=dict, init=False)
+    """What each running processor's bundle was when it was started."""
 
     _max_dags_per_group: int = attrs.field(
         factory=_config_int_factory("dag_processor", "max_dags_per_persistence_group"), init=False
@@ -1261,7 +1269,7 @@ class DagFileProcessorManager(LoggingMixin):
         for file in list(self._processors.keys()):
             if file.presence_key not in present_keys:
                 processor = self._processors.pop(file, None)
-                self._processor_teams.pop(file, None)
+                self._processor_bundles.pop(file, None)
                 if not processor:
                     continue
                 file_name = str(file.rel_path)
@@ -1330,7 +1338,8 @@ class DagFileProcessorManager(LoggingMixin):
 
         run_duration = time.monotonic() - proc.start_time
         finish_time = timezone.utcnow()
-        team_name = self._processor_teams.get(file)
+        bundle = self._processor_bundles.get(file, BundleContext())
+        team_name = bundle.team_name
         next_stat = process_parse_results(
             run_duration=run_duration,
             finish_time=finish_time,
@@ -1352,8 +1361,8 @@ class DagFileProcessorManager(LoggingMixin):
             parsing_result=proc.parsing_result,
             run_duration=run_duration,
             stat=next_stat,
-            bundle_version=self._bundle_versions[file.bundle_name],
-            version_data=self._bundle_version_data.get(file.bundle_name),
+            bundle_version=bundle.bundle_version,
+            version_data=bundle.version_data,
             team_name=team_name,
         )
 
@@ -1662,9 +1671,8 @@ class DagFileProcessorManager(LoggingMixin):
                 try:
                     result = self._build_parse_result(file, proc)
                 except Exception:
-                    # Working out what a file leaves to persist can still fail -- on a bundle the
-                    # manager has no version for, say. Losing that file must not lose the sweep it
-                    # arrived in.
+                    # Whatever goes wrong working out what one file leaves to persist, losing that
+                    # file must not lose the sweep it arrived in.
                     self.log.exception(
                         "Failed to handle the parse result for %s in bundle %s; "
                         "the rest of the sweep is still persisted.",
@@ -1686,7 +1694,7 @@ class DagFileProcessorManager(LoggingMixin):
             # may have dropped one, and dropping it is not closing it.
             for file, processor in finished:
                 self._processors.pop(file, None)
-                self._processor_teams.pop(file, None)
+                self._processor_bundles.pop(file, None)
                 processor.close()
 
     def _persist_sweep(self, to_persist: list[FileParseResult]) -> None:
@@ -1897,6 +1905,8 @@ class DagFileProcessorManager(LoggingMixin):
             if file in self._processors:
                 continue
 
+            # Read before creating the processor, which consumes the queued callbacks.
+            requests = self._callback_to_execute.get(file, [])
             processor = self._create_process(file)
             stats.incr(
                 "dag_processing.processes",
@@ -1911,7 +1921,19 @@ class DagFileProcessorManager(LoggingMixin):
 
             self._processors[file] = processor
             # Resolved here, where it is already known, so collecting the result never has to ask.
-            self._processor_teams[file] = bundle_to_team.get(file.bundle_name)
+            # A callback asks for the revision it was queued against, and the bundle was checked
+            # out at it; anything else is parsed at whatever the bundle is on now.
+            if file.bundle_version is not None:
+                version = file.bundle_version
+                version_data = requests[0].version_data if requests else None
+            else:
+                version = self._bundle_versions.get(file.bundle_name)
+                version_data = self._bundle_version_data.get(file.bundle_name)
+            self._processor_bundles[file] = BundleContext(
+                team_name=bundle_to_team.get(file.bundle_name),
+                bundle_version=version,
+                version_data=version_data,
+            )
             stats.gauge("dag_processing.file_path_queue_size", len(self._file_queue))
 
     def _add_new_files_to_queue(self, known_files: dict[str, set[DagFileInfo]]):
@@ -2116,7 +2138,7 @@ class DagFileProcessorManager(LoggingMixin):
         # Clean up `self._processors` after iterating over it
         for proc in processors_to_remove:
             processor = self._processors.pop(proc)
-            self._processor_teams.pop(proc, None)
+            self._processor_bundles.pop(proc, None)
             processor.close()
 
     def _add_files_to_queue(

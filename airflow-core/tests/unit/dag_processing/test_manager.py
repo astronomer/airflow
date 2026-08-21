@@ -53,6 +53,7 @@ from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.collection import update_dag_parsing_results_in_db
 from airflow.dag_processing.dagbag import DagBag
 from airflow.dag_processing.manager import (
+    BundleContext,
     BundleState,
     DagFileInfo,
     DagFileProcessorManager,
@@ -1814,6 +1815,15 @@ class TestDagFileProcessorManager:
         assert manager._file_stats[file].last_finish_time > original_stat.last_finish_time
         assert manager._file_stats[file].num_dags == 0
 
+    @staticmethod
+    def _record_bundle(manager, file: DagFileInfo) -> None:
+        """What ``_start_new_processes`` records when it starts a processor for ``file``."""
+        manager._processor_bundles[file] = BundleContext(
+            team_name=manager._bundle_name_to_team_name.get(file.bundle_name),
+            bundle_version=manager._bundle_versions.get(file.bundle_name),
+            version_data=manager._bundle_version_data.get(file.bundle_name),
+        )
+
     def _ready_processor(self, manager, rel_path: str, num_dags: int = 0, dag_dir: Path | None = None):
         """
         Register a finished processor for ``rel_path`` and return its file.
@@ -1824,6 +1834,7 @@ class TestDagFileProcessorManager:
         bundle_path = TEST_DAGS_FOLDER if dag_dir is None else dag_dir
         file = DagFileInfo(bundle_name="testing", rel_path=Path(rel_path), bundle_path=bundle_path)
         manager._file_stats.setdefault(file, DagFileStat())
+        self._record_bundle(manager, file)
         processor, _ = self.mock_processor(start_time=time.monotonic() - 1)
         processor.had_callbacks = False
         dag_ids = [f"{Path(rel_path).stem}_dag_{i}" for i in range(num_dags)]
@@ -2534,7 +2545,7 @@ class TestDagFileProcessorManager:
 
     def test_a_file_that_cannot_be_handled_does_not_discard_its_neighbours(self):
         """
-        Working out what a file leaves to persist can still fail, on a bundle with no version.
+        Working out what one file leaves to persist can fail for reasons of its own.
 
         Persisting a sweep together means one such failure arrives before any of it is written, so
         it has to be contained to its own file rather than take the sweep down with it.
@@ -5121,7 +5132,7 @@ class TestDagFileProcessorManager:
         )
         failed = self._finished_processor(manager, "failed.py", parsing_result=None)
         for file in (parsed, callback_only, failed):
-            manager._processor_teams[file] = "team_alpha"
+            manager._processor_bundles[file] = BundleContext(team_name="team_alpha")
 
         unreachable = AssertionError("the metadata database was reached")
         with (
@@ -5153,7 +5164,7 @@ class TestDagFileProcessorManager:
         ):
             manager._start_new_processes()
 
-        assert manager._processor_teams[file] == "team_alpha"
+        assert manager._processor_bundles[file].team_name == "team_alpha"
 
     def test_collecting_a_result_does_not_ask_the_database_for_the_team(self):
         """
@@ -5172,7 +5183,7 @@ class TestDagFileProcessorManager:
         manager._multi_team = True
         manager._bundle_versions["testing"] = None
         file = self._ready_processor(manager, "a.py", num_dags=1)
-        manager._processor_teams[file] = "team_alpha"
+        manager._processor_bundles[file] = BundleContext(team_name="team_alpha")
         # Whatever the cache holds is irrelevant; asking at all is the failure.
         manager._bundle_name_to_team_name = {}
 
@@ -5188,13 +5199,58 @@ class TestDagFileProcessorManager:
         manager = DagFileProcessorManager(max_runs=1)
         manager._bundle_versions["testing"] = None
         file = self._ready_processor(manager, "a.py", num_dags=1)
-        manager._processor_teams[file] = "team_alpha"
+        manager._processor_bundles[file] = BundleContext(team_name="team_alpha")
 
         with mock.patch.object(manager, "_persist_sweep", autospec=True):
             manager._collect_results()
 
         assert manager._processors == {}
-        assert manager._processor_teams == {}, "the team record outlived the processor it described"
+        assert manager._processor_bundles == {}, "the bundle record outlived the processor it described"
+
+    def test_a_callback_completion_carries_the_version_it_asked_for(self, tmp_path):
+        """
+        A callback runs against the revision it was queued for, and its completion says so.
+
+        Nothing is written for a callback -- it produces no parse result -- so what this decides
+        is the revision reported to whoever takes the results, not what lands in the database.
+        """
+        request = DagCallbackRequest(
+            filepath="a.py",
+            dag_id="a_dag",
+            run_id="run",
+            bundle_name="testing",
+            bundle_version="v1",
+            version_data={"sha": "aaa"},
+        )
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = "v1"
+        manager._bundle_version_data["testing"] = {"sha": "aaa"}
+
+        with mock.patch.object(manager, "prepare_callback_bundle", return_value=MagicMock(path=tmp_path)):
+            manager._add_callback_to_queue(request)
+        # The bundle moves on before the callback is picked up.
+        manager._bundle_versions["testing"] = "v2"
+        manager._bundle_version_data["testing"] = {"sha": "bbb"}
+
+        with mock.patch.object(manager, "_create_process", autospec=True):
+            manager._start_new_processes()
+
+        file = next(f for f in manager._processors if f.bundle_version == "v1")
+        recorded = manager._processor_bundles[file]
+        assert (recorded.bundle_version, recorded.version_data) == ("v1", {"sha": "aaa"}), recorded
+
+    def test_a_file_with_no_requested_version_is_written_under_the_bundle_it_started_on(self):
+        """Everything else takes the version the bundle was on, snapshotted where it started."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = "v1"
+        manager._bundle_version_data["testing"] = {"sha": "aaa"}
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+
+        manager._bundle_versions["testing"] = "v2"
+        manager._bundle_version_data["testing"] = {"sha": "bbb"}
+        result = manager._build_parse_result(file, manager._processors[file])
+
+        assert (result.bundle_version, result.version_data) == ("v1", {"sha": "aaa"})
 
     # --- every completion reaches the batch seam ---
 
@@ -5202,6 +5258,7 @@ class TestDagFileProcessorManager:
         """Register a finished processor whose parse produced ``parsing_result`` (possibly None)."""
         file = DagFileInfo(bundle_name="testing", rel_path=Path(rel_path), bundle_path=TEST_DAGS_FOLDER)
         manager._file_stats.setdefault(file, DagFileStat())
+        self._record_bundle(manager, file)
         processor, _ = self.mock_processor(start_time=time.monotonic() - 1)
         processor.had_callbacks = had_callbacks
         processor.parsing_result = parsing_result
