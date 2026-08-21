@@ -2471,7 +2471,7 @@ class TestDagFileProcessorManager:
         manager._file_stats[file] = before
 
         with mock.patch.object(
-            manager, "_build_parse_result", autospec=True, side_effect=RuntimeError("team lookup")
+            manager, "_build_parse_result", autospec=True, side_effect=RuntimeError("no version")
         ):
             manager._collect_results()
 
@@ -2534,7 +2534,7 @@ class TestDagFileProcessorManager:
 
     def test_a_file_that_cannot_be_handled_does_not_discard_its_neighbours(self):
         """
-        Working out what a file leaves to persist can reach the DB, for the team its bundle is in.
+        Working out what a file leaves to persist can still fail, on a bundle with no version.
 
         Persisting a sweep together means one such failure arrives before any of it is written, so
         it has to be contained to its own file rather than take the sweep down with it.
@@ -2549,7 +2549,7 @@ class TestDagFileProcessorManager:
 
         def fail_for_bad(file, proc):
             if file == bad:
-                raise RuntimeError("team lookup failed")
+                raise RuntimeError("no version for this bundle")
             return build(file, proc)
 
         with mock.patch.object(manager, "_build_parse_result", autospec=True, side_effect=fail_for_bad):

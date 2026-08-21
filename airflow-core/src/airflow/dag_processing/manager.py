@@ -175,7 +175,8 @@ class FileParseResult(NamedTuple):
     """The stat to record once this file's results are persisted."""
     bundle_version: str | None = None
     version_data: dict | None = None
-    """The bundle's version when the file was collected, which a write needs and DagFileInfo lacks."""
+    """The version the bundle was on when the file was collected, which a write needs. Version
+    data cannot live on ``DagFileInfo``, which is a dict key and so has to stay hashable."""
     team_name: str | None = None
     """The team the bundle belonged to when the file was started, resolved there so that reaching
     a replaced write does not depend on the metadata DB being up."""
@@ -1476,15 +1477,13 @@ class DagFileProcessorManager(LoggingMixin):
         Persist one group of a sweep's parse results in a single pass.
 
         Override this to send results somewhere other than the metadata DB. It is handed one
-        group, not a whole sweep, and a file that parsed and defined no Dags is in it like any
-        other, since its import errors still have to be cleared. Everything written here goes on
-        the one session, so a caller handing over more than one group gets them in one
-        transaction; the manager splits first so each group gets its own.
-
-        Two things an override does not get. It is not reached without touching the metadata DB:
-        the team a bundle belongs to is looked up while working out what a file leaves to persist,
-        and a file whose lookup fails never arrives here. Nor does it see callback-only
-        completions or failed parses; :meth:`handle_parsing_result` sees every file.
+        group, not a whole sweep, and every file that finished is in it: one that parsed and
+        defined no Dags, since its import errors still have to be cleared, and a callback-only run
+        or a parse that failed, which carry no ``parsing_result`` at all. The team the file's
+        bundle belongs to travels with it, resolved when the processor started, so getting here
+        does not depend on the metadata DB being up. Everything written here goes on the one
+        session, so a caller handing over more than one group gets them in one transaction; the
+        manager splits first so each group gets its own.
 
         The built-in write keeps nothing when it raises, so the caller retries the group a file at
         a time. A replaced one may have kept it, so it does not. Two caveats to "nothing was kept":
@@ -1663,8 +1662,9 @@ class DagFileProcessorManager(LoggingMixin):
                 try:
                     result = self._build_parse_result(file, proc)
                 except Exception:
-                    # Working out what a file leaves to persist can reach the DB, for the team a
-                    # bundle belongs to. Losing that file must not lose the sweep it arrived in.
+                    # Working out what a file leaves to persist can still fail -- on a bundle the
+                    # manager has no version for, say. Losing that file must not lose the sweep it
+                    # arrived in.
                     self.log.exception(
                         "Failed to handle the parse result for %s in bundle %s; "
                         "the rest of the sweep is still persisted.",
