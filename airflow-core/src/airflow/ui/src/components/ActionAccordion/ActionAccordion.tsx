@@ -66,6 +66,41 @@ const TasksTable = ({
 
 // Table is in memory, pagination and sorting are disabled.
 // TODO: Make a front-end only unconnected table component with client side ordering and pagination
+/**
+ * One Dag-run group in the affected-tasks accordion.
+ */
+const RunGroupItem = ({
+  runId,
+  selection,
+  taskInstances,
+}: {
+  readonly runId: string;
+  readonly selection?: RowSelection;
+  readonly taskInstances: Array<TaskInstanceResponse>;
+}) => {
+  const { t: translate } = useTranslation();
+
+  return (
+    <Accordion.Item value={runId}>
+      <Accordion.ItemTrigger px={2} py={1}>
+        <Text fontSize="sm" fontWeight="semibold">
+          {translate("runId")}: {runId}{" "}
+          <Text as="span" color="fg.subtle" fontWeight="normal">
+            ({taskInstances.length})
+          </Text>
+        </Text>
+      </Accordion.ItemTrigger>
+      <Accordion.ItemContent>
+        <TasksTable
+          noRowsMessage={translate("dags:runAndTaskActions.affectedTasks.noItemsFound")}
+          selection={selection}
+          tasks={taskInstances}
+        />
+      </Accordion.ItemContent>
+    </Accordion.Item>
+  );
+};
+
 const ActionAccordion = ({ affectedTasks, groupByRunId = false, note, selection, setNote }: Props) => {
   const showTaskSection = affectedTasks !== undefined;
   const { t: translate } = useTranslation();
@@ -112,23 +147,7 @@ const ActionAccordion = ({ affectedTasks, groupByRunId = false, note, selection,
               {shouldGroup ? (
                 <Accordion.Root collapsible multiple variant="plain">
                   {[...runGroups.entries()].map(([runId, tis]) => (
-                    <Accordion.Item key={runId} value={runId}>
-                      <Accordion.ItemTrigger px={2} py={1}>
-                        <Text fontSize="sm" fontWeight="semibold">
-                          {translate("runId")}: {runId}{" "}
-                          <Text as="span" color="fg.subtle" fontWeight="normal">
-                            ({tis.length})
-                          </Text>
-                        </Text>
-                      </Accordion.ItemTrigger>
-                      <Accordion.ItemContent>
-                        <TasksTable
-                          noRowsMessage={translate("dags:runAndTaskActions.affectedTasks.noItemsFound")}
-                          selection={selection}
-                          tasks={tis}
-                        />
-                      </Accordion.ItemContent>
-                    </Accordion.Item>
+                    <RunGroupItem key={runId} runId={runId} selection={selection} taskInstances={tis} />
                   ))}
                 </Accordion.Root>
               ) : (

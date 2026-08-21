@@ -23,6 +23,7 @@ import {
   Separator,
   Text,
   VStack,
+  type ListCollection,
 } from "@chakra-ui/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -40,6 +41,47 @@ import { taskInstanceStateOptions } from "src/constants/stateOptions";
 import { useGroups } from "src/context/groups";
 import { SHORTCUTS } from "src/context/keyboardShortcuts";
 import { useShortcut } from "src/hooks/useShortcut";
+
+type StateItem = { label: string; value: TaskInstanceState | "all" | "none" };
+
+/**
+ * Multi-select over task instance states used by the graph filters.
+ */
+const TaskStateSelect = ({
+  onValueChange,
+  options,
+  selectedStates,
+  stateItems,
+}: {
+  readonly onValueChange: (value: Array<string>) => void;
+  readonly options: ListCollection<StateItem>;
+  readonly selectedStates: Array<string>;
+  readonly stateItems: Array<StateItem>;
+}) => {
+  const { t: translate } = useTranslation(["dag", "tasks"]);
+
+  return (
+    <Select.Root
+      collection={options}
+      multiple
+      onValueChange={({ value }) => onValueChange(value)}
+      value={selectedStates}
+    >
+      <Select.Trigger minW="max-content">
+        <Select.ValueText placeholder={translate("dag:panel.graphFilters.selectStatus")} width="auto">
+          {() => selectedStates.join(", ") || undefined}
+        </Select.ValueText>
+      </Select.Trigger>
+      <Select.Content>
+        {stateItems.map((option) => (
+          <Select.Item item={option} key={option.value}>
+            <StateBadge state={option.value as TaskInstanceState}>{translate(option.label)}</StateBadge>
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
+  );
+};
 
 export const GraphTaskFilters = () => {
   const { t: translate } = useTranslation(["dag", "tasks"]);
@@ -204,30 +246,12 @@ export const GraphTaskFilters = () => {
               <>
                 <VStack alignItems="flex-start" width="100%">
                   <Text fontSize="xs">{translate("dag:panel.graphFilters.selectStatus")}</Text>
-                  <Select.Root
-                    collection={taskInstanceStateOptions}
-                    multiple
-                    onValueChange={({ value }) => handleMultiChange(SearchParamsKeys.GRAPH_TASK_STATE)(value)}
-                    value={selectedStates}
-                  >
-                    <Select.Trigger minW="max-content">
-                      <Select.ValueText
-                        placeholder={translate("dag:panel.graphFilters.selectStatus")}
-                        width="auto"
-                      >
-                        {() => selectedStates.join(", ") || undefined}
-                      </Select.ValueText>
-                    </Select.Trigger>
-                    <Select.Content>
-                      {stateItems.map((option) => (
-                        <Select.Item item={option} key={option.value}>
-                          <StateBadge state={option.value as TaskInstanceState}>
-                            {translate(option.label)}
-                          </StateBadge>
-                        </Select.Item>
-                      ))}
-                    </Select.Content>
-                  </Select.Root>
+                  <TaskStateSelect
+                    onValueChange={handleMultiChange(SearchParamsKeys.GRAPH_TASK_STATE)}
+                    options={taskInstanceStateOptions}
+                    selectedStates={selectedStates}
+                    stateItems={stateItems}
+                  />
                 </VStack>
                 <VStack alignItems="flex-start" width="100%">
                   <Text fontSize="xs">{translate("dag:panel.graphFilters.mapIndex")}</Text>

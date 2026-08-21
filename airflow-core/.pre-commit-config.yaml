@@ -200,7 +200,7 @@ repos:
           ^src/airflow/migrations/versions/0028_3_0_0_drop_ab_user_id_foreign_key\.py$
       - id: ts-compile-lint-ui
         name: Compile / format / lint UI
-        description: TS types generation / ESLint / Oxfmt new UI files
+        description: TS types generation / Oxlint / ESLint / Oxfmt new UI files
         language: node
         files: |
           (?x)

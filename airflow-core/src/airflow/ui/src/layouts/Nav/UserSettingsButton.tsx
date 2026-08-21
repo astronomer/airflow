@@ -53,6 +53,56 @@ const COLOR_MODES = {
   SYSTEM: "system",
 } as const;
 
+/**
+ * The team list in the user menu, collapsing the tail into a tooltip.
+ */
+const UserTeams = ({ teams }: { readonly teams?: Array<string> | null }) => {
+  const { t: translate } = useTranslation();
+
+  if (!Array.isArray(teams)) {
+    return undefined;
+  }
+
+  const hidden = teams.slice(MAX_VISIBLE_TEAMS);
+
+  return (
+    <>
+      <Box color="fg.muted" fontSize="sm" mt={2}>
+        {translate("teams.title")}
+      </Box>
+      {teams.length ? (
+        <HStack fontSize="sm" gap={2} wrap="wrap">
+          {teams.slice(0, MAX_VISIBLE_TEAMS).map((team) => (
+            <Box key={team}>{team}</Box>
+          ))}
+          {hidden.length ? (
+            <Tooltip
+              closeDelay={0}
+              content={
+                <VStack align="start" gap={0}>
+                  {hidden.map((team) => (
+                    <Box key={team}>{team}</Box>
+                  ))}
+                </VStack>
+              }
+              openDelay={0}
+              portalled
+            >
+              <Box color="fg.muted" textDecoration="underline dotted">
+                {translate("teams.more", { count: hidden.length })}
+              </Box>
+            </Tooltip>
+          ) : undefined}
+        </HStack>
+      ) : (
+        <Box color="fg.muted" fontSize="sm">
+          {translate("teams.none")}
+        </Box>
+      )}
+    </>
+  );
+};
+
 export const UserSettingsButton = ({ externalViews }: { readonly externalViews: Array<NavItemResponse> }) => {
   const { i18n, t: translate } = useTranslation();
   const { selectedTheme, setColorMode } = useColorMode();
@@ -100,44 +150,7 @@ export const UserSettingsButton = ({ externalViews }: { readonly externalViews: 
                 <Box fontSize="md" fontWeight="semibold">
                   {`${currentUser.username} (id: ${currentUser.id})`}
                 </Box>
-                {Array.isArray(currentUser.teams) ? (
-                  <>
-                    <Box color="fg.muted" fontSize="sm" mt={2}>
-                      {translate("teams.title")}
-                    </Box>
-                    {currentUser.teams.length ? (
-                      <HStack fontSize="sm" gap={2} wrap="wrap">
-                        {currentUser.teams.slice(0, MAX_VISIBLE_TEAMS).map((team) => (
-                          <Box key={team}>{team}</Box>
-                        ))}
-                        {currentUser.teams.length > MAX_VISIBLE_TEAMS ? (
-                          <Tooltip
-                            closeDelay={0}
-                            content={
-                              <VStack align="start" gap={0}>
-                                {currentUser.teams.slice(MAX_VISIBLE_TEAMS).map((team) => (
-                                  <Box key={team}>{team}</Box>
-                                ))}
-                              </VStack>
-                            }
-                            openDelay={0}
-                            portalled
-                          >
-                            <Box color="fg.muted" textDecoration="underline dotted">
-                              {translate("teams.more", {
-                                count: currentUser.teams.length - MAX_VISIBLE_TEAMS,
-                              })}
-                            </Box>
-                          </Tooltip>
-                        ) : undefined}
-                      </HStack>
-                    ) : (
-                      <Box color="fg.muted" fontSize="sm">
-                        {translate("teams.none")}
-                      </Box>
-                    )}
-                  </>
-                ) : undefined}
+                <UserTeams teams={currentUser.teams} />
               </Box>
               <Menu.Separator />
             </>

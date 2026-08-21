@@ -44,7 +44,6 @@ export const useLogGroups = ({
       entry.group?.type === "header",
   );
   const allGroupIds = new Set(groupHeaders.map((entry) => entry.group.id));
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- React Compiler auto-memoizes this
   const groupParentMap = new Map<number, number | undefined>(
     groupHeaders.map((entry) => [entry.group.id, entry.group.parentId]),
   );
@@ -162,6 +161,9 @@ export const useLogGroups = ({
     if (groupsToExpand.length > 0) {
       setExpandedGroups((prev) => new Set([...prev, ...groupsToExpand]));
     }
+    // React Compiler auto-memoizes groupParentMap, so rebuilding it each render does
+    // not re-fire this effect.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [currentMatchLineIndex, parsedLogs, expandedGroups, groupParentMap]);
 
   return {

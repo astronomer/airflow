@@ -30,7 +30,7 @@ type ListPopoverProps = {
 };
 
 const ListPopover = ({ items, noun }: ListPopoverProps) => (
-  // eslint-disable-next-line jsx-a11y/no-autofocus
+  // oxlint-disable-next-line jsx-a11y/no-autofocus
   <Popover.Root autoFocus={false} lazyMount unmountOnExit>
     <Popover.Trigger asChild disabled={items.length === 0}>
       <Button variant="outline">

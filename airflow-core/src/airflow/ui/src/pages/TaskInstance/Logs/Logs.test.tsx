@@ -50,6 +50,18 @@ const waitForLogs = async () => {
   fireEvent.scroll(screen.getByTestId("virtualized-list"), { target: { scrollTop: ITEM_HEIGHT * 2 } });
 };
 
+const expectRenderedLineNumber = async (pattern: RegExp, expectedLineNumber: number) => {
+  const row = (await screen.findByText(pattern)).closest('[data-testid^="virtualized-item-"]');
+
+  expect(row).not.toBeNull();
+
+  const anchor = row?.querySelector<HTMLAnchorElement>("a[id]");
+
+  expect(anchor).not.toBeNull();
+
+  expect(Number(anchor?.id)).toBe(expectedLineNumber);
+};
+
 describe("Task log source", () => {
   it("Toggles logger and location on click", async () => {
     render(
@@ -412,18 +424,6 @@ describe("Task log search", () => {
     );
 
     await waitForLogs();
-
-    const expectRenderedLineNumber = async (pattern: RegExp, expectedLineNumber: number) => {
-      const row = (await screen.findByText(pattern)).closest('[data-testid^="virtualized-item-"]');
-
-      expect(row).not.toBeNull();
-
-      const anchor = row?.querySelector<HTMLAnchorElement>("a[id]");
-
-      expect(anchor).not.toBeNull();
-
-      expect(Number(anchor?.id)).toBe(expectedLineNumber);
-    };
 
     const summaryPre = screen.getByTestId("summary-Pre task execution logs");
 

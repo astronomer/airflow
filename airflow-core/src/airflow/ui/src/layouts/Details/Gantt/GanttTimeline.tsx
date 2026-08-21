@@ -21,9 +21,9 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import dayjs from "dayjs";
 import type { RefObject } from "react";
 import { Fragment, useLayoutEffect, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams, type To } from "react-router-dom";
 
-import type { LightGridTaskInstanceSummary } from "openapi/requests/types.gen";
+import type { LightGridTaskInstanceSummary, TaskInstanceState } from "openapi/requests/types.gen";
 import { StateIcon } from "src/components/StateIcon";
 import TaskInstanceTooltip from "src/components/TaskInstanceTooltip";
 import {
@@ -98,6 +98,50 @@ const toTooltipSummary = (
         }),
   };
 };
+
+/**
+ * A single gantt bar: the link over the run plus its state-coloured badge.
+ */
+const GanttSegmentBar = ({
+  barRadius,
+  onSegmentClick,
+  state,
+  to,
+  touchesNext,
+  touchesPrev,
+}: {
+  readonly barRadius: number;
+  readonly onSegmentClick?: () => void;
+  readonly state?: TaskInstanceState | null;
+  readonly to: To;
+  readonly touchesNext: boolean;
+  readonly touchesPrev: boolean;
+}) => (
+  <Link
+    onClick={() => onSegmentClick?.()}
+    replace
+    style={{ display: "block", height: "100%", width: "100%" }}
+    to={to}
+  >
+    <Badge
+      alignItems="center"
+      borderBottomLeftRadius={touchesPrev ? 0 : barRadius}
+      borderBottomRightRadius={touchesNext ? 0 : barRadius}
+      borderTopLeftRadius={touchesPrev ? 0 : barRadius}
+      borderTopRightRadius={touchesNext ? 0 : barRadius}
+      colorPalette={state ?? "none"}
+      display="flex"
+      h="100%"
+      justifyContent="center"
+      minH={0}
+      p={0}
+      variant="solid"
+      w="100%"
+    >
+      {touchesNext ? undefined : <StateIcon size={GANTT_STATE_ICON_SIZE_PX} state={state} />}
+    </Badge>
+  </Link>
+);
 
 export const GanttTimeline = ({
   dagId,
@@ -359,32 +403,14 @@ export const GanttTimeline = ({
                           w={`${widthPct}%`}
                           zIndex={segIndex + 1}
                         >
-                          <Link
-                            onClick={() => onSegmentClick?.()}
-                            replace
-                            style={{ display: "block", height: "100%", width: "100%" }}
+                          <GanttSegmentBar
+                            barRadius={barRadius}
+                            onSegmentClick={onSegmentClick}
+                            state={state}
                             to={to ?? ""}
-                          >
-                            <Badge
-                              alignItems="center"
-                              borderBottomLeftRadius={touchesPrev ? 0 : barRadius}
-                              borderBottomRightRadius={touchesNext ? 0 : barRadius}
-                              borderTopLeftRadius={touchesPrev ? 0 : barRadius}
-                              borderTopRightRadius={touchesNext ? 0 : barRadius}
-                              colorPalette={state ?? "none"}
-                              display="flex"
-                              h="100%"
-                              justifyContent="center"
-                              minH={0}
-                              p={0}
-                              variant="solid"
-                              w="100%"
-                            >
-                              {touchesNext ? undefined : (
-                                <StateIcon size={GANTT_STATE_ICON_SIZE_PX} state={state} />
-                              )}
-                            </Badge>
-                          </Link>
+                            touchesNext={touchesNext}
+                            touchesPrev={touchesPrev}
+                          />
                         </Box>
                       </TaskInstanceTooltip>
                     );

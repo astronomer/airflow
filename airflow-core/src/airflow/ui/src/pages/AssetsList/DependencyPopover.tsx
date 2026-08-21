@@ -61,7 +61,7 @@ export const DependencyPopover = ({ dependencies, type }: Props) => {
   const dependencyKey = type.toLowerCase() as "dag" | "task";
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-autofocus
+    // oxlint-disable-next-line jsx-a11y/no-autofocus
     <Popover.Root autoFocus={false} lazyMount unmountOnExit>
       <Popover.Trigger asChild disabled={dependencies.length === 0}>
         <Button variant="outline">

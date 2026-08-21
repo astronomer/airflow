@@ -36,7 +36,7 @@ export const Logo = ({ height = "1.5em", width = "1.5em", ...rest }: LogoProps) 
 
   if (hasIconSrc && colorMode && !failedLoadingCustomIcon[colorMode]) {
     return (
-      // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+      // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
       <img
         alt="Logo"
         onError={() => setFailedLoadingCustomIcon((prev) => ({ ...prev, [colorMode]: true }))}
