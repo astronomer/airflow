@@ -20,7 +20,6 @@
  * @import { FlatConfig } from "@typescript-eslint/utils/ts-eslint";
  */
 import { coreRules } from "./rules/core.js";
-import { formatterRules } from "./rules/formatter.js";
 import { i18nRules } from "./rules/i18n.js";
 import { i18nextRules } from "./rules/i18next.js";
 import { jsoncRules } from "./rules/jsonc.js";
@@ -37,13 +36,15 @@ import { unicornRules } from "./rules/unicorn.js";
  */
 export default /** @type {const} @satisfies {ReadonlyArray<FlatConfig.Config>} */ ([
   // Global ignore of dist directory
-  { ignores: ["**/dist/", "**coverage/", "**/openapi-gen/", "**/.vite/**"] },
+  { ignores: ["**/dist/", "**/coverage/", "**/openapi-gen/", "**/.vite/**"] },
+  // Most `eslint-disable` comments in this tree now name Oxlint rules, which Oxlint
+  // honours. ESLint would report every one of them as an unused directive.
+  { linterOptions: { reportUnusedDisableDirectives: "off" } },
   // Base rules
   coreRules,
   typescriptRules,
   // Da rest
   perfectionistRules,
-  formatterRules,
   reactRules,
   stylisticRules,
   remRules,

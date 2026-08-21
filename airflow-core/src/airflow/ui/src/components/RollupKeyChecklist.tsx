@@ -73,7 +73,7 @@ export const RollupKeyChecklistPopover = ({
   requiredCount,
   requiredKeys,
 }: PopoverProps) => (
-  // eslint-disable-next-line jsx-a11y/no-autofocus
+  // oxlint-disable-next-line jsx-a11y/no-autofocus
   <Popover.Root autoFocus={false} lazyMount positioning={{ placement: "bottom-end" }} unmountOnExit>
     <Popover.Trigger asChild>
       <Button

@@ -55,7 +55,7 @@ export const DeadlineAlertsBadge = ({ dagId }: { readonly dagId: string }) => {
   }
 
   return (
-    // eslint-disable-next-line jsx-a11y/no-autofocus
+    // oxlint-disable-next-line jsx-a11y/no-autofocus
     <Popover.Root autoFocus={false} lazyMount unmountOnExit>
       <Popover.Trigger asChild>
         <Button color="fg.info" size="xs" variant="outline">

@@ -83,7 +83,7 @@ export const Security = () => {
   return (
     <Box flexGrow={1} m={-3}>
       {
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+        // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
         <iframe
           id="security-iframe"
           onLoad={onLoad}

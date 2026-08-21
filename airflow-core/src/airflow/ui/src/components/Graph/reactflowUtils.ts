@@ -145,6 +145,16 @@ export const formatFlowEdges = ({ edges }: { edges: Array<Edge> }): Array<FlowEd
 type SelectionGraphEdge = { id: string; source: string; target: string };
 type SelectionGraphNode = { id: string; type?: string };
 
+const addTo = (map: Map<string, Array<SelectionGraphEdge>>, key: string, edge: SelectionGraphEdge) => {
+  const existing = map.get(key);
+
+  if (existing) {
+    existing.push(edge);
+  } else {
+    map.set(key, [edge]);
+  }
+};
+
 /**
  * Edges only highlight when one of their two endpoints has node-level `isSelected` set, or (for
  * gate-adjacent edges) when this function marks that specific edge id. Gate edges are directional
@@ -173,15 +183,6 @@ export const getGatePathEdgeIdsForSelection = (
 
   const outgoingByNode = new Map<string, Array<SelectionGraphEdge>>();
   const incomingByNode = new Map<string, Array<SelectionGraphEdge>>();
-  const addTo = (map: Map<string, Array<SelectionGraphEdge>>, key: string, edge: SelectionGraphEdge) => {
-    const existing = map.get(key);
-
-    if (existing) {
-      existing.push(edge);
-    } else {
-      map.set(key, [edge]);
-    }
-  };
 
   edges.forEach((edge) => {
     addTo(outgoingByNode, edge.source, edge);

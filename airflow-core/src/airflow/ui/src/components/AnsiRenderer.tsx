@@ -131,6 +131,9 @@ const createChakraProps = (bundle: AnserJsonEntry) => {
       props.textDecoration = "underline";
       break;
 
+    // `case null` is redundant on its own, but it is what makes this switch
+    // exhaustive for @typescript-eslint/switch-exhaustiveness-check.
+    // oxlint-disable-next-line unicorn/no-useless-switch-case
     case null:
     default:
       break;

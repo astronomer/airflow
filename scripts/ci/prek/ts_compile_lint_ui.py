@@ -81,6 +81,7 @@ if __name__ == "__main__":
     if any("/openapi/" in file for file in original_files):
         run_command(["pnpm", "codegen"], cwd=dir)
     if all_non_yaml_files:
+        run_command(["pnpm", "oxlint", "--fix", *all_non_yaml_files], cwd=dir)
         run_command(["pnpm", "eslint", "--fix", *all_non_yaml_files], cwd=dir)
         run_command(["pnpm", "oxfmt", "--write", *all_non_yaml_files], cwd=dir)
     if all_ts_files:

@@ -61,6 +61,21 @@ const isJsonValid = (val: string) => {
   }
 };
 
+/**
+ * One expiry choice in the task state store modal.
+ */
+const ExpiresAtOption = ({ label, value }: { readonly label: string; readonly value: string }) => (
+  <RadioCard.Item flex={1} value={value}>
+    <RadioCard.ItemHiddenInput />
+    <RadioCard.ItemControl>
+      <RadioCard.ItemContent>
+        <RadioCard.ItemText>{label}</RadioCard.ItemText>
+      </RadioCard.ItemContent>
+      <RadioCard.ItemIndicator />
+    </RadioCard.ItemControl>
+  </RadioCard.Item>
+);
+
 export const TaskStateStoreModal = ({
   dagId,
   isOpen,
@@ -195,39 +210,12 @@ export const TaskStateStoreModal = ({
               value={expiresAt}
             >
               <Flex gap={2}>
-                <RadioCard.Item flex={1} value="default">
-                  <RadioCard.ItemHiddenInput />
-                  <RadioCard.ItemControl>
-                    <RadioCard.ItemContent>
-                      <RadioCard.ItemText>
-                        {translate("dag:taskStateStore.expiresAt.default", { interval: "30 days" })}
-                      </RadioCard.ItemText>
-                    </RadioCard.ItemContent>
-                    <RadioCard.ItemIndicator />
-                  </RadioCard.ItemControl>
-                </RadioCard.Item>
-                <RadioCard.Item flex={1} value="never">
-                  <RadioCard.ItemHiddenInput />
-                  <RadioCard.ItemControl>
-                    <RadioCard.ItemContent>
-                      <RadioCard.ItemText>
-                        {translate("dag:taskStateStore.expiresAt.never")}
-                      </RadioCard.ItemText>
-                    </RadioCard.ItemContent>
-                    <RadioCard.ItemIndicator />
-                  </RadioCard.ItemControl>
-                </RadioCard.Item>
-                <RadioCard.Item flex={1} value="custom">
-                  <RadioCard.ItemHiddenInput />
-                  <RadioCard.ItemControl>
-                    <RadioCard.ItemContent>
-                      <RadioCard.ItemText>
-                        {translate("dag:taskStateStore.expiresAt.custom")}
-                      </RadioCard.ItemText>
-                    </RadioCard.ItemContent>
-                    <RadioCard.ItemIndicator />
-                  </RadioCard.ItemControl>
-                </RadioCard.Item>
+                <ExpiresAtOption
+                  label={translate("dag:taskStateStore.expiresAt.default", { interval: "30 days" })}
+                  value="default"
+                />
+                <ExpiresAtOption label={translate("dag:taskStateStore.expiresAt.never")} value="never" />
+                <ExpiresAtOption label={translate("dag:taskStateStore.expiresAt.custom")} value="custom" />
               </Flex>
             </RadioCard.Root>
             {expiresAt === "custom" && (

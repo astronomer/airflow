@@ -47,6 +47,8 @@ export class DagCalendarTab extends BasePage {
     for (let i = 0; i < count; i++) {
       const cell = this.activeCells.nth(i);
       const computedColor = await cell.evaluate((el: Element) => {
+        // Defined inside evaluate() because it runs in the browser, not in Node.
+        // oxlint-disable-next-line unicorn/consistent-function-scoping
         const getRenderableColor = (element: Element): string => {
           const color = window.getComputedStyle(element).backgroundColor;
 

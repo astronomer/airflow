@@ -163,7 +163,7 @@ export const Overview = () => {
             <Skeleton height="310px" w="full" />
           ) : (
             <DurationChart
-              entries={gridRuns?.slice().reverse()}
+              entries={gridRuns === undefined ? undefined : [...gridRuns].reverse()}
               isAutoRefreshing={isAutoRefreshing}
               kind="Dag Run"
             />

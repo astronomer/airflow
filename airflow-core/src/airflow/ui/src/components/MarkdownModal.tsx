@@ -17,7 +17,7 @@
  * under the License.
  */
 import { Box, Button, Flex, HStack, Text, Textarea, VStack } from "@chakra-ui/react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, Dispatch, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FiEdit, FiEye } from "react-icons/fi";
@@ -28,6 +28,84 @@ import { Dialog } from "src/components/ui";
 import { MARKDOWN_DIALOG_STORAGE_KEY, ResizableWrapper } from "src/components/ui/ResizableWrapper";
 
 export const MAX_NOTE_LENGTH = 1000;
+
+type FooterProps = {
+  readonly hasContent: boolean;
+  readonly isEditing: boolean;
+  readonly isOverLimit: boolean;
+  readonly isPending?: boolean;
+  readonly length: number;
+  readonly onClose: () => void;
+  readonly onConfirm: () => void;
+  readonly setIsEditing: (value: boolean) => void;
+  readonly setShowPreview: Dispatch<SetStateAction<boolean>>;
+  readonly showPreview: boolean;
+};
+
+/**
+ * Footer of the markdown modal: the character counter and the edit/preview/confirm actions.
+ */
+const MarkdownModalFooter = ({
+  hasContent,
+  isEditing,
+  isOverLimit,
+  isPending,
+  length,
+  onClose,
+  onConfirm,
+  setIsEditing,
+  setShowPreview,
+  showPreview,
+}: FooterProps) => {
+  const { t: translate } = useTranslation();
+
+  return (
+    <Box flexShrink={0} width="100%">
+      <Flex alignItems="center" gap={4} justifyContent="space-between" p={4}>
+        {isEditing ? (
+          <Text color={isOverLimit ? "fg.error" : "fg.muted"} fontSize="sm">
+            {length}/{MAX_NOTE_LENGTH}
+          </Text>
+        ) : (
+          <Box />
+        )}
+        {isEditing ? (
+          <HStack gap={2}>
+            <Button
+              data-testid="preview-toggle"
+              onClick={() => setShowPreview((prev) => !prev)}
+              variant="outline"
+            >
+              {showPreview ? <FiEdit /> : <FiEye />}
+              {showPreview ? translate("note.write") : translate("note.preview")}
+            </Button>
+            <Button
+              disabled={isOverLimit}
+              loading={isPending}
+              onClick={() => {
+                onConfirm();
+                onClose();
+              }}
+            >
+              <NoteIcon hasNote={hasContent} /> {translate("modal.confirm")}
+            </Button>
+          </HStack>
+        ) : (
+          <Button
+            data-testid="edit-markdown"
+            onClick={() => {
+              setShowPreview(false);
+              setIsEditing(true);
+            }}
+            variant="outline"
+          >
+            <FiEdit /> {translate("edit")}
+          </Button>
+        )}
+      </Flex>
+    </Box>
+  );
+};
 
 const MarkdownModal = ({
   header,
@@ -48,8 +126,6 @@ const MarkdownModal = ({
   readonly placeholder: string;
   readonly setMdContent: (value: string) => void;
 }) => {
-  const { t: translate } = useTranslation();
-
   const hasContent = Boolean(mdContent?.trim());
   // Open straight into editing when there's nothing to read; otherwise show the
   // rendered note (links clickable) and let the edit button reveal the textarea.
@@ -127,50 +203,18 @@ const MarkdownModal = ({
                 </Box>
               )}
             </Box>
-            <Box flexShrink={0} width="100%">
-              <Flex alignItems="center" gap={4} justifyContent="space-between" p={4}>
-                {isEditing ? (
-                  <Text color={isOverLimit ? "fg.error" : "fg.muted"} fontSize="sm">
-                    {length}/{MAX_NOTE_LENGTH}
-                  </Text>
-                ) : (
-                  <Box />
-                )}
-                {isEditing ? (
-                  <HStack gap={2}>
-                    <Button
-                      data-testid="preview-toggle"
-                      onClick={() => setShowPreview((prev) => !prev)}
-                      variant="outline"
-                    >
-                      {showPreview ? <FiEdit /> : <FiEye />}
-                      {showPreview ? translate("note.write") : translate("note.preview")}
-                    </Button>
-                    <Button
-                      disabled={isOverLimit}
-                      loading={isPending}
-                      onClick={() => {
-                        onConfirm();
-                        onClose();
-                      }}
-                    >
-                      <NoteIcon hasNote={hasContent} /> {translate("modal.confirm")}
-                    </Button>
-                  </HStack>
-                ) : (
-                  <Button
-                    data-testid="edit-markdown"
-                    onClick={() => {
-                      setShowPreview(false);
-                      setIsEditing(true);
-                    }}
-                    variant="outline"
-                  >
-                    <FiEdit /> {translate("edit")}
-                  </Button>
-                )}
-              </Flex>
-            </Box>
+            <MarkdownModalFooter
+              hasContent={hasContent}
+              isEditing={isEditing}
+              isOverLimit={isOverLimit}
+              isPending={isPending}
+              length={length}
+              onClose={onClose}
+              onConfirm={onConfirm}
+              setIsEditing={setIsEditing}
+              setShowPreview={setShowPreview}
+              showPreview={showPreview}
+            />
           </Dialog.Body>
         </ResizableWrapper>
       </Dialog.Content>

@@ -132,6 +132,19 @@ const formatElkEdge = (edge: EdgeResponse, font: string, node?: NodeResponse): F
  * Uses the original, unmodified edge list so that prior sibling group
  * transformations do not affect the connectivity check.
  */
+const setsEqual = (left: Set<string>, right: Set<string>) => {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 export const hasUniformExternalConnectivity = (
   childIdSet: Set<string>,
   edges: Array<EdgeResponse>,
@@ -180,19 +193,6 @@ export const hasUniformExternalConnectivity = (
   if (reference === undefined) {
     return false;
   }
-
-  const setsEqual = (left: Set<string>, right: Set<string>) => {
-    if (left.size !== right.size) {
-      return false;
-    }
-    for (const value of left) {
-      if (!right.has(value)) {
-        return false;
-      }
-    }
-
-    return true;
-  };
 
   return rest.every(
     (profile) =>

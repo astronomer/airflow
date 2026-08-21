@@ -17,53 +17,29 @@
  under the License.
  -->
 
-# React + TypeScript + Vite
+# Airflow UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The React + TypeScript + Vite application served by the Airflow API server.
 
-Currently, two official plugins are available:
+## Getting started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Setup, the `pnpm` commands, and the directory layout are documented in
+[contributing-docs/15_node_environment_setup.rst](../../../../contributing-docs/15_node_environment_setup.rst).
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```bash
+pnpm install
+pnpm dev
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Linting and formatting
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+- **[Oxlint](https://oxc.rs/docs/guide/usage/linter)** (`.oxlintrc.json`) runs most lint
+  rules. `pnpm lint` runs it first.
+- **ESLint** (`eslint.config.js`, `rules/`) covers only what Oxlint cannot express: the
+  type-aware `typescript-eslint` rules, `perfectionist`, `@stylistic`, and the two in-repo
+  plugins (`rules/rem.js`, `rules/i18n.js`).
+- **[Oxfmt](https://oxc.rs/docs/guide/usage/formatter)** (`.oxfmtrc.json`) formats
+  JS/TS/JSON. Run `pnpm format`, or `pnpm format:check` to check without writing.
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
-```
+Install the [`oxc.oxc-vscode`](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode)
+extension to get both on save; the repo's `.vscode/settings.json` is already configured.

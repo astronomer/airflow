@@ -119,9 +119,7 @@ const createWrapper =
 const expectTries = async (tries: Array<number>) => {
   await waitFor(() => {
     expect(
-      screen
-        .getAllByTestId(/^log-attempt-select-button-/u)
-        .map((button) => button.getAttribute("data-testid")),
+      screen.getAllByTestId(/^log-attempt-select-button-/u).map((button) => button.dataset.testid),
     ).toEqual(tries.map((tryNumber) => `log-attempt-select-button-${tryNumber}`));
   });
   expect(screen.queryByTestId("log-attempt-select-button-0")).toBeNull();
@@ -129,10 +127,8 @@ const expectTries = async (tries: Array<number>) => {
 
 const expectTryState = (tryNumber: number, state: string) => {
   expect(
-    screen
-      .getByTestId(`log-attempt-select-button-${tryNumber}`)
-      .querySelector("[data-state]")
-      ?.getAttribute("data-state"),
+    screen.getByTestId(`log-attempt-select-button-${tryNumber}`).querySelector<HTMLElement>("[data-state]")
+      ?.dataset.state,
   ).toBe(state);
 };
 

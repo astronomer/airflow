@@ -123,7 +123,10 @@ export const Overview = () => {
           {isLoadingTaskInstances ? (
             <Skeleton height="310px" w="full" />
           ) : (
-            <DurationChart entries={tiData?.task_instances.slice().reverse()} kind="Task Instance" />
+            <DurationChart
+              entries={tiData === undefined ? undefined : [...tiData.task_instances].reverse()}
+              kind="Task Instance"
+            />
           )}
         </Box>
       </HStack>
