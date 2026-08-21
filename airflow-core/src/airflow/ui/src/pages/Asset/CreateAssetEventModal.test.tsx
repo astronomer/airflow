@@ -181,7 +181,8 @@ describe("CreateAssetEventModal", () => {
     render(<CreateAssetEventModal asset={asset} onClose={vi.fn()} open />, { wrapper: Wrapper });
 
     const onSuccess = vi.mocked(useAssetServiceCreateAssetEvent).mock.calls.at(-1)?.[0]?.onSuccess as
-      ((data: AssetEventResponse) => Promise<void>) | undefined;
+      | ((data: AssetEventResponse) => Promise<void>)
+      | undefined;
 
     await onSuccess?.({ id: 1 } as unknown as AssetEventResponse);
 

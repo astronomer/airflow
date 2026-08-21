@@ -19,20 +19,12 @@
 /**
  * @import { FlatConfig } from "@typescript-eslint/utils/ts-eslint";
  */
-import prettier from "eslint-plugin-prettier";
-
 import { off } from "./off.js";
 
 /**
- * ESLint TypeScript namespace.
+ * Core rules the formatter owns, so linting them only produces conflicting reports.
+ * @see [oxfmt](https://oxc.rs/docs/guide/usage/formatter)
  */
-export const prettierNamespace = "prettier";
-
-/**
- * ESLint Prettier rules.
- * @see [eslint-plugin-prettier](https://github.com/prettier/eslint-plugin-prettier)
- */
-export const prettierRules = /** @type {const} @satisfies {FlatConfig.Config} */ ({
-  plugins: { [prettierNamespace]: prettier },
+export const formatterRules = /** @type {const} @satisfies {FlatConfig.Config} */ ({
   rules: off("no-irregular-whitespace", "no-unexpected-multiline"),
 });
