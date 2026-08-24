@@ -1307,7 +1307,11 @@ class DagFileProcessorManager(LoggingMixin):
             finished, callback-only runs and failed parses included, so nothing this sees is lost
             by moving; overriding this one costs the Dag processor its batching.
         """
-        result = self._build_parse_result(file, proc)
+        try:
+            result = self._build_parse_result(file, proc)
+        except Exception:
+            self._throttle_after_failed_result_build(file, proc)
+            return
 
         try:
             self.persist_parsing_results([result], session=session)
@@ -1681,18 +1685,7 @@ class DagFileProcessorManager(LoggingMixin):
                 try:
                     result = self._build_parse_result(file, proc)
                 except Exception:
-                    # Whatever goes wrong working out what one file leaves to persist, losing that
-                    # file must not lose the sweep it arrived in.
-                    self.log.exception(
-                        "Failed to handle the parse result for %s in bundle %s; "
-                        "the rest of the sweep is still persisted.",
-                        str(file.rel_path),
-                        file.bundle_name,
-                    )
-                    if not (proc.had_callbacks and proc.parsing_result is None):
-                        self._throttle_retry(file, timezone.utcnow(), time.monotonic() - proc.start_time)
-                    # A callback-only run leaves the timestamps alone; failing to handle one must
-                    # too, or it advertises a parse that never happened and its Dags go stale.
+                    self._throttle_after_failed_result_build(file, proc)
                     continue
                 to_persist.append(result)
 
@@ -1813,6 +1806,24 @@ class DagFileProcessorManager(LoggingMixin):
             item.file.bundle_name,
         )
         self._throttle_retry(item.file, item.stat.last_finish_time, item.stat.last_duration)
+
+    def _throttle_after_failed_result_build(self, file: DagFileInfo, proc: DagFileProcessorProcess) -> None:
+        """
+        Throw one file back when working out what it leaves to persist fails.
+
+        A bundle with no recorded version is what this exists for: the file cannot be written
+        without pinning it to a version nobody has, so it is parsed again instead. Losing it must
+        not lose the sweep it arrived in, nor stop the parsing loop. A callback-only run keeps its
+        timestamps, since moving them would advertise a parse that never happened.
+        """
+        self.log.exception(
+            "Failed to handle the parse result for %s in bundle %s; it is parsed again rather "
+            "than persisted, and the rest of the cycle is unaffected.",
+            str(file.rel_path),
+            file.bundle_name,
+        )
+        if not (proc.had_callbacks and proc.parsing_result is None):
+            self._throttle_retry(file, timezone.utcnow(), time.monotonic() - proc.start_time)
 
     def _throttle_retry(
         self, file: DagFileInfo, finish_time: datetime | None, run_duration: float | None

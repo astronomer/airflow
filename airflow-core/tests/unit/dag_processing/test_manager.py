@@ -5282,6 +5282,26 @@ class TestDagFileProcessorManager:
 
         assert (result.bundle_version, result.version_data) == ("v1", {"sha": "aaa"})
 
+    def test_the_per_file_seam_throws_a_file_back_rather_than_stopping_the_loop(self):
+        """
+        The retained seam has to contain what a sweep contains.
+
+        Working out what a file leaves to persist raises for a bundle with no recorded version,
+        and an override delegating here until 4.0 would otherwise take that straight out of the
+        parsing loop.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        manager._processor_bundles.pop(file, None)
+
+        with mock.patch.object(manager, "persist_parsing_results", autospec=True) as write:
+            manager.handle_parsing_result(
+                file, manager._processors[file], session=mock.MagicMock(spec=Session)
+            )
+
+        write.assert_not_called()
+        assert manager._file_stats[file].run_count == 1, "the file is thrown back, not written"
+
     # --- every completion reaches the batch seam ---
 
     def _finished_processor(self, manager, rel_path: str, *, parsing_result, had_callbacks=False):
