@@ -57,6 +57,7 @@ from airflow.dag_processing.bundles.base import (
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.collection import update_dag_parsing_results_in_db
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
+from airflow.exceptions import RemovedInAirflow4Warning
 from airflow.models.asset import remove_references_to_deleted_dags
 from airflow.models.dag import DagModel
 from airflow.models.dagbag import DagPriorityParsingRequest
@@ -1456,7 +1457,7 @@ class DagFileProcessorManager(LoggingMixin):
                 f"{type(self).__name__} overrides persist_parsing_result, which is deprecated. "
                 "Override persist_parsing_results instead, which is handed a group of the files "
                 "that finished together.",
-                DeprecationWarning,
+                RemovedInAirflow4Warning,
                 stacklevel=2,
             )
             self.log.warning(
@@ -1471,7 +1472,7 @@ class DagFileProcessorManager(LoggingMixin):
                 f"{type(self).__name__} overrides handle_parsing_result, which is deprecated. "
                 "Override persist_parsing_results instead, which is handed every file that "
                 "finished parsing together.",
-                DeprecationWarning,
+                RemovedInAirflow4Warning,
                 stacklevel=2,
             )
             self.log.warning(

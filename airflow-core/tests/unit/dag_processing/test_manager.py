@@ -61,7 +61,7 @@ from airflow.dag_processing.manager import (
     FileParseResult,
 )
 from airflow.dag_processing.processor import DagFileParsingResult, DagFileProcessorProcess
-from airflow.exceptions import SerializationError
+from airflow.exceptions import RemovedInAirflow4Warning, SerializationError
 from airflow.models import DagModel, DbCallbackRequest
 from airflow.models.asset import (
     AssetActive,
@@ -2186,7 +2186,8 @@ class TestDagFileProcessorManager:
         manager = subclass(max_runs=1)
 
         if warns:
-            with pytest.warns(DeprecationWarning, match="persist_parsing_results"):
+            # The class names the release the message promises, not just that something is going.
+            with pytest.warns(RemovedInAirflow4Warning, match="persist_parsing_results"):
                 manager._warn_if_batching_is_disabled()
         else:
             with warnings.catch_warnings():
