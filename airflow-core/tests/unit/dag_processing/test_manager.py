@@ -67,16 +67,19 @@ from airflow.models.asset import (
     AssetActive,
     AssetAliasModel,
     AssetModel,
+    AssetWatcherModel,
     DagScheduleAssetAliasReference,
     DagScheduleAssetReference,
     TaskOutletAssetReference,
 )
+from airflow.models.dag import DagTag
 from airflow.models.dag_version import DagVersion
 from airflow.models.dagbundle import DagBundleModel
 from airflow.models.dagcode import DagCode
 from airflow.models.dagwarning import DagWarning, DagWarningType
 from airflow.models.serialized_dag import SerializedDagModel
 from airflow.models.team import Team
+from airflow.models.trigger import Trigger
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk import DAG as SdkDAG, Asset, AssetAlias
 from airflow.serialization.serialized_objects import LazyDeserializedDAG
@@ -2215,6 +2218,22 @@ class TestDagFileProcessorManager:
             ["b.py"],
             ["c.py"],
         ], "c.py may not join a.py's group, which would write it before b.py"
+
+    def test_a_file_that_defines_nothing_still_ends_a_run_that_filed_a_dag_under_it(self):
+        """
+        The only case the run's-Dag-locs against incoming file-locs rule splits on its own.
+
+        An error against a path stales the Dags filed under it, and that is applied after they are
+        written, so a file the run already filed a Dag under has to be written separately even when
+        it arrives clean and defines nothing of its own.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+
+        groups = manager._build_persistence_groups(
+            [self._item("a.py", ["dag_a"], filed_under="b.py"), self._item("b.py", [])]
+        )
+
+        assert [[str(item.file.rel_path) for item in group] for group in groups] == [["a.py"], ["b.py"]]
 
     @pytest.mark.parametrize(
         ("sweep", "expected"),
@@ -4733,7 +4752,8 @@ class TestDagFileProcessorManager:
         Each group is its own transaction, which is the whole reason a sweep is split into them.
 
         Mocking the write proves the split; only a real one proves the earlier group survived the
-        later rollback rather than sharing its fate.
+        later rollback rather than sharing its fate. The surviving group holds more than one file,
+        or it would not be showing that a group survives -- only that a file does.
         """
         session.add(DagBundleModel(name="testing-other"))
         session.commit()
@@ -4747,20 +4767,23 @@ class TestDagFileProcessorManager:
                 raise OperationalError("simulated", {}, Exception("write failed"))
             return real_write(*args, **kwargs)
 
+        sweep = [
+            self._persisted_result(tmp_path, "committed_dag"),
+            self._persisted_result(tmp_path, "committed_dag_two"),
+            self._persisted_result(tmp_path, "rolled_back_dag", bundle_name="testing-other"),
+        ]
+        assert [len(group) for group in manager._build_persistence_groups(sweep)] == [2, 1]
+
         with mock.patch(
             "airflow.dag_processing.manager.update_dag_parsing_results_in_db",
             side_effect=fail_for_the_second_bundle,
         ):
-            manager._persist_sweep(
-                [
-                    self._persisted_result(tmp_path, "committed_dag"),
-                    self._persisted_result(tmp_path, "rolled_back_dag", bundle_name="testing-other"),
-                ]
-            )
+            manager._persist_sweep(sweep)
 
         assert session.get(DagModel, "committed_dag") is not None, (
             "the group that succeeded must not be undone by the one that followed it"
         )
+        assert session.get(DagModel, "committed_dag_two") is not None
         assert session.get(DagModel, "rolled_back_dag") is None
 
     def test_a_failing_group_does_not_discard_one_that_already_succeeded(self, tmp_path):
@@ -4912,180 +4935,6 @@ class TestDagFileProcessorManager:
         db_write = self._collect_a_two_file_sweep(manager, tmp_path, "default_path", session)
 
         db_write.assert_called_once()
-
-    @staticmethod
-    @contextmanager
-    def _failing_to_serialize(dag_id: str):
-        """Fail one Dag inside the write, where a serialization error really surfaces."""
-        real = SerializedDagModel.write_dag
-
-        def write(dag, *args, **kwargs):
-            if dag.dag_id == dag_id:
-                raise SerializationError(f"{dag_id} will not serialize")
-            return real(dag, *args, **kwargs)
-
-        with mock.patch.object(SerializedDagModel, "write_dag", write):
-            yield
-
-    def test_a_group_is_written_a_file_at_a_time_when_a_dag_will_not_serialize(
-        self, session, testing_dag_bundle, tmp_path
-    ):
-        """
-        Grouping cannot see a serialization failure coming, so the group is thrown away instead.
-
-        Everything the write reads about existing Dags is read before the failure is known, and
-        staling the failed Dag is the last thing it does -- so the files beside it were written
-        against state that was already wrong.
-        """
-        manager = DagFileProcessorManager(max_runs=1)
-        manager._bundle_versions["testing"] = None
-        sweep = [
-            self._persisted_result(tmp_path, "broken_dag"),
-            self._persisted_result(tmp_path, "healthy_dag"),
-        ]
-        assert [len(group) for group in manager._build_persistence_groups(sweep)] == [2]
-
-        calls: list[int] = []
-        real = DagFileProcessorManager.persist_parsing_results
-
-        def counting(self, results, *, session):
-            calls.append(len(results))
-            return real(self, results, session=session)
-
-        with (
-            self._failing_to_serialize("broken_dag"),
-            mock.patch.object(DagFileProcessorManager, "persist_parsing_results", counting),
-        ):
-            manager._persist_sweep(sweep)
-
-        assert calls == [2, 1, 1], f"the group should be discarded and rewritten one file at a time: {calls}"
-        assert session.get(DagModel, "healthy_dag") is not None, "the file beside it is still written"
-        recorded = {e.filename for e in session.scalars(select(ParseImportError))}
-        assert "broken_dag.py" in recorded, recorded
-
-    def test_a_single_file_that_will_not_serialize_is_not_retried(
-        self, session, testing_dag_bundle, tmp_path
-    ):
-        """One file alone has nothing beside it to have misread, so there is nothing to redo."""
-        manager = DagFileProcessorManager(max_runs=1)
-        manager._bundle_versions["testing"] = None
-        only = self._persisted_result(tmp_path, "broken_dag")
-
-        calls: list[int] = []
-        real = DagFileProcessorManager.persist_parsing_results
-
-        def counting(self, results, *, session):
-            calls.append(len(results))
-            return real(self, results, session=session)
-
-        with (
-            self._failing_to_serialize("broken_dag"),
-            mock.patch.object(DagFileProcessorManager, "persist_parsing_results", counting),
-        ):
-            manager._persist_sweep([only])
-
-        assert calls == [1]
-        assert manager._file_stats[only.file] is only.stat, "the write succeeded; the error is its result"
-
-    def test_a_dag_that_will_not_serialize_is_not_reported_as_a_broken_write(
-        self, session, testing_dag_bundle, tmp_path, cap_structlog
-    ):
-        """
-        Splitting the group is the expected handling of an authoring error, not a failure.
-
-        Logging it with a traceback puts an ERROR in the Dag processor's log on every sweep that
-        carries the file, which reads as persistence being broken rather than one Dag being.
-        """
-        manager = DagFileProcessorManager(max_runs=1)
-        manager._bundle_versions["testing"] = None
-        sweep = [
-            self._persisted_result(tmp_path, "broken_dag"),
-            self._persisted_result(tmp_path, "healthy_dag"),
-        ]
-
-        with self._failing_to_serialize("broken_dag"):
-            manager._persist_sweep(sweep)
-
-        assert {
-            "event": "A Dag in this group of 2 files will not serialize; writing them separately instead.",
-            "log_level": "warning",
-        } in cap_structlog
-        from_manager = [e for e in cap_structlog if "dag_processing.manager" in e.get("logger_name", "")]
-        assert not [e for e in from_manager if e.get("log_level") == "error"], from_manager
-
-    def test_a_replacement_delegating_to_the_built_in_write_still_gets_the_group_split(
-        self, session, testing_dag_bundle, tmp_path
-    ):
-        """
-        Only the built-in write raises the split, and only after rolling back, so nothing was
-        kept -- including when a replacement reached it through ``super()``. Throwing the group
-        back instead would never write the file beside the broken Dag, and the same group
-        re-forms every sweep.
-        """
-        calls: list[int] = []
-
-        class Wrapper(DagFileProcessorManager):
-            def persist_parsing_results(self, results, *, session):
-                calls.append(len(results))
-                return super().persist_parsing_results(results, session=session)
-
-        manager = Wrapper(max_runs=1)
-        manager._bundle_versions["testing"] = None
-        sweep = [
-            self._persisted_result(tmp_path, "broken_dag"),
-            self._persisted_result(tmp_path, "healthy_dag"),
-        ]
-
-        with self._failing_to_serialize("broken_dag"):
-            manager._persist_sweep(sweep)
-
-        assert calls == [2, 1, 1], f"the group was thrown back instead of split: {calls}"
-        assert session.get(DagModel, "healthy_dag") is not None, "the file beside it is still written"
-
-    def test_the_retained_seam_does_not_commit_a_write_that_failed(self):
-        """It owns the session, so swallowing the failure would commit what the write left pending."""
-        manager = DagFileProcessorManager(max_runs=1)
-        manager._bundle_versions["testing"] = None
-        file = self._ready_processor(manager, "a.py", num_dags=1)
-        session = mock.MagicMock(spec=Session)
-
-        with mock.patch.object(
-            manager, "persist_parsing_results", side_effect=RuntimeError("the write broke")
-        ):
-            manager.handle_parsing_result(file, manager._processors[file], session=session)
-
-        session.rollback.assert_called_once()
-
-    @conf_vars({("dag_processor", "max_dags_per_persistence_group"): "1"})
-    def test_lowering_the_group_cap_writes_one_file_at_a_time(self):
-        """The lever for a deployment that cannot afford the lock footprint of a wide group."""
-        manager = DagFileProcessorManager(max_runs=1)
-
-        groups = manager._build_persistence_groups(
-            [self._item("a.py", ["a_dag"]), self._item("b.py", ["b_dag"])]
-        )
-
-        assert [[str(item.file.rel_path) for item in group] for group in groups] == [["a.py"], ["b.py"]]
-
-    def test_a_hook_dropping_a_processor_while_it_runs_does_not_stop_the_loop(self):
-        """
-        Collection walks a snapshot of the processors, not the live dict.
-
-        The released handler is called from inside that walk, and an override is free to drop the
-        processor it was handed -- which would otherwise resize the dict mid-iteration.
-        """
-
-        class DroppingManager(DagFileProcessorManager):
-            def handle_parsing_result(self, file, proc, *, session=None):
-                self._processors.pop(file, None)
-
-        manager = DroppingManager(max_runs=1)
-        for name in ("a.py", "b.py", "c.py"):
-            self._ready_processor(manager, name, num_dags=1)
-
-        manager._collect_results()
-
-        assert manager._processors == {}
 
     def test_a_sweep_with_nothing_to_write_does_not_write(self, session, testing_dag_bundle, tmp_path):
         """
@@ -5403,6 +5252,226 @@ class TestDagFileProcessorManager:
             "a callback-only run must keep its timestamps whatever the sweep does"
         )
 
+    # --- a Dag that will not serialize ---
+
+    @staticmethod
+    @contextmanager
+    def _failing_to_serialize(dag_id: str):
+        """Fail one Dag inside the write, where a serialization error really surfaces."""
+        real = SerializedDagModel.write_dag
+
+        def write(dag, *args, **kwargs):
+            if dag.dag_id == dag_id:
+                raise SerializationError(f"{dag_id} will not serialize")
+            return real(dag, *args, **kwargs)
+
+        with mock.patch.object(SerializedDagModel, "write_dag", write):
+            yield
+
+    def test_a_group_is_written_a_file_at_a_time_when_a_dag_will_not_serialize(
+        self, session, testing_dag_bundle, tmp_path
+    ):
+        """
+        Grouping cannot see a serialization failure coming, so the group is thrown away instead.
+
+        Everything the write reads about existing Dags is read before the failure is known, and
+        staling the failed Dag is the last thing it does -- so the files beside it were written
+        against state that was already wrong.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        sweep = [
+            self._persisted_result(tmp_path, "broken_dag"),
+            self._persisted_result(tmp_path, "healthy_dag"),
+        ]
+        assert [len(group) for group in manager._build_persistence_groups(sweep)] == [2]
+
+        calls: list[int] = []
+        real = DagFileProcessorManager.persist_parsing_results
+
+        def counting(self, results, *, session):
+            calls.append(len(results))
+            return real(self, results, session=session)
+
+        with (
+            self._failing_to_serialize("broken_dag"),
+            mock.patch.object(DagFileProcessorManager, "persist_parsing_results", counting),
+        ):
+            manager._persist_sweep(sweep)
+
+        assert calls == [2, 1, 1], f"the group should be discarded and rewritten one file at a time: {calls}"
+        assert session.get(DagModel, "healthy_dag") is not None, "the file beside it is still written"
+        recorded = {e.filename for e in session.scalars(select(ParseImportError))}
+        assert "broken_dag.py" in recorded, recorded
+
+    def test_a_single_file_that_will_not_serialize_is_not_retried(
+        self, session, testing_dag_bundle, tmp_path
+    ):
+        """One file alone has nothing beside it to have misread, so there is nothing to redo."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        only = self._persisted_result(tmp_path, "broken_dag")
+
+        calls: list[int] = []
+        real = DagFileProcessorManager.persist_parsing_results
+
+        def counting(self, results, *, session):
+            calls.append(len(results))
+            return real(self, results, session=session)
+
+        with (
+            self._failing_to_serialize("broken_dag"),
+            mock.patch.object(DagFileProcessorManager, "persist_parsing_results", counting),
+        ):
+            manager._persist_sweep([only])
+
+        assert calls == [1]
+        assert manager._file_stats[only.file] is only.stat, "the write succeeded; the error is its result"
+
+    def test_a_dag_that_will_not_serialize_is_not_reported_as_a_broken_write(
+        self, session, testing_dag_bundle, tmp_path, cap_structlog
+    ):
+        """
+        Splitting the group is the expected handling of an authoring error, not a failure.
+
+        Logging it with a traceback puts an ERROR in the Dag processor's log on every sweep that
+        carries the file, which reads as persistence being broken rather than one Dag being.
+        """
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        sweep = [
+            self._persisted_result(tmp_path, "broken_dag"),
+            self._persisted_result(tmp_path, "healthy_dag"),
+        ]
+
+        with self._failing_to_serialize("broken_dag"):
+            manager._persist_sweep(sweep)
+
+        assert {
+            "event": "A Dag in this group of 2 files will not serialize; writing them separately instead.",
+            "log_level": "warning",
+        } in cap_structlog
+        from_manager = [e for e in cap_structlog if "dag_processing.manager" in e.get("logger_name", "")]
+        assert not [e for e in from_manager if e.get("log_level") == "error"], from_manager
+
+    def test_a_replacement_delegating_to_the_built_in_write_still_gets_the_group_split(
+        self, session, testing_dag_bundle, tmp_path
+    ):
+        """
+        Only the built-in write raises the split, and only after rolling back, so nothing was
+        kept -- including when a replacement reached it through ``super()``. Throwing the group
+        back instead would never write the file beside the broken Dag, and the same group
+        re-forms every sweep.
+        """
+        calls: list[int] = []
+
+        class Wrapper(DagFileProcessorManager):
+            def persist_parsing_results(self, results, *, session):
+                calls.append(len(results))
+                return super().persist_parsing_results(results, session=session)
+
+        manager = Wrapper(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        sweep = [
+            self._persisted_result(tmp_path, "broken_dag"),
+            self._persisted_result(tmp_path, "healthy_dag"),
+        ]
+
+        with self._failing_to_serialize("broken_dag"):
+            manager._persist_sweep(sweep)
+
+        assert calls == [2, 1, 1], f"the group was thrown back instead of split: {calls}"
+        assert session.get(DagModel, "healthy_dag") is not None, "the file beside it is still written"
+
+    def test_a_group_carrying_one_file_to_write_is_not_split_when_its_dag_will_not_serialize(
+        self, session, testing_dag_bundle, tmp_path
+    ):
+        """A completion with nothing to write was not written against anything, so it does not count."""
+        manager = DagFileProcessorManager(max_runs=1)
+        manager._bundle_versions["testing"] = None
+        nothing = self._persisted_result(tmp_path, "cb")._replace(parsing_result=None)
+        broken = self._persisted_result(tmp_path, "broken_dag")
+
+        calls: list[int] = []
+        real = DagFileProcessorManager.persist_parsing_results
+
+        def counting(self, results, *, session):
+            calls.append(len(results))
+            return real(self, results, session=session)
+
+        with (
+            self._failing_to_serialize("broken_dag"),
+            mock.patch.object(DagFileProcessorManager, "persist_parsing_results", counting),
+        ):
+            manager._persist_sweep([nothing, broken])
+
+        assert calls == [2], f"there was nothing beside it to have misread: {calls}"
+
+    def test_the_retained_seam_does_not_commit_a_write_that_failed(self):
+        """It owns the session, so swallowing the failure would commit what the write left pending."""
+        manager = DagFileProcessorManager(max_runs=1)
+        file = self._ready_processor(manager, "a.py", num_dags=1)
+        session = mock.MagicMock(spec=Session)
+
+        with mock.patch.object(
+            manager, "persist_parsing_results", side_effect=RuntimeError("the write broke")
+        ):
+            manager.handle_parsing_result(file, manager._processors[file], session=session)
+
+        session.rollback.assert_called_once()
+
+    @conf_vars({("dag_processor", "max_dags_per_persistence_group"): "1"})
+    def test_lowering_the_group_cap_writes_one_file_at_a_time(self):
+        """The lever for a deployment that cannot afford the lock footprint of a wide group."""
+        manager = DagFileProcessorManager(max_runs=1)
+
+        groups = manager._build_persistence_groups(
+            [self._item("a.py", ["a_dag"]), self._item("b.py", ["b_dag"])]
+        )
+
+        assert [[str(item.file.rel_path) for item in group] for group in groups] == [["a.py"], ["b.py"]]
+
+    def test_the_per_file_write_is_never_handed_a_completion_with_no_result(self):
+        """
+        Its released signature takes a ``DagFileParsingResult``, not ``None``.
+
+        Callback-only runs and failed parses reach the sweep now, so an override written against
+        3.3 would be handed a shape it was never built for.
+        """
+        seen: list[str] = []
+
+        class PerFileManager(DagFileProcessorManager):
+            def persist_parsing_result(self, **kwargs):
+                seen.append(kwargs["relative_fileloc"])
+
+        manager = PerFileManager(max_runs=1)
+        nothing = self._item("cb.py", [])._replace(parsing_result=None)
+        parsed = self._item("parsed.py", ["parsed_dag"])
+
+        manager.persist_parsing_results([nothing, parsed], session=mock.MagicMock(spec=Session))
+
+        assert seen == ["parsed.py"]
+
+    def test_a_hook_dropping_a_processor_while_it_runs_does_not_stop_the_loop(self):
+        """
+        Collection walks a snapshot of the processors, not the live dict.
+
+        The released handler is called from inside that walk, and an override is free to drop the
+        processor it was handed -- which would otherwise resize the dict mid-iteration.
+        """
+
+        class DroppingManager(DagFileProcessorManager):
+            def handle_parsing_result(self, file, proc, *, session=None):
+                self._processors.pop(file, None)
+
+        manager = DroppingManager(max_runs=1)
+        for name in ("a.py", "b.py", "c.py"):
+            self._ready_processor(manager, name, num_dags=1)
+
+        manager._collect_results()
+
+        assert manager._processors == {}
+
     # --- statement budget ---
     #
     # A change that adds round trips to persistence has to move a number here and account for it in
@@ -5601,7 +5670,8 @@ class TestDagFileProcessorManager:
                 import_errors=errors,
                 warnings=warnings,
             ),
-            run_duration=0.5,
+            # Distinct per file, so a write that levelled the durations out would show up.
+            run_duration=len(rel_path) / 10,
             stat=DagFileStat(),
             bundle_version=version,
             version_data={"sha": version} if version else None,
@@ -5629,6 +5699,10 @@ class TestDagFileProcessorManager:
             "dag_version": rows(
                 select(DagVersion.dag_id, DagVersion.bundle_version, DagVersion.version_data)
             ),
+            # The serialized form itself, and the duration the per-Dag mapping exists to carry.
+            "serialized_dag": rows(select(SerializedDagModel.dag_id, SerializedDagModel.dag_hash)),
+            "parse_duration": rows(select(DagModel.dag_id, DagModel.last_parse_duration)),
+            "dag_tag": rows(select(DagTag.dag_id, DagTag.name)),
             "import_error": rows(
                 select(ParseImportError.bundle_name, ParseImportError.filename, ParseImportError.stacktrace)
             ),
@@ -5654,6 +5728,14 @@ class TestDagFileProcessorManager:
                 select(
                     TaskOutletAssetReference.dag_id, TaskOutletAssetReference.task_id, AssetModel.name
                 ).join(AssetModel, AssetModel.id == TaskOutletAssetReference.asset_id)
+            ),
+            "alias_to_asset": rows(
+                select(AssetAliasModel.name, AssetModel.name).join(AssetAliasModel.assets)
+            ),
+            "watcher": rows(
+                select(AssetModel.name, AssetWatcherModel.name, Trigger.classpath)
+                .join(AssetWatcherModel, AssetWatcherModel.asset_id == AssetModel.id)
+                .join(Trigger, Trigger.id == AssetWatcherModel.trigger_id)
             ),
         }
 

@@ -1429,11 +1429,7 @@ class DagFileProcessorManager(LoggingMixin):
         )
 
     def _has_override_for(self, name: str) -> bool:
-        """
-        Report whether this manager has its own version of one of the hooks.
-
-        Reads the instance as well as the class, so replacing a hook on one manager counts.
-        """
+        """Report whether a hook was replaced, on the instance as well as on the class."""
         if name in getattr(self, "__dict__", ()):
             return True
         return getattr(type(self), name) is not getattr(DagFileProcessorManager, name)
@@ -1442,9 +1438,8 @@ class DagFileProcessorManager(LoggingMixin):
         """
         Report whether the per-file persistence hook has been replaced.
 
-        Batching would otherwise write past such an override, sending to the metadata DB results a
-        deployment had arranged to send elsewhere. Replacing the batch hook too says where a whole
-        sweep should go, so that one wins and this reports ``False``.
+        Batching would otherwise write past such an override. Replacing the batch hook too says
+        where a whole sweep should go, so that one wins and this reports ``False``.
         """
         if self._has_override_for("persist_parsing_results"):
             return False
@@ -1482,12 +1477,7 @@ class DagFileProcessorManager(LoggingMixin):
             )
 
     def _has_handle_parsing_result_override(self) -> bool:
-        """
-        Report whether the per-file result handler has been replaced.
-
-        Released in 3.3 for deployments that forward results rather than write them. Such an
-        override persists a file itself, leaving a sweep nothing to batch.
-        """
+        """Report whether the 3.3 per-file result handler has been replaced, leaving nothing to batch."""
         return self._has_override_for("handle_parsing_result")
 
     @provide_session
@@ -1509,11 +1499,14 @@ class DagFileProcessorManager(LoggingMixin):
         session, so a caller handing over more than one group gets them in one transaction; the
         manager splits first so each group gets its own.
 
-        The built-in write keeps nothing when it raises, so the caller retries the group a file at
-        a time. A replaced one may have kept it, so it does not. Two caveats to "nothing was kept":
-        the FAB auth manager commits Dag permissions part way through, and listeners are told what a
-        write did before it commits, so a retry can announce the same thing twice. Both are tracked
-        at https://github.com/apache/airflow/issues/71911
+        :class:`SerializationErrorInGroup` says a Dag in the group will not serialize. It is raised
+        after the write has rolled back, so the group is then written a file at a time whether or
+        not this method was replaced; let it propagate. Any other failure of the built-in write
+        also keeps nothing and is retried the same way, where a replacement's is not, since it may
+        have kept the group. Two caveats to "nothing was kept": the FAB auth manager commits Dag
+        permissions part way through, and listeners are told what a write did before it commits, so
+        a retry can announce the same thing twice. Both are tracked at
+        https://github.com/apache/airflow/issues/71911
         """
         if self._has_per_file_persist_override():
             for item in results:
@@ -1660,7 +1653,8 @@ class DagFileProcessorManager(LoggingMixin):
             session=session,
             files_parsed=files_parsed,
         )
-        if len(items) > 1 and set(import_errors) - reported_by_parsing:
+        wrote_beside_it = sum(1 for item in items if item.parsing_result is not None) > 1
+        if wrote_beside_it and set(import_errors) - reported_by_parsing:
             # The write reads what is registered before it knows a Dag will not serialize, and
             # stales that Dag last, so the files beside it were written against stale state.
             # Grouping cannot see it coming, so the group is redone a file at a time.
@@ -1772,9 +1766,7 @@ class DagFileProcessorManager(LoggingMixin):
         Hand one group to :meth:`persist_parsing_results` on a session of its own.
 
         ``@provide_session`` decorates the base method, not an override of it, so calling the hook
-        without a session would hand a replacement whatever its own signature defaulted to. Each
-        group is dispatched separately because one session per group is what gives it its own
-        transaction.
+        without a session would hand a replacement whatever its signature defaulted to.
         """
         self.persist_parsing_results(results, session=session)
 
@@ -1792,9 +1784,8 @@ class DagFileProcessorManager(LoggingMixin):
         Record a failed write without claiming its results.
 
         Keeps the last persisted counts and only moves the timestamps, so the file is not parsed
-        again immediately while the rest of the cycle carries on. A file that produced no result
-        is left alone: it had nothing in the write, so the failure says nothing about it, and
-        moving a callback-only run's timestamps would advertise a parse that never happened.
+        again immediately while the rest of the cycle carries on. A file that produced no result is
+        left alone: it had nothing in the write, so the failure says nothing about it.
         """
         if item.parsing_result is None:
             return
@@ -1814,8 +1805,7 @@ class DagFileProcessorManager(LoggingMixin):
 
         A bundle with no recorded version is what this exists for: the file cannot be written
         without pinning it to a version nobody has, so it is parsed again instead. Losing it must
-        not lose the sweep it arrived in, nor stop the parsing loop. A callback-only run keeps its
-        timestamps, since moving them would advertise a parse that never happened.
+        not lose the sweep it arrived in, nor stop the parsing loop.
         """
         self.log.exception(
             "Failed to handle the parse result for %s in bundle %s; it is parsed again rather "

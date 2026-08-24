@@ -15,8 +15,9 @@ group instead of once per file.
   ``DagFileProcessorManager.handle_parsing_result``, which took one file at a time, are both
   deprecated and will be removed in Airflow 4.0. Overriding either still works until then, but
   parse results are persisted one file at a time and batching is skipped for the whole Dag
-  processor.
-
+  processor. Where a manager overrides one of them *and* ``persist_parsing_results``, the two
+  differ: ``handle_parsing_result`` wins, and the batched seam is never reached; whereas
+  ``persist_parsing_results`` wins over ``persist_parsing_result``, which then goes uncalled.
 - ``[dag_processor] max_dags_per_persistence_group`` bounds how many Dags one write may carry,
   defaulting to 32. A file is never split, so a single file defining more is still written in one
   go. Lower it if the Dag processor holding many rows in one transaction causes lock waits; set
@@ -34,7 +35,12 @@ group instead of once per file.
 - Move a ``persist_parsing_result`` or ``handle_parsing_result`` override to
   ``persist_parsing_results``, which receives a sequence of results and a session instead of one
   file's arguments. Check for ``parsing_result is None`` before reading a result's Dags: that is a
-  callback-only run or a parse that failed, which the per-file hooks were never handed.
+  callback-only run or a parse that failed. ``handle_parsing_result`` was handed both already;
+  ``persist_parsing_result`` was not, and still is not.
+- The built-in write raises ``SerializationErrorInGroup`` to discard a group in which a Dag failed
+  to serialize, so that the files can be written separately. An override that delegates to
+  ``super().persist_parsing_results(...)`` will see it; the Dag processor handles it, so let it
+  propagate rather than reporting it as a failed write.
 
 * Types of change
 
