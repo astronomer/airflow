@@ -3210,6 +3210,18 @@ dag_processor:
       type: integer
       example: ~
       default: "2"
+    max_dags_per_persistence_group:
+      description: |
+        The Dag processor writes the files that finish parsing together in one database
+        call. This bounds how many Dags one such call may carry before the next file
+        starts a new one; a file is never split, so a single file defining more than this
+        is still written in one go. Lower it if a deployment sees lock waits or deadlocks
+        from the Dag processor holding many rows at once; set it to 1 to write one file at
+        a time.
+      version_added: 3.4.0
+      type: integer
+      example: ~
+      default: "32"
     file_parsing_sort_mode:
       description: |
         One of ``modified_time``, ``random_seeded_by_host`` and ``alphabetical``.
