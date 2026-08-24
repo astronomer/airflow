@@ -16,10 +16,12 @@
 # under the License.
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from unittest import mock
 
@@ -34,7 +36,9 @@ from opentelemetry.sdk.metrics.view import (
 )
 
 from airflow_shared.observability.common import get_otel_data_exporter
+from airflow_shared.observability.metrics import otel_logger as otel_logger_module
 from airflow_shared.observability.metrics.otel_logger import (
+    _OWNER_PID_ATTR,
     OTEL_NAME_MAX_LENGTH,
     UP_DOWN_COUNTERS,
     MetricsMap,
@@ -589,33 +593,123 @@ class TestOtelMetrics:
             f"stderr:\n{proc.stderr}"
         )
 
-    def test_reinit_after_fork_exports_metrics(self):
-        """Calling get_otel_logger() twice (simulating post-fork re-init) should still export metrics.
+    def test_forked_child_exports_its_own_metrics(self):
+        """Test that a forked child builds its own live pipeline instead of adopting the parent's.
 
-        Reproduces https://github.com/apache/airflow/issues/64690: the OTel SDK's Once()
-        guard on set_meter_provider() survives fork, preventing the child from setting a
-        fresh MeterProvider. The fix resets the guard before each set_meter_provider() call.
+        Guards https://github.com/apache/airflow/issues/64690: the OTel SDK's Once() guard on
+        set_meter_provider() survives fork, so without the reset the child silently keeps the
+        parent's provider, whose reader thread it does not own. Reusing a provider within one
+        process must not extend to one inherited across a fork.
         """
-        test_module_name = "tests.observability.metrics.test_otel_logger"
-        function_call_str = f"import {test_module_name} as m; m.mock_service_run_reinit()"
-
-        proc = subprocess.run(
-            [sys.executable, "-c", function_call_str],
-            check=False,
-            env=os.environ.copy(),
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
+        proc = run_in_subprocess(FORK_PROGRAM)
 
         assert proc.returncode == 0, f"Process failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
-        assert "post_fork_stat" in proc.stdout, (
-            "Expected 'post_fork_stat' in stdout after re-initialization but it wasn't found. "
-            "This suggests set_meter_provider() failed due to the Once() guard.\n"
-            f"stdout:\n{proc.stdout}\n"
-            f"stderr:\n{proc.stderr}"
+        context = f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        assert "CHILD_BUILT_OWN_PROVIDER=True" in proc.stdout, (
+            f"The child adopted the provider it inherited from the parent.\n{context}"
         )
+        assert "CHILD_HAS_LIVE_READER=True" in proc.stdout, (
+            f"The child's own provider has no live exporter thread.\n{context}"
+        )
+        assert "post_fork_stat" in proc.stdout, (
+            f"Expected 'post_fork_stat' in stdout but it wasn't found.\n{context}"
+        )
+
+
+class TestOtelProviderIsProcessScoped:
+    """The process gets one MeterProvider however many callers ask for a logger."""
+
+    def test_repeated_calls_reuse_one_provider(self, reset_meter_provider):
+        """Test that calling get_otel_logger() again reuses the provider instead of leaking one."""
+        first = get_otel_logger(host="localhost", port=4318)
+        readers_after_first = count_metric_reader_threads()
+
+        second = get_otel_logger(host="localhost", port=4318)
+
+        assert second.otel is first.otel
+        assert count_metric_reader_threads() == readers_after_first
+
+    def test_a_second_module_copy_reuses_one_provider(self, reset_meter_provider):
+        """Test that an independently imported copy of this module shares the same provider."""
+        second_copy = load_independent_module_copy()
+        assert second_copy is not otel_logger_module
+
+        first = get_otel_logger(host="localhost", port=4318)
+        readers_after_first = count_metric_reader_threads()
+
+        second = second_copy.get_otel_logger(host="localhost", port=4318)
+
+        assert second.otel is first.otel
+        assert count_metric_reader_threads() == readers_after_first
+
+    @pytest.mark.parametrize(
+        ("attribute", "first_value", "second_value"),
+        [
+            pytest.param("prefix", "alpha", "beta", id="prefix"),
+            pytest.param("statsd_influxdb_enabled", True, False, id="statsd_influxdb_enabled"),
+        ],
+    )
+    def test_sharing_a_provider_keeps_per_caller_configuration(
+        self, attribute, first_value, second_value, reset_meter_provider
+    ):
+        """Test that callers sharing one provider still get their own logger configuration."""
+        first = get_otel_logger(host="localhost", port=4318, **{attribute: first_value})
+        second = get_otel_logger(host="localhost", port=4318, **{attribute: second_value})
+
+        assert first.otel is second.otel
+        assert getattr(first, attribute) == first_value
+        assert getattr(second, attribute) == second_value
+
+    def test_a_provider_built_by_another_process_is_not_reused(self, reset_meter_provider):
+        """Test that a provider inherited from another process is replaced, not adopted."""
+        inherited = SDKMeterProvider(shutdown_on_exit=False)
+        setattr(inherited, _OWNER_PID_ATTR, os.getpid() + 1)
+        metrics.set_meter_provider(inherited)
+
+        logger = get_otel_logger(host="localhost", port=4318)
+
+        assert logger.otel is not inherited
+
+    def test_both_module_copies_still_export_their_metrics(self):
+        """Test that sharing one provider does not stop either module copy emitting metrics."""
+        proc = run_in_subprocess(TWO_MODULE_COPIES_PROGRAM)
+
+        assert proc.returncode == 0, f"Process failed\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+
+        context = f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        assert "COPIES_SHARE_PROVIDER=True" in proc.stdout, (
+            f"The two module copies each built their own provider.\n{context}"
+        )
+        assert "copyone.from_first_copy" in proc.stdout, (
+            f"The first module copy's metric was not exported.\n{context}"
+        )
+        assert "copytwo.from_second_copy" in proc.stdout, (
+            f"The second module copy's metric was not exported.\n{context}"
+        )
+
+
+def count_metric_reader_threads() -> int:
+    """Count the live OTel exporter threads, one of which every MeterProvider starts."""
+    return len([t for t in threading.enumerate() if "MetricReader" in t.name and t.is_alive()])
+
+
+def load_independent_module_copy():
+    """
+    Load a second, independent copy of otel_logger, as the two ``_shared`` symlinks do.
+
+    ``shared/observability`` is symlinked into both ``airflow/_shared`` and
+    ``airflow/sdk/_shared``, so the same file is executed twice under two names and each copy gets
+    its own module globals. The name below keeps the package prefix so the module's relative
+    imports still resolve.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "airflow_shared.observability.metrics._otel_logger_second_copy",
+        otel_logger_module.__file__,
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def mock_service_run():
@@ -623,16 +717,67 @@ def mock_service_run():
     logger.incr("my_test_stat")
 
 
-def mock_service_run_reinit():
-    """Simulate re-initialization after fork by calling get_otel_logger() twice.
+def run_in_subprocess(program: str) -> subprocess.CompletedProcess:
+    """Run a self-contained program in a fresh interpreter and capture its output."""
+    return subprocess.run(
+        [sys.executable, "-c", program],
+        check=False,
+        env=os.environ.copy(),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
 
-    The first call sets the global MeterProvider and the Once() guard.
-    The second call simulates what happens in a forked child: stats.py detects
-    a PID mismatch and calls the factory again. Without the fix, the second
-    set_meter_provider() silently fails and the child uses a stale provider.
-    """
-    # First init — sets Once._done = True
-    get_otel_logger(debug=True)
-    # Second init — simulates post-fork re-initialization
-    logger = get_otel_logger(debug=True)
-    logger.incr("post_fork_stat")
+
+# These run in a fresh interpreter because both need a process whose global MeterProvider starts
+# out unset. They import only the installed package, so they do not depend on this test module
+# being importable by name from the subprocess's working directory.
+
+FORK_PROGRAM = """
+import os
+import sys
+import threading
+
+from airflow_shared.observability.metrics.otel_logger import get_otel_logger
+
+parent_logger = get_otel_logger(debug=True)
+parent_logger.incr("pre_fork_stat")
+
+if os.fork() == 0:
+    child_logger = get_otel_logger(debug=True)
+    child_logger.incr("post_fork_stat")
+    live_readers = [t for t in threading.enumerate() if "MetricReader" in t.name and t.is_alive()]
+    print("CHILD_BUILT_OWN_PROVIDER=%s" % (child_logger.otel is not parent_logger.otel))
+    print("CHILD_HAS_LIVE_READER=%s" % (len(live_readers) > 0))
+    # os._exit skips the atexit flush, so publish the child's metrics explicitly.
+    child_logger.otel.force_flush()
+    sys.stdout.flush()
+    os._exit(0)
+
+os.wait()
+"""
+
+TWO_MODULE_COPIES_PROGRAM = """
+import importlib.util
+
+from airflow_shared.observability.metrics import otel_logger as first_copy
+
+spec = importlib.util.spec_from_file_location(
+    "airflow_shared.observability.metrics._otel_logger_second_copy", first_copy.__file__
+)
+second_copy = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(second_copy)
+
+first_logger = first_copy.get_otel_logger(debug=True, prefix="copyone")
+second_logger = second_copy.get_otel_logger(debug=True, prefix="copytwo")
+
+print("COPIES_SHARE_PROVIDER=%s" % (first_logger.otel is second_logger.otel))
+
+first_logger.incr("from_first_copy")
+second_logger.incr("from_second_copy")
+
+# Flush both explicitly so that what was exported is asserted independently of whether the two
+# copies ended up sharing one provider.
+first_logger.otel.force_flush()
+second_logger.otel.force_flush()
+"""

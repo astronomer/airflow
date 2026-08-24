@@ -23,7 +23,7 @@ import os
 import random
 import warnings
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
@@ -441,6 +441,30 @@ def atexit_register_metrics_flush():
     atexit.register(flush_otel_metrics)
 
 
+# Stamped on the MeterProvider this module builds, recording the pid that built it.
+#
+# It lives on the provider rather than in a module global because this package is imported twice --
+# once as ``airflow._shared.observability`` and once as ``airflow.sdk._shared.observability`` -- so
+# each copy has its own globals and neither can see the other's. The OTel global provider registry
+# is genuinely process-wide, which makes the provider itself the only place the two copies can
+# agree on.
+#
+# Recording the pid there also answers "did *this* process build it?". A fork hands the child the
+# object with the parent's pid still on it, so the child rebuilds instead of adopting a pipeline it
+# does not own -- which is what https://github.com/apache/airflow/issues/64690 needs. The OTel SDK
+# keys ``service.instance.id`` off the pid for the same question.
+_OWNER_PID_ATTR = "_airflow_owner_pid"
+
+
+def _find_provider_built_by_this_process() -> MeterProvider | None:
+    """Return the globally registered MeterProvider if this module built it in this process."""
+    provider = metrics.get_meter_provider()
+    if getattr(provider, _OWNER_PID_ATTR, None) == os.getpid():
+        # Only a provider built below carries the marker, so it is an SDK MeterProvider.
+        return cast("MeterProvider", provider)
+    return None
+
+
 def get_otel_logger(
     *,
     host: str | None = None,
@@ -466,6 +490,11 @@ def get_otel_logger(
 
     A ``MeterProvider`` already built from ``OTEL_CONFIG_FILE`` is used as-is: the declarative
     configuration spec makes that file the sole source of SDK construction.
+
+    Otherwise the process gets exactly one ``MeterProvider``, and every later call returns a logger
+    over it. Each caller still gets its own :class:`SafeOtelLogger`, so the prefix, allow/block
+    lists, name handler and InfluxDB flag stay per-caller; only the pipeline is shared. A forked
+    child does not inherit ownership, so it builds its own.
     """
     effective_prefix: str = prefix or DEFAULT_METRIC_NAME_PREFIX
     validator = get_validator(metrics_allow_list, metrics_block_list)
@@ -476,6 +505,12 @@ def get_otel_logger(
         atexit_register_metrics_flush()
         return SafeOtelLogger(
             configured_provider, effective_prefix, validator, stat_name_handler, statsd_influxdb_enabled
+        )
+
+    own_provider = _find_provider_built_by_this_process()
+    if own_provider is not None:
+        return SafeOtelLogger(
+            own_provider, effective_prefix, validator, stat_name_handler, statsd_influxdb_enabled
         )
 
     otel_env_config = load_metrics_env_config()
@@ -526,23 +561,21 @@ def get_otel_logger(
     except (ImportError, AttributeError):
         pass
 
-    metrics.set_meter_provider(
-        MeterProvider(
-            resource=resource,
-            metric_readers=readers,
-            views=[
-                View(
-                    instrument_type=metrics.Histogram,
-                    aggregation=ExponentialBucketHistogramAggregation(),
-                )
-            ],
-            shutdown_on_exit=False,
-        ),
+    provider = MeterProvider(
+        resource=resource,
+        metric_readers=readers,
+        views=[
+            View(
+                instrument_type=metrics.Histogram,
+                aggregation=ExponentialBucketHistogramAggregation(),
+            )
+        ],
+        shutdown_on_exit=False,
     )
+    setattr(provider, _OWNER_PID_ATTR, os.getpid())
+    metrics.set_meter_provider(provider)
 
     # Register a hook that flushes any in-memory metrics at shutdown.
     atexit_register_metrics_flush()
 
-    return SafeOtelLogger(
-        metrics.get_meter_provider(), effective_prefix, validator, stat_name_handler, statsd_influxdb_enabled
-    )
+    return SafeOtelLogger(provider, effective_prefix, validator, stat_name_handler, statsd_influxdb_enabled)
