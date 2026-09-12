@@ -100,9 +100,19 @@ Loading from bytes
 
 When upstream tasks produce file content as bytes (S3, GCS, HTTP, etc.),
 pass them via ``source_bytes`` and tell the operator how to interpret them
-with ``file_type``. ``source_bytes`` is not a template field because Jinja
-would render ``bytes`` as their ``repr`` text, which would break binary
-parsing:
+with ``file_type``. ``source_bytes`` is a template field, so passing an
+``XComArg`` both creates the dependency on the upstream task and resolves to
+its value at run time. Only ``str`` values go through Jinja, so bytes pass
+through rendering untouched.
+
+.. warning::
+
+    Airflow's default XCom serializer does not support ``bytes`` -- an
+    upstream task that *returns* raw bytes fails in that task, before this
+    operator runs. Feeding ``source_bytes`` from XCom therefore requires an
+    XCom backend that can carry ``bytes``. To move file content between tasks
+    on a stock install, write it to object storage and pass the URI to
+    ``source_path`` instead.
 
 .. exampleinclude:: /../../ai/src/airflow/providers/common/ai/example_dags/example_document_loader.py
     :language: python
@@ -269,8 +279,9 @@ Parameters
        ``ObjectStoragePath`` (``aws_default``, ``google_cloud_default``,
        ...). Ignored for local paths.
    * - ``source_bytes``
-     - Raw file bytes from XCom. Requires ``file_type``. Mutually exclusive
-       with ``source_path``. Not a template field (bytes don't survive Jinja).
+     - Raw file bytes, usually an upstream task's output. Accepts an
+       ``XComArg`` directly, which also creates the dependency on that task.
+       Requires ``file_type``. Mutually exclusive with ``source_path``.
    * - ``file_type``
      - File extension hint (e.g. ``".pdf"``). Required with ``source_bytes``;
        optional with ``source_path`` to override auto-detection.

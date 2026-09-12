@@ -74,7 +74,9 @@ class DocumentLoaderOperator(BaseOperator):
     :param source_conn_id: Airflow connection ID used by
         ``ObjectStoragePath`` for cloud URIs (``aws_default``,
         ``google_cloud_default``, ...). Ignored for local paths.
-    :param source_bytes: Raw file bytes, typically from XCom.
+    :param source_bytes: Raw file bytes, typically the output of an upstream
+        task. Passing an ``XComArg`` (``fetch_bytes()``) both creates the
+        dependency on that task and resolves to its bytes at run time.
     :param file_type: File extension hint (e.g. ``".pdf"``). Required when
         using ``source_bytes``, since bytes carry no extension to detect --
         omitting it is a Dag-parse-time error. Optional with ``source_path``,
@@ -106,6 +108,7 @@ class DocumentLoaderOperator(BaseOperator):
     template_fields: Sequence[str] = (
         "source_path",
         "source_conn_id",
+        "source_bytes",
         "file_type",
         "file_extensions",
         "parser",
@@ -143,6 +146,9 @@ class DocumentLoaderOperator(BaseOperator):
             raise ValueError("Provide exactly one of 'source_path' or 'source_bytes'.")
         if source_bytes is not None and file_type is None:
             raise ValueError("'file_type' is required when using 'source_bytes' (e.g. '.pdf').")
+        # Both sources are template fields, so by the time execute() sees a None the argument
+        # that was actually supplied is no longer recoverable. Record it while we still know.
+        self._supplied_source = "source_path" if source_path is not None else "source_bytes"
         self.source_path = source_path
         self.source_conn_id = source_conn_id
         self.source_bytes = source_bytes
@@ -156,10 +162,11 @@ class DocumentLoaderOperator(BaseOperator):
 
     def execute(self, context: Context) -> list[dict[str, Any]]:
         # Provision -- whether an argument was supplied at all -- is settled in __init__.
-        # Both guards below exist for a different reason: file_type and source_path are
-        # template fields, so a supplied argument can still arrive here as None once it has
-        # been rendered. __init__ cannot catch that, because it only ever sees the unrendered
-        # template string; _parse_bytes and _resolve_files need the rendered value to be real.
+        # Both guards below exist for a different reason: file_type, source_path and
+        # source_bytes are all template fields, so a supplied argument can still arrive here
+        # as None once it has been rendered (an XComArg resolving to None, most often).
+        # __init__ cannot catch that, because it only ever sees the unrendered template
+        # string; _parse_bytes and _resolve_files need the rendered value to be real.
         if self.source_bytes is not None and self.file_type is None:
             raise ValueError(
                 "'file_type' was supplied but rendered to None. Check the template or the "
@@ -167,8 +174,8 @@ class DocumentLoaderOperator(BaseOperator):
             )
         if self.source_bytes is None and self.source_path is None:
             raise ValueError(
-                "'source_path' was supplied but rendered to None. Check the template or the "
-                "upstream XCom value it resolves from."
+                f"{self._supplied_source!r} was supplied but rendered to None. Check the "
+                "template or the upstream XCom value it resolves from."
             )
 
         if self.source_bytes is not None:

@@ -23,7 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from airflow.providers.common.ai.operators.document_loader import DocumentLoaderOperator
-from airflow.sdk import DAG
+from airflow.sdk import DAG, task
 
 
 class TestDocumentLoaderInit:
@@ -43,9 +43,61 @@ class TestDocumentLoaderInit:
         assert op.source_path == "/data/2026-01-01/*.pdf"
         assert op.file_type == ".pdf"
         assert op.metadata_fields == {"run_id": "manual__1"}
-        # source_bytes intentionally not templated -- Jinja stringifies bytes
-        # to their repr, which would break binary parsing.
-        assert "source_bytes" not in op.template_fields
+
+    def test_literal_bytes_pass_through_rendering_untouched(self):
+        """source_bytes is templated, but only str reaches Jinja, so bytes are unchanged."""
+        raw = b"%PDF-1.4 \x00\x89binary\xff"
+        op = DocumentLoaderOperator(task_id="test", source_bytes=raw, file_type=".pdf")
+
+        op.render_template_fields(context={})
+
+        assert op.source_bytes == raw
+
+    def test_source_bytes_xcomarg_creates_upstream_dependency(self):
+        """Passing the upstream task's output wires the dependency without an explicit >>."""
+        with DAG(dag_id="bytes", schedule=None):
+
+            @task
+            def fetch_bytes() -> bytes:
+                return b"hello"
+
+            op = DocumentLoaderOperator(task_id="load", source_bytes=fetch_bytes(), file_type=".txt")
+
+        assert "fetch_bytes" in op.upstream_task_ids
+
+    def test_source_bytes_xcomarg_resolves_to_the_upstream_value(self):
+        """The XComArg is replaced by the upstream bytes rather than reaching the parser as-is."""
+        with DAG(dag_id="bytes", schedule=None):
+
+            @task
+            def fetch_bytes() -> bytes:
+                return b"hello"
+
+            op = DocumentLoaderOperator(task_id="load", source_bytes=fetch_bytes(), file_type=".txt")
+
+        ti = MagicMock()
+        ti.xcom_pull.return_value = b"Hello world"
+        op.render_template_fields(context={"ti": ti})
+
+        assert op.source_bytes == b"Hello world"
+        assert [doc["text"] for doc in op.execute(context={"ti": ti})] == ["Hello world"]
+
+    def test_source_bytes_rendering_to_none_names_source_bytes(self):
+        """An upstream task returning None is reported against source_bytes, not source_path."""
+        with DAG(dag_id="bytes", schedule=None):
+
+            @task
+            def fetch_bytes() -> bytes | None:
+                return None
+
+            op = DocumentLoaderOperator(task_id="load", source_bytes=fetch_bytes(), file_type=".txt")
+
+        ti = MagicMock()
+        ti.xcom_pull.return_value = None
+        op.render_template_fields(context={"ti": ti})
+
+        with pytest.raises(ValueError, match="'source_bytes' was supplied but rendered to None"):
+            op.execute(context={"ti": ti})
 
     def test_both_sources_raises(self):
         # source_path/source_bytes provision is a constructor-time check now.
