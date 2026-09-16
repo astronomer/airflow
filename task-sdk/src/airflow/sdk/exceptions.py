@@ -93,6 +93,8 @@ class ErrorType(enum.Enum):
     ASSET_NOT_FOUND = "ASSET_NOT_FOUND"
     TASK_STORE_NOT_FOUND = "TASK_STORE_NOT_FOUND"
     ASSET_STORE_NOT_FOUND = "ASSET_STORE_NOT_FOUND"
+    AGENT_NOT_FOUND = "AGENT_NOT_FOUND"
+    AGENT_STORE_NOT_FOUND = "AGENT_STORE_NOT_FOUND"
     DAGRUN_ALREADY_EXISTS = "DAGRUN_ALREADY_EXISTS"
     # Distinct from API_SERVER_ERROR: signals an explicit 401/403 from the
     # Execution API. Callers like ExecutionAPISecretsBackend treat this as

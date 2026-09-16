@@ -256,7 +256,9 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
         self,
         *,
         prompt: str,
-        llm_conn_id: str,
+        llm_conn_id: str | None = None,
+        agent: str | None = None,
+        memory: bool | None = None,
         model_id: str | None = None,
         system_prompt: str = "",
         output_type: type = str,
@@ -277,8 +279,24 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
     ) -> None:
         super().__init__(**kwargs)
 
+        # `agent=` replaces `llm_conn_id=`. If an author could still pass their own connection
+        # they could point at a different account, and the agent's budget would mean nothing.
+        if agent and llm_conn_id:
+            raise ValueError("Pass either `agent` or `llm_conn_id`, not both.")
+        if agent and model_id:
+            raise ValueError("`model_id` comes from the agent; drop it when passing `agent`.")
+        if not agent and not llm_conn_id:
+            raise ValueError("One of `agent` or `llm_conn_id` is required.")
+        if memory is not None and not agent:
+            raise ValueError("`memory` only applies when `agent` is set.")
+
         self.prompt = prompt
         self.llm_conn_id = llm_conn_id
+        self.agent = agent
+        self.memory = memory
+        # Set per run in ``_resolve_agent``; read by ``regenerate_with_feedback``.
+        self._memory_active = False
+        self._resolved_agent: Any = None
         self.model_id = model_id
         self.system_prompt = system_prompt
         self.output_type = output_type
@@ -447,7 +465,87 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
             map_index=ti.map_index if ti.map_index is not None else -1,
         )
 
+    # Key under which an agent's accumulated memory lives in its state store.
+    MEMORY_KEY: ClassVar[str] = "learned"
+    SPEND_KEY: ClassVar[str] = "spend"
+    # XCom key naming the agent this task ran as.
+    AGENT_XCOM_KEY: ClassVar[str] = "airflow_agent_name"
+
+    # Appended to a reviewer's feedback when the agent has memory. A correction is the only
+    # signal the agent gets about whether it was any good.
+    LEARN_FROM_FEEDBACK_INSTRUCTION: ClassVar[str] = (
+        "\n\n---\n"
+        "A human just corrected you. Before you rewrite the answer, decide whether their "
+        "correction reveals a rule that will apply to future work as well, not just to this "
+        "one case. If it does, call the `remember` tool with it as a single sentence, written "
+        "as a general rule rather than as a note about this particular task. If the "
+        "correction is specific to this task, or is something you were already told, store "
+        "nothing. Then rewrite the answer."
+    )
+
+    def _resolve_agent(self) -> Any:
+        """
+        Resolve the named agent and apply its definition to this operator.
+
+        Resolution happens here rather than in ``__init__`` because it needs the execution
+        API, which only exists on the worker. A missing agent raises, so a Dag naming one
+        that does not exist fails at task start instead of running unconstrained.
+        """
+        from airflow.sdk.execution_time.context import get_agent
+
+        resolved = get_agent(self.agent)
+        self._resolved_agent = resolved
+        self.llm_conn_id = resolved.conn_id
+        self.model_id = resolved.model
+
+        # Standing context first, then what the agent learned, then whatever the author set.
+        blocks = [resolved.context] if resolved.context else []
+        self._memory_active = self._memory_enabled(resolved)
+        if self._memory_active:
+            learned = resolved.get_state(self.MEMORY_KEY)
+            if learned:
+                blocks.append(f"What you learned in earlier runs:\n{learned}")
+            # `remember` is attached only in `regenerate_with_feedback`. With the tool in
+            # hand on an ordinary run, a model has no way to judge its own answer, so it
+            # stores paraphrases of its instructions and rules about code not in the diff.
+        if self.system_prompt:
+            blocks.append(self.system_prompt)
+        self.system_prompt = "\n\n".join(blocks)
+        return resolved
+
+    def _memory_enabled(self, resolved: Any) -> bool:
+        """An author may switch memory off for a task, but never on when the admin disabled it."""
+        if not resolved.memory_enabled:
+            return False
+        return self.memory is not False
+
+    def _record_agent_run(self, resolved: Any, result: Any) -> None:
+        """
+        Add this run's cost to the agent's running total.
+
+        Recorded, never enforced: nothing here blocks a call for going over budget. Blocking
+        needs an atomic add in the state store, which does not exist yet.
+        """
+        try:
+            # Best-effort: None when the provider reports no pricing. A Decimal, hence float().
+            cost = result.usage.cost
+            if cost is None:
+                return
+            spend = resolved.get_state(self.SPEND_KEY)
+            previous = float(spend.get("total", 0)) if isinstance(spend, dict) else 0.0
+            resolved.set_state(self.SPEND_KEY, {"total": round(previous + float(cost), 6)})
+        except Exception:
+            # Accounting must not fail a review that already succeeded.
+            self.log.exception("Could not record spend for agent %r", resolved.name)
+
     def execute(self, context: Context) -> Any:
+        resolved_agent = self._resolve_agent() if self.agent else None
+        if resolved_agent is not None:
+            # Recorded so the review UI can find the agent behind a task without walking the
+            # serialized Dag. `agent` is not a template field, so it is not in
+            # RenderedTaskInstanceFields either.
+            context["ti"].xcom_push(key=self.AGENT_XCOM_KEY, value=resolved_agent.name)
+
         if self.enable_hitl_review and not isinstance(self.prompt, str):
             raise TypeError(
                 f"{type(self).__name__}: enable_hitl_review=True is not supported "
@@ -492,6 +590,9 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
             result = agent.run_sync(self.prompt, **run_kwargs)
 
         log_run_summary(self.log, result)
+
+        if resolved_agent is not None:
+            self._record_agent_run(resolved_agent, result)
 
         if self._durable_counter is not None:
             c = self._durable_counter
@@ -574,15 +675,37 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
         context["task_instance"].xcom_push(key="message_history", value=transcript)
 
     def regenerate_with_feedback(self, *, feedback: str, message_history: Any) -> tuple[str, Any]:
-        """Re-run the agent with *feedback* appended to the conversation history."""
+        """
+        Re-run the agent with *feedback* appended to the conversation history.
+
+        With memory on, `remember` is attached for this call only: the rewrite and the
+        lesson come out of one call rather than costing an extra one.
+        """
+        from airflow.providers.common.ai.toolsets.memory import build_memory_toolset
+
         usage_limits = coerce_usage_limits(self.usage_limits)
-        agent = self._build_agent()
-        messages = message_history or []
-        result = agent.run_sync(
-            feedback,
-            message_history=messages,
-            usage_limits=usage_limits,
-        )
+        original_toolsets = self.toolsets
+        if self._memory_active and self._resolved_agent is not None:
+            feedback = f"{feedback}{self.LEARN_FROM_FEEDBACK_INSTRUCTION}"
+            self.toolsets = [
+                *(original_toolsets or []),
+                build_memory_toolset(
+                    self._resolved_agent,
+                    self.MEMORY_KEY,
+                    self.log,
+                    context=self._resolved_agent.context,
+                ),
+            ]
+        try:
+            agent = self._build_agent()
+            messages = message_history or []
+            result = agent.run_sync(
+                feedback,
+                message_history=messages,
+                usage_limits=usage_limits,
+            )
+        finally:
+            self.toolsets = original_toolsets
         log_run_summary(self.log, result)
 
         output = result.output

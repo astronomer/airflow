@@ -63,7 +63,13 @@ from airflow.sdk.execution_time import comms
 from airflow.sdk.execution_time.comms import (
     AssetEventsResult,
     AssetResult,
+    AgentResult,
+    AgentStateStoreResult,
     AssetStateStoreResult,
+    DeleteAgentStateStore,
+    GetAgent,
+    GetAgentStateStore,
+    SetAgentStateStore,
     AwaitInputTask,
     ClearAssetStateStoreByName,
     ClearAssetStateStoreByUri,
@@ -2009,6 +2015,22 @@ class ActivitySubprocess(WatchedSubprocess):
             resp = OKResponse(ok=True)
         elif isinstance(msg, ClearTaskStateStore):
             self.client.task_state_store.clear(msg.ti_id)
+            resp = OKResponse(ok=True)
+        elif isinstance(msg, GetAgent):
+            agent = self.client.agents.get(msg.name)
+            resp = agent if isinstance(agent, ErrorResponse) else AgentResult.from_agent_response(agent)
+        elif isinstance(msg, GetAgentStateStore):
+            agent_store = self.client.agents.get_state(msg.name, msg.key)
+            resp = (
+                agent_store
+                if isinstance(agent_store, ErrorResponse)
+                else AgentStateStoreResult.from_agent_state_store_response(agent_store)
+            )
+        elif isinstance(msg, SetAgentStateStore):
+            self.client.agents.set_state(msg.name, msg.key, msg.value)
+            resp = OKResponse(ok=True)
+        elif isinstance(msg, DeleteAgentStateStore):
+            self.client.agents.delete_state(msg.name, msg.key)
             resp = OKResponse(ok=True)
         elif isinstance(msg, GetAssetStateStoreByName):
             asset_store = self.client.asset_state_store.get(msg.key, name=msg.name)

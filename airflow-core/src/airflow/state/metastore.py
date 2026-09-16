@@ -27,6 +27,7 @@ import structlog
 from sqlalchemy import delete, select
 
 from airflow._shared.state import (
+    AgentScope,
     AssetScope,
     AssetStateStoreWriterKind,
     BaseStoreBackend,
@@ -35,6 +36,7 @@ from airflow._shared.state import (
 )
 from airflow._shared.timezones import timezone
 from airflow.configuration import conf
+from airflow.models.agent import AgentModel, AgentStateStoreModel
 from airflow.models.asset_state_store import AssetStateStoreModel
 from airflow.models.dagrun import DagRun
 from airflow.models.task_state_store import TaskStateStoreModel
@@ -124,6 +126,8 @@ class MetastoreBackend(BaseStoreBackend):
                 return self._get_task_state_store(scope, key, session=session)
             case AssetScope():
                 return self._get_asset_state_store(scope, key, session=session)
+            case AgentScope():
+                return self._get_agent_state_store(scope, key, session=session)
             case _:
                 assert_never(scope)
 
@@ -144,6 +148,8 @@ class MetastoreBackend(BaseStoreBackend):
                 self._store_task_state(scope, key, value, expires_at=expires_at, session=session)
             case AssetScope():
                 self._store_asset_state(scope, key, value, session=session)
+            case AgentScope():
+                self._store_agent_state(scope, key, value, session=session)
             case _:
                 assert_never(scope)
 
@@ -156,6 +162,8 @@ class MetastoreBackend(BaseStoreBackend):
                 self._delete_task_state_store(scope, key, session=session)
             case AssetScope():
                 self._delete_asset_state_store(scope, key, session=session)
+            case AgentScope():
+                self._delete_agent_state_store(scope, key, session=session)
             case _:
                 assert_never(scope)
 
@@ -174,6 +182,8 @@ class MetastoreBackend(BaseStoreBackend):
                 self._clear_task_state_store(scope, all_map_indices=all_map_indices, session=session)
             case AssetScope():
                 self._clear_asset_state_store(scope, session=session)
+            case AgentScope():
+                self._clear_agent_state_store(scope, session=session)
             case _:
                 assert_never(scope)
 
@@ -184,6 +194,8 @@ class MetastoreBackend(BaseStoreBackend):
                     return await self._aget_task_state_store(scope, key, session=s)
                 case AssetScope():
                     return await self._aget_asset_state_store(scope, key, session=s)
+                case AgentScope():
+                    return await self._aget_agent_state_store(scope, key, session=s)
                 case _:
                     assert_never(scope)
 
@@ -202,6 +214,8 @@ class MetastoreBackend(BaseStoreBackend):
                     await self._aset_task_state_store(scope, key, value, expires_at=expires_at, session=s)
                 case AssetScope():
                     await self._aset_asset_state_store(scope, key, value, session=s)
+                case AgentScope():
+                    await self._aset_agent_state_store(scope, key, value, session=s)
                 case _:
                     assert_never(scope)
 
@@ -212,6 +226,8 @@ class MetastoreBackend(BaseStoreBackend):
                     await self._adelete_task_state_store(scope, key, session=s)
                 case AssetScope():
                     await self._adelete_asset_state_store(scope, key, session=s)
+                case AgentScope():
+                    await self._adelete_agent_state_store(scope, key, session=s)
                 case _:
                     assert_never(scope)
 
@@ -224,6 +240,8 @@ class MetastoreBackend(BaseStoreBackend):
                     await self._aclear_task_state_store(scope, all_map_indices=all_map_indices, session=s)
                 case AssetScope():
                     await self._aclear_asset_state_store(scope, session=s)
+                case AgentScope():
+                    await self._aclear_agent_state_store(scope, session=s)
                 case _:
                     assert_never(scope)
 
@@ -378,6 +396,108 @@ class MetastoreBackend(BaseStoreBackend):
         session.execute(
             delete(AssetStateStoreModel).where(
                 AssetStateStoreModel.asset_id == scope.asset_id,
+            )
+        )
+
+    def _resolve_agent_id(self, scope: AgentScope, *, session: Session) -> int:
+        if scope.agent_id is not None:
+            return scope.agent_id
+        agent_id = session.scalar(select(AgentModel.id).where(AgentModel.name == scope.name))
+        if agent_id is None:
+            raise ValueError(f"No agent found with name {scope.name!r}")
+        return agent_id
+
+    async def _aresolve_agent_id(self, scope: AgentScope, *, session: AsyncSession) -> int:
+        if scope.agent_id is not None:
+            return scope.agent_id
+        agent_id = await session.scalar(select(AgentModel.id).where(AgentModel.name == scope.name))
+        if agent_id is None:
+            raise ValueError(f"No agent found with name {scope.name!r}")
+        return agent_id
+
+    def _get_agent_state_store(self, scope: AgentScope, key: str, *, session: Session) -> str | None:
+        row = session.scalar(
+            select(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == self._resolve_agent_id(scope, session=session),
+                AgentStateStoreModel.key == key,
+            )
+        )
+        return row.value if row is not None else None
+
+    def _store_agent_state(self, scope: AgentScope, key: str, value: str, *, session: Session) -> None:
+        now = timezone.utcnow()
+        values = dict(
+            agent_id=self._resolve_agent_id(scope, session=session),
+            key=key,
+            value=value,
+            updated_at=now,
+        )
+        stmt = _build_upsert_stmt(
+            get_dialect_name(session),
+            AgentStateStoreModel,
+            ["agent_id", "key"],
+            values,
+            dict(value=value, updated_at=now),
+        )
+        session.execute(stmt)
+
+    def _delete_agent_state_store(self, scope: AgentScope, key: str, *, session: Session) -> None:
+        session.execute(
+            delete(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == self._resolve_agent_id(scope, session=session),
+                AgentStateStoreModel.key == key,
+            )
+        )
+
+    def _clear_agent_state_store(self, scope: AgentScope, *, session: Session) -> None:
+        session.execute(
+            delete(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == self._resolve_agent_id(scope, session=session),
+            )
+        )
+
+    async def _aget_agent_state_store(
+        self, scope: AgentScope, key: str, *, session: AsyncSession
+    ) -> str | None:
+        row = await session.scalar(
+            select(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == await self._aresolve_agent_id(scope, session=session),
+                AgentStateStoreModel.key == key,
+            )
+        )
+        return row.value if row is not None else None
+
+    async def _aset_agent_state_store(
+        self, scope: AgentScope, key: str, value: str, *, session: AsyncSession
+    ) -> None:
+        now = timezone.utcnow()
+        values = dict(
+            agent_id=await self._aresolve_agent_id(scope, session=session),
+            key=key,
+            value=value,
+            updated_at=now,
+        )
+        stmt = _build_upsert_stmt(
+            get_dialect_name(session.sync_session),
+            AgentStateStoreModel,
+            ["agent_id", "key"],
+            values,
+            dict(value=value, updated_at=now),
+        )
+        await session.execute(stmt)
+
+    async def _adelete_agent_state_store(self, scope: AgentScope, key: str, *, session: AsyncSession) -> None:
+        await session.execute(
+            delete(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == await self._aresolve_agent_id(scope, session=session),
+                AgentStateStoreModel.key == key,
+            )
+        )
+
+    async def _aclear_agent_state_store(self, scope: AgentScope, *, session: AsyncSession) -> None:
+        await session.execute(
+            delete(AgentStateStoreModel).where(
+                AgentStateStoreModel.agent_id == await self._aresolve_agent_id(scope, session=session),
             )
         )
 

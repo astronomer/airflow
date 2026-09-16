@@ -1568,6 +1568,69 @@ PARTITIONS_COMMANDS = (
         ),
     ),
 )
+ARG_AGENT_NAME = Arg(("name",), metavar="NAME", help="Agent name")
+ARG_AGENT_CONN_ID = Arg(("--conn-id",), required=True, help="Connection holding the model credentials")
+ARG_AGENT_MODEL = Arg(("--model",), required=True, help="Model the agent may use")
+ARG_AGENT_CONTEXT_FILE = Arg(
+    ("--context-file",),
+    help="File whose contents become the agent's standing context. Read once, at creation time.",
+)
+ARG_AGENT_MEMORY = Arg(
+    ("--memory",),
+    help="Let this agent keep what it learns between runs. Off unless set.",
+    action="store_true",
+)
+ARG_AGENT_LESSON = Arg(("lesson",), help="The lesson to store, one sentence")
+ARG_AGENT_BUDGET = Arg(("--budget",), type=float, help="Spend limit for the agent")
+ARG_AGENT_PERIOD = Arg(("--period",), help="Period the spend limit covers, e.g. month")
+
+AGENTS_COMMANDS = (
+    ActionCommand(
+        name="add",
+        help="Create an agent",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_add"),
+        args=(
+            ARG_AGENT_NAME,
+            ARG_AGENT_CONN_ID,
+            ARG_AGENT_MODEL,
+            ARG_AGENT_CONTEXT_FILE,
+            ARG_AGENT_MEMORY,
+            ARG_AGENT_BUDGET,
+            ARG_AGENT_PERIOD,
+            ARG_VERBOSE,
+        ),
+    ),
+    ActionCommand(
+        name="list",
+        help="List agents",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_list"),
+        args=(ARG_OUTPUT, ARG_VERBOSE),
+    ),
+    ActionCommand(
+        name="show",
+        help="Show an agent, what it has learned, and what it has spent",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_show"),
+        args=(ARG_AGENT_NAME, ARG_VERBOSE),
+    ),
+    ActionCommand(
+        name="delete",
+        help="Delete an agent and everything it has learned",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_delete"),
+        args=(ARG_AGENT_NAME, ARG_VERBOSE),
+    ),
+    ActionCommand(
+        name="remember",
+        help="Write a lesson into an agent's memory by hand",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_remember"),
+        args=(ARG_AGENT_NAME, ARG_AGENT_LESSON, ARG_VERBOSE),
+    ),
+    ActionCommand(
+        name="clear-state",
+        help="Wipe what an agent has learned, leaving its definition alone",
+        func=lazy_load_command("airflow.cli.commands.agent_command.agent_clear_state"),
+        args=(ARG_AGENT_NAME, ARG_VERBOSE),
+    ),
+)
 POOLS_COMMANDS = (
     ActionCommand(
         name="list",
@@ -2153,6 +2216,11 @@ core_commands: list[CLICommand] = [
         name="assets",
         help="Manage assets",
         subcommands=ASSETS_COMMANDS,
+    ),
+    GroupCommand(
+        name="agents",
+        help="Manage agents",
+        subcommands=AGENTS_COMMANDS,
     ),
     GroupCommand(
         name="pools",
