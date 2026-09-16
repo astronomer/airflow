@@ -20,6 +20,7 @@ from cadwyn import VersionedAPIRouter
 from fastapi import APIRouter, Security
 
 from airflow.api_fastapi.execution_api.routes import (
+    agents,
     asset_events,
     asset_state_store,
     assets,
@@ -48,6 +49,7 @@ execution_api_router.include_router(health.router, tags=["Health"])
 # _Every_ single endpoint under here must be authenticated. Some do further checks on top of these
 authenticated_router = VersionedAPIRouter(dependencies=[Security(require_auth)])  # type: ignore[list-item]
 
+authenticated_router.include_router(agents.router, prefix="/agents", tags=["Agents"])
 authenticated_router.include_router(assets.router, prefix="/assets", tags=["Assets"])
 authenticated_router.include_router(asset_events.router, prefix="/asset-events", tags=["Asset Events"])
 authenticated_router.include_router(

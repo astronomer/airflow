@@ -20,6 +20,7 @@ from __future__ import annotations
 import threading
 
 from airflow._shared.state import (
+    AgentScope as AgentScope,
     AssetScope as AssetScope,
     BaseStoreBackend as BaseStoreBackend,
     StoreScope as StoreScope,

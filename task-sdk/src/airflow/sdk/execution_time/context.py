@@ -54,7 +54,13 @@ from airflow.sdk.exceptions import (
 )
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
+    AgentResult,
+    AgentStateStoreResult,
     AssetStateStoreResult,
+    DeleteAgentStateStore,
+    GetAgent,
+    GetAgentStateStore,
+    SetAgentStateStore,
     ClearAssetStateStoreByName,
     ClearAssetStateStoreByUri,
     ClearTaskStateStore,
@@ -895,6 +901,96 @@ class AssetStateStoreAccessor:
         elif self._uri:
             msg = ClearAssetStateStoreByUri(uri=self._uri)
         return msg
+
+
+class ResolvedAgent:
+    """
+    An agent resolved from the metadata database, as a task sees it.
+
+    Carries the admin-set definition (connection, model, standing context) plus a state
+    accessor for what the agent has learned and what it has spent. Obtained via
+    ``get_agent("pr_reviewer")``.
+
+    Every field here is read only from the task's point of view: an agent's limits are set
+    outside Dag code by design.
+    """
+
+    def __init__(self, definition: AgentResult) -> None:
+        self._definition = definition
+
+    def __repr__(self) -> str:
+        return f"<ResolvedAgent name={self.name!r} model={self.model!r}>"
+
+    @property
+    def name(self) -> str:
+        return self._definition.name
+
+    @property
+    def conn_id(self) -> str:
+        return self._definition.conn_id
+
+    @property
+    def model(self) -> str:
+        return self._definition.model
+
+    @property
+    def context(self) -> str | None:
+        """The standing context an admin set on this agent, or None."""
+        return self._definition.context
+
+    @property
+    def memory_enabled(self) -> bool:
+        return self._definition.memory_enabled
+
+    @property
+    def budget_limit(self) -> float | None:
+        return self._definition.budget_limit
+
+    @property
+    def budget_period(self) -> str | None:
+        return self._definition.budget_period
+
+    def get_state(self, key: str, default: JsonValue = None) -> JsonValue:
+        """Return a value from this agent's state store, or ``default`` if absent."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        resp = SUPERVISOR_COMMS.send(GetAgentStateStore(name=self.name, key=key))
+        if isinstance(resp, ErrorResponse) and resp.error != ErrorType.AGENT_STORE_NOT_FOUND:
+            raise AirflowRuntimeError(resp)
+        if isinstance(resp, AgentStateStoreResult):
+            return resp.value
+        return default
+
+    def set_state(self, key: str, value: JsonValue) -> None:
+        """Write or overwrite a value in this agent's state store."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        if value is None:
+            raise ValueError("Cannot set value as None")
+        SUPERVISOR_COMMS.send(SetAgentStateStore(name=self.name, key=key, value=value))
+
+    def delete_state(self, key: str) -> None:
+        """Delete a single key from this agent's state store."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        SUPERVISOR_COMMS.send(DeleteAgentStateStore(name=self.name, key=key))
+
+
+def get_agent(name: str) -> ResolvedAgent:
+    """
+    Resolve an agent by the name written in the Dag.
+
+    Raises ``AirflowRuntimeError`` if no agent with that name exists, so a Dag naming a
+    missing agent fails at task start rather than silently running unconstrained.
+    """
+    from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+    resp = SUPERVISOR_COMMS.send(GetAgent(name=name))
+    if isinstance(resp, ErrorResponse):
+        raise AirflowRuntimeError(resp)
+    if not isinstance(resp, AgentResult):
+        raise TypeError(f"Unexpected response resolving agent {name!r}: {resp!r}")
+    return ResolvedAgent(resp)
 
 
 class AssetStateStoreAccessors:

@@ -66,6 +66,7 @@ import msgspec
 import structlog
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
+from airflow.sdk.api.datamodels.agent import AgentResponse, AgentStateStoreResponse
 from airflow.sdk.api.datamodels._generated import (
     AssetEventDagRunReference,
     AssetEventResponse,
@@ -632,6 +633,26 @@ class AssetStateStoreResult(AssetStateStoreResponse):
         return cls(**resp.model_dump(exclude_defaults=True), type="AssetStateStoreResult")
 
 
+class AgentResult(AgentResponse):
+    """Response to GetAgent; the resolved agent definition."""
+
+    type: Literal["AgentResult"] = "AgentResult"
+
+    @classmethod
+    def from_agent_response(cls, resp: AgentResponse) -> AgentResult:
+        return cls(**resp.model_dump(exclude_defaults=True), type="AgentResult")
+
+
+class AgentStateStoreResult(AgentStateStoreResponse):
+    """Response to GetAgentStateStore."""
+
+    type: Literal["AgentStateStoreResult"] = "AgentStateStoreResult"
+
+    @classmethod
+    def from_agent_state_store_response(cls, resp: AgentStateStoreResponse) -> AgentStateStoreResult:
+        return cls(**resp.model_dump(exclude_defaults=True), type="AgentStateStoreResult")
+
+
 class AssetsByAliasResult(BaseModel):
     """Response to GetAssetsByAlias; list of concrete assets resolved from an alias."""
 
@@ -818,7 +839,9 @@ class DagResult(DagResponse):
 
 
 ToTask = Annotated[
-    AssetResult
+    AgentResult
+    | AgentStateStoreResult
+    | AssetResult
     | AssetsByAliasResult
     | AssetEventsResult
     | AssetStateStoreResult
@@ -992,6 +1015,30 @@ class DeleteTaskStateStore(BaseModel):
 class ClearTaskStateStore(BaseModel):
     ti_id: UUID
     type: Literal["ClearTaskStateStore"] = "ClearTaskStateStore"
+
+
+class GetAgent(BaseModel):
+    name: str
+    type: Literal["GetAgent"] = "GetAgent"
+
+
+class GetAgentStateStore(BaseModel):
+    name: str
+    key: str
+    type: Literal["GetAgentStateStore"] = "GetAgentStateStore"
+
+
+class SetAgentStateStore(BaseModel):
+    name: str
+    key: str
+    value: JsonValue
+    type: Literal["SetAgentStateStore"] = "SetAgentStateStore"
+
+
+class DeleteAgentStateStore(BaseModel):
+    name: str
+    key: str
+    type: Literal["DeleteAgentStateStore"] = "DeleteAgentStateStore"
 
 
 class GetAssetStateStoreByName(BaseModel):
@@ -1251,6 +1298,10 @@ class GetDag(BaseModel):
 
 ToSupervisor = Annotated[
     AwaitInputTask
+    | GetAgent
+    | GetAgentStateStore
+    | SetAgentStateStore
+    | DeleteAgentStateStore
     | ClearAssetStateStoreByName
     | ClearAssetStateStoreByUri
     | ClearTaskStateStore

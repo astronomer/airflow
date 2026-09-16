@@ -15,12 +15,38 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
+"""
+Worker-side datamodels for the agents Execution API routes.
+
+Hand written rather than generated: the POC adds the routes without regenerating
+``_generated.py``. These mirror
+``airflow.api_fastapi.execution_api.datamodels.agent``.
+"""
 
 from __future__ import annotations
 
-from airflow.sdk._shared.state import (
-    AgentScope as AgentScope,
-    AssetScope as AssetScope,
-    BaseStoreBackend as BaseStoreBackend,
-    TaskScope as TaskScope,
-)
+from pydantic import BaseModel, JsonValue
+
+
+class AgentResponse(BaseModel):
+    """An agent definition, as a worker sees it."""
+
+    name: str
+    conn_id: str
+    model: str
+    context: str | None = None
+    memory_enabled: bool = False
+    budget_limit: float | None = None
+    budget_period: str | None = None
+
+
+class AgentStateStoreResponse(BaseModel):
+    """Agent state store value returned to a worker."""
+
+    value: JsonValue
+
+
+class AgentStateStorePutBody(BaseModel):
+    """Request body for setting an agent state store value."""
+
+    value: JsonValue

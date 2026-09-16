@@ -60,6 +60,7 @@ def import_all_models():
     for name in __lazy_imports:
         __getattr__(name)
 
+    import airflow.models.agent
     import airflow.models.asset
     import airflow.models.asset_state_store
     import airflow.models.backfill

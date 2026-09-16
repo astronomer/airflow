@@ -44,6 +44,11 @@ from tenacity import (
 from uuid6 import uuid7
 
 from airflow.sdk import __version__
+from airflow.sdk.api.datamodels.agent import (
+    AgentResponse,
+    AgentStateStorePutBody,
+    AgentStateStoreResponse,
+)
 from airflow.sdk.api.datamodels._generated import (
     API_VERSION,
     AssetEventsResponse,
@@ -809,6 +814,49 @@ class AssetStateStoreOperations:
         return OKResponse(ok=True)
 
 
+class AgentOperations:
+    __slots__ = ("client",)
+
+    def __init__(self, client: Client):
+        self.client = client
+
+    def get(self, name: str) -> AgentResponse | ErrorResponse:
+        """Resolve an agent by name from the API server."""
+        try:
+            resp = self.client.get(f"agents/{name}")
+        except ServerResponseError as e:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
+                log.debug("Agent not found", name=name)
+                return ErrorResponse(error=ErrorType.AGENT_NOT_FOUND, detail={"name": name})
+            raise
+        return AgentResponse.model_validate_json(resp.read())
+
+    def get_state(self, name: str, key: str) -> AgentStateStoreResponse | ErrorResponse:
+        """Get an agent store value from the API server."""
+        try:
+            resp = self.client.get(f"agents/{name}/value", params={"key": key})
+        except ServerResponseError as e:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
+                log.debug("Agent store key not found", name=name, key=key)
+                return ErrorResponse(error=ErrorType.AGENT_STORE_NOT_FOUND, detail={"key": key})
+            raise
+        return AgentStateStoreResponse.model_validate_json(resp.read())
+
+    def set_state(self, name: str, key: str, value: JsonValue) -> OKResponse:
+        """Set an agent store value via the API server."""
+        self.client.put(
+            f"agents/{name}/value",
+            params={"key": key},
+            content=AgentStateStorePutBody(value=value).model_dump_json(),
+        )
+        return OKResponse(ok=True)
+
+    def delete_state(self, name: str, key: str) -> OKResponse:
+        """Delete a single agent store key via the API server."""
+        self.client.delete(f"agents/{name}/value", params={"key": key})
+        return OKResponse(ok=True)
+
+
 class AssetOperations:
     __slots__ = ("client",)
 
@@ -1302,6 +1350,12 @@ class Client(httpx.Client):
     def asset_state_store(self) -> AssetStateStoreOperations:
         """Operations related to asset store."""
         return AssetStateStoreOperations(self)
+
+    @lru_cache()  # type: ignore[misc]
+    @property
+    def agents(self) -> AgentOperations:
+        """Operations related to agents and their state store."""
+        return AgentOperations(self)
 
     @lru_cache()  # type: ignore[misc]
     @property

@@ -69,7 +69,24 @@ class AssetScope:
             raise ValueError("AssetScope requires at least one of: asset_id, name, or uri")
 
 
-StoreScope = TaskScope | AssetScope
+@dataclass(frozen=True)
+class AgentScope:
+    """
+    Identifies the state namespace for an agent.
+
+    Server-side backends receive ``agent_id``. Worker-side backends receive ``name``, since
+    workers resolve an agent by the name written in the Dag and never see the integer id.
+    """
+
+    agent_id: int | None = None
+    name: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.agent_id is None and self.name is None:
+            raise ValueError("AgentScope requires at least one of: agent_id or name")
+
+
+StoreScope = TaskScope | AssetScope | AgentScope
 
 
 class AssetStateStoreWriterKind(str, Enum):
