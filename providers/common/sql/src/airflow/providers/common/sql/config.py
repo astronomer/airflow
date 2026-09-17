@@ -96,15 +96,15 @@ class DataSourceConfig:
                 raise ValueError(f"Database name must be provided for table providers {TABLE_PROVIDERS}")
             return
 
+        if not self.table_name or not self.table_name.strip():
+            raise ValueError("Table name must be provided for storage type")
+
         if not self.format and not self.uri:
             # Plain database table: no object store involved, so storage_type stays unset.
             return
 
         if self.storage_type is None:
             self.storage_type = self._extract_storage_type
-
-        if self.storage_type is not None and (not self.table_name or not self.table_name.strip()):
-            raise ValueError("Table name must be provided for storage type")
 
     @property
     def _extract_storage_type(self) -> StorageType | None:

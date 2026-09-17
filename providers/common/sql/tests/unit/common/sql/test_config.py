@@ -53,6 +53,20 @@ class TestDataSourceConfig:
         with pytest.raises(ValueError, match="Table name must be provided for storage type"):
             DataSourceConfig(conn_id="test", uri="s3://bucket/path", table_name="")
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            pytest.param({"table_name": ""}, id="plain-db-blank"),
+            pytest.param({"table_name": "   "}, id="plain-db-whitespace"),
+            pytest.param(
+                {"table_name": "", "storage_type": StorageType.S3}, id="explicit-storage-type-blank"
+            ),
+        ],
+    )
+    def test_missing_table_name_raises_without_uri_or_format(self, kwargs):
+        with pytest.raises(ValueError, match="Table name must be provided for storage type"):
+            DataSourceConfig(conn_id="postgres_default", **kwargs)
+
     def test_parquet_with_partition_cols(self):
         config = DataSourceConfig(
             conn_id="test_conn",

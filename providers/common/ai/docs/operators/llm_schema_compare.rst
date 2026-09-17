@@ -70,6 +70,29 @@ These can be freely combined with ``db_conn_ids``:
     :start-after: [START howto_operator_llm_schema_compare_datasource]
     :end-before: [END howto_operator_llm_schema_compare_datasource]
 
+Comparing Differently Named Tables
+----------------------------------
+
+``db_conn_ids`` and ``table_names`` form a cross-product, so every connection is
+introspected for every table name. To pair a specific table with a specific
+connection, give ``data_sources`` a :class:`~airflow.providers.common.sql.config.DataSourceConfig`
+with only ``conn_id`` and ``table_name``. No ``uri`` or ``format`` means no object
+store is involved, so the operator introspects the table through ``DbApiHook``:
+
+.. code-block:: python
+
+    from airflow.providers.common.sql.config import DataSourceConfig
+
+    LLMSchemaCompareOperator(
+        task_id="compare_renamed_table",
+        prompt="Compare these schemas and flag breaking changes",
+        llm_conn_id="pydanticai_default",
+        data_sources=[
+            DataSourceConfig(conn_id="postgres_source", table_name="orders"),
+            DataSourceConfig(conn_id="snowflake_target", table_name="orders_v2"),
+        ],
+    )
+
 Customizing the System Prompt
 -----------------------------
 
@@ -184,8 +207,8 @@ Parameters
 - ``db_conn_ids``: List of database connection IDs to compare. Each must resolve
   to a ``DbApiHook``.
 - ``table_names``: Tables to introspect from each ``db_conn_id``.
-- ``data_sources``: List of ``DataSourceConfig`` objects for object-storage or
-  catalog-managed sources.
+- ``data_sources``: List of ``DataSourceConfig`` objects, one per source. Covers
+  object-storage, catalog-managed, and plain database tables.
 - ``context_strategy``: To fetch primary keys, foreign keys, and indexes.``full`` or ``basic``,
   strongly recommended for cross-system comparisons. default is ``full``
 - ``require_approval``: If ``True``, the task pauses after the comparison and
