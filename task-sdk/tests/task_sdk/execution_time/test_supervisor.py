@@ -889,7 +889,11 @@ class TestWatchedSubprocess:
             if request.url.path == f"/task-instances/{ti_id}/run":
                 return httpx.Response(200, json=make_ti_context_dict())
             if request.url.path == f"/task-instances/{ti_id}/state":
-                pytest.fail("Should not have sent a state update request")
+                assert proc._process.wait(timeout=0) == -signal.SIGTERM
+                payload = json.loads(request.content)
+                assert payload["state"] == "SERVER_TERMINATED"
+                assert payload["pid"] == proc.pid
+                request_count["stopped"] = request_count.get("stopped", 0) + 1
             # Return a 204 for all other requests
             return httpx.Response(status_code=204)
 
@@ -915,6 +919,7 @@ class TestWatchedSubprocess:
         assert proc.final_state == "SERVER_TERMINATED"
 
         assert request_count["count"] == 2
+        assert request_count["stopped"] == 1
         # Verify the error was logged
         assert captured_logs == [
             {
@@ -951,6 +956,49 @@ class TestWatchedSubprocess:
                 "loc": mocker.ANY,
             },
         ]
+
+    def test_restarting_start_reports_stop_after_reaping(self, mocker):
+        ti_id = uuid7()
+        start = mocker.spy(ActivitySubprocess, "start")
+        requests = []
+
+        def handle_request(request):
+            requests.append(request.url.path)
+            if request.url.path.endswith("/run"):
+                return httpx.Response(
+                    409,
+                    json={
+                        "detail": {
+                            "reason": "invalid_state",
+                            "previous_state": "restarting",
+                        }
+                    },
+                )
+            assert request.url.path.endswith("/state")
+            proc = start.spy_return
+            assert proc._process.wait(timeout=0) == -signal.SIGKILL
+            assert json.loads(request.content)["state"] == SERVER_TERMINATED
+            return httpx.Response(204)
+
+        exit_code = supervise_task(
+            dag_rel_path=os.devnull,
+            bundle_info=FAKE_BUNDLE,
+            token="",
+            ti=TaskInstance(
+                id=ti_id,
+                task_id="task",
+                dag_id="dag",
+                run_id="run",
+                try_number=1,
+                dag_version_id=uuid7(),
+                queue="default",
+            ),
+            client=make_client(transport=httpx.MockTransport(handle_request)),
+        )
+        assert exit_code == -signal.SIGKILL
+        assert requests == [f"/task-instances/{ti_id}/run", f"/task-instances/{ti_id}/state"]
+        assert start.spy_return.wait() == -signal.SIGKILL
+        assert len(requests) == 2
 
     def test_start_raises_task_already_running_and_kills_subprocess(self):
         """Test that ActivitySubprocess.start() raises TaskAlreadyRunningError and kills the child
@@ -3675,7 +3723,7 @@ class TestHandleRequest:
         """If a direct terminal-state API call was attempted and raised, the
         recovery dispatcher must re-issue the dedicated endpoint (not
         `finish()`, which the server-side endpoint refuses for SUCCESS /
-        DEFERRED / SERVER_TERMINATED). Covers all four message types.
+        DEFERRED). Covers all four message types.
         """
         watched_subprocess, _ = watched_subprocess
         watched_subprocess._exit_code = 0

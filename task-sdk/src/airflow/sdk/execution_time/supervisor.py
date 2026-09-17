@@ -202,7 +202,6 @@ STATES_SENT_DIRECTLY: frozenset[TaskInstanceState | str] = frozenset(
         TaskInstanceState.UP_FOR_RESCHEDULE,
         TaskInstanceState.UP_FOR_RETRY,
         TaskInstanceState.SUCCESS,
-        SERVER_TERMINATED,
     }
 )
 
@@ -1367,14 +1366,15 @@ class ActivitySubprocess(WatchedSubprocess):
 
     _terminal_state: str | None = attrs.field(default=None, init=False)
     _final_state: str | None = attrs.field(default=None, init=False)
+    _wait_completed: bool = attrs.field(default=False, init=False)
     # The terminal-state message currently being processed by `_handle_request`,
     # captured BEFORE the dedicated API call (succeed / retry / defer /
     # reschedule). If the API call raises (network blip, server 5xx, etc.),
     # this attribute stays set and the dispatcher in
     # `update_task_state_if_needed` re-issues the matching API call on
     # subprocess exit — re-attempting the original transition rather than
-    # falling back to `finish()`, which doesn't accept SUCCESS / DEFERRED /
-    # SERVER_TERMINATED on the server side. Cleared (and `_terminal_state`
+    # falling back to `finish()`, which doesn't accept SUCCESS / DEFERRED
+    # on the server side. Cleared (and `_terminal_state`
     # set) only after the API call returns successfully.
     _pending_terminal_state_msg: (
         SucceedTask | RetryTask | DeferTask | RescheduleTask | AwaitInputTask | None
@@ -1451,9 +1451,18 @@ class ActivitySubprocess(WatchedSubprocess):
             ti_context = self.client.task_instances.start(ti.id, self.pid, datetime.now(tz=timezone.utc))
             self._should_retry = ti_context.should_retry
             self._last_successful_heartbeat = time.monotonic()
-        except Exception:
+        except Exception as e:
             # On any error kill that subprocess!
             self.kill(signal.SIGKILL)
+            if (
+                isinstance(e, ServerResponseError)
+                and e.response.status_code == HTTPStatus.CONFLICT
+                and isinstance(e.detail, dict)
+                and e.detail.get("reason") == "invalid_state"
+                and e.detail.get("previous_state") == "restarting"
+            ):
+                self._terminal_state = SERVER_TERMINATED
+                return
             raise
 
         # ti_context.start_date is only populated by the server when resuming from a deferral (to preserve the
@@ -1481,7 +1490,7 @@ class ActivitySubprocess(WatchedSubprocess):
             log.debug("Couldn't send startup message to Subprocess - it died very early", pid=self.pid)
 
     def wait(self) -> int:
-        if self._exit_code is not None:
+        if self._wait_completed and self._exit_code is not None:
             return self._exit_code
 
         try:
@@ -1499,11 +1508,21 @@ class ActivitySubprocess(WatchedSubprocess):
             # Now at the last possible moment, when all logs and comms with the subprocess has finished,
             # lets upload the remote logs. Run this in a `finally` so the logs are uploaded even if the
             # state update above raised — a failed state update is exactly when the logs matter most.
+            self._wait_completed = True
             self._upload_logs()
 
         return self._exit_code
 
     def update_task_state_if_needed(self):
+        if self.final_state == SERVER_TERMINATED:
+            self.client.task_instances.finish(
+                id=self.id,
+                state=SERVER_TERMINATED,
+                when=datetime.now(tz=timezone.utc),
+                rendered_map_index=self._rendered_map_index,
+                pid=self.pid,
+            )
+            return
         # If a direct-state API call (succeed / retry / defer / reschedule)
         # was attempted but raised, `_pending_terminal_state_msg` still holds
         # the original request. Re-issue the matching dedicated API call so
@@ -1511,7 +1530,7 @@ class ActivitySubprocess(WatchedSubprocess):
         # Without this recovery, a transient API failure during the direct
         # call would leave the TI stuck RUNNING on the server — `finish()`
         # cannot substitute because the server-side `finish` endpoint does
-        # not accept SUCCESS / DEFERRED / SERVER_TERMINATED transitions.
+        # not accept SUCCESS / DEFERRED transitions.
         if self._pending_terminal_state_msg is not None:
             self._replay_pending_terminal_state_msg()
             return

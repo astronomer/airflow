@@ -262,16 +262,23 @@ class TaskInstanceOperations:
         except ServerResponseError as e:
             if e.response.status_code == HTTPStatus.CONFLICT:
                 detail = e.detail
-                if (
-                    isinstance(detail, dict)
-                    and detail.get("reason") == "invalid_state"
-                    and detail.get("previous_state") == "running"
+                if isinstance(detail, dict) and (
+                    detail.get("reason") == "running_elsewhere"
+                    or (detail.get("reason") == "invalid_state" and detail.get("previous_state") == "running")
                 ):
                     raise TaskAlreadyRunningError(f"Task instance {id} is already running") from e
             raise
         return TIRunContext.model_validate_json(resp.read())
 
-    def finish(self, id: uuid.UUID, state: TerminalStateNonSuccess, when: datetime, rendered_map_index):
+    def finish(
+        self,
+        id: uuid.UUID,
+        state: TerminalStateNonSuccess,
+        when: datetime,
+        rendered_map_index,
+        *,
+        pid: int | None = None,
+    ):
         """Tell the API server that this TI has reached a terminal state."""
         if state == TaskInstanceState.SUCCESS:
             raise ValueError("Logic error. SUCCESS state should call the `succeed` function instead")
@@ -279,7 +286,10 @@ class TaskInstanceOperations:
         body = TITerminalStatePayload(
             end_date=when, state=TerminalStateNonSuccess(state), rendered_map_index=rendered_map_index
         )
-        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json())
+        if state == TerminalStateNonSuccess.SERVER_TERMINATED:
+            body.hostname = get_hostname()
+            body.pid = pid
+        self.client.patch(f"task-instances/{id}/state", content=body.model_dump_json(exclude_unset=True))
 
     def retry(
         self,
