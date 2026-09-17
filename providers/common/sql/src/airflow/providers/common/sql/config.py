@@ -62,6 +62,9 @@ class DataSourceConfig:
     require ``uri`` or ``storage_type``; they use ``conn_id`` and format-specific
     keys in ``options`` (e.g. ``catalog_table_name`` for Iceberg).
 
+    **Plain database tables** (neither ``uri`` nor ``format`` set) are not
+    object-store backed either; ``storage_type`` stays ``None`` and is not inferred.
+
     :param conn_id: The connection ID to use for accessing the data source.
     :param uri: The URI of the data source (e.g., file path, S3 bucket, etc.).
         Not required for catalog-managed formats.
@@ -91,6 +94,10 @@ class DataSourceConfig:
         if self.is_table_provider:
             if self.db_name is None:
                 raise ValueError(f"Database name must be provided for table providers {TABLE_PROVIDERS}")
+            return
+
+        if not self.format and not self.uri:
+            # Plain database table: no object store involved, so storage_type stays unset.
             return
 
         if self.storage_type is None:

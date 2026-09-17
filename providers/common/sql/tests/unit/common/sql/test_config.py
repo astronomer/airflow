@@ -44,6 +44,11 @@ class TestDataSourceConfig:
         with pytest.raises(ValueError, match="Unsupported storage type for URI"):
             DataSourceConfig(conn_id="test", uri="unknown://bucket/path", table_name="a_table")
 
+    def test_plain_db_table_without_uri_does_not_infer_storage_type(self):
+        config = DataSourceConfig(conn_id="postgres_default", table_name="my_table")
+        assert config.storage_type is None
+        assert config.uri == ""
+
     def test_missing_table_name_raises_error(self):
         with pytest.raises(ValueError, match="Table name must be provided for storage type"):
             DataSourceConfig(conn_id="test", uri="s3://bucket/path", table_name="")
