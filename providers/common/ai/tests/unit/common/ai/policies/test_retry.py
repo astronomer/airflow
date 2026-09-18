@@ -16,16 +16,24 @@
 # under the License.
 from __future__ import annotations
 
+import copy
 from datetime import timedelta
+from typing import get_args
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
+from pydantic_ai import Agent
+from pydantic_ai.agent import AgentRunResult
 
 # LLMRetryPolicy depends on the RetryPolicy ABC introduced in Airflow 3.3 (AIP-105).
 # Skip the entire test module on older Airflow versions tested in compat CI.
 pytest.importorskip("airflow.sdk.definitions.retry_policy", reason="RetryPolicy requires Airflow 3.3+")
 
 from airflow.providers.common.ai.policies.retry import (
+    DEFAULT_INSTRUCTIONS,
+    DEFAULT_RETRY_DELAYS,
+    ERROR_CATEGORIES,
     ErrorClassification,
     LLMRetryPolicy,
     redact_registered_secrets,
@@ -35,16 +43,11 @@ from airflow.sdk.definitions.retry_policy import RetryAction, RetryRule
 from airflow.sdk.log import mask_secret
 
 
-def _make_mock_agent(category, should_retry, delay=0, reasoning="test"):
+def _make_mock_agent(category, reasoning="test"):
     """Create a mock agent that returns a canned ErrorClassification."""
-    mock_result = MagicMock()
-    mock_result.output = ErrorClassification(
-        category=category,
-        should_retry=should_retry,
-        suggested_delay_seconds=delay,
-        reasoning=reasoning,
-    )
-    mock_agent = MagicMock()
+    mock_result = MagicMock(spec=AgentRunResult)
+    mock_result.output = ErrorClassification(category=category, reasoning=reasoning)
+    mock_agent = MagicMock(spec=Agent)
     mock_agent.run_sync.return_value = mock_result
     return mock_agent
 
@@ -61,59 +64,191 @@ def test_redact_registered_secrets_masks_only_registered_values():
     )
 
 
+class TestErrorClassificationSchema:
+    """The category set is a closed contract, not a hint in the prompt."""
+
+    def test_category_names_are_pinned(self):
+        """Spelled out here on purpose.
+
+        ``ERROR_CATEGORIES`` is both the schema and the gate ``retry_delays`` validates
+        against, so a test that derives its expectations from it cannot catch a rename or
+        a dropped member. The prompt has to move with them or the model is offered names
+        the schema rejects.
+        """
+        expected = ("rate_limit", "auth", "network", "data", "resource", "transient", "permanent")
+
+        assert expected == ERROR_CATEGORIES
+        assert get_args(ErrorClassification.model_fields["category"].annotation) == expected
+        for category in expected:
+            assert f"- {category}:" in DEFAULT_INSTRUCTIONS
+
+    @pytest.mark.parametrize("category", ERROR_CATEGORIES)
+    def test_every_documented_category_validates(self, category):
+        assert ErrorClassification(category=category, reasoning="x").category == category
+
+    @pytest.mark.parametrize(
+        "category",
+        ["rate-limit", "RATE_LIMIT", "Rate limit exceeded, should retry after a delay", ""],
+    )
+    def test_category_outside_the_set_is_rejected(self, category):
+        """A near-miss spelling or a sentence must not reach the retry decision."""
+        with pytest.raises(ValidationError):
+            ErrorClassification(category=category, reasoning="x")
+
+    def test_default_retry_delays_cannot_be_mutated(self):
+        """The default table is shared by every policy instance, so it must be read-only."""
+        with pytest.raises(TypeError):
+            DEFAULT_RETRY_DELAYS["auth"] = timedelta(seconds=1)  # type: ignore[index]
+
+    def test_default_retry_delays_only_names_known_categories(self):
+        assert set(DEFAULT_RETRY_DELAYS) <= set(ERROR_CATEGORIES)
+
+
 class TestLLMClassifyDecisions:
     """Test that _classify maps LLM classification to correct RetryDecisions."""
 
+    @pytest.mark.parametrize(
+        ("category", "expected_action", "expected_delay"),
+        [
+            pytest.param("rate_limit", RetryAction.RETRY, timedelta(seconds=60), id="rate_limit"),
+            pytest.param("network", RetryAction.RETRY, timedelta(seconds=10), id="network"),
+            pytest.param("transient", RetryAction.RETRY, timedelta(seconds=30), id="transient"),
+            pytest.param("auth", RetryAction.FAIL, None, id="auth"),
+            pytest.param("data", RetryAction.FAIL, None, id="data"),
+            pytest.param("resource", RetryAction.FAIL, None, id="resource"),
+            pytest.param("permanent", RetryAction.FAIL, None, id="permanent"),
+        ],
+    )
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
-    def test_auth_error_returns_fail(self, mock_hook_cls):
-        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(
-            "auth", should_retry=False, reasoning="API key expired"
-        )
+    def test_default_table_covers_every_category(
+        self, mock_hook_cls, category, expected_action, expected_delay
+    ):
+        """The retry/fail split and the delays are the documented defaults, derived in-process."""
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(category)
         policy = LLMRetryPolicy(llm_conn_id="test")
-        decision = policy.evaluate(PermissionError("403"), try_number=1, max_tries=3)
 
-        assert decision.action == RetryAction.FAIL
-        assert "auth" in decision.reason
-        assert "API key expired" in decision.reason
+        decision = policy.evaluate(RuntimeError("boom"), try_number=1, max_tries=3)
+
+        assert decision.action == expected_action
+        assert decision.retry_delay == expected_delay
+
+    @pytest.mark.parametrize(
+        ("category", "reasoning", "expected"),
+        [
+            pytest.param("auth", "API key expired", "auth: API key expired", id="fail-branch"),
+            # RETRY is the branch whose reason is persisted to the task instance's
+            # retry_reason, so it is the one a Dag author actually reads.
+            pytest.param("rate_limit", "429 from the API", "rate_limit: 429 from the API", id="retry-branch"),
+        ],
+    )
+    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
+    def test_reason_carries_category_and_reasoning(self, mock_hook_cls, category, reasoning, expected):
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(category, reasoning)
+        policy = LLMRetryPolicy(llm_conn_id="test")
+
+        decision = policy.evaluate(RuntimeError("boom"), try_number=1, max_tries=3)
+
+        assert decision.reason == expected
 
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
-    def test_rate_limit_returns_retry_with_delay(self, mock_hook_cls):
-        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(
-            "rate_limit", should_retry=True, delay=60, reasoning="429"
-        )
-        policy = LLMRetryPolicy(llm_conn_id="test")
+    def test_retry_delays_replaces_the_default_table(self, mock_hook_cls):
+        """Passing retry_delays replaces the defaults, so an omitted category now fails."""
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("rate_limit")
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays={"auth": timedelta(seconds=5)})
+
         decision = policy.evaluate(RuntimeError("429"), try_number=1, max_tries=3)
 
-        assert decision.action == RetryAction.RETRY
-        assert decision.retry_delay == timedelta(seconds=60)
+        assert decision.action == RetryAction.FAIL
 
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
-    def test_transient_retry_with_zero_delay_uses_default(self, mock_hook_cls):
-        """suggested_delay_seconds=0 means use the task's default delay, not override."""
-        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(
-            "transient", should_retry=True, delay=0
-        )
-        policy = LLMRetryPolicy(llm_conn_id="test")
+    def test_retry_delays_can_retry_a_default_fail_category(self, mock_hook_cls):
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("auth")
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays={"auth": timedelta(seconds=5)})
+
+        decision = policy.evaluate(PermissionError("expired token"), try_number=1, max_tries=3)
+
+        assert decision.action == RetryAction.RETRY
+        assert decision.retry_delay == timedelta(seconds=5)
+
+    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
+    def test_none_delay_leaves_the_task_backoff_in_charge(self, mock_hook_cls):
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("transient")
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays={"transient": None})
+
         decision = policy.evaluate(RuntimeError("glitch"), try_number=1, max_tries=3)
-
-        assert decision.action == RetryAction.RETRY
-        assert decision.retry_delay is None  # None = use task's default
-
-    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
-    def test_negative_delay_treated_as_no_override(self, mock_hook_cls):
-        """Negative delay from LLM should not produce a negative timedelta."""
-        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent(
-            "transient", should_retry=True, delay=-5
-        )
-        policy = LLMRetryPolicy(llm_conn_id="test")
-        decision = policy.evaluate(RuntimeError("x"), try_number=1, max_tries=3)
 
         assert decision.action == RetryAction.RETRY
         assert decision.retry_delay is None
 
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
+    def test_empty_retry_delays_fails_every_category(self, mock_hook_cls):
+        """An empty mapping is a real choice -- classify and always fail -- not "use defaults"."""
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("rate_limit")
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays={})
+
+        decision = policy.evaluate(RuntimeError("429"), try_number=1, max_tries=3)
+
+        assert decision.action == RetryAction.FAIL
+
+    def test_unknown_category_in_retry_delays_raises(self):
+        with pytest.raises(ValueError, match="cannot return: \\['flaky', 'rate-limit'\\]"):
+            LLMRetryPolicy(
+                llm_conn_id="test",
+                retry_delays={"rate-limit": timedelta(seconds=1), "flaky": None},
+            )
+
+    def test_negative_delay_in_retry_delays_raises(self):
+        with pytest.raises(ValueError, match="must not be negative, got negative delays for \\['auth'\\]"):
+            LLMRetryPolicy(llm_conn_id="test", retry_delays={"auth": timedelta(seconds=-1)})
+
+    def test_int_seconds_in_retry_delays_raises(self):
+        """Int seconds was the shape of the removed ``suggested_delay_seconds`` field."""
+        with pytest.raises(ValueError, match="must be timedelta or None, got \\['rate_limit=60'\\]"):
+            LLMRetryPolicy(llm_conn_id="test", retry_delays={"rate_limit": 60})
+
+    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
+    def test_zero_delay_retries_without_waiting(self, mock_hook_cls):
+        """timedelta(0) is an override to retry at once, distinct from None."""
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("transient")
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays={"transient": timedelta(0)})
+
+        decision = policy.evaluate(RuntimeError("glitch"), try_number=1, max_tries=3)
+
+        assert decision.action == RetryAction.RETRY
+        assert decision.retry_delay == timedelta(0)
+
+    @pytest.mark.parametrize(
+        "retry_delays",
+        [
+            pytest.param(None, id="default-table"),
+            pytest.param({"rate_limit": timedelta(seconds=1)}, id="caller-table"),
+        ],
+    )
+    def test_policy_can_be_deep_copied(self, retry_delays):
+        """``TaskGroup(default_args={"retry_policy": ...})`` deep-copies the policy.
+
+        The default table is a mappingproxy, which cannot be pickled, so holding it by
+        reference would make the documented configuration the one that fails at Dag parse.
+        """
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays=retry_delays)
+
+        assert copy.deepcopy(policy).retry_delays == policy.retry_delays
+
+    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
+    def test_caller_mapping_is_copied(self, mock_hook_cls):
+        """Mutating the caller's mapping after construction must not change the policy."""
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("rate_limit")
+        delays = {"rate_limit": timedelta(seconds=7)}
+        policy = LLMRetryPolicy(llm_conn_id="test", retry_delays=delays)
+        delays["rate_limit"] = timedelta(seconds=999)
+
+        decision = policy.evaluate(RuntimeError("429"), try_number=1, max_tries=3)
+
+        assert decision.retry_delay == timedelta(seconds=7)
+
+    @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
     def test_prompt_includes_exception_type_and_message(self, mock_hook_cls):
-        mock_agent = _make_mock_agent("data", should_retry=False)
+        mock_agent = _make_mock_agent("data")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test")
@@ -130,7 +265,7 @@ class TestLLMClassifyDecisions:
         secret_value = "super-secret-conn-password"
         mask_secret(secret_value)
 
-        mock_agent = _make_mock_agent("auth", should_retry=False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test")
@@ -154,7 +289,7 @@ class TestLLMClassifyDecisions:
         secret_value = "super-secret-conn-password"
         mask_secret(secret_value)
 
-        mock_agent = _make_mock_agent("auth", should_retry=False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test", redact_exception=False)
@@ -175,7 +310,7 @@ class TestLLMClassifyDecisions:
         secret_value = "super-secret-conn-password"
         mask_secret(secret_value)
 
-        mock_agent = _make_mock_agent("auth", should_retry=False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test", redactor=None)
@@ -201,7 +336,7 @@ class TestLLMClassifyDecisions:
         secret_value = "super-secret-conn-password"
         mask_secret(secret_value)
 
-        mock_agent = _make_mock_agent("auth", should_retry=False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test", redactor=lambda s: s.replace("authenticate", "REDACTED"))
@@ -230,7 +365,7 @@ class TestLLMClassifyDecisions:
     def test_message_truncated_when_over_max_exception_length(
         self, mock_hook_cls, max_exception_length, message_length, expect_truncated
     ):
-        mock_agent = _make_mock_agent("data", should_retry=False)
+        mock_agent = _make_mock_agent("data")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(
@@ -261,7 +396,7 @@ class TestLLMClassifyDecisions:
         padding = "a" * (max_exception_length - 5)
         message = f"{padding}{secret_value}"
 
-        mock_agent = _make_mock_agent("auth", should_retry=False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test", max_exception_length=max_exception_length)
@@ -278,7 +413,7 @@ class TestLLMClassifyDecisions:
 
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
     def test_custom_instructions_forwarded_to_agent(self, mock_hook_cls):
-        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("x", False)
+        mock_hook_cls.return_value.create_agent.return_value = _make_mock_agent("permanent")
 
         policy = LLMRetryPolicy(llm_conn_id="test", instructions="My custom prompt")
         policy.evaluate(ValueError("x"), try_number=1, max_tries=3)
@@ -290,7 +425,7 @@ class TestLLMClassifyDecisions:
 
     @patch("airflow.providers.common.ai.hooks.pydantic_ai.PydanticAIHook", autospec=True)
     def test_timeout_passed_via_model_settings(self, mock_hook_cls):
-        mock_agent = _make_mock_agent("auth", False)
+        mock_agent = _make_mock_agent("auth")
         mock_hook_cls.return_value.create_agent.return_value = mock_agent
 
         policy = LLMRetryPolicy(llm_conn_id="test", timeout=15.0)

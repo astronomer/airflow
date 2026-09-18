@@ -138,7 +138,8 @@ Reliability
    * - Guide
      - What it shows
    * - :doc:`retry_policies`
-     - Classifying task failures with an LLM to decide retry, fail, or delay. Source:
+     - Classifying task failures with an LLM, then deriving retry, fail, or delay from
+       the category. Source:
        `example_llm_retry_policy.py <https://github.com/apache/airflow/blob/providers-common-ai/|version|/providers/common/ai/src/airflow/providers/common/ai/example_dags/example_llm_retry_policy.py>`__.
 
 .. toctree::

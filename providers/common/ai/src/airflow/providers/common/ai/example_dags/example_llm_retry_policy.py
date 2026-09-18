@@ -17,8 +17,9 @@
 """
 Example DAG demonstrating LLM-powered retry policies.
 
-Uses an LLM (via PydanticAIHook) to classify errors and decide whether
-to retry, fail immediately, or retry with a custom delay.
+Uses an LLM (via PydanticAIHook) to name the kind of failure. The policy
+then looks that category up in its retry table to decide whether to retry,
+fail immediately, or retry after a specific delay.
 
 Prerequisites:
   - Connection ``pydanticai_default`` with ``conn_type='pydanticai'``,
@@ -33,7 +34,7 @@ from datetime import timedelta
 from airflow.providers.common.compat.sdk import dag, task
 
 try:
-    from airflow.providers.common.ai.policies.retry import LLMRetryPolicy
+    from airflow.providers.common.ai.policies.retry import DEFAULT_RETRY_DELAYS, LLMRetryPolicy
     from airflow.sdk.definitions.retry_policy import RetryAction, RetryRule
 
     llm_policy = LLMRetryPolicy(
@@ -45,26 +46,39 @@ try:
         ],
     )
 
+    # The default table fails ``resource``, on the grounds that a missing table needs a
+    # human. Here the table is created upstream, so it is worth one more look.
+    patient_policy = LLMRetryPolicy(
+        llm_conn_id="pydanticai_default",
+        retry_delays={**DEFAULT_RETRY_DELAYS, "resource": timedelta(minutes=5)},
+    )
+
     @dag(catchup=False, tags=["example", "retry_policy", "llm"])
     def example_llm_retry_policy():
         @task(retries=3, retry_delay=timedelta(minutes=1), retry_policy=llm_policy)
         def task_auth_error():
-            """LLM should classify as auth -> FAIL immediately."""
+            """Should classify as ``auth``, absent from the retry table -> FAIL immediately."""
             raise PermissionError("403 Forbidden: API key expired for service account analytics@proj.iam")
 
         @task(retries=3, retry_delay=timedelta(minutes=1), retry_policy=llm_policy)
         def task_rate_limit():
-            """LLM should classify as rate_limit -> RETRY with ~60s delay."""
+            """Should classify as ``rate_limit``, which the retry table maps to a 60s delay."""
             raise RuntimeError("429 Too Many Requests: Rate limit exceeded. Retry after 60 seconds.")
 
         @task(retries=3, retry_delay=timedelta(minutes=1), retry_policy=llm_policy)
         def task_data_error():
-            """LLM should classify as data -> FAIL immediately."""
+            """Should classify as ``data``, absent from the retry table -> FAIL immediately."""
             raise ValueError("Column 'user_id' expected type INT but got STRING in row 42.")
+
+        @task(retries=3, retry_delay=timedelta(minutes=1), retry_policy=patient_policy)
+        def task_missing_table():
+            """Should classify as ``resource``, which this policy's table retries after 5m."""
+            raise FileNotFoundError("Table 'analytics.daily_orders' does not exist")
 
         task_auth_error()
         task_rate_limit()
         task_data_error()
+        task_missing_table()
 
     example_llm_retry_policy()
 except ImportError:

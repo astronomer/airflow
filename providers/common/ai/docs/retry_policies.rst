@@ -76,7 +76,9 @@ When a task fails, ``LLMRetryPolicy``:
    to the prompt.
 2. The LLM classifies the error into a category (``rate_limit``, ``auth``,
    ``network``, ``data``, ``resource``, ``transient``, ``permanent``)
-3. Based on the classification, returns RETRY (with a suggested delay) or FAIL
+3. The policy looks that category up in ``retry_delays`` and returns RETRY
+   (with that category's delay) or FAIL. The lookup happens in the worker, not
+   in the model
 4. The classification reason is logged in the task logs
 
 This classification call is a separate LLM request, made by ``LLMRetryPolicy``
@@ -85,24 +87,31 @@ itself rather than by an operator -- it is not subject to an operator's
 of any cost cap configured on the failing task. It is bounded by ``timeout``
 and ``max_exception_length``, but not by a cost limit.
 
-If the LLM call fails (provider down, timeout, bad credentials), the policy
-falls back to ``fallback_rules`` if configured, or to the task's standard
-retry behaviour.
+If the LLM call fails (provider down, timeout, bad credentials), or the model
+cannot produce one of the seven categories even after pydantic-ai re-prompts
+it, the policy falls back to ``fallback_rules`` if configured, or to the task's
+standard retry behaviour. The retry table is not consulted in that case --
+there is no category to look up.
 
 What the model can and cannot do
 --------------------------------
 
-The model answers two questions: retry or not, and how long to wait. It is
+The model answers one question: which kind of failure is this. It is
 given no tools and there is no way to attach any, so it cannot run code, call
 an API, read a connection, or reach your data. Beyond your ``instructions``,
 it sees only the exception's class name, the exception message (after
 redaction and truncation), and how many attempts are left. The prompt says
-``attempt {try_number} of {max_tries}``, so the model knows the limit, not
-just where it is right now -- that is what makes an instruction like "retry
-once, then stop" (see the Snowflake example below) actually work. It returns
-four fields: ``category``, ``should_retry``, ``suggested_delay_seconds``, and
-``reasoning``. Only ``should_retry`` and ``suggested_delay_seconds`` affect
-the run.
+``attempt {try_number} of {max_tries}``, so the model knows the limit and not
+just where it is right now. That only moves the category -- an instruction like
+"after two attempts treat an expired token as ``auth`` rather than
+``transient``" (see the Snowflake example below) works because the model can see
+which attempt this is.
+
+It returns two fields: ``category``, constrained to the seven values above, and
+``reasoning``. It does not decide whether to retry and it does not choose the
+delay -- both come from ``retry_delays`` in the worker process, keyed on the
+category. A model cannot return a category the policy does not recognize, and
+it cannot return a category paired with an action that contradicts it.
 
 ``category`` and ``reasoning`` are only recorded on a RETRY. They are written
 to the task instance's ``retry_reason`` (truncated to 500 characters, see
@@ -114,44 +123,90 @@ Two limits are worth knowing about:
 * RETRY cannot give a task more attempts than ``retries`` allows. FAIL, though, ends the task
   straight away even when attempts were left, so a wrong classification costs
   the task the retries it would otherwise have had.
-* A positive ``suggested_delay_seconds`` is used as returned. There is no
-  upper limit -- a task's own ``max_retry_delay`` does not clamp it. But 0 or
-  a negative value is not used as a delay at all: it is treated the same as
-  no delay, so the task's own ``retry_delay`` / ``retry_exponential_backoff``
-  / ``max_retry_delay`` apply instead (see
-  :doc:`apache-airflow:core-concepts/tasks`). A model told to retry
-  immediately can still wait out the task's default delay. If particular
-  delays matter to you, state them in ``instructions`` as the examples below
-  do.
+* A delay from ``retry_delays`` is used as-is. There is no upper limit -- a
+  task's own ``max_retry_delay`` does not clamp it. A ``None`` delay means no
+  override at all, so the task's own ``retry_delay`` /
+  ``retry_exponential_backoff`` / ``max_retry_delay`` apply instead (see
+  :doc:`apache-airflow:core-concepts/tasks`).
+
+Retry table
+-----------
+
+``retry_delays`` maps a category to the delay before its retry. A category
+absent from the mapping fails the task. The default is:
+
+.. code-block:: python
+
+    from datetime import timedelta
+
+    DEFAULT_RETRY_DELAYS = {
+        "rate_limit": timedelta(seconds=60),
+        "network": timedelta(seconds=10),
+        "transient": timedelta(seconds=30),
+    }
+    # auth, data, resource and permanent are absent, so they FAIL.
+
+Pass your own to change either half of that. It **replaces** the default
+rather than merging into it, so include every category you want retried --
+or spread the default and edit what you need:
+
+.. code-block:: python
+
+    from airflow.providers.common.ai.policies.retry import DEFAULT_RETRY_DELAYS
+
+    LLMRetryPolicy(
+        llm_conn_id="pydanticai_default",
+        retry_delays={**DEFAULT_RETRY_DELAYS, "resource": None},
+    )
+
+Written out in full instead:
+
+.. code-block:: python
+
+    LLMRetryPolicy(
+        llm_conn_id="pydanticai_default",
+        retry_delays={
+            "rate_limit": timedelta(minutes=5),  # our provider's window is longer
+            "network": timedelta(seconds=10),
+            "transient": timedelta(seconds=30),
+            "resource": None,  # retry, but on the task's own backoff
+        },
+    )
+
+Delays are ``timedelta``, not seconds. Naming a category outside the seven,
+passing a bare int, or passing a negative delay raises ``ValueError`` when the
+policy is constructed rather than on the first task failure.
 
 Custom instructions
 -------------------
 
-The default classifier handles generic categories. For domain-specific
-behaviour, override ``instructions`` to inject your own taxonomy. The LLM still
-returns an :class:`~airflow.providers.common.ai.policies.retry.ErrorClassification`
-(``category``, ``should_retry``, ``suggested_delay_seconds``, ``reasoning``)
--- only the prompt changes.
+The default classifier is written for generic infrastructure errors. Override
+``instructions`` to teach it your stack's error strings. Instructions decide how
+errors are sorted into the seven categories; they cannot add categories or set
+delays. Those are ``retry_delays``, above.
 
 .. code-block:: python
 
     SNOWFLAKE_INSTRUCTIONS = (
         "You are an error classifier for Snowflake-backed data pipelines. "
         "Classify the error into one of: rate_limit, auth, network, data, "
-        "transient, permanent.\n\n"
+        "resource, transient, permanent.\n\n"
         "Snowflake-specific guidance:\n"
-        "- 'Statement queued' or 'concurrency limit' -> rate_limit, retry after 120s\n"
-        "- 'JWT token expired' -> transient (token rotates), retry after 30s\n"
-        "- 'Authentication token has expired' AFTER multiple retries -> auth, do NOT retry\n"
-        "- 'Column does not exist' -> data, do NOT retry (schema drift needs human fix)\n"
-        "- 'Warehouse suspended' -> transient, retry after 30s (auto-resume)\n\n"
-        "Set suggested_delay_seconds based on the error type. "
-        "Set 0 for errors that should not retry."
+        "- 'Statement queued' or 'concurrency limit' -> rate_limit\n"
+        "- 'JWT token expired' -> transient (the token rotates)\n"
+        "- 'Authentication token has expired' AFTER multiple retries -> auth\n"
+        "- 'Column does not exist' -> data (schema drift needs a human fix)\n"
+        "- 'Warehouse suspended' -> transient (auto-resume)\n"
     )
 
     snowflake_policy = LLMRetryPolicy(
         llm_conn_id="pydanticai_default",
         instructions=SNOWFLAKE_INSTRUCTIONS,
+        retry_delays={
+            "rate_limit": timedelta(seconds=120),  # queued statements clear slowly
+            "network": timedelta(seconds=10),
+            "transient": timedelta(seconds=30),
+        },
         fallback_rules=[
             RetryRule(
                 exception=ConnectionError,
@@ -167,11 +222,15 @@ returns an :class:`~airflow.providers.common.ai.policies.retry.ErrorClassificati
 
 When writing custom instructions:
 
-- The LLM must return the same ``ErrorClassification`` schema (``category``,
-  ``should_retry``, ``suggested_delay_seconds``, ``reasoning``). Mention the
-  fields explicitly so the model fills them.
+- Use the seven category names as-is. The model is constrained to them, so a
+  name you invent cannot come back. A model that insists on one anyway is
+  re-prompted once by pydantic-ai and then gives up, which lands the task on
+  ``fallback_rules`` or on its own retry behaviour, having billed two calls.
+  Offering a name the schema rejects is therefore worse than offering none.
 - Be concrete with examples (``"'Warehouse suspended' -> transient"``) rather
   than vague rules ("treat warehouse issues as recoverable").
+- Do not spell out delays or "do NOT retry" instructions. The model no longer
+  decides either one, and telling it to only spends tokens.
 - ``retry_reason`` is truncated to 500 chars in the audit log -- keep
   ``reasoning`` outputs concise.
 
@@ -200,6 +259,14 @@ Parameters
    * - ``timeout``
      - 30.0
      - Max seconds to wait for the LLM response before falling back.
+   * - ``retry_delays``
+     - ``rate_limit`` 60s, ``network`` 10s, ``transient`` 30s
+     - Which categories are retried, and how long to wait before each. A
+       category absent from the mapping fails the task; a ``None`` delay
+       retries on the task's own ``retry_delay`` and backoff. **Replaces**
+       the default mapping rather than merging into it. Raises
+       ``ValueError`` at construction time for an unknown category name or a
+       negative delay.
    * - ``redactor``
      - None (uses ``redact_registered_secrets``)
      - Callable ``(str) -> str`` applied to the exception's string

@@ -24,7 +24,8 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Literal, cast, get_args
 
 from pydantic import BaseModel
 
@@ -43,40 +44,67 @@ except ImportError:
     ) from None
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from airflow.sdk.definitions.context import Context
     from airflow.sdk.definitions.retry_policy import RetryRule
 
 log = logging.getLogger(__name__)
 
-__all__ = ["ErrorClassification", "LLMRetryPolicy", "redact_registered_secrets"]
+__all__ = [
+    "DEFAULT_RETRY_DELAYS",
+    "ERROR_CATEGORIES",
+    "ErrorCategory",
+    "ErrorClassification",
+    "LLMRetryPolicy",
+    "redact_registered_secrets",
+]
+
+ErrorCategory = Literal[
+    "rate_limit",
+    "auth",
+    "network",
+    "data",
+    "resource",
+    "transient",
+    "permanent",
+]
+"""The categories the classifier is allowed to return."""
+
+ERROR_CATEGORIES: tuple[ErrorCategory, ...] = get_args(ErrorCategory)
+
+DEFAULT_RETRY_DELAYS: Mapping[ErrorCategory, timedelta | None] = MappingProxyType(
+    {
+        "rate_limit": timedelta(seconds=60),
+        "network": timedelta(seconds=10),
+        "transient": timedelta(seconds=30),
+    }
+)
+"""Categories that are retried, and how long to wait first.
+
+A category absent from this mapping fails the task. A ``None`` value retries
+without overriding the task's own ``retry_delay`` and backoff.
+"""
 
 DEFAULT_INSTRUCTIONS = (
     "You are an error classifier for a data pipeline system. "
     "Given an error message from a failed task, classify it into one of these categories:\n\n"
-    "- rate_limit: API throttling or quota exceeded. Should retry after a delay.\n"
-    "- auth: Credentials invalid, expired, or missing permissions. Should NOT retry.\n"
-    "- network: Transient connectivity issue. Should retry quickly.\n"
-    "- data: Schema validation, type mismatch, or bad input data. Should NOT retry.\n"
-    "- resource: Resource not found or unavailable (e.g., missing table, bucket). Should NOT retry.\n"
-    "- transient: Temporary issue likely to resolve on its own. Should retry.\n"
-    "- permanent: Problem that won't resolve without code or config changes. Should NOT retry.\n\n"
-    "Set suggested_delay_seconds based on the error type: "
-    "60 for rate limits, 10 for network, 30 for transient. "
-    "Set 0 for errors that should not retry."
+    "- rate_limit: API throttling or quota exceeded.\n"
+    "- auth: Credentials invalid, expired, or missing permissions.\n"
+    "- network: Transient connectivity issue.\n"
+    "- data: Schema validation, type mismatch, or bad input data.\n"
+    "- resource: Resource not found or unavailable (e.g., missing table, bucket).\n"
+    "- transient: Temporary issue likely to resolve on its own.\n"
+    "- permanent: Problem that won't resolve without code or config changes.\n\n"
+    "Pick the single best fit and explain the choice in one sentence."
 )
 
 
 class ErrorClassification(BaseModel):
     """Structured LLM output for error classification."""
 
-    category: str
-    """One of: rate_limit, auth, network, data, resource, transient, permanent."""
-    should_retry: bool
-    """Whether the operation should be retried."""
-    suggested_delay_seconds: int = 0
-    """How long to wait before retrying (0 if should_retry is False)."""
+    category: ErrorCategory
+    """Which kind of failure this is."""
     reasoning: str
     """Brief explanation of the classification decision."""
 
@@ -95,6 +123,10 @@ class LLMRetryPolicy(RetryPolicy):
     to call any configured LLM provider (OpenAI, Anthropic, Bedrock, Vertex,
     Ollama, etc.) for error classification with structured output.
 
+    The model's only job is to name the failure: it picks one of
+    :data:`ERROR_CATEGORIES` and explains the choice. Whether that category is
+    retried, and after how long, comes from ``retry_delays`` in this process.
+
     When the LLM call itself fails, the policy falls back to ``fallback_rules``
     (if provided) or returns DEFAULT to use the task's standard retry logic.
 
@@ -102,7 +134,15 @@ class LLMRetryPolicy(RetryPolicy):
     :param model_id: Model identifier override (e.g. ``"openai:gpt-4o-mini"``
         for cost efficiency). If not set, uses the model from the connection.
     :param instructions: Custom system prompt for classification.
-        Defaults to a general-purpose error classifier.
+        Defaults to a general-purpose error classifier. Instructions can
+        change how errors are sorted into :data:`ERROR_CATEGORIES`, but not
+        what the categories are -- the model is constrained to that set.
+    :param retry_delays: Which categories are retried, and how long to wait
+        before each. Defaults to :data:`DEFAULT_RETRY_DELAYS`. A category
+        absent from the mapping fails the task; a ``None`` delay retries
+        without overriding the task's own ``retry_delay`` and backoff.
+        Passing this **replaces** the default mapping rather than merging
+        into it, so pass every category you want retried.
     :param fallback_rules: Optional list of
         :class:`~airflow.sdk.definitions.retry_policy.RetryRule` applied when the
         LLM call fails. Provides a deterministic safety net.
@@ -157,12 +197,37 @@ class LLMRetryPolicy(RetryPolicy):
         fallback_rules: list[RetryRule] | None = None,
         timeout: float = 30.0,
         *,
+        retry_delays: Mapping[ErrorCategory, timedelta | None] | None = None,
         redactor: Callable[[str], str] | None = None,
         redact_exception: bool = True,
         max_exception_length: int = 4096,
     ) -> None:
         if max_exception_length <= 0:
             raise ValueError(f"max_exception_length must be a positive integer, got {max_exception_length}")
+        if retry_delays is not None:
+            unknown = sorted(set(retry_delays) - set(ERROR_CATEGORIES))
+            if unknown:
+                raise ValueError(
+                    f"retry_delays names categories the classifier cannot return: {unknown}. "
+                    f"Valid categories are {list(ERROR_CATEGORIES)}."
+                )
+            mistyped = sorted(
+                f"{category}={delay!r}"
+                for category, delay in retry_delays.items()
+                if delay is not None and not isinstance(delay, timedelta)
+            )
+            if mistyped:
+                raise ValueError(
+                    f"retry_delays values must be timedelta or None, got {mistyped}. "
+                    f"Use timedelta(seconds=60) rather than 60."
+                )
+            negative = sorted(
+                category
+                for category, delay in retry_delays.items()
+                if delay is not None and delay < timedelta(0)
+            )
+            if negative:
+                raise ValueError(f"retry_delays must not be negative, got negative delays for {negative}.")
         if not redact_exception and redactor is not None:
             raise ValueError(
                 "redactor must not be set when redact_exception=False -- passing an explicit "
@@ -175,6 +240,12 @@ class LLMRetryPolicy(RetryPolicy):
         self.instructions = instructions or DEFAULT_INSTRUCTIONS
         self.fallback_rules = fallback_rules
         self.timeout = timeout
+        # dict() on both branches: DEFAULT_RETRY_DELAYS is a mappingproxy, which cannot be
+        # deep-copied, and sharing a policy through ``TaskGroup(default_args=...)`` does
+        # deep-copy it.
+        self.retry_delays: Mapping[ErrorCategory, timedelta | None] = dict(
+            DEFAULT_RETRY_DELAYS if retry_delays is None else retry_delays
+        )
         self.redactor: Callable[[str], str] | None = (
             None if not redact_exception else redactor if redactor is not None else redact_registered_secrets
         )
@@ -229,24 +300,23 @@ class LLMRetryPolicy(RetryPolicy):
             model_settings=ModelSettings(timeout=self.timeout),
         )
         classification = result.output
+        category = classification.category
+        reason = f"{category}: {classification.reasoning}"
 
+        if category not in self.retry_delays:
+            log.info(
+                "LLM error classification: category=%s, retry=no (retried categories: %s), reasoning=%s",
+                category,
+                ", ".join(sorted(self.retry_delays)) or "none",
+                classification.reasoning,
+            )
+            return RetryDecision.fail(reason=reason)
+
+        delay = self.retry_delays[category]
         log.info(
-            "LLM error classification: category=%s, should_retry=%s, delay=%ds, reasoning=%s",
-            classification.category,
-            classification.should_retry,
-            classification.suggested_delay_seconds,
+            "LLM error classification: category=%s, retry=yes, delay=%s, reasoning=%s",
+            category,
+            delay if delay is not None else "task default",
             classification.reasoning,
         )
-
-        if not classification.should_retry:
-            return RetryDecision.fail(reason=f"{classification.category}: {classification.reasoning}")
-
-        delay = (
-            timedelta(seconds=classification.suggested_delay_seconds)
-            if classification.suggested_delay_seconds > 0
-            else None
-        )
-        return RetryDecision.retry(
-            delay=delay,
-            reason=f"{classification.category}: {classification.reasoning}",
-        )
+        return RetryDecision.retry(delay=delay, reason=reason)
