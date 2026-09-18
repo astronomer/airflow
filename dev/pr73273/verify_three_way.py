@@ -27,6 +27,7 @@ REVS = {
     "apache/main": "/opt/airflow/dev/pr73273/config_main.py",
     "author 6dd30dfa20": "/opt/airflow/dev/pr73273/config_author.py",
     "with suggestion": "/opt/airflow/dev/pr73273/config_suggested.py",
+    "author c2a634a5 (round 3)": "/opt/airflow/dev/pr73273/config_c2a634a.py",
 }
 
 
@@ -64,6 +65,10 @@ CASES = [
         lambda st: dict(conn_id="pg", table_name="t", uri="s3://b/p", format="parquet"),
     ),
     ("uri only (control)", lambda st: dict(conn_id="pg", table_name="t", uri="s3://b/p")),
+    (
+        "plain db, blank table_name (round 1 regression)",
+        lambda st: dict(conn_id="pg", table_name=""),
+    ),
 ]
 
 
@@ -76,8 +81,8 @@ def main() -> None:
     for label, build in CASES:
         cells = [run(spaces[n], build) for n in REVS]
         flag = ""
-        if cells[0] != cells[2]:
-            flag = "   <== suggestion still differs from main"
+        if cells[0] != cells[-1]:
+            flag = "   <== round-3 head still differs from main"
         print(f"{label.ljust(w)} | " + " | ".join(c.ljust(41) for c in cells) + flag)
 
 
