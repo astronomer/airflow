@@ -2086,6 +2086,18 @@ workers:
       type: string
       example: "mypackage.state.S3StateBackend"
       default: ""
+    memory_backend:
+      description: |
+        Full class name of the memory backend agents use, for deployments that want one store
+        for every agent. An agent's own ``memory_backend`` overrides this.
+
+        Memory is not the state store: a backend is asked for the entries most relevant to a
+        prompt, ranked, which a key/value store cannot answer. Leave empty (default) to keep
+        memory in the Airflow database, where nothing outside Airflow can read it.
+      version_added: 3.4.0
+      type: string
+      example: "airflow.providers.common.ai.memory.mcp.MCPMemoryBackend"
+      default: ""
     min_heartbeat_interval:
       description: |
         The minimum interval (in seconds) at which the worker checks the task instance's

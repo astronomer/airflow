@@ -87,6 +87,8 @@ def agent_add(args, session: Session = NEW_SESSION):
             model=args.model,
             context=context,
             memory_enabled=args.memory,
+            memory_backend=args.memory_backend,
+            memory_conn_id=args.memory_conn,
             budget_limit=args.budget,
             budget_period=args.period,
             created_at=now,
@@ -115,6 +117,7 @@ def agent_show(args, session: Session = NEW_SESSION):
     print(f"conn_id:        {agent.conn_id}")
     print(f"model:          {agent.model}")
     print(f"memory_enabled: {agent.memory_enabled}")
+    print(f"memory_backend: {agent.memory_backend or '(metastore)'}")
     print(f"budget:         {agent.budget_limit} per {agent.budget_period}")
     print("\n--- context ---")
     print(agent.context or "(none)")

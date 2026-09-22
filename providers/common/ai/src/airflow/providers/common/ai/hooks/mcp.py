@@ -105,6 +105,8 @@ class MCPHook(BaseHook):
         self.token_provider = token_provider
         self.env_provider = env_provider
         self._server: Any = None
+        # Only meaningful for stdio; set when the transport is built.
+        self._init_timeout: int = 10
 
     @staticmethod
     def get_ui_field_behaviour() -> dict[str, Any]:
@@ -211,8 +213,26 @@ class MCPHook(BaseHook):
             return self._server
 
         try:
-            from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
             from pydantic_ai.mcp import MCPToolset
+        except ImportError:
+            raise ImportError(
+                'MCP support requires the `mcp` package. Install it with: pip install "pydantic-ai-slim[mcp]"'
+            )
+
+        transport = self.get_transport()
+        toolset = MCPToolset(transport, init_timeout=self._init_timeout)
+        self._server = toolset.prefixed(self.tool_prefix) if self.tool_prefix else toolset
+        return self._server
+
+    def get_transport(self) -> Any:
+        """
+        Return a FastMCP transport for this connection.
+
+        Split out from :meth:`get_conn` so callers that drive the server directly, rather
+        than handing its tools to a model, can reuse the same connection handling.
+        """
+        try:
+            from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
         except ImportError:
             raise ImportError(
                 'MCP support requires the `mcp` package. Install it with: pip install "pydantic-ai-slim[mcp]"'
@@ -225,11 +245,11 @@ class MCPHook(BaseHook):
         if transport == "http":
             if not conn.host:
                 raise ValueError(f"Connection {self.mcp_conn_id!r} requires a host URL for HTTP transport.")
-            toolset = MCPToolset(StreamableHttpTransport(conn.host, headers=self._auth_headers(conn)))
+            return StreamableHttpTransport(conn.host, headers=self._auth_headers(conn))
         elif transport == "sse":
             if not conn.host:
                 raise ValueError(f"Connection {self.mcp_conn_id!r} requires a host URL for SSE transport.")
-            toolset = MCPToolset(SSETransport(conn.host, headers=self._auth_headers(conn)))
+            return SSETransport(conn.host, headers=self._auth_headers(conn))
         elif transport == "stdio":
             command = extra.get("command")
             if not command:
@@ -239,19 +259,13 @@ class MCPHook(BaseHook):
             args = extra.get("args", [])
             if isinstance(args, str):
                 args = [args]
-            timeout = extra.get("timeout", 10)
-            toolset = MCPToolset(
-                StdioTransport(command=command, args=args, env=self._stdio_env(extra)),
-                init_timeout=timeout,
-            )
-        else:
-            raise ValueError(
-                f"Unknown transport {transport!r} in connection {self.mcp_conn_id!r}. "
-                "Supported: 'http', 'sse', 'stdio'."
-            )
+            self._init_timeout = extra.get("timeout", 10)
+            return StdioTransport(command=command, args=args, env=self._stdio_env(extra))
 
-        self._server = toolset.prefixed(self.tool_prefix) if self.tool_prefix else toolset
-        return self._server
+        raise ValueError(
+            f"Unknown transport {transport!r} in connection {self.mcp_conn_id!r}. "
+            "Supported: 'http', 'sse', 'stdio'."
+        )
 
     def test_connection(self) -> tuple[bool, str]:
         """

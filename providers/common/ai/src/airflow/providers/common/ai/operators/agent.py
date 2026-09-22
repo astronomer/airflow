@@ -465,8 +465,6 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
             map_index=ti.map_index if ti.map_index is not None else -1,
         )
 
-    # Key under which an agent's accumulated memory lives in its state store.
-    MEMORY_KEY: ClassVar[str] = "learned"
     SPEND_KEY: ClassVar[str] = "spend"
     # XCom key naming the agent this task ran as.
     AGENT_XCOM_KEY: ClassVar[str] = "airflow_agent_name"
@@ -502,8 +500,11 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
         blocks = [resolved.context] if resolved.context else []
         self._memory_active = self._memory_enabled(resolved)
         if self._memory_active:
-            learned = resolved.get_state(self.MEMORY_KEY)
-            if learned:
+            # The prompt is the query: a ranking backend returns only what bears on this
+            # task, rather than everything the agent has ever been told.
+            lessons = resolved.recall(query=self.prompt if isinstance(self.prompt, str) else None)
+            if lessons:
+                learned = "\n".join(f"- {lesson.content}" for lesson in lessons)
                 blocks.append(f"What you learned in earlier runs:\n{learned}")
             # `remember` is attached only in `regenerate_with_feedback`. With the tool in
             # hand on an ordinary run, a model has no way to judge its own answer, so it
@@ -690,10 +691,7 @@ class AgentOperator(BaseOperator, HITLReviewMixin):
             self.toolsets = [
                 *(original_toolsets or []),
                 build_memory_toolset(
-                    self._resolved_agent,
-                    self.MEMORY_KEY,
-                    self.log,
-                    context=self._resolved_agent.context,
+                    self._resolved_agent, self.log, context=self._resolved_agent.context
                 ),
             ]
         try:

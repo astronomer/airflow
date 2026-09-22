@@ -35,6 +35,7 @@ __all__ = [
     "BaseHook",
     "BaseNotifier",
     "BaseOperator",
+    "BaseMemoryBackend",
     "BaseOperatorLink",
     "BaseSensorOperator",
     "BaseXCom",
@@ -60,6 +61,7 @@ __all__ = [
     "HourWindow",
     "IdentityMapper",
     "Label",
+    "Memory",
     "Metadata",
     "MinimumCount",
     "MonthWindow",
@@ -224,6 +226,7 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.xcom_arg import XComArg
     from airflow.sdk.execution_time import macros
     from airflow.sdk.execution_time.context import NEVER_EXPIRE
+    from airflow.sdk.memory import BaseMemoryBackend, Memory
     from airflow.sdk.io.path import ObjectStoragePath
     from airflow.sdk.types import TaskInstance
 
@@ -318,6 +321,8 @@ __lazy_imports: dict[str, str] = {
     "dag": ".definitions.dag",
     "deadline_reference": ".definitions.deadline",
     "NEVER_EXPIRE": ".execution_time.context",
+    "BaseMemoryBackend": ".memory",
+    "Memory": ".memory",
     "get_current_context": ".definitions.context",
     "get_parsing_context": ".definitions.context",
     "literal": ".definitions.template",

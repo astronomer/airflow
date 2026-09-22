@@ -52,6 +52,7 @@ from airflow.sdk.exceptions import (
     AirflowSecretsBackendAccessDenied,
     ErrorType,
 )
+from airflow.sdk.memory import BaseMemoryBackend, Memory
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
     AgentResult,
@@ -113,6 +114,9 @@ if TYPE_CHECKING:
     from airflow.sdk.state import BaseStoreBackend
     from airflow.sdk.types import OutletEventAccessorsProtocol
 
+
+# Points at where an agent's memory lives, so the UI can say so without reading it.
+MEMORY_REFERENCE_KEY = "memory_ref"
 
 DEFAULT_FORMAT_PREFIX = "airflow.ctx."
 ENV_VAR_FORMAT_PREFIX = "AIRFLOW_CTX_"
@@ -917,6 +921,7 @@ class ResolvedAgent:
 
     def __init__(self, definition: AgentResult) -> None:
         self._definition = definition
+        self._memory: BaseMemoryBackend | None = None
 
     def __repr__(self) -> str:
         return f"<ResolvedAgent name={self.name!r} model={self.model!r}>"
@@ -941,6 +946,52 @@ class ResolvedAgent:
     @property
     def memory_enabled(self) -> bool:
         return self._definition.memory_enabled
+
+    @property
+    def memory(self) -> BaseMemoryBackend:
+        """
+        Where this agent keeps what it has learned.
+
+        Built once per run from the agent's own ``memory_backend``, else the deployment's
+        ``[workers] memory_backend``, else the metastore. The API server never builds one:
+        it only sees the reference row written after a write.
+        """
+        if self._memory is None:
+            self._memory = self._build_memory()
+        return self._memory
+
+    def _build_memory(self) -> BaseMemoryBackend:
+        from airflow.sdk.execution_time.memory import MetastoreMemoryBackend
+
+        path = self._definition.memory_backend or conf.get("workers", "memory_backend", fallback="")
+        if not path:
+            return MetastoreMemoryBackend(agent=self)
+
+        from airflow.sdk._shared.module_loading import import_string
+
+        try:
+            backend_cls = import_string(path)
+        except (ImportError, AttributeError) as e:
+            raise ValueError(f"Could not load memory backend {path!r} for agent {self.name!r}: {e}") from e
+        return backend_cls(conn_id=self._definition.memory_conn_id)
+
+    def recall(self, query: str | None = None, limit: int = 20) -> list[Memory]:
+        """Return the lessons most relevant to *query*, most relevant first."""
+        return self.memory.recall(self.name, query=query, limit=limit)
+
+    def remember(self, content: str, metadata: dict[str, Any] | None = None) -> Memory:
+        """Store a lesson, and record where memory lives so the UI can say so."""
+        stored = self.memory.remember(self.name, content, metadata)
+        try:
+            self.set_state(MEMORY_REFERENCE_KEY, self.memory.describe(self.name))
+        except Exception:
+            # The lesson is already saved; a missing signpost is not worth failing the task.
+            log.warning("Could not record the memory reference for agent %r", self.name, exc_info=True)
+        return stored
+
+    def forget(self, memory_id: str) -> None:
+        """Delete one lesson."""
+        self.memory.forget(self.name, memory_id)
 
     @property
     def budget_limit(self) -> float | None:

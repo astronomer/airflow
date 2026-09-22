@@ -69,6 +69,8 @@ def get_agent(name: str, session: SessionDep) -> AgentResponse:
         model=agent.model,
         context=agent.context,
         memory_enabled=agent.memory_enabled,
+        memory_backend=agent.memory_backend,
+        memory_conn_id=agent.memory_conn_id,
         budget_limit=agent.budget_limit,
         budget_period=agent.budget_period,
     )

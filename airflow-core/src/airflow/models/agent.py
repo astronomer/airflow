@@ -53,6 +53,10 @@ class AgentModel(Base):
 
     memory_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # Full dotted path. Falls back to [workers] memory_backend, then to the metastore.
+    memory_backend: Mapped[str | None] = mapped_column(String(500, **COLLATION_ARGS), nullable=True)
+    memory_conn_id: Mapped[str | None] = mapped_column(StringID(), nullable=True)
+
     budget_limit: Mapped[float | None] = mapped_column(Float, nullable=True)
     budget_period: Mapped[str | None] = mapped_column(String(16), nullable=True)
 

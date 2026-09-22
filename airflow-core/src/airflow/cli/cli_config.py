@@ -1581,6 +1581,11 @@ ARG_AGENT_MEMORY = Arg(
     action="store_true",
 )
 ARG_AGENT_LESSON = Arg(("lesson",), help="The lesson to store, one sentence")
+ARG_AGENT_MEMORY_BACKEND = Arg(
+    ("--memory-backend",),
+    help="Full dotted path of the memory backend. Defaults to [workers] memory_backend.",
+)
+ARG_AGENT_MEMORY_CONN = Arg(("--memory-conn",), help="Connection the memory backend should use")
 ARG_AGENT_BUDGET = Arg(("--budget",), type=float, help="Spend limit for the agent")
 ARG_AGENT_PERIOD = Arg(("--period",), help="Period the spend limit covers, e.g. month")
 
@@ -1595,6 +1600,8 @@ AGENTS_COMMANDS = (
             ARG_AGENT_MODEL,
             ARG_AGENT_CONTEXT_FILE,
             ARG_AGENT_MEMORY,
+            ARG_AGENT_MEMORY_BACKEND,
+            ARG_AGENT_MEMORY_CONN,
             ARG_AGENT_BUDGET,
             ARG_AGENT_PERIOD,
             ARG_VERBOSE,

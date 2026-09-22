@@ -31,6 +31,8 @@ class AgentResponse(StrictBaseModel):
     model: str
     context: str | None = None
     memory_enabled: bool = False
+    memory_backend: str | None = None
+    memory_conn_id: str | None = None
     budget_limit: float | None = None
     budget_period: str | None = None
 
