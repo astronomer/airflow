@@ -21,7 +21,7 @@ import functools
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 import structlog
 from sqlalchemy import delete, select
@@ -30,12 +30,14 @@ from airflow._shared.state import (
     AssetScope,
     AssetStateStoreWriterKind,
     BaseStoreBackend,
+    DagRunScope,
     StoreScope,
     TaskScope,
 )
 from airflow._shared.timezones import timezone
 from airflow.configuration import conf
 from airflow.models.asset_state_store import AssetStateStoreModel
+from airflow.models.dag_run_state_store import DagRunStateStoreModel
 from airflow.models.dagrun import DagRun
 from airflow.models.task_state_store import TaskStateStoreModel
 from airflow.typing_compat import assert_never
@@ -113,7 +115,9 @@ def _build_asset_writer_fields(
 
 
 class MetastoreBackend(BaseStoreBackend):
-    """Default state backend for tasks and assets. Stores task and asset state in the Airflow metadata database."""
+    """Default state backend. Stores task, Dag run and asset state in the Airflow metadata database."""
+
+    supported_scopes: ClassVar[frozenset[type]] = frozenset({TaskScope, DagRunScope, AssetScope})
 
     @provide_session
     def get(self, scope: StoreScope, key: str, *, session: Session | None = NEW_SESSION) -> str | None:
@@ -122,6 +126,8 @@ class MetastoreBackend(BaseStoreBackend):
         match scope:
             case TaskScope():
                 return self._get_task_state_store(scope, key, session=session)
+            case DagRunScope():
+                return self._get_dag_run_state_store(scope, key, session=session)
             case AssetScope():
                 return self._get_asset_state_store(scope, key, session=session)
             case _:
@@ -142,6 +148,8 @@ class MetastoreBackend(BaseStoreBackend):
         match scope:
             case TaskScope():
                 self._store_task_state(scope, key, value, expires_at=expires_at, session=session)
+            case DagRunScope():
+                self._store_dag_run_state(scope, key, value, expires_at=expires_at, session=session)
             case AssetScope():
                 self._store_asset_state(scope, key, value, session=session)
             case _:
@@ -154,6 +162,8 @@ class MetastoreBackend(BaseStoreBackend):
         match scope:
             case TaskScope():
                 self._delete_task_state_store(scope, key, session=session)
+            case DagRunScope():
+                self._delete_dag_run_state_store(scope, key, session=session)
             case AssetScope():
                 self._delete_asset_state_store(scope, key, session=session)
             case _:
@@ -172,6 +182,8 @@ class MetastoreBackend(BaseStoreBackend):
         match scope:
             case TaskScope():
                 self._clear_task_state_store(scope, all_map_indices=all_map_indices, session=session)
+            case DagRunScope():
+                self._clear_dag_run_state_store(scope, session=session)
             case AssetScope():
                 self._clear_asset_state_store(scope, session=session)
             case _:
@@ -182,6 +194,8 @@ class MetastoreBackend(BaseStoreBackend):
             match scope:
                 case TaskScope():
                     return await self._aget_task_state_store(scope, key, session=s)
+                case DagRunScope():
+                    return await self._aget_dag_run_state_store(scope, key, session=s)
                 case AssetScope():
                     return await self._aget_asset_state_store(scope, key, session=s)
                 case _:
@@ -200,6 +214,8 @@ class MetastoreBackend(BaseStoreBackend):
             match scope:
                 case TaskScope():
                     await self._aset_task_state_store(scope, key, value, expires_at=expires_at, session=s)
+                case DagRunScope():
+                    await self._aset_dag_run_state_store(scope, key, value, expires_at=expires_at, session=s)
                 case AssetScope():
                     await self._aset_asset_state_store(scope, key, value, session=s)
                 case _:
@@ -210,6 +226,8 @@ class MetastoreBackend(BaseStoreBackend):
             match scope:
                 case TaskScope():
                     await self._adelete_task_state_store(scope, key, session=s)
+                case DagRunScope():
+                    await self._adelete_dag_run_state_store(scope, key, session=s)
                 case AssetScope():
                     await self._adelete_asset_state_store(scope, key, session=s)
                 case _:
@@ -222,6 +240,8 @@ class MetastoreBackend(BaseStoreBackend):
             match scope:
                 case TaskScope():
                     await self._aclear_task_state_store(scope, all_map_indices=all_map_indices, session=s)
+                case DagRunScope():
+                    await self._aclear_dag_run_state_store(scope, session=s)
                 case AssetScope():
                     await self._aclear_asset_state_store(scope, session=s)
                 case _:
@@ -299,6 +319,136 @@ class MetastoreBackend(BaseStoreBackend):
         if not all_map_indices:
             conditions.append(TaskStateStoreModel.map_index == scope.map_index)
         session.execute(delete(TaskStateStoreModel).where(*conditions))
+
+    def _resolve_dag_run_id(self, scope: DagRunScope, dag_run_id: int | None) -> int:
+        if dag_run_id is None:
+            raise ValueError(f"No DagRun found for dag_id={scope.dag_id!r} run_id={scope.run_id!r}")
+        return dag_run_id
+
+    def _build_dag_run_upsert(
+        self,
+        scope: DagRunScope,
+        key: str,
+        value: str,
+        dag_run_id: int,
+        expires_at: datetime | None,
+        dialect: str | None,
+    ):
+        now = timezone.utcnow()
+        values = dict(
+            dag_run_id=dag_run_id,
+            dag_id=scope.dag_id,
+            run_id=scope.run_id,
+            key=key,
+            value=value,
+            updated_at=now,
+            expires_at=expires_at,
+        )
+        return _build_upsert_stmt(
+            dialect,
+            DagRunStateStoreModel,
+            ["dag_run_id", "key"],
+            values,
+            dict(value=value, updated_at=now, expires_at=expires_at),
+        )
+
+    def _get_dag_run_state_store(self, scope: DagRunScope, key: str, *, session: Session) -> str | None:
+        row = session.scalar(
+            select(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+                DagRunStateStoreModel.key == key,
+            )
+        )
+        return row.value if row is not None else None
+
+    def _store_dag_run_state(
+        self,
+        scope: DagRunScope,
+        key: str,
+        value: str,
+        *,
+        expires_at: datetime | None = None,
+        session: Session,
+    ) -> None:
+        dag_run_id = self._resolve_dag_run_id(
+            scope,
+            session.scalar(
+                select(DagRun.id).where(DagRun.dag_id == scope.dag_id, DagRun.run_id == scope.run_id)
+            ),
+        )
+        session.execute(
+            self._build_dag_run_upsert(scope, key, value, dag_run_id, expires_at, get_dialect_name(session))
+        )
+
+    def _delete_dag_run_state_store(self, scope: DagRunScope, key: str, *, session: Session) -> None:
+        session.execute(
+            delete(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+                DagRunStateStoreModel.key == key,
+            )
+        )
+
+    def _clear_dag_run_state_store(self, scope: DagRunScope, *, session: Session) -> None:
+        session.execute(
+            delete(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+            )
+        )
+
+    async def _aget_dag_run_state_store(
+        self, scope: DagRunScope, key: str, *, session: AsyncSession
+    ) -> str | None:
+        row = await session.scalar(
+            select(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+                DagRunStateStoreModel.key == key,
+            )
+        )
+        return row.value if row is not None else None
+
+    async def _aset_dag_run_state_store(
+        self,
+        scope: DagRunScope,
+        key: str,
+        value: str,
+        *,
+        expires_at: datetime | None = None,
+        session: AsyncSession,
+    ) -> None:
+        dag_run_id = self._resolve_dag_run_id(
+            scope,
+            await session.scalar(
+                select(DagRun.id).where(DagRun.dag_id == scope.dag_id, DagRun.run_id == scope.run_id)
+            ),
+        )
+        await session.execute(
+            self._build_dag_run_upsert(
+                scope, key, value, dag_run_id, expires_at, get_dialect_name(session.sync_session)
+            )
+        )
+
+    async def _adelete_dag_run_state_store(
+        self, scope: DagRunScope, key: str, *, session: AsyncSession
+    ) -> None:
+        await session.execute(
+            delete(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+                DagRunStateStoreModel.key == key,
+            )
+        )
+
+    async def _aclear_dag_run_state_store(self, scope: DagRunScope, *, session: AsyncSession) -> None:
+        await session.execute(
+            delete(DagRunStateStoreModel).where(
+                DagRunStateStoreModel.dag_id == scope.dag_id,
+                DagRunStateStoreModel.run_id == scope.run_id,
+            )
+        )
 
     def _get_asset_state_store(self, scope: AssetScope, key: str, *, session: Session) -> str | None:
         row = session.scalar(

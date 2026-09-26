@@ -23,16 +23,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import Delete, select
+from sqlalchemy import Delete, func, select
 
-from airflow._shared.state import AssetStateStoreWriterKind
+from airflow._shared.state import AssetStateStoreWriterKind, BaseStoreBackend
 from airflow._shared.timezones import timezone
 from airflow.configuration import conf
 from airflow.models.asset import AssetModel
 from airflow.models.asset_state_store import AssetStateStoreModel
+from airflow.models.dag_run_state_store import DagRunStateStoreModel
 from airflow.models.dagrun import DagRun, DagRunType
 from airflow.models.task_state_store import TaskStateStoreModel
-from airflow.state import AssetScope, TaskScope, resolve_state_backend
+from airflow.state import AssetScope, DagRunScope, TaskScope, resolve_state_backend
 from airflow.state.metastore import MetastoreBackend
 from airflow.utils.session import create_session, create_session_async
 
@@ -113,6 +114,117 @@ def asset_committed() -> AssetModel:
         session.flush()
         session.expunge(a)
     return a
+
+
+OTHER_RUN_ID = "scheduled__2026-04-25"
+
+
+@pytest.fixture
+def other_dag_run(session: Session) -> DagRun:
+    run = DagRun(
+        dag_id=DAG_ID,
+        run_id=OTHER_RUN_ID,
+        run_type=DagRunType.SCHEDULED,
+        logical_date=timezone.datetime(2026, 4, 25),
+        run_after=timezone.datetime(2026, 4, 25),
+    )
+    session.add(run)
+    session.flush()
+    return run
+
+
+class TestMetastoreBackendDagRunScope:
+    def test_get_returns_none_for_missing_key(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun
+    ):
+        assert backend.get(DagRunScope(DAG_ID, RUN_ID), "missing", session=session) is None
+
+    def test_set_and_get_roundtrip(self, session: Session, backend: MetastoreBackend, dag_run: DagRun):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        backend.set(scope, "model", '"claude-haiku-4-5"', session=session)
+        assert backend.get(scope, "model", session=session) == '"claude-haiku-4-5"'
+
+    def test_set_twice_overrides_existing_value(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun
+    ):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        backend.set(scope, "model", '"first"', session=session)
+        backend.set(scope, "model", '"second"', session=session)
+        assert backend.get(scope, "model", session=session) == '"second"'
+        assert session.scalar(select(func.count()).select_from(DagRunStateStoreModel)) == 1
+
+    def test_set_stores_dag_run_id_fk(self, session: Session, backend: MetastoreBackend, dag_run: DagRun):
+        backend.set(DagRunScope(DAG_ID, RUN_ID), "model", '"v"', session=session)
+        row = session.scalar(select(DagRunStateStoreModel))
+        assert row is not None
+        assert row.dag_run_id == dag_run.id
+
+    def test_delete_removes_key(self, session: Session, backend: MetastoreBackend, dag_run: DagRun):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        backend.set(scope, "model", '"v"', session=session)
+        backend.delete(scope, "model", session=session)
+        assert backend.get(scope, "model", session=session) is None
+
+    def test_clear_removes_all_keys(self, session: Session, backend: MetastoreBackend, dag_run: DagRun):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        backend.set(scope, "a", '"1"', session=session)
+        backend.set(scope, "b", '"2"', session=session)
+        backend.clear(scope, session=session)
+        assert session.scalar(select(func.count()).select_from(DagRunStateStoreModel)) == 0
+
+    def test_runs_are_isolated(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun, other_dag_run: DagRun
+    ):
+        backend.set(DagRunScope(DAG_ID, RUN_ID), "model", '"first"', session=session)
+        backend.set(DagRunScope(DAG_ID, OTHER_RUN_ID), "model", '"second"', session=session)
+        assert backend.get(DagRunScope(DAG_ID, RUN_ID), "model", session=session) == '"first"'
+        assert backend.get(DagRunScope(DAG_ID, OTHER_RUN_ID), "model", session=session) == '"second"'
+
+    def test_clear_is_scoped_to_one_run(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun, other_dag_run: DagRun
+    ):
+        backend.set(DagRunScope(DAG_ID, RUN_ID), "model", '"first"', session=session)
+        backend.set(DagRunScope(DAG_ID, OTHER_RUN_ID), "model", '"second"', session=session)
+        backend.clear(DagRunScope(DAG_ID, RUN_ID), session=session)
+        assert backend.get(DagRunScope(DAG_ID, OTHER_RUN_ID), "model", session=session) == '"second"'
+
+    def test_clear_leaves_task_state_untouched(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun
+    ):
+        backend.set(TaskScope(DAG_ID, RUN_ID, TASK_ID), "cursor", '"t"', session=session)
+        backend.set(DagRunScope(DAG_ID, RUN_ID), "model", '"r"', session=session)
+        backend.clear(DagRunScope(DAG_ID, RUN_ID), session=session)
+        assert backend.get(TaskScope(DAG_ID, RUN_ID, TASK_ID), "cursor", session=session) == '"t"'
+
+    def test_set_raises_for_missing_dag_run(self, session: Session, backend: MetastoreBackend):
+        with pytest.raises(ValueError, match="No DagRun found"):
+            backend.set(DagRunScope(DAG_ID, "nope"), "model", '"v"', session=session)
+
+    def test_set_stores_expires_at(self, session: Session, backend: MetastoreBackend, dag_run: DagRun):
+        expires_at = timezone.utcnow() + timedelta(days=1)
+        backend.set(DagRunScope(DAG_ID, RUN_ID), "model", '"v"', expires_at=expires_at, session=session)
+        assert session.scalar(select(DagRunStateStoreModel.expires_at)) == expires_at
+
+    @pytest.mark.asyncio
+    async def test_async_roundtrip_and_clear(self, backend: MetastoreBackend, dag_run_committed: DagRun):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        async with create_session_async() as session:
+            await backend.aset(scope, "model", '"v"', session=session)
+            assert await backend.aget(scope, "model", session=session) == '"v"'
+            await backend.adelete(scope, "model", session=session)
+            assert await backend.aget(scope, "model", session=session) is None
+
+            await backend.aset(scope, "a", '"1"', session=session)
+            await backend.aclear(scope, session=session)
+            assert await backend.aget(scope, "a", session=session) is None
+
+
+class TestSupportedScopes:
+    def test_base_default_excludes_dag_run_scope(self):
+        assert BaseStoreBackend.supported_scopes == frozenset({TaskScope, AssetScope})
+
+    def test_metastore_supports_all_scopes(self):
+        assert MetastoreBackend.supported_scopes == frozenset({TaskScope, DagRunScope, AssetScope})
 
 
 class TestMetastoreBackendTaskScope:

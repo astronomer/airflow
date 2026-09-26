@@ -20,7 +20,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -47,6 +47,20 @@ class TaskScope:
 
 
 @dataclass(frozen=True)
+class DagRunScope:
+    """
+    Identifies the state namespace shared by every task instance in a single Dag run.
+
+    Unlike ``TaskScope``, all tasks in the run read and write the same keys. Concurrent
+    ``set`` calls on one key are last-writer-wins; a read-modify-write from tasks running in
+    parallel can lose an update, so give each writer its own key.
+    """
+
+    dag_id: str
+    run_id: str
+
+
+@dataclass(frozen=True)
 class AssetScope:
     """
     Identifies the state namespace for an asset.
@@ -69,7 +83,7 @@ class AssetScope:
             raise ValueError("AssetScope requires at least one of: asset_id, name, or uri")
 
 
-StoreScope = TaskScope | AssetScope
+StoreScope = TaskScope | DagRunScope | AssetScope
 
 
 class AssetStateStoreWriterKind(str, Enum):
@@ -125,12 +139,20 @@ class BaseStoreBackend(ABC):
 
     Custom backends are configured via ``[state_store] backend`` in ``airflow.cfg``.
 
+    **``supported_scopes``:**
+
+    Declares which scope types the backend handles. It defaults to ``TaskScope`` and
+    ``AssetScope`` so that a backend written before ``DagRunScope`` existed is rejected with a
+    clear error instead of falling off the end of its ``match`` statement. Override it to opt in.
+
     **The ``session`` parameter on ``get``, ``set``, ``delete``, and ``clear``:**
 
     The default ``MetastoreBackend`` passes a SQLAlchemy ``Session`` through
     these methods. Custom backends that do not use SQLAlchemy should accept ``session`` as a
     keyword argument and ignore it.
     """
+
+    supported_scopes: ClassVar[frozenset[type]] = frozenset({TaskScope, AssetScope})
 
     @abstractmethod
     def get(self, scope: StoreScope, key: str, *, session: Session | None = None) -> str | None:

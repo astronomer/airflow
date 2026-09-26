@@ -65,6 +65,7 @@ def import_all_models():
     import airflow.models.backfill
     import airflow.models.connection_test
     import airflow.models.dag_favorite
+    import airflow.models.dag_run_state_store
     import airflow.models.dag_version
     import airflow.models.dagbag
     import airflow.models.dagbundle
