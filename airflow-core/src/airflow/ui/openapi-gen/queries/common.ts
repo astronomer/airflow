@@ -1,7 +1,7 @@
 // generated with @7nohe/openapi-react-query-codegen@1.6.2 
 
 import { UseQueryResult } from "@tanstack/react-query";
-import { AssetService, AssetStateStoreService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagBundleService, DagParsingService, DagRunService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DeadlinesService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PartitionedDagRunService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TaskStateStoreService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
+import { AssetService, AssetStateStoreService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagBundleService, DagParsingService, DagRunService, DagRunStateStoreService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DeadlinesService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PartitionedDagRunService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TaskStateStoreService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
 import { DagRunState, DagSchedulingState, DagWarningType, ReprocessBehavior } from "../requests/types.gen";
 export type AssetServiceGetAssetsDefaultResponse = Awaited<ReturnType<typeof AssetService.getAssets>>;
 export type AssetServiceGetAssetsQueryResult<TData = AssetServiceGetAssetsDefaultResponse, TError = unknown> = UseQueryResult<TData, TError>;
@@ -875,6 +875,23 @@ export const UseTaskStateStoreServiceGetTaskStateStoreKeyFn = ({ dagId, dagRunId
   mapIndex?: number;
   taskId: string;
 }, queryKey?: Array<unknown>) => [useTaskStateStoreServiceGetTaskStateStoreKey, ...(queryKey ?? [{ dagId, dagRunId, key, mapIndex, taskId }])];
+export type DagRunStateStoreServiceListDagRunStateStoreDefaultResponse = Awaited<ReturnType<typeof DagRunStateStoreService.listDagRunStateStore>>;
+export type DagRunStateStoreServiceListDagRunStateStoreQueryResult<TData = DagRunStateStoreServiceListDagRunStateStoreDefaultResponse, TError = unknown> = UseQueryResult<TData, TError>;
+export const useDagRunStateStoreServiceListDagRunStateStoreKey = "DagRunStateStoreServiceListDagRunStateStore";
+export const UseDagRunStateStoreServiceListDagRunStateStoreKeyFn = ({ dagId, dagRunId, limit, offset }: {
+  dagId: string;
+  dagRunId: string;
+  limit?: number;
+  offset?: number;
+}, queryKey?: Array<unknown>) => [useDagRunStateStoreServiceListDagRunStateStoreKey, ...(queryKey ?? [{ dagId, dagRunId, limit, offset }])];
+export type DagRunStateStoreServiceGetDagRunStateStoreDefaultResponse = Awaited<ReturnType<typeof DagRunStateStoreService.getDagRunStateStore>>;
+export type DagRunStateStoreServiceGetDagRunStateStoreQueryResult<TData = DagRunStateStoreServiceGetDagRunStateStoreDefaultResponse, TError = unknown> = UseQueryResult<TData, TError>;
+export const useDagRunStateStoreServiceGetDagRunStateStoreKey = "DagRunStateStoreServiceGetDagRunStateStore";
+export const UseDagRunStateStoreServiceGetDagRunStateStoreKeyFn = ({ dagId, dagRunId, key }: {
+  dagId: string;
+  dagRunId: string;
+  key: string;
+}, queryKey?: Array<unknown>) => [useDagRunStateStoreServiceGetDagRunStateStoreKey, ...(queryKey ?? [{ dagId, dagRunId, key }])];
 export type XcomServiceGetXcomEntryDefaultResponse = Awaited<ReturnType<typeof XcomService.getXcomEntry>>;
 export type XcomServiceGetXcomEntryQueryResult<TData = XcomServiceGetXcomEntryDefaultResponse, TError = unknown> = UseQueryResult<TData, TError>;
 export const useXcomServiceGetXcomEntryKey = "XcomServiceGetXcomEntry";

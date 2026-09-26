@@ -4933,6 +4933,59 @@ so please ensure that their values always match the ones with the
 same name in TaskInstanceState.`
 } as const;
 
+export const $DagRunStateStoreCollectionResponse = {
+    properties: {
+        dag_run_state_store: {
+            items: {
+                '$ref': '#/components/schemas/DagRunStateStoreResponse'
+            },
+            type: 'array',
+            title: 'Dag Run State Store'
+        },
+        total_entries: {
+            type: 'integer',
+            title: 'Total Entries'
+        }
+    },
+    type: 'object',
+    required: ['dag_run_state_store', 'total_entries'],
+    title: 'DagRunStateStoreCollectionResponse',
+    description: 'All Dag run state store entries for a Dag run.'
+} as const;
+
+export const $DagRunStateStoreResponse = {
+    properties: {
+        key: {
+            type: 'string',
+            title: 'Key'
+        },
+        value: {
+            '$ref': '#/components/schemas/JsonValue'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        },
+        expires_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Expires At'
+        }
+    },
+    type: 'object',
+    required: ['key', 'value', 'updated_at', 'expires_at'],
+    title: 'DagRunStateStoreResponse',
+    description: 'A single Dag run state store key/value pair with metadata.'
+} as const;
+
 export const $DagRunTriggeredByType = {
     type: 'string',
     enum: ['cli', 'operator', 'rest_api', 'ui', 'test', 'timetable', 'asset', 'backfill'],

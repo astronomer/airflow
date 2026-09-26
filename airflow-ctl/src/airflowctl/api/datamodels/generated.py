@@ -2145,6 +2145,17 @@ class DagProcessorInfoResponse(BaseModel):
     instances: Annotated[list[DagProcessorInstanceInfoResponse] | None, Field(title="Instances")] = None
 
 
+class DagRunStateStoreResponse(BaseModel):
+    """
+    A single Dag run state store key/value pair with metadata.
+    """
+
+    key: Annotated[str, Field(title="Key")]
+    value: JsonValue
+    updated_at: Annotated[datetime, Field(title="Updated At")]
+    expires_at: Annotated[datetime | None, Field(title="Expires At")]
+
+
 class DagStatsResponse(BaseModel):
     """
     Dag Stats serializer for responses.
@@ -2661,6 +2672,15 @@ class DAGWarningCollectionResponse(BaseModel):
     """
 
     dag_warnings: Annotated[list[DAGWarningResponse], Field(title="Dag Warnings")]
+    total_entries: Annotated[int, Field(title="Total Entries")]
+
+
+class DagRunStateStoreCollectionResponse(BaseModel):
+    """
+    All Dag run state store entries for a Dag run.
+    """
+
+    dag_run_state_store: Annotated[list[DagRunStateStoreResponse], Field(title="Dag Run State Store")]
     total_entries: Annotated[int, Field(title="Total Entries")]
 
 

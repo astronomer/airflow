@@ -30,6 +30,7 @@ from airflow.api_fastapi.core_api.routes.public.connections import connections_r
 from airflow.api_fastapi.core_api.routes.public.dag_bundles import dag_bundles_router
 from airflow.api_fastapi.core_api.routes.public.dag_parsing import dag_parsing_router
 from airflow.api_fastapi.core_api.routes.public.dag_run import dag_run_at_dag_router, dag_run_router
+from airflow.api_fastapi.core_api.routes.public.dag_run_state_store import dag_run_state_store_router
 from airflow.api_fastapi.core_api.routes.public.dag_sources import dag_sources_router
 from airflow.api_fastapi.core_api.routes.public.dag_stats import dag_stats_router
 from airflow.api_fastapi.core_api.routes.public.dag_tags import dag_tags_router
@@ -86,6 +87,7 @@ authenticated_router.include_router(pools_router)
 authenticated_router.include_router(providers_router)
 authenticated_router.include_router(asset_state_store_router)
 authenticated_router.include_router(task_state_store_router)
+authenticated_router.include_router(dag_run_state_store_router)
 authenticated_router.include_router(xcom_router)
 authenticated_router.include_router(task_instances_router)
 authenticated_router.include_router(tasks_router)

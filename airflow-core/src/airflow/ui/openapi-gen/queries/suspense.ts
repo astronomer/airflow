@@ -1,7 +1,7 @@
 // generated with @7nohe/openapi-react-query-codegen@1.6.2 
 
 import { UseQueryOptions, useSuspenseQuery } from "@tanstack/react-query";
-import { AssetService, AssetStateStoreService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagBundleService, DagRunService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DeadlinesService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PartitionedDagRunService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TaskStateStoreService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
+import { AssetService, AssetStateStoreService, AuthLinksService, BackfillService, CalendarService, ConfigService, ConnectionService, DagBundleService, DagRunService, DagRunStateStoreService, DagService, DagSourceService, DagStatsService, DagVersionService, DagWarningService, DashboardService, DeadlinesService, DependenciesService, EventLogService, ExperimentalService, ExtraLinksService, GanttService, GridService, ImportErrorService, JobService, LoginService, MonitorService, PartitionedDagRunService, PluginService, PoolService, ProviderService, StructureService, TaskInstanceService, TaskService, TaskStateStoreService, TeamsService, VariableService, VersionService, XcomService } from "../requests/services.gen";
 import { DagRunState, DagSchedulingState, DagWarningType, ReprocessBehavior } from "../requests/types.gen";
 import * as Common from "./common";
 /**
@@ -1712,6 +1712,38 @@ export const useTaskStateStoreServiceGetTaskStateStoreSuspense = <TData = Common
   mapIndex?: number;
   taskId: string;
 }, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseTaskStateStoreServiceGetTaskStateStoreKeyFn({ dagId, dagRunId, key, mapIndex, taskId }, queryKey), queryFn: () => TaskStateStoreService.getTaskStateStore({ dagId, dagRunId, key, mapIndex, taskId }) as TData, ...options });
+/**
+* List Dag Run State Store
+* List all Dag run state store entries for a Dag run.
+* @param data The data for the request.
+* @param data.dagId
+* @param data.dagRunId
+* @param data.limit
+* @param data.offset
+* @returns DagRunStateStoreCollectionResponse Successful Response
+* @throws ApiError
+*/
+export const useDagRunStateStoreServiceListDagRunStateStoreSuspense = <TData = Common.DagRunStateStoreServiceListDagRunStateStoreDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ dagId, dagRunId, limit, offset }: {
+  dagId: string;
+  dagRunId: string;
+  limit?: number;
+  offset?: number;
+}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseDagRunStateStoreServiceListDagRunStateStoreKeyFn({ dagId, dagRunId, limit, offset }, queryKey), queryFn: () => DagRunStateStoreService.listDagRunStateStore({ dagId, dagRunId, limit, offset }) as TData, ...options });
+/**
+* Get Dag Run State Store
+* Get a single Dag run state store entry.
+* @param data The data for the request.
+* @param data.dagId
+* @param data.dagRunId
+* @param data.key
+* @returns DagRunStateStoreResponse Successful Response
+* @throws ApiError
+*/
+export const useDagRunStateStoreServiceGetDagRunStateStoreSuspense = <TData = Common.DagRunStateStoreServiceGetDagRunStateStoreDefaultResponse, TError = unknown, TQueryKey extends Array<unknown> = unknown[]>({ dagId, dagRunId, key }: {
+  dagId: string;
+  dagRunId: string;
+  key: string;
+}, queryKey?: TQueryKey, options?: Omit<UseQueryOptions<TData, TError>, "queryKey" | "queryFn">) => useSuspenseQuery<TData, TError>({ queryKey: Common.UseDagRunStateStoreServiceGetDagRunStateStoreKeyFn({ dagId, dagRunId, key }, queryKey), queryFn: () => DagRunStateStoreService.getDagRunStateStore({ dagId, dagRunId, key }) as TData, ...options });
 /**
 * Get Xcom Entry
 * Get an XCom entry.

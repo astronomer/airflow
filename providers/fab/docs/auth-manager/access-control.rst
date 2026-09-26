@@ -484,6 +484,14 @@ Stable API Permissions
      - GET
      - DAGs.can_read
      - Viewer
+   * - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store``
+     - GET
+     - DAGs.can_read, DAG Runs.can_read
+     - Viewer
+   * - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store/{key:path}``
+     - GET
+     - DAGs.can_read, DAG Runs.can_read
+     - Viewer
    * - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskGroupInstances/{group_id}``
      - PATCH
      - DAGs.can_edit, DAG Runs.can_edit, Task Instances.can_edit

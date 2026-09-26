@@ -40,6 +40,16 @@
     "parseDuration": "Parse Duration:",
     "parsedAt": "Parsed at:"
   },
+  "dagRunStateStore": {
+    "emptyStore": "Dag run state store holds values shared by every task in this run. Tasks write it through the Task SDK.",
+    "entry_one": "Entry",
+    "entry_other": "Entries",
+    "expiresAt": {
+      "column": "Expires At",
+      "never": "Never"
+    },
+    "title": "Dag Run State Store"
+  },
   "deadlineAlerts": {
     "completionRule": "Must complete within {{interval}} of {{reference}}",
     "completionRuleDynamic": "Must complete within a variable interval measured from {{reference}}",
@@ -208,6 +218,7 @@
     "backfills": "Backfills",
     "calendar": "Calendar",
     "code": "Code",
+    "dagRunStateStore": "Dag Run State Store",
     "details": "Details",
     "logs": "Logs",
     "mappedTaskInstances_one": "Task Instance [{{count}}]",

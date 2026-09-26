@@ -310,6 +310,14 @@ source code so it stays up to date as endpoints are added or changed.
      - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/hitlDetails``
      - ``DAG.HITL_DETAIL``
      - ``GET``
+   * - ``GET``
+     - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store``
+     - ``DAG.RUN``
+     - ``GET``
+   * - ``GET``
+     - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store/{key:path}``
+     - ``DAG.RUN``
+     - ``GET``
    * - ``PATCH``
      - ``/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/taskGroupInstances/{group_id}``
      - ``DAG.TASK_INSTANCE``

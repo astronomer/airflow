@@ -1305,6 +1305,24 @@ export type DagRunMutableStates = 'queued' | 'success' | 'failed';
 export type DagRunState = 'queued' | 'running' | 'success' | 'failed';
 
 /**
+ * All Dag run state store entries for a Dag run.
+ */
+export type DagRunStateStoreCollectionResponse = {
+    dag_run_state_store: Array<DagRunStateStoreResponse>;
+    total_entries: number;
+};
+
+/**
+ * A single Dag run state store key/value pair with metadata.
+ */
+export type DagRunStateStoreResponse = {
+    key: string;
+    value: JsonValue;
+    updated_at: string;
+    expires_at: string | null;
+};
+
+/**
  * Class with TriggeredBy types for DagRun.
  */
 export type DagRunTriggeredByType = 'cli' | 'operator' | 'rest_api' | 'ui' | 'test' | 'timetable' | 'asset' | 'backfill';
@@ -4658,6 +4676,23 @@ export type DeleteTaskStateStoreData = {
 };
 
 export type DeleteTaskStateStoreResponse = void;
+
+export type ListDagRunStateStoreData = {
+    dagId: string;
+    dagRunId: string;
+    limit?: number;
+    offset?: number;
+};
+
+export type ListDagRunStateStoreResponse = DagRunStateStoreCollectionResponse;
+
+export type GetDagRunStateStoreData = {
+    dagId: string;
+    dagRunId: string;
+    key: string;
+};
+
+export type GetDagRunStateStoreResponse = DagRunStateStoreResponse;
 
 export type GetXcomEntryData = {
     dagId: string;
@@ -8289,6 +8324,60 @@ export type $OpenApiTs = {
                  * Successful Response
                  */
                 204: void;
+                /**
+                 * Unauthorized
+                 */
+                401: HTTPExceptionResponse;
+                /**
+                 * Forbidden
+                 */
+                403: HTTPExceptionResponse;
+                /**
+                 * Not Found
+                 */
+                404: HTTPExceptionResponse;
+                /**
+                 * Validation Error
+                 */
+                422: HTTPValidationError;
+            };
+        };
+    };
+    '/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store': {
+        get: {
+            req: ListDagRunStateStoreData;
+            res: {
+                /**
+                 * Successful Response
+                 */
+                200: DagRunStateStoreCollectionResponse;
+                /**
+                 * Unauthorized
+                 */
+                401: HTTPExceptionResponse;
+                /**
+                 * Forbidden
+                 */
+                403: HTTPExceptionResponse;
+                /**
+                 * Not Found
+                 */
+                404: HTTPExceptionResponse;
+                /**
+                 * Validation Error
+                 */
+                422: HTTPValidationError;
+            };
+        };
+    };
+    '/api/v2/dags/{dag_id}/dagRuns/{dag_run_id}/state-store/{key}': {
+        get: {
+            req: GetDagRunStateStoreData;
+            res: {
+                /**
+                 * Successful Response
+                 */
+                200: DagRunStateStoreResponse;
                 /**
                  * Unauthorized
                  */

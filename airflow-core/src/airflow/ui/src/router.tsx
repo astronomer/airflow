@@ -40,6 +40,7 @@ import { Overview } from "src/pages/Dag/Overview";
 import { Tasks } from "src/pages/Dag/Tasks";
 import { DagBundle } from "src/pages/DagBundle";
 import { DagBundles } from "src/pages/DagBundles";
+import { DagRunStateStore } from "src/pages/DagRunStateStore";
 import { DagRuns } from "src/pages/DagRuns";
 import { DagsList } from "src/pages/DagsList";
 import { Dashboard } from "src/pages/Dashboard";
@@ -250,6 +251,7 @@ export const routerConfig = [
           { element: <Code />, path: "code" },
           { element: <DagRunDetails />, path: "details" },
           { element: <DagRunAssetEvents />, path: "asset_events" },
+          { element: <DagRunStateStore />, path: "dag-run-state-store" },
           pluginRoute,
         ],
         element: <Run />,
