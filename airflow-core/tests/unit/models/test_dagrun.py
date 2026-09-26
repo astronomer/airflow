@@ -314,6 +314,37 @@ class TestDagRun:
         dag_run.update_state()
         assert dag_run.state == DagRunState.SUCCESS
 
+    @pytest.mark.parametrize(
+        ("clear_on_success", "expected"),
+        [("True", None), ("False", '"v"')],
+    )
+    def test_dag_run_state_cleared_on_success_only_when_enabled(
+        self, dag_maker, session, clear_on_success, expected
+    ):
+        from airflow.state import DagRunScope
+        from airflow.state.metastore import MetastoreBackend
+
+        with dag_maker(
+            dag_id="test_dag_run_state_clear_on_success",
+            schedule=datetime.timedelta(days=1),
+            start_date=timezone.datetime(2017, 1, 1),
+        ) as dag:
+            EmptyOperator(task_id="task")
+
+        dag_run = self.create_dag_run(
+            dag=dag, task_states={"task": TaskInstanceState.SUCCESS}, session=session
+        )
+        backend = MetastoreBackend()
+        scope = DagRunScope(dag_id=dag_run.dag_id, run_id=dag_run.run_id)
+        backend.set(scope, "model", '"v"', session=session)
+        session.flush()
+
+        with conf_vars({("state_store", "dag_run_clear_on_success"): clear_on_success}):
+            dag_run.update_state(session=session)
+
+        assert dag_run.state == DagRunState.SUCCESS
+        assert backend.get(scope, "model", session=session) == expected
+
     def test_dagrun_not_stuck_in_running_when_all_tasks_instances_are_removed(self, dag_maker, session):
         """
         Tests that a DAG run succeeds when all tasks are removed

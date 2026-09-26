@@ -533,34 +533,37 @@ class MetastoreBackend(BaseStoreBackend):
 
     def cleanup(self) -> None:
         """
-        Remove expired task state rows.
+        Remove expired task and Dag run state rows.
 
         ``expires_at`` is set at write time on every ``set()`` call, so cleanup is a single
-        ``WHERE expires_at < now()`` pass. Rows with ``expires_at=NULL`` (default_retention_days=0)
-        are never deleted. Batching is configurable via ``[state_store] state_cleanup_batch_size``.
+        ``WHERE expires_at < now()`` pass per table. Rows with ``expires_at=NULL`` are never
+        deleted. Batching is configurable via ``[state_store] state_cleanup_batch_size``.
         """
         batch_size = conf.getint("state_store", "state_cleanup_batch_size")
         now = timezone.utcnow()
 
-        def _delete_batched(where_clause) -> int:
+        def _delete_batched(model, where_clause) -> int:
             total = 0
             with create_session() as session:
                 while True:
-                    id_query = select(TaskStateStoreModel.id).where(where_clause)
+                    id_query = select(model.id).where(where_clause)
                     if batch_size > 0:
                         id_query = id_query.limit(batch_size)
                     ids = session.scalars(id_query).all()
                     if not ids:
                         break
-                    session.execute(delete(TaskStateStoreModel).where(TaskStateStoreModel.id.in_(ids)))
+                    session.execute(delete(model).where(model.id.in_(ids)))
                     session.commit()
                     total += len(ids)
                     if batch_size <= 0 or len(ids) < batch_size:
                         break
             return total
 
-        deleted = _delete_batched(TaskStateStoreModel.expires_at < now)
+        deleted = _delete_batched(TaskStateStoreModel, TaskStateStoreModel.expires_at < now)
         log.info("Deleted expired task_state_store rows", rows_deleted=deleted)
+
+        deleted = _delete_batched(DagRunStateStoreModel, DagRunStateStoreModel.expires_at < now)
+        log.info("Deleted expired dag_run_state_store rows", rows_deleted=deleted)
 
     def _summary_dry_run(self) -> dict[str, list]:
         """Return rows that would be deleted by cleanup() without deleting anything."""
@@ -572,9 +575,17 @@ class MetastoreBackend(BaseStoreBackend):
             TaskStateStoreModel.map_index,
             TaskStateStoreModel.key,
         )
+        dag_run_cols = (
+            DagRunStateStoreModel.dag_id,
+            DagRunStateStoreModel.run_id,
+            DagRunStateStoreModel.key,
+        )
         with create_session() as session:
             expired = session.execute(select(*cols).where(TaskStateStoreModel.expires_at < now)).all()
-        return {"expired": list(expired)}
+            dag_run_expired = session.execute(
+                select(*dag_run_cols).where(DagRunStateStoreModel.expires_at < now)
+            ).all()
+        return {"expired": list(expired), "dag_run_expired": list(dag_run_expired)}
 
     async def _aget_task_state_store(
         self, scope: TaskScope, key: str, *, session: AsyncSession

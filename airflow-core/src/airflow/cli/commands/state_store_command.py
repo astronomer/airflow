@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 def clean_state_store(args) -> None:
     """
-    Remove expired task state store rows from the metastore backend.
+    Remove expired task and Dag run state store rows from the metastore backend.
 
     Deliberately restricted to ``MetastoreBackend`` for now. A custom backend is typically
     worker-side (object storage, etc.); cleaning it correctly means deleting the metadata-DB
@@ -48,12 +48,21 @@ def clean_state_store(args) -> None:
     if args.dry_run:
         summary = backend._summary_dry_run()
         expired = summary["expired"]
-        if not expired:
+        dag_run_expired = summary["dag_run_expired"]
+        if not expired and not dag_run_expired:
             print("Nothing to delete.")
             return
-        print(f"Would delete {len(expired)} task state store row(s):\n")
-        for dag_id, run_id, task_id, map_index, key in expired:
-            print(f"  Dag {dag_id!r}, run {run_id!r}, task {task_id!r}, map_index {map_index!r}, key {key!r}")
+        if expired:
+            print(f"Would delete {len(expired)} task state store row(s):\n")
+            for dag_id, run_id, task_id, map_index, key in expired:
+                print(
+                    f"  Dag {dag_id!r}, run {run_id!r}, task {task_id!r}, "
+                    f"map_index {map_index!r}, key {key!r}"
+                )
+        if dag_run_expired:
+            print(f"Would delete {len(dag_run_expired)} Dag run state store row(s):\n")
+            for dag_id, run_id, key in dag_run_expired:
+                print(f"  Dag {dag_id!r}, run {run_id!r}, key {key!r}")
         return
 
     log.info("Running task state store cleanup")

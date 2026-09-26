@@ -62,6 +62,8 @@ from airflow.listeners.listener import get_listener_manager
 from airflow.models.dagrun import DagRun, clear_partition_runs
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
+from airflow.state import DagRunScope
+from airflow.state.metastore import _get_db_backend
 from airflow.utils.session import create_session_async
 from airflow.utils.state import State, TaskInstanceState
 
@@ -152,6 +154,9 @@ def perform_clear_dag_run(
         run_on_latest_version=resolved_run_on_latest,
         session=session,
     )
+    # Clearing the whole run resets the state it shares; clearing a single task does not,
+    # because that state belongs to the run rather than to whichever task wrote it.
+    _get_db_backend().clear(DagRunScope(dag_id=dag_id, run_id=dag_run.run_id), session=session)
     dag_run_cleared = session.scalar(select(DagRun).where(DagRun.id == dag_run.id))
     if not dag_run_cleared:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dag run not found after clearing")

@@ -54,7 +54,12 @@ class TestStateStoreCleanCommand:
                 return_value=backend,
                 autospec=True,
             ),
-            patch.object(backend, "_summary_dry_run", return_value={"expired": []}, autospec=True),
+            patch.object(
+                backend,
+                "_summary_dry_run",
+                return_value={"expired": [], "dag_run_expired": []},
+                autospec=True,
+            ),
         ):
             clean_state_store(args)
 

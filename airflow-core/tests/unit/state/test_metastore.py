@@ -219,6 +219,39 @@ class TestMetastoreBackendDagRunScope:
             assert await backend.aget(scope, "a", session=session) is None
 
 
+class TestDagRunScopeCleanup:
+    def test_cleanup_removes_only_expired_rows(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun
+    ):
+        scope = DagRunScope(DAG_ID, RUN_ID)
+        backend.set(scope, "stale", '"x"', expires_at=timezone.utcnow() - timedelta(days=1), session=session)
+        backend.set(scope, "fresh", '"y"', expires_at=timezone.utcnow() + timedelta(days=1), session=session)
+        backend.set(scope, "forever", '"z"', expires_at=None, session=session)
+        session.commit()
+
+        backend.cleanup()
+
+        remaining = set(session.scalars(select(DagRunStateStoreModel.key)).all())
+        assert remaining == {"fresh", "forever"}
+
+    def test_dry_run_reports_expired_rows_without_deleting(
+        self, session: Session, backend: MetastoreBackend, dag_run: DagRun
+    ):
+        backend.set(
+            DagRunScope(DAG_ID, RUN_ID),
+            "stale",
+            '"x"',
+            expires_at=timezone.utcnow() - timedelta(days=1),
+            session=session,
+        )
+        session.commit()
+
+        summary = backend._summary_dry_run()
+
+        assert summary["dag_run_expired"] == [(DAG_ID, RUN_ID, "stale")]
+        assert session.scalar(select(func.count()).select_from(DagRunStateStoreModel)) == 1
+
+
 class TestSupportedScopes:
     def test_base_default_excludes_dag_run_scope(self):
         assert BaseStoreBackend.supported_scopes == frozenset({TaskScope, AssetScope})

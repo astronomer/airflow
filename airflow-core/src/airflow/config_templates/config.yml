@@ -3447,6 +3447,16 @@ state_store:
       type: integer
       example: "7"
       default: "30"
+    dag_run_clear_on_success:
+      description: |
+        If set to True, all Dag run state keys are cleared when the Dag run reaches SUCCESS.
+
+        Defaults to False so run state stays readable after the run finishes, which is usually
+        the point of writing it.
+      version_added: 3.4.0
+      type: boolean
+      example: "True"
+      default: "False"
     dag_run_default_retention_days:
       description: |
         Number of days to retain Dag run state after its last update.

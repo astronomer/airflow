@@ -2102,6 +2102,46 @@ class TestClearDagRun:
             logical_date=None,
         )
 
+    def test_clear_dag_run_wipes_run_state_but_keeps_task_state(self, test_client, session):
+        """Run state belongs to the run; task state belongs to the task that wrote it."""
+        from airflow.state import DagRunScope, TaskScope
+        from airflow.state.metastore import MetastoreBackend
+
+        backend = MetastoreBackend()
+        run_scope = DagRunScope(dag_id=DAG1_ID, run_id=DAG1_RUN1_ID)
+        task_scope = TaskScope(dag_id=DAG1_ID, run_id=DAG1_RUN1_ID, task_id="task_id")
+        backend.set(run_scope, "model", '"v"', session=session)
+        backend.set(task_scope, "cursor", '"t"', session=session)
+        session.commit()
+
+        response = test_client.post(
+            f"/dags/{DAG1_ID}/dagRuns/{DAG1_RUN1_ID}/clear",
+            json={"dry_run": False},
+        )
+
+        assert response.status_code == 200
+        session.expire_all()
+        assert backend.get(run_scope, "model", session=session) is None
+        assert backend.get(task_scope, "cursor", session=session) == '"t"'
+
+    def test_dry_run_clear_does_not_wipe_run_state(self, test_client, session):
+        from airflow.state import DagRunScope
+        from airflow.state.metastore import MetastoreBackend
+
+        backend = MetastoreBackend()
+        scope = DagRunScope(dag_id=DAG1_ID, run_id=DAG1_RUN1_ID)
+        backend.set(scope, "model", '"v"', session=session)
+        session.commit()
+
+        response = test_client.post(
+            f"/dags/{DAG1_ID}/dagRuns/{DAG1_RUN1_ID}/clear",
+            json={"dry_run": True},
+        )
+
+        assert response.status_code == 200
+        session.expire_all()
+        assert backend.get(scope, "model", session=session) == '"v"'
+
     @pytest.mark.usefixtures("configure_git_connection_for_dag_bundle")
     def test_clear_dag_run_whose_dag_version_was_deleted(self, test_client, session):
         """A run that kept its bundle version after ``airflow db clean`` removed its Dag version."""

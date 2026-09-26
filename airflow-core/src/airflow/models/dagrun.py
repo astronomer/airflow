@@ -1353,6 +1353,7 @@ class DagRun(Base, LoggingMixin):
             self.log.info("Marking run %s successful", self)
             self.set_state(DagRunState.SUCCESS)
             self.notify_dagrun_state_changed(msg="success")
+            self._clear_state_store_on_success(session=session)
 
             if dag.has_on_success_callback:
                 last_succeeded_ti: TI | None = max(
@@ -1498,6 +1499,22 @@ class DagRun(Base, LoggingMixin):
             unfinished_tis=unfinished_tis,
             finished_tis=finished_tis,
         )
+
+    def _clear_state_store_on_success(self, *, session: Session) -> None:
+        """Drop this run's shared state if ``[state_store] dag_run_clear_on_success`` is set."""
+        if not airflow_conf.getboolean("state_store", "dag_run_clear_on_success", fallback=False):
+            return
+        from airflow.state import DagRunScope
+        from airflow.state.metastore import _get_db_backend
+
+        try:
+            _get_db_backend().clear(DagRunScope(dag_id=self.dag_id, run_id=self.run_id), session=session)
+        except Exception:
+            # A cleanup failure must not stop the run being marked successful; retention still
+            # removes the rows later.
+            self.log.warning(
+                "Failed to clear Dag run state on success", dag_id=self.dag_id, run_id=self.run_id
+            )
 
     def notify_dagrun_state_changed(self, msg: str):
         try:

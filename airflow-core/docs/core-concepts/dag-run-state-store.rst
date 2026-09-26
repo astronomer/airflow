@@ -72,3 +72,10 @@ Retention
 ---------
 
 Rows are removed when the Dag run row is deleted. They also carry an expiry, set at write time from ``[state_store] dag_run_default_retention_days``, and expired rows are removed by ``airflow state-store clean``. Pass ``retention`` to ``set`` to override it for one key, or ``NEVER_EXPIRE`` to keep it until the run is deleted.
+
+Set ``[state_store] dag_run_clear_on_success`` to ``True`` to drop a run's state as soon as the run succeeds. It defaults to ``False`` so the state stays readable afterwards.
+
+Clearing
+--------
+
+Clearing the whole Dag run resets its state, because a re-run starts over. Clearing a single task does not: the state belongs to the run, not to whichever task happened to write it, and the other tasks in the run are still reading it.

@@ -1715,9 +1715,9 @@ TEAMS_COMMANDS = (
 STATE_STORE_COMMANDS = (
     ActionCommand(
         name="clean",
-        help="Remove expired task state store rows (metastore backend only)",
+        help="Remove expired task and Dag run state store rows (metastore backend only)",
         description=(
-            "Deletes task_state_store rows whose expires_at is in the past, honoring the state_store "
+            "Deletes task_state_store and dag_run_state_store rows whose expires_at is in the past, honoring the state_store "
             "settings default_retention_days and state_cleanup_batch_size. Currently supports the "
             "default metastore backend only; custom (worker-side) backends are skipped. Use --dry-run "
             "to preview deletions."
