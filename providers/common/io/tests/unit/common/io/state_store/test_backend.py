@@ -30,12 +30,13 @@ from airflow.providers.common.io.state_store import backend
 from airflow.providers.common.io.state_store.backend import (
     StateStoreObjectStorageBackend,
     _build_asset_path,
+    _build_dag_run_path,
     _build_task_path,
     _read_from_object_storage,
     _write_to_object_storage,
 )
 from airflow.sdk import ObjectStoragePath
-from airflow.sdk.state import AssetScope, TaskScope
+from airflow.sdk.state import AssetScope, DagRunScope, TaskScope
 
 from tests_common.test_utils.config import conf_vars
 
@@ -414,3 +415,62 @@ class TestAtomicWrites:
 
         assert _read_from_object_storage(path) == '"old"'
         assert [p.name for p in ObjectStoragePath(base_path).glob("*")] == ["shared.json"]
+
+
+class TestDagRunScope:
+    SCOPE = DagRunScope(dag_id="dag", run_id="run")
+
+    def test_roundtrip(self, conf_overrides):
+        store = StateStoreObjectStorageBackend()
+        store.set(self.SCOPE, "model", '"claude-haiku-4-5"')
+
+        assert store.get(self.SCOPE, "model") == '"claude-haiku-4-5"'
+
+        store.delete(self.SCOPE, "model")
+        assert store.get(self.SCOPE, "model") is None
+
+    def test_a_key_named_like_a_task_does_not_collide(self, conf_overrides):
+        """Without the namespacing segment, one of these two writes clobbers the other."""
+        store = StateStoreObjectStorageBackend()
+        task_scope = TaskScope(dag_id="dag", run_id="run", task_id="load_data")
+
+        store.set(task_scope, "cursor", '"task-value"')
+        store.set(self.SCOPE, "load_data", '"run-value"')
+
+        assert store.get(task_scope, "cursor") == '"task-value"'
+        assert store.get(self.SCOPE, "load_data") == '"run-value"'
+
+    def test_clear_does_not_touch_task_state_in_the_same_run(self, conf_overrides):
+        store = StateStoreObjectStorageBackend()
+        task_scope = TaskScope(dag_id="dag", run_id="run", task_id="task")
+        store.set(task_scope, "cursor", '"t"')
+        store.set(self.SCOPE, "model", '"r"')
+
+        store.clear(self.SCOPE)
+
+        assert store.get(self.SCOPE, "model") is None
+        assert store.get(task_scope, "cursor") == '"t"'
+
+    def test_runs_are_isolated(self, conf_overrides):
+        store = StateStoreObjectStorageBackend()
+        other = DagRunScope(dag_id="dag", run_id="other-run")
+        store.set(self.SCOPE, "model", '"first"')
+        store.set(other, "model", '"second"')
+
+        store.clear(self.SCOPE)
+
+        assert store.get(other, "model") == '"second"'
+
+    def test_ref_roundtrip_above_threshold(self, conf_overrides):
+        store = StateStoreObjectStorageBackend()
+        value = "x" * 100
+
+        with conf_vars({("common.io", "state_store_objectstorage_threshold"): "10"}):
+            backend._get_threshold.cache_clear()
+            ref = store.serialize_dag_run_state_store_to_ref(value=value, key="big", scope=self.SCOPE)
+
+            assert ref == str(_build_dag_run_path(self.SCOPE, "big"))
+            assert store.deserialize_dag_run_state_store_from_ref(ref) == value
+
+    def test_supported_scopes_declares_dag_run_scope(self):
+        assert DagRunScope in StateStoreObjectStorageBackend.supported_scopes

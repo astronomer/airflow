@@ -20,7 +20,7 @@ import asyncio
 import json
 import uuid
 from functools import cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 from urllib.parse import quote, urlsplit
 
 import fsspec.utils
@@ -38,9 +38,14 @@ if TYPE_CHECKING:
 
 
 from airflow.sdk import ObjectStoragePath
-from airflow.sdk.state import AssetScope, BaseStoreBackend, TaskScope
+from airflow.sdk.state import AssetScope, BaseStoreBackend, DagRunScope, TaskScope
 
 SECTION = "common.io"
+
+# Namespaces Dag run keys under <dag_id>/<run_id>/ so a key can never collide with a task_id
+# directory. No task_id can sanitise to this: quote() leaves "_" alone and escapes "%" as "%25",
+# so "%5F" never appears in a sanitised segment.
+DAG_RUN_SEGMENT = "%5Fdag%5Frun"
 
 
 @cache
@@ -88,6 +93,17 @@ def _build_task_path(scope: TaskScope, key: str) -> ObjectStoragePath:
         / _sanitise_segment(scope.run_id)
         / _sanitise_segment(scope.task_id)
         / str(scope.map_index)
+        / f"{_sanitise_segment(key)}{suffix}"
+    )
+
+
+def _build_dag_run_path(scope: DagRunScope, key: str) -> ObjectStoragePath:
+    suffix = _get_compression_suffix()
+    return (
+        _get_base_path()
+        / _sanitise_segment(scope.dag_id)
+        / _sanitise_segment(scope.run_id)
+        / DAG_RUN_SEGMENT
         / f"{_sanitise_segment(key)}{suffix}"
     )
 
@@ -140,6 +156,8 @@ def _scope_path(scope: StoreScope, key: str) -> ObjectStoragePath:
     match scope:
         case TaskScope():
             return _build_task_path(scope, key)
+        case DagRunScope():
+            return _build_dag_run_path(scope, key)
         case AssetScope():
             return _build_asset_path(scope, key)
         case _:
@@ -155,6 +173,8 @@ class StateStoreObjectStorageBackend(BaseStoreBackend):
     - ``state_store_objectstorage_path``: base path, e.g. ``s3://conn_id@bucket/task-state/``
     - ``state_store_objectstorage_compression``: optional compression, e.g. ``gzip``
     """
+
+    supported_scopes: ClassVar[frozenset[type]] = frozenset({TaskScope, DagRunScope, AssetScope})
 
     def get(self, scope: StoreScope, key: str, *, session: Session | None = None) -> str | None:
         return _read_from_object_storage(_scope_path(scope, key))
@@ -197,6 +217,17 @@ class StateStoreObjectStorageBackend(BaseStoreBackend):
                     )
                     for p in prefix.glob("*"):
                         p.unlink(missing_ok=True)
+            case DagRunScope():
+                # Confined to DAG_RUN_SEGMENT: globbing <dag_id>/<run_id>/* would match the
+                # run's task_id directories and wipe their state too.
+                prefix = (
+                    _get_base_path()
+                    / _sanitise_segment(scope.dag_id)
+                    / _sanitise_segment(scope.run_id)
+                    / DAG_RUN_SEGMENT
+                )
+                for p in prefix.glob("*"):
+                    p.unlink(missing_ok=True)
             case AssetScope():
                 asset_identifier = _sanitise_segment(scope.name or scope.uri or str(scope.asset_id))
                 prefix = _get_base_path() / "assets" / asset_identifier
@@ -239,6 +270,24 @@ class StateStoreObjectStorageBackend(BaseStoreBackend):
         return str(path)
 
     def deserialize_task_state_store_from_ref(self, stored: str) -> JsonValue:
+        if not stored:
+            return None
+        if _is_storage_ref(stored):
+            data = _read_from_object_storage(ObjectStoragePath(stored))
+            if data is not None:
+                return json.loads(data)
+            return None
+        return json.loads(stored)
+
+    def serialize_dag_run_state_store_to_ref(self, *, value: JsonValue, key: str, scope: DagRunScope) -> str:
+        serialized = json.dumps(value)
+        if len(serialized.encode()) < _get_threshold():
+            return serialized
+        path = _build_dag_run_path(scope, key)
+        _write_to_object_storage(path, serialized)
+        return str(path)
+
+    def deserialize_dag_run_state_store_from_ref(self, stored: str) -> JsonValue:
         if not stored:
             return None
         if _is_storage_ref(stored):
