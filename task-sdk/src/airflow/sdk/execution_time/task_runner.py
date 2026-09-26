@@ -129,6 +129,7 @@ from airflow.sdk.execution_time.comms import (
 from airflow.sdk.execution_time.context import (
     AssetStateStoreAccessors,
     ConnectionAccessor,
+    DagRunStateStoreAccessor,
     InletEventsAccessors,
     MacrosAccessor,
     OutletEventAccessors,
@@ -151,7 +152,7 @@ from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.listener import get_listener_manager
 from airflow.sdk.observability.metrics import stats_utils
 from airflow.sdk.serde import allow_class, iter_pydantic_models
-from airflow.sdk.state import TaskScope
+from airflow.sdk.state import DagRunScope, TaskScope
 from airflow.sdk.timezone import coerce_datetime
 
 if TYPE_CHECKING:
@@ -344,6 +345,10 @@ class RuntimeTaskInstance(TaskInstance):
                         task_id=self.task_id,
                         map_index=self.map_index if self.map_index is not None else -1,
                     ),
+                ),
+                "dag_run_state_store": DagRunStateStoreAccessor(
+                    ti_id=self.id,
+                    scope=DagRunScope(dag_id=self.dag_id, run_id=self.run_id),
                 ),
             }
             _asset_types = (Asset, AssetNameRef, AssetUriRef, AssetAlias)

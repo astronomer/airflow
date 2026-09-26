@@ -670,6 +670,29 @@ class ConnectionTestResultBody(BaseModel):
     result_message: Annotated[ResultMessage | None, Field(title="Result Message")] = None
 
 
+class DagRunStateStorePutBody(BaseModel):
+    """
+    Request body for setting a Dag run state store value.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: JsonValue | None
+    expires_at: Annotated[AwareDatetime | None, Field(title="Expires At")] = None
+
+
+class DagRunStateStoreResponse(BaseModel):
+    """
+    Dag run state store value returned to a worker.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: JsonValue | None
+
+
 class HITLDetailRequest(BaseModel):
     """
     Schema for the request part of a Human-in-the-loop detail for a specific task instance.

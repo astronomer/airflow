@@ -105,6 +105,9 @@ Variable                                    Type                  Description
 ``{{ run_id }}``                            str                   The currently running :class:`~airflow.models.dagrun.DagRun` run ID.
 ``{{ dag_run }}``                           DagRun                The currently running :class:`~airflow.models.dagrun.DagRun`.
 ``{{ test_mode }}``                         bool                  Whether the task instance was run by the ``airflow test`` CLI.
+``{{ dag_run_state_store }}``               DagRunState           | Key/value state shared by every task in the current Dag run and
+                                            StoreAccessor         | removed with it. See :ref:`concepts:dag-run-state-store`.
+                                                                  | Added in version 3.4.
 ``{{ map_index_template }}``                None | str            Template used to render the expanded task instance of a mapped task. Setting this value will be reflected in the rendered result.
 ``{{ expanded_ti_count }}``                 int | ``None``        | Number of task instances that a mapped task was expanded into. If
                                                                   | the current task is not mapped, this should be ``None``.

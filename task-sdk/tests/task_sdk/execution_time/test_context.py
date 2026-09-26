@@ -27,7 +27,7 @@ import pytest
 from pydantic import ValidationError
 
 from airflow.sdk import BaseOperator, get_current_context, timezone
-from airflow.sdk._shared.state import AssetScope, TaskScope
+from airflow.sdk._shared.state import AssetScope, DagRunScope, TaskScope
 from airflow.sdk.api.datamodels._generated import (
     AssetEventResponse,
     AssetResponse,
@@ -56,11 +56,14 @@ from airflow.sdk.execution_time.comms import (
     AssetStateStoreResult,
     ClearAssetStateStoreByName,
     ClearAssetStateStoreByUri,
+    ClearDagRunStateStore,
     ClearTaskStateStore,
     ConnectionResult,
     DagRunResult,
+    DagRunStateStoreResult,
     DeleteAssetStateStoreByName,
     DeleteAssetStateStoreByUri,
+    DeleteDagRunStateStore,
     DeleteTaskStateStore,
     ErrorResponse,
     GetAssetByName,
@@ -70,11 +73,13 @@ from airflow.sdk.execution_time.comms import (
     GetAssetStateStoreByName,
     GetAssetStateStoreByUri,
     GetDagRun,
+    GetDagRunStateStore,
     GetTaskStateStore,
     GetXCom,
     OKResponse,
     SetAssetStateStoreByName,
     SetAssetStateStoreByUri,
+    SetDagRunStateStore,
     SetTaskStateStore,
     TaskStateStoreResult,
     VariableResult,
@@ -85,6 +90,7 @@ from airflow.sdk.execution_time.context import (
     AssetStateStoreAccessor,
     AssetStateStoreAccessors,
     ConnectionAccessor,
+    DagRunStateStoreAccessor,
     InletEventsAccessors,
     MacrosAccessor,
     OutletEventAccessor,
@@ -2335,6 +2341,74 @@ class InMemoryStoreBackend(BaseStoreBackend):
     async def aset(self, scope, key, value): ...
     async def adelete(self, scope, key): ...
     async def aclear(self, scope, *, all_map_indices=False): ...
+
+
+class TestDagRunStateStoreAccessor:
+    TI_ID = UUID("01900000-0000-0000-0000-000000000003")
+    SCOPE = DagRunScope(dag_id="dag", run_id="run")
+
+    def accessor(self) -> DagRunStateStoreAccessor:
+        return DagRunStateStoreAccessor(ti_id=self.TI_ID, scope=self.SCOPE)
+
+    def test_get_returns_value(self, mock_supervisor_comms):
+        mock_supervisor_comms.send.return_value = DagRunStateStoreResult(value="claude-haiku-4-5")
+
+        assert self.accessor().get("model") == "claude-haiku-4-5"
+        mock_supervisor_comms.send.assert_called_once_with(GetDagRunStateStore(ti_id=self.TI_ID, key="model"))
+
+    def test_get_returns_default_when_key_missing(self, mock_supervisor_comms):
+        mock_supervisor_comms.send.return_value = ErrorResponse(
+            error=ErrorType.DAG_RUN_STORE_NOT_FOUND, detail={"key": "model"}
+        )
+
+        assert self.accessor().get("model", default="fallback") == "fallback"
+
+    def test_get_raises_on_other_errors(self, mock_supervisor_comms):
+        mock_supervisor_comms.send.return_value = ErrorResponse(error=ErrorType.API_SERVER_ERROR)
+
+        with pytest.raises(AirflowRuntimeError):
+            self.accessor().get("model")
+
+    def test_set_sends_value(self, mock_supervisor_comms):
+        self.accessor().set("model", "v")
+
+        msg = mock_supervisor_comms.send.call_args.args[0]
+        assert isinstance(msg, SetDagRunStateStore)
+        assert (msg.ti_id, msg.key, msg.value) == (self.TI_ID, "model", "v")
+
+    def test_set_rejects_none(self, mock_supervisor_comms):
+        with pytest.raises(ValueError, match="Cannot set value as None"):
+            self.accessor().set("model", None)
+
+    @conf_vars({("state_store", "dag_run_default_retention_days"): "0"})
+    def test_set_with_zero_retention_never_expires(self, mock_supervisor_comms):
+        self.accessor().set("model", "v")
+
+        assert mock_supervisor_comms.send.call_args.args[0].expires_at is None
+
+    @conf_vars({("state_store", "dag_run_default_retention_days"): "7"})
+    def test_set_uses_its_own_retention_key(self, mock_supervisor_comms):
+        self.accessor().set("model", "v")
+
+        expires_at = mock_supervisor_comms.send.call_args.args[0].expires_at
+        assert expires_at is not None
+        assert 6 <= (expires_at - datetime.now(tz=timezone.utc)).days <= 7
+
+    def test_delete_sends_message(self, mock_supervisor_comms):
+        self.accessor().delete("model")
+
+        mock_supervisor_comms.send.assert_called_once_with(
+            DeleteDagRunStateStore(ti_id=self.TI_ID, key="model")
+        )
+
+    def test_clear_sends_message(self, mock_supervisor_comms):
+        self.accessor().clear()
+
+        mock_supervisor_comms.send.assert_called_once_with(ClearDagRunStateStore(ti_id=self.TI_ID))
+
+    def test_accessors_for_the_same_run_are_equal(self):
+        other = DagRunStateStoreAccessor(ti_id=UUID("01900000-0000-0000-0000-000000000009"), scope=self.SCOPE)
+        assert self.accessor() == other
 
 
 class TestTaskStateStoreAccessorWithCustomBackend:

@@ -63,6 +63,7 @@ Here you can find detailed documentation about each one of the core concepts of 
 
     task-and-asset-state-store
     task-state-store
+    dag-run-state-store
     asset-state-store
 
 **Debugging**

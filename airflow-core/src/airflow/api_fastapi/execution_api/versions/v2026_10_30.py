@@ -75,3 +75,16 @@ class AddMultiTeamToTIRunContext(VersionChange):
     def remove_multi_team_field(response: ResponseInfo) -> None:  # type: ignore[misc]
         """Strip ``multi_team`` from the run context for older clients."""
         response.body.pop("multi_team", None)
+
+
+class AddDagRunStateStoreEndpoints(VersionChange):
+    """Add the Dag run state store endpoints a task uses to share state with the rest of its run."""
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = (
+        endpoint("/store/dag-run/{task_instance_id}/{key:path}", ["GET"]).didnt_exist,
+        endpoint("/store/dag-run/{task_instance_id}/{key:path}", ["PUT"]).didnt_exist,
+        endpoint("/store/dag-run/{task_instance_id}/{key:path}", ["DELETE"]).didnt_exist,
+        endpoint("/store/dag-run/{task_instance_id}", ["DELETE"]).didnt_exist,
+    )

@@ -1,0 +1,1 @@
+Add ``context["dag_run_state_store"]``, a key/value store shared by every task in a Dag run and removed with the run. Concurrent writes to one key are last-writer-wins, so it is not safe for read-modify-write from tasks running in parallel.

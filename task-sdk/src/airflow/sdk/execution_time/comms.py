@@ -77,6 +77,7 @@ from airflow.sdk.api.datamodels._generated import (
     DagResponse,
     DagRun,
     DagRunStateResponse,
+    DagRunStateStoreResponse,
     HITLDetailRequest,
     InactiveAssetsResponse,
     PreviousTIResponse,
@@ -644,6 +645,16 @@ class VariableResult(VariableResponse):
         return cls(**variable_response.model_dump(exclude_defaults=True), type="VariableResult")
 
 
+class DagRunStateStoreResult(DagRunStateStoreResponse):
+    """Response to GetDagRunStateStore; wraps the generated API response for supervisor to worker comms."""
+
+    type: Literal["DagRunStateStoreResult"] = "DagRunStateStoreResult"
+
+    @classmethod
+    def from_dag_run_state_store_response(cls, resp: DagRunStateStoreResponse) -> DagRunStateStoreResult:
+        return cls(**resp.model_dump(exclude_defaults=True), type="DagRunStateStoreResult")
+
+
 class TaskStateStoreResult(TaskStateStoreResponse):
     """Response to GetTaskStateStore; wraps the generated API response for supervisor to worker comms."""
 
@@ -866,6 +877,7 @@ ToTask = Annotated[
     | StartupDetails
     | TaskRescheduleStartDate
     | TaskStateStoreResult
+    | DagRunStateStoreResult
     | TICount
     | TaskBreadcrumbsResult
     | TaskStatesResult
@@ -1025,6 +1037,31 @@ class DeleteTaskStateStore(BaseModel):
 class ClearTaskStateStore(BaseModel):
     ti_id: UUID
     type: Literal["ClearTaskStateStore"] = "ClearTaskStateStore"
+
+
+class GetDagRunStateStore(BaseModel):
+    ti_id: UUID
+    key: str
+    type: Literal["GetDagRunStateStore"] = "GetDagRunStateStore"
+
+
+class SetDagRunStateStore(BaseModel):
+    ti_id: UUID
+    key: str
+    value: JsonValue
+    expires_at: AwareDatetime | None
+    type: Literal["SetDagRunStateStore"] = "SetDagRunStateStore"
+
+
+class DeleteDagRunStateStore(BaseModel):
+    ti_id: UUID
+    key: str
+    type: Literal["DeleteDagRunStateStore"] = "DeleteDagRunStateStore"
+
+
+class ClearDagRunStateStore(BaseModel):
+    ti_id: UUID
+    type: Literal["ClearDagRunStateStore"] = "ClearDagRunStateStore"
 
 
 class GetAssetStateStoreByName(BaseModel):
@@ -1287,10 +1324,12 @@ ToSupervisor = Annotated[
     | ClearAssetStateStoreByName
     | ClearAssetStateStoreByUri
     | ClearTaskStateStore
+    | ClearDagRunStateStore
     | DeferTask
     | DeleteAssetStateStoreByName
     | DeleteAssetStateStoreByUri
     | DeleteTaskStateStore
+    | DeleteDagRunStateStore
     | DeleteXCom
     | GetAssetByName
     | GetAssetByUri
@@ -1309,6 +1348,7 @@ ToSupervisor = Annotated[
     | GetPreviousTI
     | GetTaskRescheduleStartDate
     | GetTaskStateStore
+    | GetDagRunStateStore
     | GetTICount
     | GetTaskBreadcrumbs
     | GetTaskStates
@@ -1326,6 +1366,7 @@ ToSupervisor = Annotated[
     | SetRenderedFields
     | SetRenderedMapIndex
     | SetTaskStateStore
+    | SetDagRunStateStore
     | SetXCom
     | SkipDownstreamTasks
     | SucceedTask

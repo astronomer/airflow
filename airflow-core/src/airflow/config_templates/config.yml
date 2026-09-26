@@ -3447,6 +3447,15 @@ state_store:
       type: integer
       example: "7"
       default: "30"
+    dag_run_default_retention_days:
+      description: |
+        Number of days to retain Dag run state after its last update.
+        Rows older than this are removed when cleanup is triggered.
+        Set to 0 to disable time-based cleanup entirely.
+      version_added: 3.4.0
+      type: integer
+      example: "7"
+      default: "30"
     state_cleanup_batch_size:
       description: |
         Number of rows deleted per batch during cleanup. Defaults to 0 (no batching).

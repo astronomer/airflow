@@ -493,6 +493,26 @@
       "title": "ClearAssetStateStoreByUri",
       "type": "object"
     },
+    "ClearDagRunStateStore": {
+      "properties": {
+        "ti_id": {
+          "format": "uuid",
+          "title": "Ti Id",
+          "type": "string"
+        },
+        "type": {
+          "const": "ClearDagRunStateStore",
+          "default": "ClearDagRunStateStore",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ti_id"
+      ],
+      "title": "ClearDagRunStateStore",
+      "type": "object"
+    },
     "ClearTaskStateStore": {
       "properties": {
         "ti_id": {
@@ -1480,6 +1500,33 @@
       "title": "DagRunStateResult",
       "type": "object"
     },
+    "DagRunStateStoreResult": {
+      "additionalProperties": false,
+      "description": "Response to GetDagRunStateStore; wraps the generated API response for supervisor to worker comms.",
+      "properties": {
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "const": "DagRunStateStoreResult",
+          "default": "DagRunStateStoreResult",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "DagRunStateStoreResult",
+      "type": "object"
+    },
     "DagRunType": {
       "description": "Class with DagRun types.",
       "enum": [
@@ -1655,6 +1702,31 @@
         "key"
       ],
       "title": "DeleteAssetStateStoreByUri",
+      "type": "object"
+    },
+    "DeleteDagRunStateStore": {
+      "properties": {
+        "ti_id": {
+          "format": "uuid",
+          "title": "Ti Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "DeleteDagRunStateStore",
+          "default": "DeleteDagRunStateStore",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ti_id",
+        "key"
+      ],
+      "title": "DeleteDagRunStateStore",
       "type": "object"
     },
     "DeleteTaskStateStore": {
@@ -1863,6 +1935,7 @@
         "XCOM_NOT_FOUND",
         "ASSET_NOT_FOUND",
         "TASK_STORE_NOT_FOUND",
+        "DAG_RUN_STORE_NOT_FOUND",
         "ASSET_STORE_NOT_FOUND",
         "DAGRUN_ALREADY_EXISTS",
         "PERMISSION_DENIED",
@@ -2347,6 +2420,31 @@
         "run_id"
       ],
       "title": "GetDagRunState",
+      "type": "object"
+    },
+    "GetDagRunStateStore": {
+      "properties": {
+        "ti_id": {
+          "format": "uuid",
+          "title": "Ti Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "type": {
+          "const": "GetDagRunStateStore",
+          "default": "GetDagRunStateStore",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ti_id",
+        "key"
+      ],
+      "title": "GetDagRunStateStore",
       "type": "object"
     },
     "GetHITLDetailResponse": {
@@ -3684,6 +3782,48 @@
         "value"
       ],
       "title": "SetAssetStateStoreByUri",
+      "type": "object"
+    },
+    "SetDagRunStateStore": {
+      "properties": {
+        "ti_id": {
+          "format": "uuid",
+          "title": "Ti Id",
+          "type": "string"
+        },
+        "key": {
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Expires At"
+        },
+        "type": {
+          "const": "SetDagRunStateStore",
+          "default": "SetDagRunStateStore",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ti_id",
+        "key",
+        "value",
+        "expires_at"
+      ],
+      "title": "SetDagRunStateStore",
       "type": "object"
     },
     "SetRenderedFields": {

@@ -79,14 +79,17 @@ from airflow.sdk.execution_time.comms import (
     AwaitInputTask,
     ClearAssetStateStoreByName,
     ClearAssetStateStoreByUri,
+    ClearDagRunStateStore,
     ClearTaskStateStore,
     ConnectionResult,
     CreateHITLDetailPayload,
     DagResult,
     DagRunResult,
+    DagRunStateStoreResult,
     DeferTask,
     DeleteAssetStateStoreByName,
     DeleteAssetStateStoreByUri,
+    DeleteDagRunStateStore,
     DeleteTaskStateStore,
     DeleteVariable,
     DeleteXCom,
@@ -102,6 +105,7 @@ from airflow.sdk.execution_time.comms import (
     GetDag,
     GetDagRun,
     GetDagRunState,
+    GetDagRunStateStore,
     GetDRCount,
     GetPreviousDagRun,
     GetPreviousTI,
@@ -128,6 +132,7 @@ from airflow.sdk.execution_time.comms import (
     SentFDs,
     SetAssetStateStoreByName,
     SetAssetStateStoreByUri,
+    SetDagRunStateStore,
     SetRenderedFields,
     SetRenderedMapIndex,
     SetTaskStateStore,
@@ -2184,6 +2189,38 @@ class ActivitySubprocess(WatchedSubprocess):
         resp = OKResponse(ok=True)
         return resp, {}
 
+    def _handle_get_dag_run_state_store(
+        self, msg: GetDagRunStateStore, log: FilteringBoundLogger, req_id: int
+    ) -> RequestResult:
+        store = self.client.dag_run_state_store.get(msg.ti_id, msg.key)
+        resp = (
+            store
+            if isinstance(store, ErrorResponse)
+            else DagRunStateStoreResult.from_dag_run_state_store_response(store)
+        )
+        return resp, {}
+
+    def _handle_set_dag_run_state_store(
+        self, msg: SetDagRunStateStore, log: FilteringBoundLogger, req_id: int
+    ) -> RequestResult:
+        self.client.dag_run_state_store.set(msg.ti_id, msg.key, msg.value, expires_at=msg.expires_at)
+        resp = OKResponse(ok=True)
+        return resp, {}
+
+    def _handle_delete_dag_run_state_store(
+        self, msg: DeleteDagRunStateStore, log: FilteringBoundLogger, req_id: int
+    ) -> RequestResult:
+        self.client.dag_run_state_store.delete(msg.ti_id, msg.key)
+        resp = OKResponse(ok=True)
+        return resp, {}
+
+    def _handle_clear_dag_run_state_store(
+        self, msg: ClearDagRunStateStore, log: FilteringBoundLogger, req_id: int
+    ) -> RequestResult:
+        self.client.dag_run_state_store.clear(msg.ti_id)
+        resp = OKResponse(ok=True)
+        return resp, {}
+
     def _handle_get_asset_state_store_by_name(
         self, msg: GetAssetStateStoreByName, log: FilteringBoundLogger, req_id: int
     ) -> RequestResult:
@@ -2276,6 +2313,7 @@ class ActivitySubprocess(WatchedSubprocess):
                 register_request_method(ClearAssetStateStoreByName, _handle_clear_asset_state_store_by_name),
                 register_request_method(ClearAssetStateStoreByUri, _handle_clear_asset_state_store_by_uri),
                 register_request_method(ClearTaskStateStore, _handle_clear_task_state_store),
+                register_request_method(ClearDagRunStateStore, _handle_clear_dag_run_state_store),
                 register_request_method(CreateHITLDetailPayload, _handle_create_hitl_detail_payload),
                 register_request_method(DeferTask, _handle_suspended_task),
                 register_request_method(
@@ -2283,6 +2321,7 @@ class ActivitySubprocess(WatchedSubprocess):
                 ),
                 register_request_method(DeleteAssetStateStoreByUri, _handle_delete_asset_state_store_by_uri),
                 register_request_method(DeleteTaskStateStore, _handle_delete_task_state_store),
+                register_request_method(DeleteDagRunStateStore, _handle_delete_dag_run_state_store),
                 register_request_method(GetAssetByName, _handle_get_asset_by_name),
                 register_request_method(GetAssetByUri, _handle_get_asset_by_uri),
                 register_request_method(GetAssetEventByAsset, _handle_get_asset_event_by_asset),
@@ -2295,6 +2334,7 @@ class ActivitySubprocess(WatchedSubprocess):
                 register_request_method(GetTaskBreadcrumbs, _handle_get_task_breadcrumbs),
                 register_request_method(GetTaskRescheduleStartDate, _handle_get_task_reschedule_start_date),
                 register_request_method(GetTaskStateStore, _handle_get_task_state_store),
+                register_request_method(GetDagRunStateStore, _handle_get_dag_run_state_store),
                 register_request_method(RescheduleTask, _handle_reschedule_task),
                 register_request_method(ResendLoggingFD, _handle_resend_logging_fd),
                 register_request_method(RetryTask, _handle_task_state),
@@ -2303,6 +2343,7 @@ class ActivitySubprocess(WatchedSubprocess):
                 register_request_method(SetRenderedFields, _handle_set_rendered_fields),
                 register_request_method(SetRenderedMapIndex, _handle_set_rendered_map_index),
                 register_request_method(SetTaskStateStore, _handle_set_task_state_store),
+                register_request_method(SetDagRunStateStore, _handle_set_dag_run_state_store),
                 register_request_method(SkipDownstreamTasks, _handle_skip_downstream_tasks),
                 register_request_method(SucceedTask, _handle_finished_task),
                 register_request_method(TaskState, _handle_task_state),

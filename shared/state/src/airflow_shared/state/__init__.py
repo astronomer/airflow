@@ -300,6 +300,20 @@ class BaseStoreBackend(ABC):
         """
         return json.loads(stored)
 
+    def serialize_dag_run_state_store_to_ref(self, *, value: JsonValue, key: str, scope: DagRunScope) -> str:
+        """
+        Serialize a Dag run state store value before it is sent to the Execution API.
+
+        Same contract as :meth:`serialize_task_state_store_to_ref`: return the raw reference
+        only, and make it deterministic for a given ``scope`` and ``key`` so ``delete``/``clear``
+        can reconstruct it.
+        """
+        return json.dumps(value)
+
+    def deserialize_dag_run_state_store_from_ref(self, stored: str) -> JsonValue:
+        """Resolve a stored Dag run state store reference back to the actual value."""
+        return json.loads(stored)
+
     def serialize_asset_state_store_to_ref(self, *, value: JsonValue, key: str, scope: AssetScope) -> str:
         """
         Serialize an asset state store value before it is sent to the Execution API for db persistence.

@@ -57,6 +57,8 @@ from airflow.sdk.api.datamodels._generated import (
     DagResponse,
     DagRun,
     DagRunStateResponse,
+    DagRunStateStorePutBody,
+    DagRunStateStoreResponse,
     DagRunType,
     HITLDetailRequest,
     HITLDetailResponse,
@@ -766,6 +768,40 @@ class TaskStateStoreOperations:
         return OKResponse(ok=True)
 
 
+class DagRunStateStoreOperations:
+    __slots__ = ("client",)
+
+    def __init__(self, client: Client):
+        self.client = client
+
+    def get(self, ti_id: uuid.UUID, key: str) -> DagRunStateStoreResponse | ErrorResponse:
+        """Get a Dag run store value from the API server."""
+        try:
+            resp = self.client.get(f"store/dag-run/{ti_id}/{quote(key, safe='')}")
+        except ServerResponseError as e:
+            if e.response.status_code == HTTPStatus.NOT_FOUND:
+                log.debug("Dag run store key not found", ti_id=ti_id, key=key)
+                return ErrorResponse(error=ErrorType.DAG_RUN_STORE_NOT_FOUND, detail={"key": key})
+            raise
+        return DagRunStateStoreResponse.model_validate_json(resp.read())
+
+    def set(self, ti_id: uuid.UUID, key: str, value: JsonValue, expires_at: datetime | None) -> OKResponse:
+        """Set a Dag run store value via the API server."""
+        body = DagRunStateStorePutBody(value=value, expires_at=expires_at)
+        self.client.put(f"store/dag-run/{ti_id}/{quote(key, safe='')}", content=body.model_dump_json())
+        return OKResponse(ok=True)
+
+    def delete(self, ti_id: uuid.UUID, key: str) -> OKResponse:
+        """Delete a single Dag run store key via the API server."""
+        self.client.delete(f"store/dag-run/{ti_id}/{quote(key, safe='')}")
+        return OKResponse(ok=True)
+
+    def clear(self, ti_id: uuid.UUID) -> OKResponse:
+        """Clear every Dag run store key for the caller's run via the API server."""
+        self.client.delete(f"store/dag-run/{ti_id}")
+        return OKResponse(ok=True)
+
+
 class AssetStateStoreOperations:
     __slots__ = ("client",)
 
@@ -1323,6 +1359,12 @@ class Client(httpx.Client):
     def task_state_store(self) -> TaskStateStoreOperations:
         """Operations related to task store."""
         return TaskStateStoreOperations(self)
+
+    @lru_cache()  # type: ignore[misc]
+    @property
+    def dag_run_state_store(self) -> DagRunStateStoreOperations:
+        """Operations related to Dag run store."""
+        return DagRunStateStoreOperations(self)
 
     @lru_cache()  # type: ignore[misc]
     @property

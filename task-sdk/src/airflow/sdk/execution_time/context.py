@@ -57,9 +57,12 @@ from airflow.sdk.execution_time.comms import (
     AssetStateStoreResult,
     ClearAssetStateStoreByName,
     ClearAssetStateStoreByUri,
+    ClearDagRunStateStore,
     ClearTaskStateStore,
+    DagRunStateStoreResult,
     DeleteAssetStateStoreByName,
     DeleteAssetStateStoreByUri,
+    DeleteDagRunStateStore,
     DeleteTaskStateStore,
     DeleteVariable,
     ErrorResponse,
@@ -70,6 +73,7 @@ from airflow.sdk.execution_time.comms import (
     GetAssetsByAlias,
     GetAssetStateStoreByName,
     GetAssetStateStoreByUri,
+    GetDagRunStateStore,
     GetPrevSuccessfulDagRun,
     GetTaskStateStore,
     GetVariableKeys,
@@ -78,6 +82,7 @@ from airflow.sdk.execution_time.comms import (
     PutVariable,
     SetAssetStateStoreByName,
     SetAssetStateStoreByUri,
+    SetDagRunStateStore,
     SetTaskStateStore,
     TaskStateStoreResult,
     ToSupervisor,
@@ -90,7 +95,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from airflow.sdk import Variable
-    from airflow.sdk._shared.state import TaskScope
+    from airflow.sdk._shared.state import DagRunScope, TaskScope
     from airflow.sdk.bases.operator import BaseOperator
     from airflow.sdk.definitions.connection import Connection
     from airflow.sdk.definitions.context import Context
@@ -727,6 +732,165 @@ class TaskStateStoreAccessor:
         backend = _get_worker_state_store_backend()
         if backend is not None:
             backend.clear(self._scope)
+
+
+class DagRunStateStoreAccessor:
+    """
+    Accessor for state shared by every task in the current Dag run.
+
+    Available as ``context['dag_run_state_store']`` at task execution time. All tasks in the run
+    address the same keys, so concurrent writes to one key are last-writer-wins and a
+    read-modify-write from parallel tasks can lose an update. Give each writer its own key.
+    """
+
+    def __init__(self, ti_id: UUID, scope: DagRunScope) -> None:
+        self._ti_id = ti_id
+        self._scope = scope
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, DagRunStateStoreAccessor):
+            return False
+        return self._scope == other._scope
+
+    def __hash__(self) -> int:
+        return hash(self._scope)
+
+    def __repr__(self) -> str:
+        return f"<DagRunStateStoreAccessor dag_id={self._scope.dag_id!r} run_id={self._scope.run_id!r}>"
+
+    def get(self, key: str, default: JsonValue = None) -> JsonValue:
+        """
+        Return the stored value, or ``default`` if the key does not exist.
+
+        Supported types: ``str``, ``int``, ``float``, ``bool``, ``list``, ``dict``.
+        """
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        resp = SUPERVISOR_COMMS.send(GetDagRunStateStore(ti_id=self._ti_id, key=key))
+        return self._extract_get_response(resp, key, default)
+
+    async def aget(self, key: str, default: JsonValue = None) -> JsonValue:
+        """Async version of :meth:`get` that awaits instead of blocking the event loop."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        resp = await SUPERVISOR_COMMS.asend(GetDagRunStateStore(ti_id=self._ti_id, key=key))
+        return self._extract_get_response(resp, key, default)
+
+    def _extract_get_response(self, resp: Any, key: str, default: JsonValue) -> JsonValue:
+        if isinstance(resp, ErrorResponse) and resp.error != ErrorType.DAG_RUN_STORE_NOT_FOUND:
+            raise AirflowRuntimeError(resp)
+        if isinstance(resp, DagRunStateStoreResult):
+            stored = resp.value
+            backend = _get_worker_state_store_backend()
+            if backend is not None and isinstance(stored, dict) and (ref := _unwrap_external_ref(stored)):
+                return backend.deserialize_dag_run_state_store_from_ref(ref)
+            if backend is not None:
+                log.warning(
+                    "Dag run store key %r was not written through the configured state backend - "
+                    "returning raw stored value.",
+                    key,
+                )
+            return stored
+        return default
+
+    def set(self, key: str, value: JsonValue, *, retention: timedelta | None = None) -> None:
+        """
+        Write or overwrite the value for the given key.
+
+        ``value`` must not be ``None``. ``retention`` behaves as it does on
+        ``task_state_store``, except that it defaults to
+        ``[state_store] dag_run_default_retention_days``.
+        """
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        SUPERVISOR_COMMS.send(self._build_set_message(key, value, retention))
+
+    async def aset(self, key: str, value: JsonValue, *, retention: timedelta | None = None) -> None:
+        """Async version of :meth:`set` that awaits instead of blocking the event loop."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        await SUPERVISOR_COMMS.asend(self._build_set_message(key, value, retention))
+
+    def _build_set_message(
+        self, key: str, value: JsonValue, retention: timedelta | None
+    ) -> SetDagRunStateStore:
+        if value is None:
+            raise ValueError("Cannot set value as None")
+
+        # expires_at is always resolved on the worker in UTC before being sent.
+        now = datetime.now(tz=timezone.utc)
+        if retention is NEVER_EXPIRE:
+            expires_at = None
+        elif retention is not None:
+            expires_at = now + retention
+        else:
+            days = conf.getint("state_store", "dag_run_default_retention_days")
+            if days < 0:
+                raise ValueError(
+                    f"[state_store] dag_run_default_retention_days must be >= 0, got {days}. "
+                    "Set to 0 to disable expiry."
+                )
+            expires_at = None if days == 0 else now + timedelta(days=days)
+
+        backend = _get_worker_state_store_backend()
+        stored: JsonValue = value
+        if backend is not None:
+            ref: str = backend.serialize_dag_run_state_store_to_ref(value=value, key=key, scope=self._scope)
+            stored = _wrap_external_ref(ref)
+
+        msg = SetDagRunStateStore(ti_id=self._ti_id, key=key, value=stored, expires_at=expires_at)
+
+        if (limit := conf.getint("state_store", "max_value_storage_bytes")) > 0:
+            serialized_size = len(json.dumps(stored))
+            if serialized_size > limit:
+                log.warning(
+                    "Dag run store value for key %r is %d bytes, which exceeds configured "
+                    "max_value_storage_bytes=%d. Consider configuring [workers] state_store_backend "
+                    "to offload large payloads.",
+                    key,
+                    serialized_size,
+                    limit,
+                )
+
+        return msg
+
+    def delete(self, key: str) -> None:
+        """Delete a single key. No-op if the key does not exist."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        # cleanup the DB ref first, if backend cleanup fails after this, the ref is gone and
+        # deterministic keys are recoverable on next set().
+        SUPERVISOR_COMMS.send(DeleteDagRunStateStore(ti_id=self._ti_id, key=key))
+        backend = _get_worker_state_store_backend()
+        if backend is not None:
+            backend.delete(self._scope, key)
+
+    async def adelete(self, key: str) -> None:
+        """Async version of :meth:`delete` that awaits instead of blocking the event loop."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        await SUPERVISOR_COMMS.asend(DeleteDagRunStateStore(ti_id=self._ti_id, key=key))
+        backend = _get_worker_state_store_backend()
+        if backend is not None:
+            await backend.adelete(self._scope, key)
+
+    def clear(self) -> None:
+        """Delete every key for this Dag run, for every task in it."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        SUPERVISOR_COMMS.send(ClearDagRunStateStore(ti_id=self._ti_id))
+        backend = _get_worker_state_store_backend()
+        if backend is not None:
+            backend.clear(self._scope)
+
+    async def aclear(self) -> None:
+        """Async version of :meth:`clear` that awaits instead of blocking the event loop."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        await SUPERVISOR_COMMS.asend(ClearDagRunStateStore(ti_id=self._ti_id))
+        backend = _get_worker_state_store_backend()
+        if backend is not None:
+            await backend.aclear(self._scope)
 
 
 class AssetStateStoreAccessor:
