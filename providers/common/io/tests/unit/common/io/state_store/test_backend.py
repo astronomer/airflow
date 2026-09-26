@@ -356,3 +356,61 @@ class TestStateStoreObjectStorageBackend:
 
         assert call_threads
         assert loop_thread not in call_threads
+
+
+class _ExplodingHandle:
+    """A file handle that opens the target for real but fails on write."""
+
+    def __init__(self, handle):
+        self._handle = handle
+
+    def write(self, data):
+        raise RuntimeError("boom")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self._handle.__exit__(*exc_info)
+        return False
+
+
+class TestAtomicWrites:
+    """
+    Writes land whole or not at all.
+
+    Both tests assert that the target is never opened for writing. That is what makes a
+    concurrent write safe, and it is deterministic, where racing two real writers is not.
+    """
+
+    def test_write_goes_via_a_temporary_name(self, conf_overrides, base_path):
+        path = ObjectStoragePath(base_path) / "shared.json"
+        opened_for_write = []
+        real_open = ObjectStoragePath.open
+
+        def record(self, mode="rb", **kwargs):
+            if "w" in mode:
+                opened_for_write.append(self.name)
+            return real_open(self, mode, **kwargs)
+
+        with mock.patch.object(ObjectStoragePath, "open", record):
+            _write_to_object_storage(path, '"v"')
+
+        assert opened_for_write != ["shared.json"]
+        assert [p.name for p in ObjectStoragePath(base_path).glob("*")] == ["shared.json"]
+        assert _read_from_object_storage(path) == '"v"'
+
+    def test_failed_write_leaves_the_previous_value_intact(self, conf_overrides, base_path):
+        path = ObjectStoragePath(base_path) / "shared.json"
+        _write_to_object_storage(path, '"old"')
+        real_open = ObjectStoragePath.open
+
+        def exploding(self, mode="rb", **kwargs):
+            return _ExplodingHandle(real_open(self, mode, **kwargs))
+
+        with mock.patch.object(ObjectStoragePath, "open", exploding):
+            with pytest.raises(RuntimeError, match="boom"):
+                _write_to_object_storage(path, '"new"')
+
+        assert _read_from_object_storage(path) == '"old"'
+        assert [p.name for p in ObjectStoragePath(base_path).glob("*")] == ["shared.json"]

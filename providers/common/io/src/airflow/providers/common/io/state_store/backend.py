@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from functools import cache
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlsplit
@@ -98,10 +99,24 @@ def _build_asset_path(scope: AssetScope, key: str) -> ObjectStoragePath:
 
 
 def _write_to_object_storage(path: ObjectStoragePath, value: str) -> None:
+    """
+    Write ``value`` to ``path`` so a reader never observes a partial write.
+
+    Writing straight to the target truncates it first, so two writers of the same key can
+    interleave and leave torn bytes (unreadable outright when compression is on). Object stores
+    publish a whole object at once, but a local filesystem backing does not, so the write goes
+    to a unique temporary name and is then renamed onto the target.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     compression = _get_compression()
-    with path.open(mode="wb", compression=compression) as f:
-        f.write(value.encode("utf-8"))
+    tmp_path = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with tmp_path.open(mode="wb", compression=compression) as f:
+            f.write(value.encode("utf-8"))
+        tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def _read_from_object_storage(path: ObjectStoragePath) -> str | None:
