@@ -99,6 +99,7 @@ __all__ = [
     "WeekWindow",
     "WeightRule",
     "Window",
+    "WorkloadIdentity",
     "XComArg",
     "YearWindow",
     "asset",
@@ -110,6 +111,8 @@ __all__ = [
     "deadline_reference",
     "get_current_context",
     "get_parsing_context",
+    "get_workload_identity",
+    "aget_workload_identity",
     "literal",
     "lineage",
     "macros",
@@ -223,6 +226,11 @@ if TYPE_CHECKING:
         MultipleCronTriggerTimetable,
     )
     from airflow.sdk.definitions.variable import Variable
+    from airflow.sdk.definitions.workload_identity import (
+        WorkloadIdentity,
+        aget_workload_identity,
+        get_workload_identity,
+    )
     from airflow.sdk.definitions.xcom_arg import XComArg
     from airflow.sdk.execution_time import macros
     from airflow.sdk.execution_time.context import NEVER_EXPIRE
@@ -311,6 +319,7 @@ __lazy_imports: dict[str, str] = {
     "WeekWindow": ".definitions.partition_mappers.window",
     "WeightRule": ".api.datamodels._generated",
     "Window": ".definitions.partition_mappers.window",
+    "WorkloadIdentity": ".definitions.workload_identity",
     "XComArg": ".definitions.xcom_arg",
     "YearWindow": ".definitions.partition_mappers.window",
     "asset": ".definitions.asset.decorators",
@@ -323,6 +332,8 @@ __lazy_imports: dict[str, str] = {
     "NEVER_EXPIRE": ".execution_time.context",
     "get_current_context": ".definitions.context",
     "get_parsing_context": ".definitions.context",
+    "get_workload_identity": ".definitions.workload_identity",
+    "aget_workload_identity": ".definitions.workload_identity",
     "literal": ".definitions.template",
     "lineage": ".lineage",
     "macros": ".execution_time",

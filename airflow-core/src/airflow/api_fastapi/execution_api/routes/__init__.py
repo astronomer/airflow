@@ -34,6 +34,7 @@ from airflow.api_fastapi.execution_api.routes import (
     task_reschedules,
     task_state_store,
     variables,
+    workload_identity,
     xcoms,
 )
 from airflow.api_fastapi.execution_api.security import require_auth
@@ -63,6 +64,8 @@ authenticated_router.include_router(
 )
 authenticated_router.include_router(variables.router, prefix="/variables", tags=["Variables"])
 authenticated_router.include_router(xcoms.router, prefix="/xcoms", tags=["XComs"])
+# workload_identity.router declares its full path ("/workload-identity") for the same reason as health.
+authenticated_router.include_router(workload_identity.router, tags=["Workload Identity"])
 authenticated_router.include_router(hitl.router, prefix="/hitlDetails", tags=["Human in the Loop"])
 authenticated_router.include_router(task_state_store.router, prefix="/store/ti", tags=["Task State Store"])
 authenticated_router.include_router(

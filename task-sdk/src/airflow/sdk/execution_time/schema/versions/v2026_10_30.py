@@ -43,3 +43,16 @@ class AddRetryReasonToTaskState(VersionChange):
     description = __doc__
 
     instructions_to_migrate_to_previous_version = (schema(TaskState).field("retry_reason").didnt_exist,)
+
+
+class AddWorkloadIdentityMessages(VersionChange):
+    """
+    Add the ``GetWorkloadIdentity`` request and ``WorkloadIdentityResult`` response bodies.
+
+    Both bodies are new, so there is no older shape to migrate to or from; the entry records
+    the contract change for the version check.
+    """
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = ()

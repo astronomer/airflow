@@ -128,6 +128,11 @@ from airflow.sdk.definitions.timetables.trigger import (
     MultipleCronTriggerTimetable,
 )
 from airflow.sdk.definitions.variable import Variable as Variable
+from airflow.sdk.definitions.workload_identity import (
+    WorkloadIdentity as WorkloadIdentity,
+    aget_workload_identity as aget_workload_identity,
+    get_workload_identity as get_workload_identity,
+)
 from airflow.sdk.definitions.xcom_arg import XComArg as XComArg
 from airflow.sdk.execution_time import macros as macros
 from airflow.sdk.execution_time.cache import SecretCache as SecretCache
@@ -216,6 +221,7 @@ __all__ = [
     "WeekWindow",
     "WeightRule",
     "Window",
+    "WorkloadIdentity",
     "XComArg",
     "YearWindow",
     "asset",
@@ -225,6 +231,8 @@ __all__ = [
     "dag",
     "get_current_context",
     "get_parsing_context",
+    "get_workload_identity",
+    "aget_workload_identity",
     "literal",
     "macros",
     "setup",

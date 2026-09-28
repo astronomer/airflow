@@ -2801,6 +2801,31 @@
       "title": "GetVariableKeys",
       "type": "object"
     },
+    "GetWorkloadIdentity": {
+      "description": "Ask the supervisor for an external identity token for this task instance.",
+      "properties": {
+        "audience": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audience"
+        },
+        "type": {
+          "const": "GetWorkloadIdentity",
+          "default": "GetWorkloadIdentity",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "GetWorkloadIdentity",
+      "type": "object"
+    },
     "GetXCom": {
       "properties": {
         "key": {
@@ -4527,6 +4552,53 @@
         "value"
       ],
       "title": "VariableResult",
+      "type": "object"
+    },
+    "WorkloadIdentityResult": {
+      "properties": {
+        "token": {
+          "title": "Token",
+          "type": "string"
+        },
+        "subject": {
+          "title": "Subject",
+          "type": "string"
+        },
+        "issuer": {
+          "title": "Issuer",
+          "type": "string"
+        },
+        "audience": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audience"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "type": {
+          "const": "WorkloadIdentityResult",
+          "default": "WorkloadIdentityResult",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "subject",
+        "issuer",
+        "expires_at"
+      ],
+      "title": "WorkloadIdentityResult",
       "type": "object"
     },
     "XComCountResponse": {

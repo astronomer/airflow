@@ -85,6 +85,7 @@ from airflow.sdk.api.datamodels._generated import (
     VariableKeysResponse,
     VariablePostBody,
     VariableResponse,
+    WorkloadIdentityResponse,
     XComResponse,
     XComSequenceIndexResponse,
     XComSequenceSliceResponse,
@@ -512,6 +513,42 @@ class ConnectionOperations:
                 )
             raise
         return ConnectionResponse.model_validate_json(resp.read())
+
+
+class WorkloadIdentityOperations:
+    __slots__ = ("client",)
+
+    def __init__(self, client: Client):
+        self.client = client
+
+    def get(self, audience: str | None = None) -> WorkloadIdentityResponse | ErrorResponse:
+        """
+        Fetch a workload identity token for this task instance from the API server.
+
+        Not retried: a deny (403), an unconfigured deployment (501) and a provider timeout
+        (504) are all final answers, and retrying them would only multiply calls into the
+        provider. The server message is forwarded so the task log says why.
+        """
+        params = {"audience": audience} if audience else None
+        try:
+            resp = self.client.request("GET", "workload-identity", params=params, retry=False)
+        except ServerResponseError as e:
+            status_code = e.response.status_code
+            message = e.detail.get("message") if isinstance(e.detail, dict) else None
+            if status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
+                log.debug("Workload identity denied", audience=audience, detail=e.detail)
+                return ErrorResponse(
+                    error=ErrorType.PERMISSION_DENIED,
+                    detail={"audience": audience, "status_code": status_code, "message": message},
+                )
+            if status_code in (HTTPStatus.NOT_IMPLEMENTED, HTTPStatus.GATEWAY_TIMEOUT):
+                log.warning("Workload identity unavailable", audience=audience, detail=e.detail)
+                return ErrorResponse(
+                    error=ErrorType.API_SERVER_ERROR,
+                    detail={"audience": audience, "status_code": status_code, "message": message},
+                )
+            raise
+        return WorkloadIdentityResponse.model_validate_json(resp.read())
 
 
 class VariableOperations:
@@ -1296,6 +1333,12 @@ class Client(httpx.Client):
     def connections(self) -> ConnectionOperations:
         """Operations related to Connections."""
         return ConnectionOperations(self)
+
+    @lru_cache()  # type: ignore[misc]
+    @property
+    def workload_identity(self) -> WorkloadIdentityOperations:
+        """Operations related to the task's external workload identity."""
+        return WorkloadIdentityOperations(self)
 
     @lru_cache()  # type: ignore[misc]
     @property

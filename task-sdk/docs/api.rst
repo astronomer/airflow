@@ -146,6 +146,12 @@ Tasks & Operators
 
 .. autoapifunction:: airflow.sdk.get_parsing_context
 
+.. autoapifunction:: airflow.sdk.get_workload_identity
+
+.. autoapifunction:: airflow.sdk.aget_workload_identity
+
+.. autoapiclass:: airflow.sdk.WorkloadIdentity
+
 Retry Policies
 --------------
 Retry policies let you configure per-exception retry behaviour as a parameter on any
@@ -339,7 +345,7 @@ Everything else
 .. autoapimodule:: airflow.sdk
   :members:
   :special-members: __version__
-  :exclude-members: BaseAsyncOperator, BaseOperator, DAG, dag, asset, Asset, AssetAccessControl, AssetAlias, AssetAll, AssetAny, AssetWatcher, TaskGroup, TaskInstance, XComArg, get_current_context, get_parsing_context
+  :exclude-members: BaseAsyncOperator, BaseOperator, DAG, dag, asset, Asset, AssetAccessControl, AssetAlias, AssetAll, AssetAny, AssetWatcher, TaskGroup, TaskInstance, XComArg, get_current_context, get_parsing_context, get_workload_identity, aget_workload_identity, WorkloadIdentity
   :undoc-members:
   :imported-members:
   :no-index:

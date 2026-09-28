@@ -38,6 +38,7 @@ from airflow.sdk.api.datamodels._generated import (
     DagRunStateResponse,
     TaskStatesResponse,
     VariableResponse,
+    WorkloadIdentityResponse,
     XComResponse,
     XComSequenceIndexResponse,
     XComSequenceSliceResponse,
@@ -63,6 +64,7 @@ from airflow.sdk.execution_time.comms import (
     GetTICount,
     GetVariable,
     GetVariableKeys,
+    GetWorkloadIdentity,
     GetXCom,
     GetXComCount,
     GetXComSequenceItem,
@@ -76,6 +78,7 @@ from airflow.sdk.execution_time.comms import (
     TaskStatesResult,
     VariableKeysResult,
     VariableResult,
+    WorkloadIdentityResult,
     XComResult,
     XComSequenceIndexResult,
     XComSequenceSliceResult,
@@ -368,3 +371,14 @@ def handle_clear_asset_state_store_by_uri(
 ) -> tuple[BaseModel | None, dict[str, bool]]:
     client.asset_state_store.clear(uri=msg.uri)
     return None, {}
+
+
+def handle_get_workload_identity(
+    client: Client, msg: GetWorkloadIdentity
+) -> tuple[BaseModel | None, dict[str, bool]]:
+    """Fetch the task's workload identity token from the API server and mask it in logs."""
+    issued = client.workload_identity.get(msg.audience)
+    if isinstance(issued, WorkloadIdentityResponse):
+        mask_secret(issued.token)
+        return WorkloadIdentityResult.from_response(issued), {"exclude_unset": True}
+    return issued, {}

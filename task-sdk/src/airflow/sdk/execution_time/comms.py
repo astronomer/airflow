@@ -96,6 +96,7 @@ from airflow.sdk.api.datamodels._generated import (
     TriggerDAGRunPayload,
     UpdateHITLDetailPayload,
     VariableResponse,
+    WorkloadIdentityResponse,
     XComResponse,
     XComSequenceIndexResponse,
     XComSequenceSliceResponse,
@@ -611,6 +612,14 @@ class XComSequenceSliceResult(BaseModel):
         return cls(root=response.root, type="XComSequenceSliceResult")
 
 
+class WorkloadIdentityResult(WorkloadIdentityResponse):
+    type: Literal["WorkloadIdentityResult"] = "WorkloadIdentityResult"
+
+    @classmethod
+    def from_response(cls, response: WorkloadIdentityResponse) -> WorkloadIdentityResult:
+        return cls(**response.model_dump(exclude_defaults=True), type="WorkloadIdentityResult")
+
+
 class ConnectionResult(ConnectionResponse):
     type: Literal["ConnectionResult"] = "ConnectionResult"
 
@@ -871,6 +880,7 @@ ToTask = Annotated[
     | TaskStatesResult
     | VariableResult
     | VariableKeysResult
+    | WorkloadIdentityResult
     | XComCountResponse
     | XComResult
     | XComSequenceIndexResult
@@ -1090,6 +1100,13 @@ class GetVariableKeys(BaseModel):
     limit: int = 1000
     offset: int = 0
     type: Literal["GetVariableKeys"] = "GetVariableKeys"
+
+
+class GetWorkloadIdentity(BaseModel):
+    """Ask the supervisor for an external identity token for this task instance."""
+
+    audience: str | None = None
+    type: Literal["GetWorkloadIdentity"] = "GetWorkloadIdentity"
 
 
 class PutVariable(BaseModel):
@@ -1314,6 +1331,7 @@ ToSupervisor = Annotated[
     | GetTaskStates
     | GetVariable
     | GetVariableKeys
+    | GetWorkloadIdentity
     | GetXCom
     | GetXComCount
     | GetXComSequenceItem

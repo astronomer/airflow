@@ -2454,6 +2454,25 @@ execution_api:
       default: "urn:airflow.apache.org:task"
       example: ~
       type: string
+    workload_identity_provider:
+      description: |
+        Dotted path to a ``WorkloadIdentityProvider`` subclass that mints short-lived workload
+        identity tokens for task instances. The Execution API serves them from ``/workload-identity``
+        and task code requests them with ``airflow.sdk.get_workload_identity``. Empty disables the
+        endpoint, which then answers 501.
+      version_added: 3.4.0
+      type: string
+      example: "my_platform.identity.STSProvider"
+      default: ""
+    workload_identity_timeout:
+      description: |
+        Seconds the Execution API waits for the workload identity provider to mint a token before
+        answering ``504`` to the task. Provider calls run on a small pool of their own, so a slow
+        issuer cannot hold up unrelated requests.
+      version_added: 3.4.0
+      type: float
+      example: ~
+      default: "30"
 lineage:
   description: ~
   options:

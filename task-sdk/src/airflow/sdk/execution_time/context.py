@@ -46,6 +46,7 @@ from airflow.sdk.definitions.asset import (
     AssetUriRef,
     BaseAssetUniqueKey,
 )
+from airflow.sdk.definitions.workload_identity import WorkloadIdentity
 from airflow.sdk.exceptions import (
     AirflowNotFoundException,
     AirflowRuntimeError,
@@ -73,6 +74,7 @@ from airflow.sdk.execution_time.comms import (
     GetPrevSuccessfulDagRun,
     GetTaskStateStore,
     GetVariableKeys,
+    GetWorkloadIdentity,
     PrevSuccessfulDagRunResponse,
     PrevSuccessfulDagRunResult,
     PutVariable,
@@ -82,6 +84,7 @@ from airflow.sdk.execution_time.comms import (
     TaskStateStoreResult,
     ToSupervisor,
     VariableKeysResult,
+    WorkloadIdentityResult,
 )
 from airflow.sdk.log import amask_secret, mask_secret
 
@@ -257,6 +260,43 @@ def _get_connection(conn_id: str) -> Connection:
     # If no backend found the connection, raise an error
 
     raise AirflowNotFoundException(f"The conn_id `{conn_id}` isn't defined")
+
+
+def _workload_identity_from_result(msg: WorkloadIdentityResult) -> WorkloadIdentity:
+    return WorkloadIdentity(
+        token=msg.token,
+        subject=msg.subject,
+        issuer=msg.issuer,
+        audience=msg.audience,
+        expires_at=msg.expires_at,
+    )
+
+
+def _get_workload_identity(audience: str | None) -> WorkloadIdentity:
+    """Ask the supervisor for a workload identity token; see :func:`airflow.sdk.get_workload_identity`."""
+    # Imported here like the other helpers in this module: task_runner imports context.
+    from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+    msg = SUPERVISOR_COMMS.send(GetWorkloadIdentity(audience=audience))
+    if isinstance(msg, ErrorResponse):
+        raise AirflowRuntimeError(msg)
+    if not isinstance(msg, WorkloadIdentityResult):
+        raise TypeError(f"Expected WorkloadIdentityResult, received: {type(msg)} {msg}")
+    mask_secret(msg.token)
+    return _workload_identity_from_result(msg)
+
+
+async def _aget_workload_identity(audience: str | None) -> WorkloadIdentity:
+    """Async counterpart of :func:`_get_workload_identity`."""
+    from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+    msg = await SUPERVISOR_COMMS.asend(GetWorkloadIdentity(audience=audience))
+    if isinstance(msg, ErrorResponse):
+        raise AirflowRuntimeError(msg)
+    if not isinstance(msg, WorkloadIdentityResult):
+        raise TypeError(f"Expected WorkloadIdentityResult, received: {type(msg)} {msg}")
+    await amask_secret(msg.token)
+    return _workload_identity_from_result(msg)
 
 
 async def _async_get_connection(conn_id: str) -> Connection:

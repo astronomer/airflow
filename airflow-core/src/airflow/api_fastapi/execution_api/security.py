@@ -81,6 +81,10 @@ from sqlalchemy import select
 from airflow.api_fastapi.auth.tokens import JWTGenerator, JWTValidator
 from airflow.api_fastapi.execution_api.datamodels.token import TIClaims, TIToken, TokenScope
 from airflow.api_fastapi.execution_api.deps import DepContainer
+from airflow.api_fastapi.execution_api.workload_identity import WorkloadCallerIdentity
+from airflow.models import TaskInstance
+from airflow.models.dag_version import DagVersion
+from airflow.utils.session import create_session
 
 log = structlog.get_logger(logger_name=__name__)
 
@@ -303,3 +307,67 @@ def _team_name_for_dag_stmt(dag_id):
         .join(DagBundleModel.teams)
         .where(DagModel.dag_id == dag_id)
     )
+
+
+def resolve_caller_identity(token: TIToken, session) -> WorkloadCallerIdentity:
+    """
+    Resolve the verified caller token into a :class:`WorkloadCallerIdentity`.
+
+    Reads where the task instance comes from: Dag, task, run, map index and the Dag bundle
+    of the Dag version the run is pinned to. Nothing here comes from the request, so a
+    workload identity provider can build authorization rules on it.
+
+    The bundle is taken only from the pinned ``DagVersion``. The Dag's current bundle on
+    ``DagModel`` is mutable and would let a later parse re-badge a running task. A task
+    instance with no pinned version has no bundle to grant on, so it is refused rather than
+    resolved with an empty bundle that a wildcard rule would match.
+
+    An unknown task instance under a valid token is an authorization failure, so it is a 403:
+    nothing else about the request is trustworthy, and a 404 would read as "no such resource".
+    """
+    row = session.execute(
+        select(
+            TaskInstance.dag_id,
+            TaskInstance.task_id,
+            TaskInstance.run_id,
+            TaskInstance.map_index,
+            DagVersion.bundle_name,
+        )
+        .select_from(TaskInstance)
+        .outerjoin(DagVersion, DagVersion.id == TaskInstance.dag_version_id)
+        .where(TaskInstance.id == token.id)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"reason": "unknown_caller", "message": "Task instance for this token does not exist"},
+        )
+    dag_id, task_id, run_id, map_index, bundle_name = row
+    if bundle_name is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "unknown_caller",
+                "message": "Task instance for this token is not pinned to a Dag bundle",
+            },
+        )
+    return WorkloadCallerIdentity(
+        ti_id=str(token.id),
+        dag_id=dag_id,
+        task_id=task_id,
+        run_id=run_id,
+        map_index=map_index,
+        bundle_name=bundle_name,
+        jti=(token.claims.model_extra or {}).get("jti"),
+    )
+
+
+def get_caller_identity_dep(token=CurrentTIToken) -> WorkloadCallerIdentity:
+    """
+    FastAPI dependency: the verified caller identity for the current request.
+
+    Deliberately synchronous so FastAPI runs it, and the provider that depends on it, in
+    the threadpool, which keeps the database read off the event loop.
+    """
+    with create_session() as session:
+        return resolve_caller_identity(token, session)

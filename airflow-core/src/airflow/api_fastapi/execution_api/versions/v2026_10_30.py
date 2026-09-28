@@ -98,3 +98,11 @@ class AddMultiTeamToTIRunContext(VersionChange):
     def remove_multi_team_field(response: ResponseInfo) -> None:  # type: ignore[misc]
         """Strip ``multi_team`` from the run context for older clients."""
         response.body.pop("multi_team", None)
+
+
+class AddWorkloadIdentityEndpoint(VersionChange):
+    """Add the `/workload-identity` endpoint."""
+
+    description = __doc__
+
+    instructions_to_migrate_to_previous_version = (endpoint("/workload-identity", ["GET"]).didnt_exist,)

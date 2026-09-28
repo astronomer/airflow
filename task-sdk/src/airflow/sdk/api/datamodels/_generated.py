@@ -514,6 +514,18 @@ class VariableResponse(BaseModel):
     value: Annotated[str | None, Field(title="Value")]
 
 
+class WorkloadIdentityResponse(BaseModel):
+    """
+    A short-lived external identity token minted for the calling task instance.
+    """
+
+    token: Annotated[str, Field(title="Token")]
+    subject: Annotated[str, Field(title="Subject")]
+    issuer: Annotated[str, Field(title="Issuer")]
+    audience: Annotated[str | None, Field(title="Audience")] = None
+    expires_at: Annotated[AwareDatetime, Field(title="Expires At")]
+
+
 class XComResponse(BaseModel):
     """
     XCom schema for responses with fields that are needed for Runtime.
