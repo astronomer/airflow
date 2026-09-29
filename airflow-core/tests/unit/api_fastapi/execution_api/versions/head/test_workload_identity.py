@@ -28,6 +28,7 @@ from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from airflow.api_fastapi.execution_api.datamodels.token import TIClaims, TIToken
+from airflow.api_fastapi.execution_api.routes import workload_identity as wi_route
 from airflow.api_fastapi.execution_api.security import (
     CurrentTIToken,
     get_caller_identity_dep,
@@ -43,6 +44,7 @@ from airflow.api_fastapi.execution_api.workload_identity import (
 )
 from airflow.models.dag_version import DagVersion
 from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.utils.state import TaskInstanceState
 
 from tests_common.test_utils.config import conf_vars
 
@@ -140,6 +142,26 @@ class TestWorkloadIdentityEndpoint:
         assert response.status_code == 504
         assert response.json()["detail"]["reason"] == "provider_timeout"
 
+    def test_saturated_provider_pool_is_503_and_slot_is_released_by_the_thread(self, client, stub_caller):
+        provider = _StubProvider()
+        for _ in range(wi_route.MAX_INFLIGHT_PROVIDER_CALLS):
+            wi_route._inflight.acquire(blocking=False)
+        try:
+            with mock.patch(PROVIDER, autospec=True, return_value=provider):
+                response = client.get("/execution/workload-identity")
+        finally:
+            for _ in range(wi_route.MAX_INFLIGHT_PROVIDER_CALLS):
+                wi_route._inflight.release()
+
+        assert response.status_code == 503
+        assert response.json()["detail"]["reason"] == "provider_busy"
+        assert provider.calls == []
+
+        # A completed call hands its slot back, so the pool is full again afterwards.
+        with mock.patch(PROVIDER, autospec=True, return_value=provider):
+            assert client.get("/execution/workload-identity").status_code == 200
+        assert wi_route._inflight._value == wi_route.MAX_INFLIGHT_PROVIDER_CALLS
+
     def test_unknown_task_instance_is_403_before_provider_is_consulted(self, client):
         provider = _StubProvider()
         with mock.patch(PROVIDER, autospec=True, return_value=provider):
@@ -155,6 +177,8 @@ class TestWorkloadIdentityEndpoint:
         dr = dag_maker.create_dagrun()
         session.commit()
         ti = dr.task_instances[0]
+        ti.state = TaskInstanceState.RUNNING
+        session.commit()
 
         async def as_this_ti(request: Request):
             return TIToken(id=ti.id, claims=TIClaims(scope="execution"))
@@ -181,6 +205,8 @@ class TestResolveCallerIdentity:
         dr = dag_maker.create_dagrun()
         session.commit()
         ti = dr.task_instances[0]
+        ti.state = TaskInstanceState.RUNNING
+        session.commit()
 
         token = TIToken(id=ti.id, claims=TIClaims(scope="execution", jti="jti-123"))
         caller = resolve_caller_identity(token, session)
@@ -205,12 +231,32 @@ class TestResolveCallerIdentity:
         assert exc.value.status_code == 403
         assert exc.value.detail["reason"] == "unknown_caller"
 
+    @pytest.mark.parametrize(
+        "state", [None, TaskInstanceState.QUEUED, TaskInstanceState.SUCCESS, TaskInstanceState.DEFERRED]
+    )
+    def test_task_instance_not_running_is_refused(self, dag_maker, session, state):
+        """A task token outlives the task; the identity is only for the attempt that is running."""
+        with dag_maker(dag_id="wi_not_running", serialized=True, session=session):
+            EmptyOperator(task_id="t")
+        dr = dag_maker.create_dagrun()
+        ti = dr.task_instances[0]
+        ti.state = state
+        session.commit()
+
+        with pytest.raises(HTTPException) as exc:
+            resolve_caller_identity(TIToken(id=ti.id, claims=TIClaims(scope="execution")), session)
+
+        assert exc.value.status_code == 403
+        assert exc.value.detail["reason"] == "caller_not_running"
+
     def test_task_instance_without_pinned_dag_version_is_refused(self, dag_maker, session):
         """A task instance that is not pinned to any Dag version has no bundle to grant on."""
         with dag_maker(dag_id="wi_no_version", serialized=True, session=session):
             EmptyOperator(task_id="t")
         dr = dag_maker.create_dagrun()
         ti = dr.task_instances[0]
+        ti.state = TaskInstanceState.RUNNING
+        session.commit()
         ti.dag_version_id = None
         session.commit()
 
@@ -229,6 +275,8 @@ class TestResolveCallerIdentity:
             EmptyOperator(task_id="t")
         dr = dag_maker.create_dagrun()
         ti = dr.task_instances[0]
+        ti.state = TaskInstanceState.RUNNING
+        session.commit()
         session.get(DagVersion, ti.dag_version_id).bundle_name = None
         session.commit()
 

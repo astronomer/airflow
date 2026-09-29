@@ -49,7 +49,11 @@ Configuring a provider
 Point ``[execution_api] workload_identity_provider`` at a subclass of
 :class:`~airflow.api_fastapi.execution_api.workload_identity.WorkloadIdentityProvider`. It is
 instantiated once per API server worker process. ``[execution_api] workload_identity_timeout``
-bounds each call into the provider; past it the task receives ``504``.
+bounds how long a task waits on the provider; past it the task receives ``504``. The provider
+call itself cannot be interrupted, so it keeps running until the issuer answers, and at most eight
+calls may be in flight per API server process; beyond that the task receives ``503``. Give the
+provider's own HTTP client a socket timeout below this value so a dead issuer does not hold those
+slots.
 
 .. code-block:: ini
 
@@ -112,8 +116,10 @@ so the provider must check it. A task that can request any audience for an ident
 that identity to any relying party that trusts the issuer.
 
 The provenance the provider sees is server-resolved and cannot be influenced from a Dag file.
-A task instance with no pinned Dag version has no bundle, and is refused before the provider is
-called rather than resolved with an empty bundle that a permissive rule would match.
+Only a running task instance is resolved: a task token stays valid for a while after the task
+ends, and a retry gives the next attempt a new id, so a token for a finished, queued or superseded
+attempt is refused. A task instance with no pinned Dag version has no bundle, and is refused before
+the provider is called rather than resolved with an empty bundle that a permissive rule would match.
 
 Using the identity from a task
 ------------------------------

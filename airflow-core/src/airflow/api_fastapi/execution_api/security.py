@@ -85,6 +85,7 @@ from airflow.api_fastapi.execution_api.workload_identity import WorkloadCallerId
 from airflow.models import TaskInstance
 from airflow.models.dag_version import DagVersion
 from airflow.utils.session import create_session
+from airflow.utils.state import TaskInstanceState
 
 log = structlog.get_logger(logger_name=__name__)
 
@@ -322,6 +323,11 @@ def resolve_caller_identity(token: TIToken, session) -> WorkloadCallerIdentity:
     instance with no pinned version has no bundle to grant on, so it is refused rather than
     resolved with an empty bundle that a wildcard rule would match.
 
+    Only a running task instance may obtain an identity. A task token stays valid for
+    ``[execution_api] jwt_expiration_time`` after the task ends, and a retry or clear archives the
+    attempt to the history table and gives the next attempt a new id, so a token for a finished,
+    queued or superseded attempt is refused rather than resolved to a task that is not running.
+
     An unknown task instance under a valid token is an authorization failure, so it is a 403:
     nothing else about the request is trustworthy, and a 404 would read as "no such resource".
     """
@@ -331,6 +337,7 @@ def resolve_caller_identity(token: TIToken, session) -> WorkloadCallerIdentity:
             TaskInstance.task_id,
             TaskInstance.run_id,
             TaskInstance.map_index,
+            TaskInstance.state,
             DagVersion.bundle_name,
         )
         .select_from(TaskInstance)
@@ -342,7 +349,15 @@ def resolve_caller_identity(token: TIToken, session) -> WorkloadCallerIdentity:
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"reason": "unknown_caller", "message": "Task instance for this token does not exist"},
         )
-    dag_id, task_id, run_id, map_index, bundle_name = row
+    dag_id, task_id, run_id, map_index, state, bundle_name = row
+    if state != TaskInstanceState.RUNNING:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "reason": "caller_not_running",
+                "message": f"Task instance for this token is not running (state={state})",
+            },
+        )
     if bundle_name is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

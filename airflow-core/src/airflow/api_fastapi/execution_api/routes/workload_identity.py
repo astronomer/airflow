@@ -18,8 +18,8 @@
 
 from __future__ import annotations
 
-import functools
 import logging
+import threading
 from typing import Annotated
 
 import anyio
@@ -30,6 +30,8 @@ from airflow.api_fastapi.execution_api.security import get_caller_identity_dep
 from airflow.api_fastapi.execution_api.workload_identity import (
     WorkloadCallerIdentity,
     WorkloadIdentityDenied,
+    WorkloadIdentityProvider,
+    WorkloadIdentityToken,
     get_workload_identity_provider,
 )
 from airflow.configuration import conf
@@ -38,9 +40,25 @@ router = APIRouter()
 
 log = logging.getLogger(__name__)
 
-# Provider calls go to an external issuer. They run on their own small pool rather than the
-# request threadpool every other route shares, so a slow issuer cannot starve heartbeats.
-_PROVIDER_LIMITER = anyio.CapacityLimiter(8)
+# Provider calls go to an external issuer and cannot be interrupted: Python has no way to kill a
+# thread, so a call that outlives the request deadline keeps running until the issuer answers.
+# This semaphore is what bounds the damage. It is released by the worker thread itself, not by
+# the request, so an abandoned call keeps its slot until it really finishes and at most this many
+# provider calls can be in flight, stuck or not. The sync routes' shared threadpool is never used.
+MAX_INFLIGHT_PROVIDER_CALLS = 8
+_inflight = threading.BoundedSemaphore(MAX_INFLIGHT_PROVIDER_CALLS)
+# Keeps provider calls off the default threadpool the sync routes share. anyio releases this on
+# abandon, which is why it is not the bound; the semaphore above is.
+_PROVIDER_LIMITER = anyio.CapacityLimiter(MAX_INFLIGHT_PROVIDER_CALLS)
+
+
+def _issue_and_release(
+    provider: WorkloadIdentityProvider, caller: WorkloadCallerIdentity, audience: str | None
+) -> WorkloadIdentityToken:
+    try:
+        return provider.issue(caller, audience)
+    finally:
+        _inflight.release()
 
 
 @router.get(
@@ -49,6 +67,9 @@ _PROVIDER_LIMITER = anyio.CapacityLimiter(8)
         status.HTTP_401_UNAUTHORIZED: {"description": "Unauthorized"},
         status.HTTP_403_FORBIDDEN: {"description": "Task is not allowed the requested identity or audience"},
         status.HTTP_501_NOT_IMPLEMENTED: {"description": "No workload identity provider is configured"},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "description": "Too many workload identity requests are waiting on the provider"
+        },
         status.HTTP_504_GATEWAY_TIMEOUT: {
             "description": "The workload identity provider did not answer in time"
         },
@@ -74,13 +95,29 @@ async def get_workload_identity(
                 "message": "No workload identity provider is configured on this deployment",
             },
         )
+    if not _inflight.acquire(blocking=False):
+        log.warning(
+            "Refusing workload identity request for task %s: %d provider calls already in flight",
+            caller.ti_id,
+            MAX_INFLIGHT_PROVIDER_CALLS,
+        )
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "reason": "provider_busy",
+                "message": "Too many workload identity requests are waiting on the provider; retry later",
+            },
+        )
     timeout = conf.getfloat("execution_api", "workload_identity_timeout")
     try:
         with anyio.fail_after(timeout):
-            # abandon_on_cancel lets the deadline return to the task while the provider call
-            # finishes on its own pool; without it the timeout waits for the thread.
+            # abandon_on_cancel returns the deadline to the task instead of waiting for the thread.
+            # The thread keeps its semaphore slot until it finishes, so nothing here loses track of it.
             issued = await anyio.to_thread.run_sync(
-                functools.partial(provider.issue, caller, audience),
+                _issue_and_release,
+                provider,
+                caller,
+                audience,
                 abandon_on_cancel=True,
                 limiter=_PROVIDER_LIMITER,
             )
@@ -99,7 +136,8 @@ async def get_workload_identity(
         )
     except TimeoutError:
         log.warning(
-            "Workload identity provider did not answer within %ss for task %s (%s.%s, audience=%s)",
+            "Workload identity provider did not answer within %ss for task %s (%s.%s, audience=%s); "
+            "the call keeps running until the provider returns",
             timeout,
             caller.ti_id,
             caller.dag_id,
