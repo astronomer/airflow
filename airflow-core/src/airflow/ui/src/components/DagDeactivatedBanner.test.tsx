@@ -105,7 +105,7 @@ describe("DagDeactivatedBanner", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows a deactivated banner with an import error button when the API returns a file-scoped error", async () => {
+  it("replaces the status badge with a parse-error button when the API returns a file-scoped error", async () => {
     mockUseImportErrorServiceGetImportErrors.mockReturnValue({
       ...emptyImportErrorsQuery,
       data: {
@@ -128,7 +128,8 @@ describe("DagDeactivatedBanner", () => {
       </Wrapper>,
     );
 
-    expect(screen.getByText(i18n.t("header.status.deactivated", { ns: "dag" }))).toBeInTheDocument();
+    // The button carries the warning on its own, so the badge would only repeat it.
+    expect(screen.queryByText(i18n.t("header.status.deactivated", { ns: "dag" }))).not.toBeInTheDocument();
 
     const importErrorButton = screen.getByRole("button", {
       name: i18n.t("importErrors.dagImportError", { count: 1, ns: "dashboard" }),

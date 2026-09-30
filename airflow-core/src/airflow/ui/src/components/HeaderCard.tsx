@@ -42,7 +42,6 @@ export const HeaderCard = ({ actions, icon, state, stats, subTitle, title, type 
 
   return (
     <Box bg="bg.muted" borderRadius="md" data-testid="header-card" flexShrink={0} overflow="hidden" px={3}>
-      <DagDeactivatedBanner />
       <div>
         <Flex alignItems="center" flexWrap="wrap" justifyContent="space-between" my={2}>
           <Flex alignItems="center" flexWrap="wrap" gap={2}>
@@ -72,6 +71,7 @@ export const HeaderCard = ({ actions, icon, state, stats, subTitle, title, type 
             {state === undefined ? undefined : (
               <StateBadge state={state}>{state ? translate(`common:states.${state}`) : undefined}</StateBadge>
             )}
+            <DagDeactivatedBanner />
           </Flex>
           <HStack gap={1}>{actions}</HStack>
         </Flex>
