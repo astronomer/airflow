@@ -171,13 +171,16 @@ interval (2016-01-01 through 2016-01-02), and the next run would cover
 
 Be aware that using a ``datetime.timedelta`` object as ``schedule`` is not the
 same as a cron string, even though Airflow 3 also defaults timedelta schedules
-to a trigger timetable (:ref:`DeltaTriggerTimetable`, via
-``[scheduler] create_delta_data_intervals``). A delta has no wall-clock boundary
-to snap to, so with ``catchup=False`` the first run lands at pickup time
+to a trigger timetable (:ref:`DeltaTriggerTimetable`). A delta has no
+wall-clock boundary to snap to, so with ``schedule=datetime.timedelta(days=1)``
+and ``catchup=False`` the first run lands at pickup time
 (**2016-01-02 06:00** in this example), with ``data_interval_start`` and
-``data_interval_end`` both equal to that moment. If instead you enable the data-interval delta
-timetable (``create_delta_data_intervals=True``), the first run covers one
-schedule interval ending now (2016-01-01 06:00 through 2016-01-02 06:00). For a
+``data_interval_end`` both equal to that moment. If you use the data-interval
+delta timetable instead (:ref:`DeltaDataIntervalTimetable`, or
+``[scheduler] create_cron_data_intervals=True``, which also applies to
+timedelta schedules), the scheduler floors the current time to a multiple of
+the delta counted from the Unix epoch, so the first run covers 2016-01-01 00:00
+through 2016-01-02 00:00 UTC. For a
 more detailed description of the differences, see
 :ref:`timetables comparison <Differences between "trigger" and "data interval" timetables>` and
 :ref:`cron vs delta data intervals <Differences between the cron and delta data interval timetables>`.

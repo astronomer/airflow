@@ -351,9 +351,9 @@ to get contiguous windows instead.
   that duration. A data-interval timetable (CronDataIntervalTimetable_ or
   DeltaDataIntervalTimetable_) always uses a contiguous non-zero window between
   consecutive schedule boundaries.
-- ``logical_date`` and the timestamp used in ``run_id`` differ between the two
-  kinds based on how they handle the data interval, as described in
-  :ref:`timetables_run_id_logical_date`.
+- ``logical_date`` is ``data_interval_start``, so it differs between the two
+  kinds for the same schedule tick. The timestamp in ``run_id`` comes from
+  ``run_after`` for both kinds. See :ref:`timetables_run_id_logical_date`.
 
 *Data Interval* Shape
 ~~~~~~~~~~~~~~~~~~~~~
@@ -402,10 +402,19 @@ The time when a Dag run is triggered
 
 Both trigger and data interval timetables can create the first Dag run
 immediately when ``catchup=False`` and ``start_date`` is in the past. What
-differs is *which* run is selected and how ``logical_date`` / ``run_id`` are
-derived. Without a ``start_date`` (optional when ``catchup=False``), a trigger
-timetable with the default ``run_immediately=False`` waits for the next future
-tick instead — midnight on February 1st in the example below.
+differs is *which* run is selected, and so its ``logical_date`` and data
+interval.
+
+Without a ``start_date`` (optional when ``catchup=False``),
+CronTriggerTimetable_ uses ``run_immediately`` to choose between the most
+recent tick and the next one. With the default ``run_immediately=False``, it
+runs the most recent tick only if no more than 10% of the schedule period has
+passed since it, with a minimum of five minutes, and otherwise waits for the
+next tick. In the ``@daily`` example below, enabling the Dag at 3PM waits until
+midnight on February 1st, while enabling it at 00:30 creates the midnight run
+right away. Pass ``run_immediately=True`` to always run the most recent tick,
+or a ``timedelta`` to set the tolerance yourself. DeltaTriggerTimetable_ has no
+``run_immediately`` option and creates its first run at pickup time.
 
 ``logical_date`` is always ``data_interval_start``. The timestamp embedded in
 ``run_id`` comes from ``run_after`` (when the run is eligible to start). For a
@@ -522,8 +531,9 @@ data interval that they cover, depending on 3 arguments: ``schedule``, ``start_d
    * - ``datetime.timedelta(minutes=30)``
      - ``year-02-01``
      - ``False``
-     - * 00:35 - 01:05
-     - Interval is not aligned with start date but with the current time.
+     - * 00:30 - 01:00
+     - The current time is floored to a multiple of the delta counted from the Unix epoch, so for 30 minutes
+       the interval matches the cron expression. Next run will be triggered at 01:30.
 
    * - ``datetime.timedelta(minutes=30)``
      - ``year-02-01 00:10``
@@ -534,5 +544,6 @@ data interval that they cover, depending on 3 arguments: ``schedule``, ``start_d
    * - ``datetime.timedelta(minutes=30)``
      - ``year-02-01 00:10``
      - ``False``
-     - * 00:35 - 01:05
-     - Interval is aligned with current time. Next run will be triggered in 30 minutes.
+     - * 00:30 - 01:00
+     - With ``catchup=False`` the start date does not shift the epoch-aligned grid. Next run will be
+       triggered in 25 minutes, at 01:30.

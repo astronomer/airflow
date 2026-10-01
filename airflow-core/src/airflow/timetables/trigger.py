@@ -178,14 +178,14 @@ class CronTriggerTimetable(CronMixin, _TriggerTimetable):
     already exist runs for this DAG.
 
     * If *True*, always run immediately the most recent possible DAG run.
-    * If *False*, wait to run until the next scheduled time in the future.
     * If passed a ``timedelta``, will run the most recent possible DAG run
       if that run's ``data_interval_end`` is within timedelta of now.
-    * If *None*, the timedelta is calculated as 10% of the time between the
-      most recent past scheduled time and the next scheduled time. E.g. if
-      running every hour, this would run the previous time if less than 6
-      minutes had past since the previous run time, otherwise it would wait
-      until the next hour.
+    * If *False* (the default) or *None*, the timedelta is calculated as 10%
+      of the time between the most recent past scheduled time and the next
+      scheduled time, with a minimum of five minutes. E.g. if running every
+      hour, this would run the previous time if no more than 6 minutes had
+      passed since the previous run time, otherwise it would wait until the
+      next hour.
     """
 
     def __init__(
@@ -386,14 +386,14 @@ class CronPartitionTimetable(CronTriggerTimetable):
     already exist runs for this Dag.
 
     * If *True*, always run immediately the most recent possible Dag run.
-    * If *False*, wait to run until the next scheduled time in the future.
     * If passed a ``timedelta``, will run the most recent possible Dag run
       if that run's ``data_interval_end`` is within timedelta of now.
-    * If *None*, the timedelta is calculated as 10% of the time between the
-      most recent past scheduled time and the next scheduled time. E.g. if
-      running every hour, this would run the previous time if less than 6
-      minutes had past since the previous run time, otherwise it would wait
-      until the next hour.
+    * If *False* (the default) or *None*, the timedelta is calculated as 10%
+      of the time between the most recent past scheduled time and the next
+      scheduled time, with a minimum of five minutes. E.g. if running every
+      hour, this would run the previous time if no more than 6 minutes had
+      passed since the previous run time, otherwise it would wait until the
+      next hour.
     """
 
     partitioned = True
