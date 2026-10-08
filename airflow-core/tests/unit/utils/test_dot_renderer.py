@@ -18,11 +18,15 @@
 # under the License.
 from __future__ import annotations
 
+import importlib
+import sys
+import warnings
 from unittest import mock
 
 import pytest
 
 from airflow._shared.timezones import timezone
+from airflow.exceptions import AirflowException
 from airflow.models.dag import DAG
 from airflow.providers.standard.operators.empty import EmptyOperator
 from airflow.sdk.definitions.taskgroup import TaskGroup
@@ -225,3 +229,35 @@ class TestDotRenderer:
                 "}",
             ]
         )
+
+
+@pytest.fixture
+def without_graphviz():
+    """Make ``import graphviz`` fail, then reload dot_renderer so later tests see the real import."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setitem(sys.modules, "graphviz", None)
+        yield
+    importlib.reload(dot_renderer)
+
+
+class TestDotRendererWithoutGraphviz:
+    def test_import_does_not_warn(self, without_graphviz):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            importlib.reload(dot_renderer)
+
+        assert [str(w.message) for w in caught] == []
+        assert dot_renderer.graphviz is None
+
+    @pytest.mark.parametrize(
+        "render",
+        [
+            pytest.param(lambda: dot_renderer.render_dag(DAG(dag_id="DAG_ID", schedule=None)), id="dag"),
+            pytest.param(lambda: dot_renderer.render_dag_dependencies({}), id="dag_dependencies"),
+        ],
+    )
+    def test_render_raises_clear_error(self, monkeypatch, render):
+        monkeypatch.setattr(dot_renderer, "graphviz", None)
+
+        with pytest.raises(AirflowException, match="Install the graphviz python package"):
+            render()

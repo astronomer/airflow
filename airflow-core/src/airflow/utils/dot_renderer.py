@@ -20,7 +20,6 @@
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 from airflow.exceptions import AirflowException
@@ -56,13 +55,8 @@ else:
     try:
         import graphviz
     except ImportError:
-        warnings.warn(
-            "Could not import graphviz. Rendering graph to the graphical format will not be possible. \n"
-            "You might need to install the graphviz package and necessary system packages.\n"
-            "Run `pip install graphviz` to attempt to install it.",
-            UserWarning,
-            stacklevel=2,
-        )
+        # graphviz is optional. Don't warn on import: ``airflow dags`` commands load this module even
+        # when they never render a graph, and the render functions raise a clear error without it.
         graphviz = None
 
 
