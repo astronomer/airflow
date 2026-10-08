@@ -539,6 +539,8 @@ For example, here is a Dag that uses a ``for`` loop to define some tasks:
 
 In general, we advise you to try and keep the *topology* (the layout) of your Dag tasks relatively stable; dynamic Dags are usually better used for dynamically loading configuration options or changing operator options.
 
+A ``for`` loop in the Dag file runs when the file is parsed, not when the Dag runs, so it cannot create tasks from data a run produces. When the number of items is only known at run time, use :doc:`dynamic task mapping </authoring-and-scheduling/dynamic-task-mapping>`. When each step needs the result of the step before it and the loop decides as it runs when to stop, such as an agent loop, write the loop inside a single :ref:`resumable task <concepts-resumable-tasks-resumable>` that saves a checkpoint to the :doc:`task state store </core-concepts/task-state-store>` after each step, so that with ``retries`` set on the task, a retry after a worker crash continues from the last checkpoint.
+
 
 Dag Visualization
 -----------------

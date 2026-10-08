@@ -29,6 +29,9 @@ Right before a mapped task is executed the scheduler will create *n* copies of t
 
 It is also possible to have a task operate on the collected output of a mapped task, commonly known as map and reduce.
 
+Mapping fits items that are independent of each other: it needs the full list of inputs before the copies are created, and each copy runs on its own input without waiting for the others.
+When each step needs the result of the step before it and the loop decides at run time when to stop, such as an agent loop or paging through an API, write the loop as a :ref:`resumable task <concepts-resumable-tasks-resumable>` instead: a single task that saves a checkpoint to the :doc:`task state store </core-concepts/task-state-store>` after each step, so that with ``retries`` set on the task, a retry after a worker crash continues from the last checkpoint.
+
 Simple mapping
 ==============
 

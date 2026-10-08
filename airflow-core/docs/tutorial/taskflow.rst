@@ -209,6 +209,10 @@ directly in the task decorator:
 
 This helps ensure that transient failures do not lead to task failure.
 
+Each retry runs the function again from the start. If the function runs a long loop, make it a
+:ref:`resumable task <concepts-resumable-tasks-resumable>` that saves a checkpoint to the task state store after each
+step, so a retry continues from the last checkpoint instead of redoing finished steps.
+
 Task Parameterization
 ---------------------
 
