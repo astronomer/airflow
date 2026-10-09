@@ -33,6 +33,13 @@ import sys
 import warnings
 from typing import TYPE_CHECKING
 
+if os.environ.get("_ARGCOMPLETE") and os.path.basename(sys.argv[0]) == "airflow":
+    # Shell completion of the ``airflow`` command: answer from the cached parser, before the imports
+    # below initialize configuration, logging and the ORM. Exits when the cache can be used.
+    from airflow.cli.completion_cache import complete_from_cache
+
+    complete_from_cache()
+
 from airflow.utils.deprecation_tools import DeprecatedImportWarning
 
 if os.environ.get("_AIRFLOW_PATCH_GEVENT"):

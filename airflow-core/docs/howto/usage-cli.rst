@@ -60,6 +60,12 @@ If you're using ``zsh``, add the following to your ``.zshrc``:
   bashcompinit
   eval "$(register-python-argcomplete airflow)"
 
+The first completion after you install or upgrade packages, or edit ``airflow.cfg``, takes as long as
+running an ``airflow`` command, because it builds the full list of commands. That list is saved to
+``$AIRFLOW_HOME/cli_completion_cache.json``, and later completions are answered from it without starting
+Airflow. Delete the file if completions look out of date, for example after editing a provider's CLI
+commands in a development install; the next completion rebuilds it.
+
 Creating a Connection
 ---------------------
 

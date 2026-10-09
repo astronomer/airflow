@@ -34,7 +34,7 @@ import argcomplete
 # Therefore importing configuration early (as the first airflow import) avoids
 # any possible import cycles with settings downstream.
 from airflow import configuration
-from airflow.cli import cli_parser
+from airflow.cli import cli_parser, completion_cache
 from airflow.cli.utils import redirect_stdout_log_handlers_to_stderr
 
 
@@ -44,6 +44,8 @@ def main():
         os.environ["KRB5CCNAME"] = conf.get("kerberos", "ccache")
         os.environ["KRB5_KTNAME"] = conf.get("kerberos", "keytab")
     parser = cli_parser.get_parser()
+    if "_ARGCOMPLETE" in os.environ:
+        completion_cache.store(parser)
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
     # Commands that accept ``-o`` produce structured output on stdout; route any
