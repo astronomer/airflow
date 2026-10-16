@@ -263,29 +263,9 @@ following the ASF Policy.
 
 ## Semantic versioning
 
-As of Airflow 2.0.0, we support a strict [SemVer](https://semver.org/) approach for all packages released.
-
-There are few specific rules that we agreed to that define details of versioning of the different
-packages:
-
-* **Airflow**: SemVer rules apply to core airflow only (excludes any changes to providers).
-  Changing limits for versions of Airflow dependencies is not a breaking change on its own.
-* **Airflow Providers**: SemVer rules apply to changes in the particular provider's code only.
-  SemVer MAJOR and MINOR versions for the packages are independent of the Airflow version.
-  For example, `google 4.1.0` and `amazon 3.1.1` providers can happily be installed
-  with `Airflow 2.1.2`. If there are limits of cross-dependencies between providers and Airflow packages,
-  they are present in providers as `install_requires` limitations. We aim to keep backwards
-  compatibility of providers with all previously released Airflow 2 versions but
-  there will sometimes be breaking changes that might make some, or all
-  providers, have minimum Airflow version specified.
-* **Airflow Helm Chart**: SemVer rules apply to changes in the chart only. SemVer MAJOR and MINOR
-  versions for the chart are independent of the Airflow version. We aim to keep backwards
-  compatibility of the Helm Chart with all released Airflow 2 versions, but some new features might
-  only work starting from specific Airflow releases. We might however limit the Helm
-  Chart to depend on minimal Airflow version.
-* **Airflow API clients**: Their versioning is independent from Airflow versions. They follow their own
-  SemVer rules for breaking changes and new features - which for example allows to change the way we generate
-  the clients.
+Airflow, providers, the Helm Chart and the API clients each follow strict [SemVer](https://semver.org/)
+independently: provider, chart and client versions are not tied to the Airflow version. See the
+[release process](https://airflow.apache.org/docs/apache-airflow/stable/release-process.html) for details.
 
 ## Version Life Cycle
 
@@ -305,123 +285,29 @@ Apache Airflow version life cycle:
 
 <!-- End of auto-generated table -->
 
-Limited support versions will be supported with security and critical bug fix only.
-EOL versions will not get any fixes nor support.
-We always recommend that all users run the latest available minor release for whatever major version is in use.
-We **highly** recommend upgrading to the latest Airflow major release at the earliest convenient time and before the EOL date.
+Limited support versions get only security and critical bug fixes; EOL versions get no fixes.
+We recommend running the latest minor release, and upgrading to the latest major release before EOL.
 
 ## Support for Python and Kubernetes versions
 
-As of Airflow 2.0, we agreed to certain rules we follow for Python and Kubernetes support.
-They are based on the official release schedule of Python and Kubernetes, nicely summarized in the
-[Python Developer's Guide](https://devguide.python.org/#status-of-python-branches) and
-[Kubernetes version skew policy](https://kubernetes.io/docs/setup/release/version-skew-policy/).
-
-1. We drop support for Python and Kubernetes versions when they reach EOL. Except for Kubernetes, a
-   version stays supported by Airflow if two major cloud providers still provide support for it. We drop
-   support for those EOL versions in main right after EOL date, and it is effectively removed when we release
-   the first new MINOR (Or MAJOR if there is no new MINOR version) of Airflow. For example, for Python 3.10 it
-   means that we will drop support in main right after 27.06.2023, and the first MAJOR or MINOR version of
-   Airflow released after will not have it.
-
-2. We support a new version of Python/Kubernetes in main after they are officially released, as soon as we
-   make them work in our CI pipeline (which might not be immediate due to dependencies catching up with
-   new versions of Python mostly) we release new images/support in Airflow based on the working CI setup.
-
-3. This policy is best-effort which means there may be situations where we might terminate support earlier
-   if circumstances require it.
+We drop Python and Kubernetes versions when they reach EOL (released in the next MINOR Airflow version),
+and add new versions once they work in our CI. This policy is best-effort. See the
+[Python](https://devguide.python.org/#status-of-python-branches) and
+[Kubernetes](https://kubernetes.io/docs/setup/release/version-skew-policy/) release schedules.
 
 ## Base OS support for reference Airflow images
 
-The Airflow Community provides conveniently packaged container images that are published whenever
-we publish an Apache Airflow release. Those images contain:
-
-* Base OS with necessary packages to install Airflow (stable Debian OS)
-* Base Python installation in versions supported at the time of release for the MINOR version of
-  Airflow released (so there could be different versions for 2.3 and 2.2 line for example)
-* Libraries required to connect to supported Databases (again the set of databases supported depends
-  on the MINOR version of Airflow)
-* Predefined set of popular providers (for details see the [Dockerfile](https://raw.githubusercontent.com/apache/airflow/main/Dockerfile)).
-* Possibility of building your own, custom image where the user can choose their own set of providers
-  and libraries (see [Building the image](https://airflow.apache.org/docs/docker-stack/build.html))
-* In the future Airflow might also support a "slim" version without providers nor database clients installed
-
-The version of the base OS image is the stable version of Debian. Airflow supports using all currently active
-stable versions - as soon as all Airflow dependencies support building, and we set up the CI pipeline for
-building and testing the OS version. Approximately 6 months before the end-of-regular support of a
-previous stable version of the OS, Airflow switches the images released to use the latest supported
-version of the OS.
-
-For example switch from ``Debian Bullseye`` to ``Debian Bookworm`` has been implemented
-before 2.8.0 release in October 2023 and ``Debian Bookworm`` will be the only option supported as of
-Airflow 2.10.0.
-
-Users will continue to be able to build their images using stable Debian releases until the end of regular
-support and building and verifying of the images happens in our CI but no unit tests were executed using
-this image in the `main` branch.
+Reference container images are published with each release and are based on the current stable Debian,
+switching to the newer Debian release about 6 months before the previous one leaves regular support. See the
+[Docker stack docs](https://airflow.apache.org/docs/docker-stack/index.html) for building custom images.
 
 ## Approach to dependencies of Airflow
 
-Airflow has a lot of dependencies - direct and transitive, also Airflow is both - library and application,
-therefore our policies to dependencies has to include both - stability of installation of application,
-but also ability to install newer version of dependencies for those users who develop Dags. We developed
-the approach where `constraints` are used to make sure airflow can be installed in a repeatable way, while
-we do not limit our users to upgrade most of the dependencies. As a result we decided not to upper-bound
-version of Airflow dependencies by default, unless we have good reasons to believe upper-bounding them is
-needed because of importance of the dependency as well as risk it involves to upgrade specific dependency.
-We also upper-bound the dependencies that we know cause problems.
-
-The constraint mechanism of ours takes care about finding and upgrading all the non-upper bound dependencies
-automatically (providing that all the tests pass). Our `main` build failures will indicate in case there
-are versions of dependencies that break our tests - indicating that we should either upper-bind them or
-that we should fix our code/tests to account for the upstream changes from those dependencies.
-
-Whenever we upper-bound such a dependency, we should always comment why we are doing it - i.e. we should have
-a good reason why dependency is upper-bound. And we should also mention what is the condition to remove the
-binding.
-
-### Approach for dependencies for Airflow Core
-
-Those dependencies are maintained in ``pyproject.toml``.
-
-There are few dependencies that we decided are important enough to upper-bound them by default, as they are
-known to follow predictable versioning scheme, and we know that new versions of those are very likely to
-bring breaking changes. We commit to regularly review and attempt to upgrade to the newer versions of
-the dependencies as they are released, but this is manual process.
-
-The important dependencies are:
-
-* `SQLAlchemy`: upper-bound to specific MINOR version (SQLAlchemy is known to remove deprecations and
-   introduce breaking changes especially that support for different Databases varies and changes at
-   various speed)
-* `Alembic`: it is important to handle our migrations in predictable and performant way. It is developed
-   together with SQLAlchemy. Our experience with Alembic is that it very stable in MINOR version
-* `Flask`: We are using Flask as the back-bone of our web UI and API. We know major version of Flask
-   are very likely to introduce breaking changes across those so limiting it to MAJOR version makes sense
-* `werkzeug`: the library is known to cause problems in new versions. It is tightly coupled with Flask
-   libraries, and we should update them together
-* `celery`: Celery is a crucial component of Airflow as it used for CeleryExecutor (and similar). Celery
-   [follows SemVer](https://docs.celeryq.dev/en/stable/contributing.html?highlight=semver#versions), so
-   we should upper-bound it to the next MAJOR version. Also, when we bump the upper version of the library,
-   we should make sure Celery Provider minimum Airflow version is updated.
-* `kubernetes`: Kubernetes is a crucial component of Airflow as it is used for the KubernetesExecutor
-   (and similar). Kubernetes Python library [follows SemVer](https://github.com/kubernetes-client/python#compatibility),
-   so we should upper-bound it to the next MAJOR version. Also, when we bump the upper version of the library,
-   we should make sure Kubernetes Provider minimum Airflow version is updated.
-
-### Approach for dependencies in Airflow Providers and extras
-
-The main part of the Airflow is the Airflow Core, but the power of Airflow also comes from a number of
-providers that extend the core functionality and are released separately, even if we keep them (for now)
-in the same monorepo for convenience. You can read more about the providers in the
-[Providers documentation](https://airflow.apache.org/docs/apache-airflow-providers/index.html). We also
-have set of policies implemented for maintaining and releasing community-managed providers as well
-as the approach for community vs. 3rd party providers in the [providers](https://github.com/apache/airflow/blob/main/PROVIDERS.rst) document.
-
-Those `extras` and `providers` dependencies are maintained in `provider.yaml` of each provider.
-
-By default, we should not upper-bound dependencies for providers, however each provider's maintainer
-might decide to add additional limits (and justify them with comment).
+Airflow is installed reproducibly with `constraints`, but dependencies are not upper-bound by default.
+Core dependencies (in `pyproject.toml`) that are known to break across versions - such as SQLAlchemy,
+Alembic, Flask, werkzeug, celery and kubernetes - are upper-bound, with a comment explaining why.
+Provider dependencies (in each `provider.yaml`) are not upper-bound unless the provider's maintainers
+justify it. See [PROVIDERS.rst](https://github.com/apache/airflow/blob/main/PROVIDERS.rst).
 
 <!-- START Contributing, please keep comment here to allow auto update of PyPI readme.md -->
 
@@ -453,44 +339,17 @@ contributors can appeal a decision by emailing the PMC at
 
 ## Agent-assisted contribution (apache-magpie)
 
-This repo uses the [`apache/magpie`](https://github.com/apache/magpie)
-framework, installed from its plugin marketplace. The framework provides
-maintainer-facing PR-management skills (`pr-management-triage`,
-`pr-management-code-review`, `pr-management-stats`, `pr-management-mentor`)
-that are exposed as agent skills in agent harnesses such as Claude Code.
-
-Nothing framework-related is committed to this repo, and a fresh clone
-needs no setup step — the plugin is installed per-user in your own agent
-harness. In Claude Code:
+Maintainer PR-management skills come from the [`apache/magpie`](https://github.com/apache/magpie)
+plugin, installed per-user in your agent harness (nothing to set up in the repo). In Claude Code:
 
 ```text
 /plugin marketplace add apache/magpie
 /plugin install magpie-pr-management@apache-magpie
 ```
 
-Install `magpie@apache-magpie` instead to get every skill family at once,
-or add further families (`magpie-security`, `magpie-release-management`,
-…) one at a time. Pin a release rather than tracking `main` by adding the
-marketplace from a tag: `/plugin marketplace add apache/magpie@0.2.0`.
-
-The project's recommended set is recorded in `.apache-magpie.lock` and
-includes the release-management family, which lets an agent verify a
-release candidate — including an optional check that runs your own
-changes against a providers wave installed in Breeze:
-
-```text
-/plugin install magpie-release-management@apache-magpie
-```
-
-Other harnesses — Codex CLI, Gemini CLI, Copilot, Cursor — are covered in
-the framework's [marketplace
-guide](https://github.com/apache/magpie/blob/main/docs/setup/marketplaces.md).
-
-Airflow-specific modifications to framework workflows live in
-[`.apache-magpie-overrides/`](.apache-magpie-overrides/) (committed) —
-the installed plugin reads them at run time, so they apply to every
-contributor without anyone editing the framework. Framework changes go via
-PR to [`apache/magpie`](https://github.com/apache/magpie).
+The recommended set is in `.apache-magpie.lock`; Airflow-specific overrides live in
+[`.apache-magpie-overrides/`](.apache-magpie-overrides/). Other harnesses are covered in the
+[marketplace guide](https://github.com/apache/magpie/blob/main/docs/setup/marketplaces.md).
 
 <!-- START Who uses Apache Airflow, please keep comment here to allow auto update of PyPI readme.md -->
 
@@ -521,69 +380,10 @@ If you would like to become a maintainer, please review the Apache Airflow
 
 ## What goes into the next release?
 
-Often you will see an issue that is assigned to specific milestone with Airflow version, or a PR that gets merged
-to the main branch and you might wonder which release the merged PR(s) will be released in or which release the fixed
-issues will be in. The answer to this is as usual - it depends on various scenarios. The answer is different for PRs and Issues.
-
-To add a bit of context, we are following the [Semver](https://semver.org/) versioning scheme as described in
-[Airflow release process](https://airflow.apache.org/docs/apache-airflow/stable/release-process.html). More
-details are explained in detail in this README under the [Semantic versioning](#semantic-versioning) chapter, but
-in short, we have `MAJOR.MINOR.PATCH` versions of Airflow.
-
-* `MAJOR` version is incremented in case of breaking changes
-* `MINOR` version is incremented when there are new features added
-* `PATCH` version is incremented when there are only bug-fixes and doc-only changes
-
-Generally we release `MINOR` versions of Airflow from a branch that is named after the MINOR version. For example
-`2.7.*` releases are released from `v2-7-stable` branch, `2.8.*` releases are released from `v2-8-stable`
-branch, etc.
-
-1. Most of the time in our release cycle, when the branch for next `MINOR` branch is not yet created, all
-PRs merged to `main` (unless they get reverted), will find their way to the next `MINOR` release. For example
-if the last release is `2.7.3` and `v2-8-stable` branch is not created yet, the next `MINOR` release
-is `2.8.0` and all PRs merged to main will be released in `2.8.0`. However, some PRs (bug-fixes and
-doc-only changes) when merged, can be cherry-picked to current `MINOR` branch and released in the
-next `PATCHLEVEL` release. For example, if `2.8.1` is already released and we are working on `2.9.0dev`,  then
-marking a PR with `2.8.2` milestone means that it will be cherry-picked to `v2-8-test` branch and
-released in `2.8.2rc1`, and eventually in `2.8.2`.
-
-2. When we prepare for the next `MINOR` release, we cut new `v2-*-test` and `v2-*-stable` branch
-and prepare `alpha`, `beta` releases for the next `MINOR` version, the PRs merged to main will still be
-released in the next `MINOR` release until `rc` version is cut. This is happening because the `v2-*-test`
-and `v2-*-stable` branches are rebased on top of main when next `beta` and `rc` releases are prepared.
-For example, when we cut `2.10.0beta1` version, anything merged to main before `2.10.0rc1` is released,
-will find its way to 2.10.0rc1.
-
-3. Then, once we prepare the first RC candidate for the MINOR release, we stop moving the `v2-*-test` and
-`v2-*-stable` branches and the PRs merged to main will be released in the next `MINOR` release.
-However, some PRs (bug-fixes and doc-only changes) when merged, can be cherry-picked to current `MINOR`
-branch and released in the next `PATCHLEVEL` release - for example when the last released version from `v2-10-stable`
-branch is `2.10.0rc1`, some of the PRs from main can be marked as `2.10.0` milestone by committers,
-the release manager will try to cherry-pick them into the release branch.
-If successful, they will be released in `2.10.0rc2` and subsequently in `2.10.0`. This also applies to
-subsequent `PATCHLEVEL` versions. When for example `2.10.1` is already released, marking a PR with
-`2.10.2` milestone will mean that it will be cherry-picked to `v2-10-stable` branch and released in `2.10.2rc1`
-and eventually in `2.10.2`.
-
-The final decision about cherry-picking is made by the release manager.
-
-Marking issues with a milestone is a bit different. Maintainers do not mark issues with a milestone usually,
-normally they are only marked in PRs. If PR linked to the issue (and "fixing it") gets merged and released
-in a specific version following the process described above, the issue will be automatically closed, no
-milestone will be set for the issue, you need to check the PR that fixed the issue to see which version
-it was released in.
-
-However, sometimes maintainers mark issues with specific milestone, which means that the
-issue is important to become a candidate to take a look when the release is being prepared. Since this is an
-Open-Source project, where basically all contributors volunteer their time, there is no guarantee that specific
-issue will be fixed in specific version. We do not want to hold the release because some issue is not fixed,
-so in such case release manager will reassign such unfixed issues to the next milestone in case they are not
-fixed in time for the current release. Therefore, the milestone for issue is more of an intent that it should be
-looked at, than promise it will be fixed in the version.
-
-More context and **FAQ** about the patchlevel release can be found in the
-[What goes into the next release](dev/WHAT_GOES_INTO_THE_NEXT_RELEASE.md) document in the `dev` folder of the
-repository.
+PRs merged to `main` go into the next `MINOR` release. Bug-fix and doc-only PRs may also be cherry-picked
+into the current `vX-Y-stable` branch for the next `PATCH` release when marked with that milestone - the
+release manager makes the final call. Milestones on issues express intent, not a promise. See
+[What goes into the next release](dev/WHAT_GOES_INTO_THE_NEXT_RELEASE.md) for details and an FAQ.
 
 ## Can I use the Apache Airflow logo in my presentation?
 
