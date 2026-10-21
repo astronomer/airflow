@@ -46,7 +46,7 @@ from airflow.sdk.configuration import conf
 from airflow.sdk.exceptions import AirflowConfigException
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Mapping
+    from collections.abc import Callable, Generator, Mapping
     from os import PathLike
     from typing import Self
 
@@ -166,6 +166,26 @@ def _warm_shutdown_signals() -> Generator[None, None, None]:
         signal.signal(signal.SIGINT, prev_sigint)
 
 
+@contextlib.contextmanager
+def _task_cancellation_signals() -> Generator[Callable[[], signal.Signals | None], None, None]:
+    """Record cancellation requests without running subprocess I/O from a signal handler."""
+    requested_signal: signal.Signals | None = None
+
+    def _request_cancellation(signum, frame):
+        nonlocal requested_signal
+        if requested_signal is None:
+            requested_signal = signal.Signals(signum)
+
+    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+    for sig in previous:
+        signal.signal(sig, _request_cancellation)
+    try:
+        yield lambda: requested_signal
+    finally:
+        for sig, handler in previous.items():
+            signal.signal(sig, handler)
+
+
 class _PythonCoordinator(BaseCoordinator):
     """
     Coordinator implementation to execute Python tasks.
@@ -184,6 +204,8 @@ class _PythonCoordinator(BaseCoordinator):
         logger: FilteringBoundLogger | None = None,
         sentry_integration: str = "",
         subprocess_logs_to_stdout: bool,
+        cancel_on_signal: bool = False,
+        cancellation_grace_seconds: float = 5.0,
         **kwargs,
     ) -> BaseCoordinator.ExecutionResult:
         # TODO: Importing this at the top causes circular imports.
@@ -192,11 +214,10 @@ class _PythonCoordinator(BaseCoordinator):
         # process handling.
         from airflow.sdk.execution_time.supervisor import ActivitySubprocess
 
-        # Keep the warm-shutdown handlers installed across both start() (which
-        # transitions the TI to RUNNING) and wait() (which runs the task and
-        # reports its terminal state / uploads logs) so a SIGTERM at any point
-        # in this window can't kill the supervisor and tear the task down.
-        with _warm_shutdown_signals():
+        # Keep the selected signal policy active through startup, state reporting,
+        # and log upload so cancellation or warm shutdown also covers those phases.
+        signal_policy = _task_cancellation_signals() if cancel_on_signal else _warm_shutdown_signals()
+        with signal_policy as get_cancel_signal:
             process = ActivitySubprocess.start(
                 dag_rel_path=dag_rel_path,
                 what=what,
@@ -205,8 +226,13 @@ class _PythonCoordinator(BaseCoordinator):
                 bundle_info=bundle_info,
                 subprocess_logs_to_stdout=subprocess_logs_to_stdout,
                 sentry_integration=sentry_integration,
+                get_cancel_signal=get_cancel_signal,
+                cancellation_grace_seconds=cancellation_grace_seconds,
             )
             exit_code = process.wait()
+            if get_cancel_signal is not None and (requested_signal := get_cancel_signal()) is not None:
+                process._cancel_if_requested()
+                exit_code = -int(requested_signal)
             return self.ExecutionResult(exit_code, process.final_state)
 
 

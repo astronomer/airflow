@@ -64,7 +64,11 @@ from airflow.sdk.bases.xcom import BaseXCom, _is_legacy_xcom_backend
 from airflow.sdk.configuration import conf
 from airflow.sdk.coordinators._dag_importer import find_claiming_importer
 from airflow.sdk.definitions._internal.dag_parsing_context import _airflow_parsing_context_manager
-from airflow.sdk.definitions._internal.loop import LoopTaskGroup, is_loop_task_read_from_outside
+from airflow.sdk.definitions._internal.loop import (
+    LoopTaskGroup,
+    get_enclosing_loop,
+    is_loop_task_read_from_outside,
+)
 from airflow.sdk.definitions._internal.types import NOTSET, ArgNotSet, is_arg_set
 from airflow.sdk.definitions.asset import (
     Asset,
@@ -157,6 +161,7 @@ from airflow.sdk.execution_time.email_backend import (
     _LegacyEmailBackendNotifier,
 )
 from airflow.sdk.execution_time.lazy_sequence import LazyXComSequence
+from airflow.sdk.execution_time.local_client import LOCAL_TASK_RUN_ENV
 from airflow.sdk.execution_time.loop import LoopContextAccessor
 from airflow.sdk.execution_time.sentry import Sentry
 from airflow.sdk.execution_time.tracing import detail_span
@@ -1052,6 +1057,22 @@ def _maybe_reschedule_startup_failure(
     )
 
 
+def _reject_unsupported_local_task(task: BaseOperator | MappedOperator, log: Logger) -> None:
+    """Fail a task that ``airflow tasks run-local`` cannot execute, reporting why in its terminal state."""
+    if isinstance(task, MappedOperator) or task.get_needs_expansion():
+        reason = "Mapped tasks are not supported by run-local"
+    elif get_enclosing_loop(task) is not None:
+        reason = "Loop tasks require scheduling and are not supported by run-local"
+    else:
+        return
+    log.error(reason)
+    # The local runner summarizes the reported state, not the task log.
+    SUPERVISOR_COMMS.send(
+        TaskState(state=TaskInstanceState.FAILED, end_date=datetime.now(tz=UTC), retry_reason=reason)
+    )
+    sys.exit(1)
+
+
 def _register_deserialization_allowed_classes(dag, log: Logger) -> None:
     """
     Register every operator-declared XCom model class in the deserialization allow-list.
@@ -1185,6 +1206,9 @@ def parse(what: StartupDetails, log: Logger) -> RuntimeTaskInstance:
         raise TypeError(
             f"task is of the wrong type, got {type(task)}, wanted {BaseOperator} or {MappedOperator}"
         )
+
+    if os.environ.get(LOCAL_TASK_RUN_ENV) == "1":
+        _reject_unsupported_local_task(task, log)
 
     check_xcom_backend_supports_loops(dag)
 

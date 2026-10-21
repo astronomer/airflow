@@ -172,6 +172,10 @@ Reliability
      - Failing over to another vendor inside one task attempt, and drilling the chain
        without waiting for an outage. Source:
        `example_llm_fallback.py <https://github.com/apache/airflow/blob/providers-common-ai/|version|/providers/common/ai/src/airflow/providers/common/ai/example_dags/example_llm_fallback.py>`__.
+   * - :doc:`local_development`
+     - Running one durable agent without Airflow services, with a sandbox SQL read and
+       a write that is safe to repeat after interruption. Source:
+       `example_local_agent.py <https://github.com/apache/airflow/blob/providers-common-ai/|version|/providers/common/ai/src/airflow/providers/common/ai/example_dags/example_local_agent.py>`__.
    * - :doc:`decision_models`
      - Routing a failure with a model that answers typed questions instead of writing
        text, and escalating when its confidence is low. Source:

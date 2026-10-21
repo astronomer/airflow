@@ -191,7 +191,7 @@ if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger, WrappedLogger
 
     from airflow.executors.workloads import BundleInfo
-    from airflow.sdk.api.datamodels._generated import TIRunContext
+    from airflow.sdk.api.datamodels._generated import BundleInfo as SDKBundleInfo, TIRunContext
     from airflow.sdk.bases.secrets_backend import BaseSecretsBackend
     from airflow.sdk.definitions.connection import Connection
     from airflow.sdk.types import RuntimeTaskInstanceProtocol as RuntimeTI
@@ -302,6 +302,9 @@ TASK_OVERTIME_THRESHOLD: float = conf.getfloat("core", "task_success_overtime")
 # How long a task process gets to clean up when the supervisor stops it: after the server says it should no
 # longer run, SIGTERM to SIGKILL; after execution_timeout elapses, both before SIGTERM and before SIGKILL.
 KILLED_TASK_CLEANUP_TIME: float = conf.getfloat("core", "killed_task_cleanup_time")
+
+# How long local cancellation waits for processes to disappear after SIGKILL before reporting failure.
+LOCAL_CANCELLATION_KILL_TIMEOUT: float = 5.0
 
 SERVER_TERMINATED = TerminalStateNonSuccess.SERVER_TERMINATED.value
 
@@ -1638,6 +1641,21 @@ def _is_start_rejected_as_cleared(error: Exception) -> bool:
     )
 
 
+def _wait_for_processes(processes: list[psutil.Process], timeout: float) -> list[psutil.Process]:
+    """Wait up to ``timeout`` seconds for processes to exit, and return those still running."""
+    deadline = time.monotonic() + timeout
+    while True:
+        running = []
+        for process in processes:
+            with suppress(psutil.NoSuchProcess):
+                # psutil.wait_procs() waits on orphaned zombies, which PID 1 may never reap in a container.
+                if process.is_running() and process.status() != psutil.STATUS_ZOMBIE:
+                    running.append(process)
+        if not running or time.monotonic() >= deadline:
+            return running
+        time.sleep(0.01)
+
+
 @attrs.define(kw_only=True)
 class ActivitySubprocess(WatchedSubprocess):
     client: Client
@@ -1667,6 +1685,10 @@ class ActivitySubprocess(WatchedSubprocess):
     _execution_timeout_seconds: float | None = attrs.field(default=None, init=False)
     _execution_timeout_enforce_at: float | None = attrs.field(default=None, init=False)
     """Monotonic time at which the supervisor stops a task that has not reported a terminal state."""
+
+    get_cancel_signal: Callable[[], signal.Signals | None] | None = None
+    cancellation_grace_seconds: float = 5.0
+    _cancellation_complete: bool = attrs.field(default=False, init=False)
 
     decoder: ClassVar[TypeAdapter[ToSupervisor]] = TypeAdapter(ToSupervisor)
 
@@ -1702,12 +1724,17 @@ class ActivitySubprocess(WatchedSubprocess):
             **kwargs,
         )
         # Tell the task process what it needs to do!
-        proc._on_child_started(
-            ti=what,
-            dag_rel_path=dag_rel_path,
-            bundle_info=bundle_info,
-            sentry_integration=sentry_integration,
-        )
+        try:
+            proc._on_child_started(
+                ti=what,
+                dag_rel_path=dag_rel_path,
+                bundle_info=bundle_info,
+                sentry_integration=sentry_integration,
+            )
+        except BaseException:
+            if proc.get_cancel_signal is not None:
+                proc._cancel_subprocess(proc.get_cancel_signal() or signal.SIGTERM)
+            raise
         return proc
 
     def _on_child_started(
@@ -1720,6 +1747,8 @@ class ActivitySubprocess(WatchedSubprocess):
     ) -> None:
         """Send startup message to the subprocess."""
         self.ti = ti  # type: ignore[assignment]
+        if self._cancel_if_requested():
+            return
         try:
             # We've forked, but the task won't start doing anything until we send it the StartupDetails
             # message. But before we do that, we need to tell the server it's started (so it has the chance to
@@ -1735,6 +1764,9 @@ class ActivitySubprocess(WatchedSubprocess):
                 self._terminal_state = SERVER_TERMINATED
                 return
             raise
+
+        if self._cancel_if_requested():
+            return
 
         if (prepared := self._prepare_ti_context(ti, ti_context)) is None:
             return
@@ -1934,6 +1966,8 @@ class ActivitySubprocess(WatchedSubprocess):
         - Sends heartbeats to ensure the process is alive and checks if the subprocess has exited.
         """
         while self._exit_code is None or self._open_sockets:
+            if self._cancel_if_requested():
+                break
             last_heartbeat_ago = time.monotonic() - self._last_successful_heartbeat
             # Monitor the task to see if it's done. Wait in a syscall (`select`) for as long as possible
             # so we notice the subprocess finishing as quick as we can.
@@ -1944,6 +1978,9 @@ class ActivitySubprocess(WatchedSubprocess):
                     HEARTBEAT_TIMEOUT - last_heartbeat_ago * 0.75,
                     MIN_HEARTBEAT_INTERVAL,
                     self._execution_timeout_due_in(),
+                    # select() resumes after a signal handler returns (PEP 475), so poll to
+                    # notice a cancellation the handler has only recorded.
+                    0.1 if self.get_cancel_signal is not None else float("inf"),
                 ),
             )
             # Block until events are ready or the timeout is reached
@@ -1972,6 +2009,50 @@ class ActivitySubprocess(WatchedSubprocess):
 
                 self._handle_process_overtime_if_needed()
                 self._handle_execution_timeout_if_needed()
+
+    def _cancel_if_requested(self) -> bool:
+        if self.get_cancel_signal is None or (requested_signal := self.get_cancel_signal()) is None:
+            return False
+        if not self._cancellation_complete:
+            self._cancel_subprocess(requested_signal)
+        return True
+
+    def _cancel_subprocess(self, requested_signal: signal.Signals) -> None:
+        """Stop a local task's process group and descendants that left it, such as BashOperator commands."""
+        if not self._new_process_group or self.pid == os.getpgrp():
+            raise RuntimeError("Local task cancellation requires an isolated task process group")
+
+        log.warning("Cancelling local task", pid=self.pid, signal=requested_signal.name)
+        deadline = time.monotonic() + self.cancellation_grace_seconds
+        try:
+            descendants: list[psutil.Process] = []
+            # A reaped task process's PID may already name an unrelated process. Descendants that
+            # left the task's group are recorded now: they cannot be found once their parent exits.
+            if self._exit_code is None:
+                with suppress(psutil.NoSuchProcess):
+                    descendants = psutil.Process(self.pid).children(recursive=True)
+            for process in descendants:
+                with suppress(psutil.NoSuchProcess, ProcessLookupError, PermissionError):
+                    if os.getpgid(process.pid) != self.pid:
+                        process.send_signal(requested_signal)
+
+            self.kill(requested_signal, escalation_delay=self.cancellation_grace_seconds, force=True)
+            if self._exit_code is None:
+                try:
+                    self._process.wait(timeout=LOCAL_CANCELLATION_KILL_TIMEOUT)
+                except self._process.TimeoutExpired:
+                    raise RuntimeError("Local task process did not stop after SIGKILL") from None
+
+            survivors = _wait_for_processes(descendants, deadline - time.monotonic())
+            for process in survivors:
+                with suppress(psutil.NoSuchProcess):
+                    process.kill()
+            if _wait_for_processes(survivors, LOCAL_CANCELLATION_KILL_TIMEOUT):
+                raise RuntimeError("Local task descendants did not stop after SIGKILL")
+            self._cancellation_complete = True
+        finally:
+            self._exit_code = -int(requested_signal)
+            self.cleanup_sockets_after_kill()
 
     def _handle_process_overtime_if_needed(self):
         """Handle termination of auxiliary processes if the task exceeds the configured overtime."""
@@ -3076,15 +3157,19 @@ def _fail_task_before_runtime(
 def supervise_task(
     *,
     ti: TaskInstance,
-    bundle_info: BundleInfo,
+    bundle_info: BundleInfo | SDKBundleInfo,
     dag_rel_path: str | os.PathLike[str],
     token: str,
     server: str | None = None,
     dry_run: bool = False,
     log_path: str | None = None,
+    task_logger: FilteringBoundLogger | None = None,
     subprocess_logs_to_stdout: bool = False,
     client: Client | None = None,
     sentry_integration: str = "",
+    cancel_on_signal: bool = False,
+    cancellation_grace_seconds: float = 5.0,
+    reset_secrets: bool = True,
 ) -> int:
     """
     Run a single task execution to completion.
@@ -3096,16 +3181,27 @@ def supervise_task(
     :param server: Base URL of the API server.
     :param dry_run: If True, execute without actual task execution (simulate run).
     :param log_path: Path to write logs, if required.
+    :param task_logger: Optional logger for this task's subprocess output. Cannot be combined with log_path.
     :param subprocess_logs_to_stdout: Should task logs also be sent to stdout via the main logger.
     :param client: Optional preconfigured client for communication with the server (Mostly for tests).
     :param sentry_integration: If the executor has a Sentry integration, import
         path to a callable to initialize it (empty means no integration).
+    :param cancel_on_signal: Terminate the task process group on SIGINT or SIGTERM instead of waiting
+        for task completion. Intended for local execution with the Python coordinator.
+    :param cancellation_grace_seconds: Cleanup time before escalating local cancellation to SIGKILL.
+    :param reset_secrets: Clear existing secret masks before execution. Disable when running locally
+        inside an existing Python process whose registered secrets must remain masked.
     :return: Exit code of the process.
     :raises ValueError: If server URL is empty or invalid.
     :raises InvalidCoordinatorError: If the coordinator for the task is not
         configured correctly.
     """
     _make_process_nondumpable()
+
+    if not 0 <= cancellation_grace_seconds < float("inf"):
+        raise ValueError("cancellation_grace_seconds must be finite and nonnegative")
+    if task_logger is not None and log_path:
+        raise ValueError("task_logger and log_path cannot be supplied together")
 
     from airflow.sdk._shared.secrets_masker import reset_secrets_masker
 
@@ -3159,7 +3255,7 @@ def supervise_task(
         start = time.monotonic()
 
         # TODO: Use logging providers to handle the chunked upload for us etc.
-        logger: FilteringBoundLogger | None = None
+        logger: FilteringBoundLogger | None = task_logger
         log_file_descriptor: BinaryIO | TextIO | None = None
         if log_path:
             logger, log_file_descriptor = _configure_logging(log_path, client)
@@ -3172,9 +3268,18 @@ def supervise_task(
             backend_classes=[type(b).__name__ for b in backends],
         )
 
-        reset_secrets_masker()
+        if reset_secrets:
+            reset_secrets_masker()
 
         try:
+            cancellation_options = (
+                {
+                    "cancel_on_signal": True,
+                    "cancellation_grace_seconds": cancellation_grace_seconds,
+                }
+                if cancel_on_signal
+                else {}
+            )
             result = coordinator.execute_task(
                 what=ti,
                 dag_rel_path=dag_rel_path,
@@ -3183,6 +3288,7 @@ def supervise_task(
                 logger=logger,
                 sentry_integration=sentry_integration,
                 subprocess_logs_to_stdout=subprocess_logs_to_stdout,
+                **cancellation_options,
             )
             end = time.monotonic()
             log.info(

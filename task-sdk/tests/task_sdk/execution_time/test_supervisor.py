@@ -28,7 +28,7 @@ import socket
 import subprocess
 import sys
 import time
-from contextlib import nullcontext
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from operator import attrgetter
@@ -170,6 +170,7 @@ from airflow.sdk.execution_time.comms import (
 )
 from airflow.sdk.execution_time.coordinator import BaseCoordinator, TaskLaunchError
 from airflow.sdk.execution_time.supervisor import (
+    LOCAL_CANCELLATION_KILL_TIMEOUT,
     SERVER_TERMINATED,
     ActivitySubprocess,
     InProcessSupervisorComms,
@@ -178,6 +179,7 @@ from airflow.sdk.execution_time.supervisor import (
     WatchedSubprocess,
     _make_process_nondumpable,
     _remote_logging_conn,
+    _wait_for_processes,
     forward_to_log,
     in_process_api_server,
     make_buffered_socket_reader,
@@ -1983,6 +1985,269 @@ class TestWatchedSubprocess:
             )
         finally:
             proc.kill(signal.SIGKILL, force=True)
+
+
+class TestLocalTaskCancellation:
+    @pytest.fixture
+    def task_instance(self):
+        return TaskInstance(
+            id=uuid7(),
+            task_id="b",
+            dag_id="c",
+            run_id="d",
+            try_number=1,
+            dag_version_id=uuid7(),
+            queue="default",
+        )
+
+    @pytest.mark.parametrize("log_path", [None, "attempt.log"])
+    @mock.patch("airflow.sdk.execution_time.supervisor.get_coordinator_manager", autospec=True)
+    def test_task_logger_injection(self, get_coordinator_manager, task_instance, log_path):
+        logger = mock.Mock(spec=FilteringBoundLogger)
+        coordinator = get_coordinator_manager.return_value.for_queue.return_value
+        coordinator.execute_task.return_value = BaseCoordinator.ExecutionResult(0, "success")
+        expectation = (
+            pytest.raises(ValueError, match="task_logger and log_path") if log_path else nullcontext()
+        )
+        with expectation:
+            assert (
+                supervise_task(
+                    ti=task_instance,
+                    bundle_info=FAKE_BUNDLE,
+                    dag_rel_path=os.devnull,
+                    token="",
+                    client=mock.Mock(spec=sdk_client.Client),
+                    log_path=log_path,
+                    task_logger=logger,
+                )
+                == 0
+            )
+        if log_path:
+            get_coordinator_manager.assert_not_called()
+        else:
+            assert coordinator.execute_task.call_args.kwargs["logger"] is logger
+
+    @pytest.mark.parametrize("grace_seconds", [-1, float("inf"), float("nan")])
+    @mock.patch("airflow.sdk.execution_time.supervisor.get_coordinator_manager", autospec=True)
+    def test_rejects_invalid_grace_period(self, get_coordinator_manager, task_instance, grace_seconds):
+        with pytest.raises(ValueError, match="finite and nonnegative"):
+            supervise_task(
+                ti=task_instance,
+                bundle_info=FAKE_BUNDLE,
+                dag_rel_path=os.devnull,
+                token="",
+                client=mock.Mock(spec=sdk_client.Client),
+                cancel_on_signal=True,
+                cancellation_grace_seconds=grace_seconds,
+            )
+        get_coordinator_manager.assert_not_called()
+
+    @pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+    def test_cancellation_requested_before_start(self, client_with_ti_start, task_instance, signum):
+        def subprocess_main():
+            CommsDecoder()._get_response()
+            sleep(60)
+
+        proc = ActivitySubprocess.start(
+            dag_rel_path=os.devnull,
+            bundle_info=FAKE_BUNDLE,
+            what=task_instance,
+            client=client_with_ti_start,
+            target=subprocess_main,
+            get_cancel_signal=lambda: signum,
+            cancellation_grace_seconds=0.1,
+        )
+
+        assert proc.wait() == -signum
+        assert proc.final_state == TaskInstanceState.FAILED
+        assert not psutil.pid_exists(proc.pid)
+        assert not proc._open_sockets
+
+    @pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+    @pytest.mark.parametrize("leader_exits", [False, True])
+    @pytest.mark.parametrize("separate_session", [False, True])
+    def test_cancellation_kills_stubborn_descendants(
+        self, client_with_ti_start, task_instance, tmp_path, signum, leader_exits, separate_session
+    ):
+        child_ready = tmp_path / "child.pid"
+        leader_ready = tmp_path / "leader-ready"
+        requested_signal = None
+
+        def subprocess_main():
+            CommsDecoder()._get_response()
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            if os.fork() == 0:
+                if separate_session:
+                    os.setsid()
+                pending = child_ready.with_suffix(".pending")
+                pending.write_text(str(os.getpid()))
+                pending.replace(child_ready)
+                sleep(60)
+                os._exit(0)
+            while not child_ready.exists():
+                sleep(0.01)
+            if leader_exits:
+                signal.signal(signal.SIGINT, lambda *_: os._exit(0))
+                signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+            leader_ready.touch()
+            sleep(60)
+
+        proc = ActivitySubprocess.start(
+            dag_rel_path=os.devnull,
+            bundle_info=FAKE_BUNDLE,
+            what=task_instance,
+            client=client_with_ti_start,
+            target=subprocess_main,
+            get_cancel_signal=lambda: requested_signal,
+            cancellation_grace_seconds=0.1,
+        )
+        descendant = None
+        try:
+            deadline = time.monotonic() + 10
+            while not leader_ready.exists():
+                if time.monotonic() >= deadline:
+                    pytest.fail("Task subprocess did not become ready")
+                proc._service_subprocess(max_wait_time=0.05)
+            descendant = psutil.Process(int(child_ready.read_text()))
+            assert (os.getpgid(descendant.pid) == proc.pid) is not separate_session
+
+            requested_signal = signum
+            assert proc.wait() == -signum
+            assert proc.final_state == TaskInstanceState.FAILED
+            assert not psutil.pid_exists(proc.pid)
+            with suppress(psutil.NoSuchProcess):
+                assert descendant.status() == psutil.STATUS_ZOMBIE
+            assert not proc._open_sockets
+        finally:
+            if descendant is not None:
+                with suppress(psutil.NoSuchProcess):
+                    descendant.kill()
+            if proc._exit_code is None:
+                with suppress(ProcessLookupError):
+                    os.killpg(proc.pid, signal.SIGKILL)
+                proc._process.wait(timeout=5)
+            proc.cleanup_sockets_after_kill()
+            proc.selector.close()
+
+    @pytest.mark.parametrize("descendants_survive_kill", [False, True])
+    @mock.patch("airflow.sdk.execution_time.supervisor._wait_for_processes", autospec=True)
+    @mock.patch.object(ActivitySubprocess, "kill", autospec=True)
+    @mock.patch("airflow.sdk.execution_time.supervisor.os.getpgid", autospec=True)
+    @mock.patch("airflow.sdk.execution_time.supervisor.psutil.Process", autospec=True)
+    def test_cancellation_signals_only_descendants_outside_task_group(
+        self, process_class, getpgid, kill, wait_for_processes, descendants_survive_kill
+    ):
+        # psutil.Process is patched here, so the descendants spec only the attributes cancellation uses.
+        in_group = mock.Mock(spec=["pid", "send_signal", "kill"], pid=12346)
+        separate_session = mock.Mock(spec=["pid", "send_signal", "kill"], pid=12347)
+        process_class.return_value.children.return_value = [in_group, separate_session]
+        getpgid.side_effect = {in_group.pid: 12345, separate_session.pid: separate_session.pid}.__getitem__
+        wait_for_processes.side_effect = [
+            [separate_session],
+            [separate_session] if descendants_survive_kill else [],
+        ]
+        proc = ActivitySubprocess(
+            id=TI_ID,
+            pid=12345,
+            stdin=mock.Mock(spec=socket.socket),
+            process=mock.Mock(spec=ProcessTracker),
+            client=mock.Mock(spec=sdk_client.Client),
+            process_log=mock.Mock(spec=FilteringBoundLogger),
+            new_process_group=True,
+            cancellation_grace_seconds=0.1,
+        )
+        expectation = (
+            pytest.raises(RuntimeError, match="descendants did not stop after SIGKILL")
+            if descendants_survive_kill
+            else nullcontext()
+        )
+        try:
+            with expectation:
+                proc._cancel_subprocess(signal.SIGINT)
+        finally:
+            proc.selector.close()
+
+        process_class.assert_called_once_with(12345)
+        process_class.return_value.children.assert_called_once_with(recursive=True)
+        separate_session.send_signal.assert_called_once_with(signal.SIGINT)
+        in_group.send_signal.assert_not_called()
+        kill.assert_called_once_with(proc, signal.SIGINT, escalation_delay=0.1, force=True)
+        proc._process.wait.assert_called_once_with(timeout=LOCAL_CANCELLATION_KILL_TIMEOUT)
+        assert wait_for_processes.call_args_list[0].args[0] == [in_group, separate_session]
+        separate_session.kill.assert_called_once_with()
+        in_group.kill.assert_not_called()
+        assert proc._exit_code == -signal.SIGINT
+        assert proc._cancellation_complete is not descendants_survive_kill
+
+    @mock.patch.object(ActivitySubprocess, "kill", autospec=True)
+    @mock.patch("airflow.sdk.execution_time.supervisor.psutil.Process", autospec=True)
+    def test_cancellation_after_task_process_reaped_skips_descendant_lookup(self, process_class, kill):
+        proc = ActivitySubprocess(
+            id=TI_ID,
+            pid=12345,
+            stdin=mock.Mock(spec=socket.socket),
+            process=mock.Mock(spec=ProcessTracker),
+            client=mock.Mock(spec=sdk_client.Client),
+            process_log=mock.Mock(spec=FilteringBoundLogger),
+            new_process_group=True,
+        )
+        proc._exit_code = 0
+        try:
+            proc._cancel_subprocess(signal.SIGTERM)
+        finally:
+            proc.selector.close()
+
+        # The reaped task PID may name an unrelated process, so its children are never inspected.
+        process_class.assert_not_called()
+        proc._process.wait.assert_not_called()
+        assert proc._exit_code == -signal.SIGTERM
+        assert proc._cancellation_complete
+
+    def test_wait_for_processes_ignores_exited_zombie_and_reused_processes(self):
+        def make_process(status=psutil.STATUS_SLEEPING, running=True, exists=True):
+            process = mock.Mock(spec=psutil.Process)
+            process.is_running.return_value = running
+            process.status.return_value = status
+            if not exists:
+                process.is_running.side_effect = psutil.NoSuchProcess(1)
+            return process
+
+        alive = make_process()
+        stopped = [
+            make_process(status=psutil.STATUS_ZOMBIE),
+            make_process(running=False),
+            make_process(exists=False),
+        ]
+        assert _wait_for_processes([alive, *stopped], 0) == [alive]
+        assert _wait_for_processes(stopped, 0) == []
+
+    @mock.patch.object(ActivitySubprocess, "_on_child_started", autospec=True)
+    def test_start_failure_cleans_up_local_process(
+        self, on_child_started, client_with_ti_start, task_instance
+    ):
+        def fail_start(proc, **kwargs):
+            raise ValueError("Invalid local run context")
+
+        def subprocess_main():
+            sleep(60)
+
+        on_child_started.side_effect = fail_start
+        with pytest.raises(ValueError, match="Invalid local run context"):
+            ActivitySubprocess.start(
+                dag_rel_path=os.devnull,
+                bundle_info=FAKE_BUNDLE,
+                what=task_instance,
+                client=client_with_ti_start,
+                target=subprocess_main,
+                get_cancel_signal=lambda: None,
+                cancellation_grace_seconds=0.1,
+            )
+
+        proc = on_child_started.call_args.args[0]
+        assert not psutil.pid_exists(proc.pid)
+        assert not proc._open_sockets
+        proc.selector.close()
 
 
 class TestWatchedSubprocessKill:

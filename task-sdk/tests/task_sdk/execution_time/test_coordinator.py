@@ -798,3 +798,44 @@ class TestPythonCoordinatorWarmShutdown:
         assert captured["start"] is captured["wait"]
         # ...and the original disposition is restored once execute_task returns.
         assert signal.getsignal(signal.SIGTERM) is original_term
+
+
+class TestPythonCoordinatorCancellation:
+    @pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM])
+    @pytest.mark.parametrize("phase", ["start", "wait"])
+    @mock.patch("airflow.sdk.execution_time.supervisor.ActivitySubprocess.start", autospec=True)
+    def test_execute_task_records_cancellation_through_start_and_wait(self, start, signum, phase):
+        from airflow.sdk.execution_time.supervisor import ActivitySubprocess
+
+        previous = signal.getsignal(signum)
+        process = mock.Mock(spec=ActivitySubprocess, final_state="failed")
+
+        def start_process(**kwargs):
+            if phase == "start":
+                os.kill(os.getpid(), signum)
+                assert kwargs["get_cancel_signal"]() == signum
+            assert kwargs["cancellation_grace_seconds"] == 0.2
+            return process
+
+        def wait_for_process():
+            if phase == "wait":
+                os.kill(os.getpid(), signum)
+            assert start.call_args.kwargs["get_cancel_signal"]() == signum
+            return 0
+
+        start.side_effect = start_process
+        process.wait.side_effect = wait_for_process
+        result = _PythonCoordinator().execute_task(
+            what=mock.Mock(spec=["id"]),
+            dag_rel_path="some_dag.py",
+            bundle_info=mock.Mock(spec=["name", "version"]),
+            client=mock.Mock(spec=["task_instances"]),
+            subprocess_logs_to_stdout=False,
+            cancel_on_signal=True,
+            cancellation_grace_seconds=0.2,
+        )
+
+        assert result.exit_code == -signum
+        assert result.final_state == "failed"
+        process._cancel_if_requested.assert_called_once_with()
+        assert signal.getsignal(signum) is previous

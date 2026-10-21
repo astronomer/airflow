@@ -1477,6 +1477,25 @@ DAGS_COMMANDS = (
 )
 TASKS_COMMANDS = (
     ActionCommand(
+        name="run-local",
+        help="Run one Python task from a local Dag file without Airflow services",
+        func=lazy_load_command("airflow.cli.commands.local_task_command.task_run_local"),
+        args=(
+            Arg(("dag_file",), help="Path to the Python Dag file"),
+            ARG_TASK_ID,
+            Arg(("--dag-id",), required=True, help="ID of the Dag containing the task"),
+            ARG_RUN_ID,
+            Arg(("--bundle-root",), help="Project root containing the Dag file and shared imports"),
+            Arg(("--state-dir",), help="Directory for durable local run and task state"),
+            Arg(("--connections",), help="JSON file mapping connection IDs to URIs or connection objects"),
+            Arg(("--variables",), help="JSON file mapping Variable names to values"),
+            Arg(("--params",), help="JSON object used as Dag run conf and task params"),
+            Arg(
+                ("--upstream-xcoms",), help="JSON object mapping upstream task IDs to XCom key/value objects"
+            ),
+        ),
+    ),
+    ActionCommand(
         name="list",
         help="List the tasks within a DAG",
         func=lazy_load_command("airflow.cli.commands.task_command.task_list"),
