@@ -105,6 +105,13 @@ def get_provider_info():
                         "example": "gzip",
                         "default": "",
                     },
+                    "checkpoints_path": {
+                        "description": "Default object storage location for model training checkpoints saved with ``Checkpoints``,\nin URL format. Passing ``base`` to ``Checkpoints`` overrides it.\n",
+                        "version_added": "1.12.0",
+                        "type": "string",
+                        "example": "s3://conn_id@bucket/checkpoints/",
+                        "default": "",
+                    },
                 },
             }
         },
