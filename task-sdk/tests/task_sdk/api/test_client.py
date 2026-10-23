@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from unittest import mock
@@ -53,7 +54,7 @@ from airflow.sdk.api.datamodels._generated import (
     VariableResponse,
     XComResponse,
 )
-from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError
+from airflow.sdk.exceptions import CallbackAlreadyStartedError, ErrorType, TaskAlreadyRunningError
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
     DeferTask,
@@ -2399,22 +2400,28 @@ class TestCallbackOperations:
     @mock.patch("airflow.sdk.api.client.get_hostname", return_value="worker-1")
     def test_run_exchanges_token(self, _hostname):
         callback_id = uuid7()
+        bodies = []
 
         def handle_request(request: httpx2.Request) -> httpx2.Response:
             assert request.method == "PATCH"
             assert request.url.path == f"/callbacks/{callback_id}/run"
-            # Identifies the worker, so a retry of its own exchange is accepted.
-            assert json.loads(request.read()) == {"hostname": "worker-1", "pid": os.getpid()}
-            return httpx2.Response(
-                status_code=204,
-                headers={"Refreshed-API-Token": "execution-token"},
-            )
+            bodies.append(json.loads(request.read()))
+            if len(bodies) == 1:
+                return httpx2.Response(status_code=500)
+            return httpx2.Response(status_code=204, headers={"Refreshed-API-Token": "execution-token"})
 
         client = make_client(transport=httpx2.MockTransport(handle_request))
-        client.callbacks.run(callback_id)
+        with time_machine.travel("2023-01-01T00:00:00Z", tick=False):
+            client.callbacks.run(callback_id)
+            client.callbacks.run(callback_id)
 
         assert client.auth is not None
         assert client.auth.token == "execution-token"
+        first_attempt, retried, second_attempt = bodies
+        assert first_attempt == {"hostname": "worker-1", "pid": os.getpid(), "attempt_id": mock.ANY}
+        assert uuid.UUID(first_attempt["attempt_id"])
+        assert retried == first_attempt
+        assert second_attempt["attempt_id"] != first_attempt["attempt_id"]
 
     def test_run_raises_on_conflict(self):
         callback_id = uuid7()
@@ -2426,9 +2433,10 @@ class TestCallbackOperations:
             )
 
         client = make_client(transport=httpx2.MockTransport(handle_request))
-        with pytest.raises(ServerResponseError) as err:
+        with pytest.raises(CallbackAlreadyStartedError) as err:
             client.callbacks.run(callback_id)
-        assert err.value.response.status_code == 409
+        # What the Celery executor ignores when a callback's message is delivered twice.
+        assert isinstance(err.value, TaskAlreadyRunningError)
 
     def test_get_context_returns_the_callback_context(self):
         callback_id = uuid7()

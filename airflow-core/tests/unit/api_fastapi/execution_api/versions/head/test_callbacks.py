@@ -270,7 +270,7 @@ class TestRunCallbackIdentityClaims:
         assert "bundle_name" not in claims
 
 
-WORKER = {"hostname": "worker-1", "pid": 4242}
+WORKER = {"hostname": "worker-1", "pid": 4242, "attempt_id": "01890a5d-ac70-7a5b-b7d5-0dd5b1c7be49"}
 
 
 class TestRunCallbackRetriedExchange:
@@ -295,7 +295,10 @@ class TestRunCallbackRetriedExchange:
         [
             pytest.param(None, id="unidentified"),
             pytest.param({**WORKER, "hostname": "worker-2"}, id="other-host"),
-            pytest.param({**WORKER, "pid": 1}, id="other-process"),
+            pytest.param(
+                {**WORKER, "attempt_id": "01890a5d-ac70-7a5b-b7d5-0dd5b1c7be50"},
+                id="redelivered-to-the-same-process",
+            ),
         ],
     )
     def test_any_other_exchange_of_a_started_callback_is_refused(self, client, queued_callback, retry_body):

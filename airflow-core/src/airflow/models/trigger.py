@@ -725,6 +725,11 @@ def _(event: BaseTaskEndEvent, *, task_instance: TaskInstance, session: Session)
             from airflow.models.dag_version import _resolve_ti_callback_bundle_info
 
             bundle_name, bundle_version, version_data = _resolve_ti_callback_bundle_info(task_instance)
+            # Direct deferral refreshes start_date; retries can retain an earlier worker's heartbeat.
+            task_started = task_instance.last_heartbeat_at is not None and (
+                task_instance.start_date is None
+                or task_instance.last_heartbeat_at >= task_instance.start_date
+            )
             request = TaskCallbackRequest(
                 filepath=task_instance.dag_model.relative_fileloc,
                 ti=task_instance_to_runtime(
@@ -733,6 +738,7 @@ def _(event: BaseTaskEndEvent, *, task_instance: TaskInstance, session: Session)
                     map_index=TaskCoordinateResolver(dag_bag, session).public_map_index(task_instance),
                 ),
                 task_callback_type=callback_type,
+                task_started=task_started,
                 bundle_name=bundle_name,
                 bundle_version=bundle_version,
                 version_data=version_data,

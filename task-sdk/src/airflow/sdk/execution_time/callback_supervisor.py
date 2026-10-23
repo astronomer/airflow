@@ -25,7 +25,7 @@ import time
 from importlib import import_module
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, ClassVar, Protocol, cast
+from typing import TYPE_CHECKING, Annotated, Any, BinaryIO, ClassVar, Literal, Protocol, cast
 from uuid import UUID
 
 import attrs
@@ -33,7 +33,14 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from airflow.sdk._shared.module_loading import UNUSUAL_MODULE_PREFIX, accepts_context, accepts_keyword_args
-from airflow.sdk.api.datamodels._generated import CallbackState
+from airflow.sdk._shared.observability.metrics import stats
+from airflow.sdk.api.datamodels._generated import (
+    BundleInfo,
+    CallbackState,
+    DagCallbackContext,
+    EmailCallbackContext,
+    TaskCallbackContext,
+)
 from airflow.sdk.execution_time.comms import (
     DeleteVariable,
     GetConnection,
@@ -50,6 +57,9 @@ from airflow.sdk.execution_time.comms import (
     GetXComSequenceSlice,
     MaskSecret,
     PutVariable,
+    ToSupervisor,
+    ToTask,
+    _ResponseFrame,
 )
 from airflow.sdk.execution_time.supervisor import (
     MIN_HEARTBEAT_INTERVAL,
@@ -58,6 +68,7 @@ from airflow.sdk.execution_time.supervisor import (
     _ensure_client,
     _import_task_runner_before_fork,
     _make_process_nondumpable,
+    _should_use_exec,
 )
 
 if TYPE_CHECKING:
@@ -66,12 +77,6 @@ if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger
 
     from airflow.sdk.api.client import Client
-    from airflow.sdk.api.datamodels._generated import (
-        BundleInfo,
-        DagCallbackContext,
-        EmailCallbackContext,
-        TaskCallbackContext,
-    )
     from airflow.sdk.execution_time.supervisor import RequestHandler
 
     # Core (airflow.executors.workloads.base.BundleInfo) and SDK (airflow.sdk.api.datamodels._generated.BundleInfo)
@@ -142,6 +147,50 @@ class _UnsupportedRequest(BaseModel):
 
 SERDE_KWARGS_ENCODING = "serde"
 DAG_ATTRIBUTE_FETCH_METHOD = "dag_attribute"
+
+
+class DagCallbackStartupDetails(BaseModel):
+    dag_rel_path: Path
+    bundle_info: BundleInfo | None = None
+    context: Annotated[
+        DagCallbackContext | TaskCallbackContext | EmailCallbackContext, Field(discriminator="type")
+    ]
+    type: Literal["DagCallbackStartupDetails"] = "DagCallbackStartupDetails"
+
+
+def _run_dag_callback_entrypoint() -> None:
+    from airflow.sdk.execution_time import task_runner
+    from airflow.sdk.execution_time.comms import CommsDecoder
+
+    _log = structlog.get_logger(logger_name="callback_runner")
+    comms = CommsDecoder[DagCallbackStartupDetails, CallbackToSupervisor](
+        body_decoder=TypeAdapter(DagCallbackStartupDetails), log=_log
+    )
+    msg = comms._get_response()
+    if not isinstance(msg, DagCallbackStartupDetails):
+        raise RuntimeError(
+            f"Required first message to be DagCallbackStartupDetails, got {type(msg).__name__}"
+        )
+    task_runner.SUPERVISOR_COMMS = CommsDecoder[ToTask, ToSupervisor](socket=comms.socket, log=_log)
+    _run_dag_callback(msg.context, msg.dag_rel_path, msg.bundle_info, _log)
+
+
+def _run_dag_callback(
+    context: DagCallbackContext | TaskCallbackContext | EmailCallbackContext,
+    dag_rel_path: os.PathLike[str],
+    bundle_info: _BundleInfoLike | None,
+    log: FilteringBoundLogger,
+) -> None:
+    from airflow.sdk.execution_time.dag_attribute_callbacks import run_dag_attribute_callbacks
+
+    if bundle_info is None:
+        log.error("A Dag-attribute callback needs the bundle of its Dag")
+        sys.exit(1)
+    if errors := run_dag_attribute_callbacks(
+        context, dag_rel_path=dag_rel_path, bundle_info=cast("BundleInfo", bundle_info), log=log
+    ):
+        log.error("Callback failed", errors=errors)
+        sys.exit(1)
 
 
 def decode_callback_kwargs(callback_kwargs: dict[str, Any], encoding: str | None) -> dict[str, Any]:
@@ -297,11 +346,37 @@ class CallbackSubprocess(WatchedSubprocess):
         **kwargs,
     ) -> Self:
         """
-        Fork and start a new subprocess to execute the given callback.
+        Start a new subprocess to execute the given callback.
 
         With a ``context``, the callback is a Dag or task attribute: the subprocess parses the Dag
         file at ``bundle_info`` and runs the callbacks the context names instead of ``callback_path``.
         """
+        if context is not None and _should_use_exec():
+            msg = DagCallbackStartupDetails(
+                dag_rel_path=Path(dag_rel_path),
+                bundle_info=BundleInfo.model_validate(bundle_info, from_attributes=True)
+                if bundle_info
+                else None,
+                context=context,
+            )
+            # Serialize before spawning so an invalid payload cannot leave a child waiting for startup.
+            startup_frame = _ResponseFrame(id=0, body=msg.model_dump()).as_bytes()
+            proc = super().start(
+                id=UUID(id) if not isinstance(id, UUID) else id,
+                client=client,
+                target=_run_dag_callback_entrypoint,
+                logger=logger,
+                use_exec=True,
+                **kwargs,
+            )
+            try:
+                proc.stdin.sendall(startup_frame)
+            except Exception:
+                proc.kill(signal.SIGKILL)
+                proc._cleanup_open_sockets()
+                proc.selector.close()
+                raise
+            return proc
 
         # Use a closure to pass callback data to the child process.  Note that this
         # ONLY works because WatchedSubprocess.start() uses os.fork(), so the child
@@ -314,19 +389,7 @@ class CallbackSubprocess(WatchedSubprocess):
             task_runner.SUPERVISOR_COMMS = CommsDecoder[ToTask, CallbackToSupervisor](log=_log)
 
             if context is not None:
-                from airflow.sdk.execution_time.dag_attribute_callbacks import run_dag_attribute_callbacks
-
-                if bundle_info is None:
-                    _log.error("A Dag-attribute callback needs the bundle of its Dag")
-                    sys.exit(1)
-                if errors := run_dag_attribute_callbacks(
-                    context,
-                    dag_rel_path=dag_rel_path,
-                    bundle_info=cast("BundleInfo", bundle_info),
-                    log=_log,
-                ):
-                    _log.error("Callback failed", errors=errors)
-                    sys.exit(1)
+                _run_dag_callback(context, dag_rel_path, bundle_info, _log)
                 return
 
             bundle_path = None
@@ -572,6 +635,7 @@ def supervise_callback(
             )
             if exit_code != 0:
                 if process.timed_out:
+                    stats.incr("callback.timeouts")
                     output = f"Callback timed out after {process._get_callback_execution_timeout()} seconds"
                 else:
                     output = f"Callback subprocess exited with code {exit_code}"

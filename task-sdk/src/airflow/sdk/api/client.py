@@ -99,7 +99,7 @@ from airflow.sdk.api.datamodels._generated import (
     XComSequenceSliceResponse,
 )
 from airflow.sdk.configuration import conf
-from airflow.sdk.exceptions import ErrorType, TaskAlreadyRunningError
+from airflow.sdk.exceptions import CallbackAlreadyStartedError, ErrorType, TaskAlreadyRunningError
 from airflow.sdk.execution_time.comms import (
     AssetsByAliasResult,
     CreateHITLDetailPayload,
@@ -1185,9 +1185,17 @@ class CallbackOperations:
 
     def run(self, callback_id: uuid.UUID) -> None:
         """Exchange the single-use callback token for an execution token."""
-        # Identifies this process, so a retry of an exchange whose response was lost is accepted.
-        body = CallbackRunPayload(hostname=get_hostname(), pid=os.getpid())
-        self.client.patch(f"callbacks/{callback_id}/run", content=body.model_dump_json())
+        # Retries of this request resend the same attempt ID, so the API server accepts a retry whose
+        # first response was lost, but not a second delivery of the callback.
+        body = CallbackRunPayload(hostname=get_hostname(), pid=os.getpid(), attempt_id=uuid.uuid4())
+        try:
+            self.client.patch(f"callbacks/{callback_id}/run", content=body.model_dump_json())
+        except ServerResponseError as e:
+            if e.response.status_code == HTTPStatus.CONFLICT:
+                raise CallbackAlreadyStartedError(
+                    f"Callback {callback_id} already started, or can no longer start"
+                ) from e
+            raise
 
     def get_context(self, callback_id: uuid.UUID) -> CallbackContextResponse:
         """Fetch the context of a running Dag-attribute callback from the API server."""

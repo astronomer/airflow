@@ -26,6 +26,7 @@ import pendulum
 import pytest
 import pytz
 import sqlalchemy as sa
+import time_machine
 from cryptography.fernet import Fernet
 from sqlalchemy import delete, event, func, insert, select, update
 from sqlalchemy.exc import OperationalError
@@ -46,6 +47,7 @@ from airflow.serialization.serialized_objects import BaseSerialization
 from airflow.triggers.base import (
     BaseEventTrigger,
     BaseTrigger,
+    StartTriggerArgs,
     TaskFailedEvent,
     TaskSkippedEvent,
     TaskSuccessEvent,
@@ -713,6 +715,39 @@ def test_submit_event_task_end_callback_includes_version_data(mock_send, session
     request = mock_send.call_args.kwargs["callback"]
     assert request.bundle_version == "some_hash"
     assert request.version_data == version_data
+
+
+@pytest.mark.parametrize("retried", [False, True])
+@pytest.mark.parametrize("worker_started", [False, True])
+@time_machine.travel("2026-10-22 12:00:00+00:00", tick=False)
+@patch("airflow.callbacks.database_callback_sink.DatabaseCallbackSink.send", autospec=True)
+def test_submit_event_callback_records_whether_a_trigger_started_attempt_ran_on_a_worker(
+    mock_send, session, create_task_instance, retried, worker_started
+):
+    task_instance = create_task_instance(
+        session=session,
+        logical_date=timezone.utcnow(),
+        start_from_trigger=True,
+        start_trigger_args=StartTriggerArgs(trigger_cls="does.not.matter", next_method="execute_complete"),
+    )
+    if retried:
+        task_instance.state = TaskInstanceState.UP_FOR_RETRY
+        task_instance.try_number = 1
+        task_instance.pid = 4242
+        task_instance.start_date = timezone.utcnow() - datetime.timedelta(minutes=2)
+        task_instance.last_heartbeat_at = timezone.utcnow() - datetime.timedelta(minutes=1)
+        task_instance = task_instance.prepare_db_for_next_try(session)
+        assert task_instance.pid == 4242
+    assert task_instance.defer_task(session=session)
+    if worker_started:
+        task_instance.pid = 4343
+        task_instance.last_heartbeat_at = timezone.utcnow()
+    session.commit()
+
+    Trigger.submit_event(task_instance.trigger_id, TaskFailedEvent(), session=session)
+
+    mock_send.assert_called_once()
+    assert mock_send.call_args.kwargs["callback"].task_started is worker_started
 
 
 @patch("airflow.callbacks.database_callback_sink.DatabaseCallbackSink.send")

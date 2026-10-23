@@ -299,6 +299,16 @@ class CeleryExecutor(BaseExecutor):
         super().change_state(key, state, info, remove_running=remove_running)
         self.workloads.pop(key, None)
 
+    def release_callback(self, key: WorkloadKey) -> None:
+        """Stop tracking a callback settled by the scheduler, including its Celery result."""
+        self.workloads.pop(key, None)
+        self.workload_publish_retries.pop(key, None)
+        self.running.discard(key)
+        if AIRFLOW_V_3_4_PLUS:
+            self.executor_queues[WorkloadType.EXECUTE_CALLBACK].pop(key, None)
+        else:
+            self.queued_callbacks.pop(key, None)
+
     def update_task_state(self, key: WorkloadKey, state: str, info: Any) -> None:
         """Update state of a single workload."""
         try:

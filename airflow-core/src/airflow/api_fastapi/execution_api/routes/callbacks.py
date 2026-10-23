@@ -101,11 +101,12 @@ def run_callback(
     """
     Exchange a single-use callback token for a short-lived execution token.
 
-    A worker that identifies itself can repeat its own exchange, as when it never got the response,
-    and gets a new execution token. Any other exchange of a callback that already started is refused.
+    An attempt that identifies itself can repeat its own exchange, as when it never got the response,
+    and gets a new execution token. Any other exchange of a callback that already started is refused,
+    including a second delivery of its workload.
     """
     callback = _get_callback(callback_id, session, for_update=True)
-    started_by = body.model_dump() if body is not None else None
+    started_by = body.model_dump(mode="json") if body is not None else None
 
     if (
         callback.state == CallbackState.RUNNING

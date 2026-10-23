@@ -17,7 +17,7 @@
 
 from __future__ import annotations
 
-from cadwyn import VersionChange, endpoint
+from cadwyn import RequestInfo, VersionChange, convert_request_to_next_version_for, endpoint
 
 
 class AddDagProcessorJobEndpoints(VersionChange):
@@ -37,8 +37,8 @@ class AddCallbackContextAndStateEndpoints(VersionChange):
     """
     Add the endpoints a routed Dag processor callback reads its context from and reports its state to.
 
-    A worker can also identify itself when it exchanges a callback's token, so it can repeat its own
-    exchange. Older clients send no body and keep the single-use exchange.
+    An attempt to run a callback can also identify itself when it exchanges the callback's token, so it
+    can repeat its own exchange. Requests of earlier versions keep the single-use exchange.
     """
 
     description = __doc__
@@ -47,3 +47,7 @@ class AddCallbackContextAndStateEndpoints(VersionChange):
         endpoint("/callbacks/{callback_id}/context", ["GET"]).didnt_exist,
         endpoint("/callbacks/{callback_id}/state", ["PATCH"]).didnt_exist,
     )
+
+    @convert_request_to_next_version_for("/callbacks/{callback_id}/run", ["PATCH"])  # type: ignore[arg-type]
+    def drop_callback_run_payload(request: RequestInfo):  # type: ignore[misc]
+        request.body = None
