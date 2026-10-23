@@ -105,6 +105,13 @@ def get_provider_info():
                         "example": "gzip",
                         "default": "",
                     },
+                    "checkpoints_path": {
+                        "description": "Default object storage location for files saved with ``Checkpoint``, in URL format.\nPassing ``base`` to ``Checkpoint`` overrides it.\n",
+                        "version_added": "1.12.0",
+                        "type": "string",
+                        "example": "s3://conn_id@bucket/checkpoints/",
+                        "default": "",
+                    },
                 },
             }
         },
