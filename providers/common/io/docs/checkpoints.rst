@@ -237,10 +237,13 @@ What you can call
 
    * - Call
      - What it does
-   * - ``save(step, metrics)``
+   * - ``save(step, metrics, background=False)``
      - Gives you a local folder to write checkpoint files into. When the ``with`` block ends, the
        files are uploaded and the checkpoint's record is written. If the block fails, nothing is
-       recorded.
+       recorded. With ``background=True``, the upload runs while training continues.
+   * - ``wait()``
+     - Waits for a background upload to finish, and raises its error if it failed. Call it before
+       the task returns when you use ``background=True``.
    * - ``resume()``
      - Returns the checkpoint to start from, or ``None``. A retry gets its own latest checkpoint.
        Otherwise it follows ``start``.
@@ -305,6 +308,37 @@ To trace where a model came from, follow ``parent``:
         print(record["run_id"], record["trial"], record["step"], record["metrics"])
         record = ckpt.get(record["parent"]) if record["parent"] else None
 
+Large checkpoints
+-----------------
+
+Files are streamed to storage, so saving does not load a checkpoint into memory a second time.
+
+By default, training waits while a checkpoint uploads. For large models, pass ``background=True``:
+training only waits for your code to write the files locally, and the upload runs while the next
+steps train. Call ``wait()`` before the task returns, or the last checkpoint may not be recorded:
+
+.. code-block:: python
+
+    for step in range(total_steps):
+        train_step(model)
+        if step % 1000 == 0:
+            with ckpt.save(step=step, metrics={"loss": loss}, background=True) as folder:
+                torch.save(model.state_dict(), folder / "model.pt")
+
+    ckpt.wait()
+
+Things to know:
+
+* Only one upload runs at a time. If the next save comes before the previous upload finishes, it
+  waits for it first. Background uploads help most when training between saves takes longer than
+  one upload.
+* Saving needs free local disk for one checkpoint, or two with ``background=True`` (one uploading,
+  one being written).
+* If the task is killed during an upload, the checkpoint has no record, so a retry resumes from the
+  previous complete checkpoint.
+* On S3, a killed upload can leave hidden parts behind that are still stored. Add a bucket lifecycle
+  rule that aborts incomplete multipart uploads after a few days.
+
 Limitations
 -----------
 
@@ -313,4 +347,4 @@ Limitations
 * If two Dag runs call ``promote_if_better`` at the same time, the last one wins, even if its model
   is worse (wip).
 * ``cleanup`` deletes records too, so following ``parent`` stops at a deleted checkpoint.
-* Uploads happen while training waits, which can be slow for very large checkpoints.
+* With ``background=True``, forgetting ``wait()`` can leave the last checkpoint unrecorded.

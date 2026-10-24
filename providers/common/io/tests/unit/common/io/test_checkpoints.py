@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from unittest import mock
 
 import pytest
 import time_machine
@@ -192,3 +193,31 @@ def test_cleanup_keeps_newest_and_best_across_runs(make_ckpt):
     }
     assert len(removed) == 1
     assert not ObjectStoragePath(f"{ckpt.root}/ckpts/{removed[0]}").exists()
+
+
+def test_background_saves_record_in_order(make_ckpt):
+    ckpt = make_ckpt()
+    for step in (5, 10):
+        with ckpt.save(step=step, background=True) as folder:
+            (folder / "weights.bin").write_bytes(f"w{step}".encode())
+        local = folder
+    ckpt.wait()
+
+    first, second = sorted(ckpt.find(), key=lambda r: r["step"])
+    assert second["parent"] == first["id"]
+    assert (ObjectStoragePath(second["path"]) / "weights.bin").read_bytes() == b"w10"
+    assert not local.exists()
+
+
+@mock.patch(
+    "airflow.providers.common.io.checkpoints._copy", autospec=True, side_effect=OSError("upload failed")
+)
+def test_background_upload_error_is_raised_and_leaves_no_record(mock_copy, make_ckpt):
+    ckpt = make_ckpt()
+    with ckpt.save(step=5, background=True) as folder:
+        (folder / "weights.bin").write_bytes(b"w")
+
+    with pytest.raises(OSError, match="upload failed"):
+        ckpt.wait()
+    assert ckpt.find() == []
+    assert not folder.exists()

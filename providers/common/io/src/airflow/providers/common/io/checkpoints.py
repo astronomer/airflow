@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import threading
 import uuid
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -76,20 +77,30 @@ class Checkpoints:
         self.start = start
         self.best_model = best_model
         self._parent: str | None = None
+        self._pending: threading.Thread | None = None
+        self._error: BaseException | None = None
 
     @contextmanager
-    def save(self, step: int, metrics: dict[str, float] | None = None) -> Iterator[Path]:
-        """Yield a local folder to write checkpoint files into, then upload it and write its record."""
+    def save(
+        self, step: int, metrics: dict[str, float] | None = None, *, background: bool = False
+    ) -> Iterator[Path]:
+        """
+        Yield a local folder to write checkpoint files into, then upload it and write its record.
+
+        With ``background=True`` the upload runs in a thread so training can continue. Call
+        ``wait()`` before the task finishes, or the last checkpoint may not be recorded.
+        """
+        self.wait()
         ckpt_id = uuid.uuid4().hex
-        dest = self.root / "ckpts" / ckpt_id
-        with tempfile.TemporaryDirectory() as tmp:
-            yield Path(tmp)
-            for file in Path(tmp).rglob("*"):
-                if file.is_file():
-                    _copy(file, dest / file.relative_to(tmp).as_posix())
+        tmp = Path(tempfile.mkdtemp())
+        try:
+            yield tmp
+        except BaseException:
+            shutil.rmtree(tmp, ignore_errors=True)
+            raise
         record = {
             "id": ckpt_id,
-            "path": str(dest),
+            "path": str(self.root / "ckpts" / ckpt_id),
             "step": step,
             "metrics": metrics or {},
             "dag_id": self.ti.dag_id,
@@ -101,8 +112,37 @@ class Checkpoints:
             "parent": self._parent,
             "created_at": datetime.now(UTC).isoformat(),
         }
-        _write_json(self._record_path(ckpt_id), record)
-        self._parent = ckpt_id
+        if background:
+            self._pending = threading.Thread(target=self._upload_in_background, args=(tmp, record))
+            self._pending.start()
+        else:
+            self._upload(tmp, record)
+
+    def wait(self) -> None:
+        """Wait for a background upload to finish, and raise its error if it failed."""
+        if self._pending is not None:
+            self._pending.join()
+            self._pending = None
+        if self._error is not None:
+            error, self._error = self._error, None
+            raise error
+
+    def _upload(self, tmp: Path, record: Record) -> None:
+        try:
+            dest = ObjectStoragePath(record["path"])
+            for file in tmp.rglob("*"):
+                if file.is_file():
+                    _copy(file, dest / file.relative_to(tmp).as_posix())
+            _write_json(self._record_path(record["id"]), record)
+            self._parent = record["id"]
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _upload_in_background(self, tmp: Path, record: Record) -> None:
+        try:
+            self._upload(tmp, record)
+        except BaseException as e:
+            self._error = e
 
     @contextmanager
     def load(self, record: Record) -> Iterator[Path]:
