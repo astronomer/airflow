@@ -49,11 +49,17 @@ type Props = {
 
 const TaskInstanceTooltip = ({
   children,
+  // The grid, graph and Gantt all mount their triggers inside a virtualized or transformed
+  // container that recycles them while scrolling. A positioner kept mounted past its trigger
+  // has nothing to measure against and lands in the page corner, so the content is built on
+  // open and dropped on close. #72161 did this for the run bars; a task cell needs it too.
+  lazyMount = true,
   loopMaxIterations,
   positioning,
   runId,
   taskInstance,
   tooltip,
+  unmountOnExit = true,
   ...rest
 }: Props) => {
   const { i18n, t: translate } = useTranslation();
@@ -191,7 +197,10 @@ const TaskInstanceTooltip = ({
           ) : undefined}
         </VStack>
       }
-      key={taskInstance?.task_id}
+      // A recycled grid cell can be handed a different run's instance, which leaves a tooltip
+      // keyed on the task alone measuring against the row it used to be.
+      key={`${runId ?? ""}-${taskInstance?.task_id ?? ""}`}
+      lazyMount={lazyMount}
       portalled
       positioning={{
         offset: {
@@ -201,6 +210,7 @@ const TaskInstanceTooltip = ({
         placement: "bottom-start",
         ...positioning,
       }}
+      unmountOnExit={unmountOnExit}
     >
       {children}
     </Tooltip>

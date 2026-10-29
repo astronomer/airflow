@@ -1,0 +1,37 @@
+/*!
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+/*
+ * Park a tooltip off-screen until it has been positioned.
+ *
+ * The positioner is laid out at top/left 0 and moved with
+ * `translate3d(var(--x), var(--y), 0)`. Those two variables are set, inline, only once
+ * floating-ui has measured the trigger, and an undefined variable makes the whole
+ * transform invalid -- so between opening and the first measurement the tooltip paints
+ * at its origin, the top-left corner of the page, at full opacity. That window is
+ * normally a frame, but on a first hover over a grid that is still streaming rows it
+ * lasts long enough to read.
+ *
+ * These are fallbacks, not overrides: the real values land in the element's inline
+ * style and win over this rule.
+ */
+[data-scope="tooltip"][data-part="positioner"] {
+  --x: -9999px;
+  --y: -9999px;
+}

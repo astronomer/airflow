@@ -17,7 +17,7 @@
  * under the License.
  */
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { LightGridTaskInstanceSummary, TaskInstanceResponse } from "openapi/requests/types.gen";
@@ -35,6 +35,43 @@ vi.mock("react-i18next", () => ({
 }));
 
 describe("TaskInstanceTooltip", () => {
+  // The grid recycles its cells while scrolling, so a positioner left mounted past the trigger it
+  // measures against ends up in the page corner instead of beside the cell.
+  it("keeps its content out of the DOM until opened and drops it again on close", async () => {
+    const taskInstance: LightGridTaskInstanceSummary = {
+      child_states: null,
+      max_end_date: "2025-01-01T01:00:00Z",
+      min_start_date: "2025-01-01T00:00:00Z",
+      state: "success",
+      task_display_name: "My Task",
+      task_id: "my_task",
+    };
+    const { rerender } = render(
+      <TaskInstanceTooltip open={false} taskInstance={taskInstance}>
+        <span>trigger</span>
+      </TaskInstanceTooltip>,
+      { wrapper: Wrapper },
+    );
+
+    expect(screen.queryByText(/my_task/iu)).toBeNull();
+
+    rerender(
+      <TaskInstanceTooltip open taskInstance={taskInstance}>
+        <span>trigger</span>
+      </TaskInstanceTooltip>,
+    );
+
+    await waitFor(() => expect(screen.getByText(/my_task/iu)).toBeInTheDocument());
+
+    rerender(
+      <TaskInstanceTooltip open={false} taskInstance={taskInstance}>
+        <span>trigger</span>
+      </TaskInstanceTooltip>,
+    );
+
+    await waitFor(() => expect(screen.queryByText(/my_task/iu)).toBeNull());
+  });
+
   it("renders children directly when both taskInstance and tooltip are undefined", () => {
     render(
       <TaskInstanceTooltip>

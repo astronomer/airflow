@@ -20,6 +20,8 @@ import { type ReactNode, type RefObject, forwardRef } from "react";
 
 import { Tooltip as ChakraTooltip, Portal } from "@chakra-ui/react";
 
+import "./tooltip.css";
+
 export type TooltipProps = {
   readonly content: ReactNode;
   readonly contentProps?: ChakraTooltip.ContentProps;
