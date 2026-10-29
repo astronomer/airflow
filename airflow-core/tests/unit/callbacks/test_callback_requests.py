@@ -16,14 +16,17 @@
 # under the License.
 from __future__ import annotations
 
+import json
 import uuid
 
+import jsonschema
 import pytest
 from pydantic import TypeAdapter
 
 from airflow._shared.timezones import timezone
 from airflow.api_fastapi.execution_api.datamodels.taskinstance import (
     DagRun as DRDataModel,
+    LoopContext,
     TaskInstance as TIDataModel,
     TIRunContext,
     task_instance_to_runtime,
@@ -463,6 +466,55 @@ class TestEmailRequest:
         assert result == email_request
         assert result.email_type == "failure"
         assert result.ti.task_id == "test_task"
+
+    def test_serialized_unmapped_original_loop_context_matches_schema(self):
+        current_time = timezone.utcnow()
+        email_request = EmailRequest(
+            filepath="/path/to/dag.py",
+            bundle_name="test_bundle",
+            bundle_version="1.0.0",
+            ti=TIDataModel(
+                id=str(uuid.uuid4()),
+                task_id="test_task",
+                dag_id="test_dag",
+                run_id="test_run",
+                logical_date="2023-01-01T00:00:00Z",
+                try_number=1,
+                attempt_number=1,
+                state="failed",
+                dag_version_id=str(uuid.uuid4()),
+            ),
+            context_from_server=TIRunContext(
+                dag_run=DRDataModel(
+                    dag_id="test_dag",
+                    run_id="test_run",
+                    logical_date="2023-01-01T00:00:00Z",
+                    data_interval_start=current_time,
+                    data_interval_end=current_time,
+                    run_after=current_time,
+                    start_date=current_time,
+                    end_date=None,
+                    run_type="manual",
+                    state="running",
+                    consumed_asset_events=[],
+                    partition_key=None,
+                ),
+                loop=LoopContext(
+                    node_id="loop",
+                    index=1,
+                    max_iterations=3,
+                    terminal_task_id="loop.terminal",
+                    terminal_is_mapped=False,
+                    region_id=uuid.uuid4(),
+                    trajectory=1,
+                ),
+                max_tries=2,
+            ),
+            email_type="failure",
+            msg="Task failed",
+        )
+
+        jsonschema.validate(json.loads(email_request.to_json()), EmailRequest.model_json_schema())
 
     def test_callback_request_union_with_email_notification(self):
         """Test EmailRequest works in CallbackRequest union type."""

@@ -476,7 +476,8 @@ class LoopContext(BaseModel):
     """
 
     forked_from_region_id: Annotated[
-        SkipJsonSchema[None] | uuid.UUID, Field(json_schema_extra=_drop_null_default)
+        SkipJsonSchema[None] | uuid.UUID,
+        Field(exclude_if=lambda value: value is None, json_schema_extra=_drop_null_default),
     ] = None
     """
     The region ``region_id`` was forked from, the previous one in the chain. Absent for the original region.
@@ -487,7 +488,7 @@ class LoopContext(BaseModel):
 
     resumes_from_index: Annotated[
         SkipJsonSchema[None] | int,
-        Field(json_schema_extra=_drop_null_default),
+        Field(exclude_if=lambda value: value is None, json_schema_extra=_drop_null_default),
     ] = None
     """The first iteration ``region_id`` holds. Absent for the original region, which holds them from 1."""
 
@@ -502,7 +503,7 @@ class TIRunContext(BaseModel):
 
     expanded_ti_count: Annotated[
         SkipJsonSchema[None] | int,
-        Field(json_schema_extra=_drop_null_default),
+        Field(exclude_if=lambda value: value is None, json_schema_extra=_drop_null_default),
     ] = None
     """
     Number of live, non-removed instances in the mapped task's expansion this instance belongs to.
