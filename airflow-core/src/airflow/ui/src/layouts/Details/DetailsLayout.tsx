@@ -44,6 +44,7 @@ import { GroupsProvider } from "src/context/groups";
 import { useDagRunsLimit } from "src/hooks/useDagRunsLimit";
 import { useGridRuns } from "src/queries/useGridRuns.ts";
 import { useAutoRefresh, useContainerWidth } from "src/utils";
+import { mergeTabSearch } from "src/utils/executionParams";
 
 import { DagBreadcrumb } from "./DagBreadcrumb";
 import { Gantt } from "./Gantt/Gantt";
@@ -145,6 +146,13 @@ export const DetailsLayout = ({ children, error, isLoading, outletContext, tabs 
   const triggeringUserFilter = searchParams.get(SearchParamsKeys.TRIGGERING_USER_NAME_PATTERN) ?? undefined;
   const runIdPatternFilter = searchParams.get(SearchParamsKeys.RUN_ID_PATTERN) ?? undefined;
   const dagRunStateFilter = (searchParams.get(SearchParamsKeys.STATE) as DagRunState | null) ?? undefined;
+
+  // The tabs below the grid share its filters, so each one keeps the query it was reached with
+  // rather than resolving to an empty one and dropping the filters on the first tab click.
+  const tabsWithFilters = tabs.map((tab) => ({
+    ...tab,
+    search: mergeTabSearch(searchParams, tab.search),
+  }));
 
   // --- Setters that write back to URL ---
   // Only LTE is needed directly: ceiling logic and jump-to-latest both touch it.
@@ -444,7 +452,7 @@ export const DetailsLayout = ({ children, error, isLoading, outletContext, tabs 
                   >
                     {children}
                     <ProgressBar size="xs" visibility={isLoading ? "visible" : "hidden"} />
-                    <NavTabs tabs={tabs} />
+                    <NavTabs tabs={tabsWithFilters} />
                     <Box flexGrow={1} overflow="auto" pb={3} px={2}>
                       <Outlet context={outletContext} />
                     </Box>

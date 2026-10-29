@@ -41,6 +41,27 @@ export const stripExecutionParams = (searchParams: string | URLSearchParams): UR
 };
 
 /**
+ * The query a tab link should carry: the filters the page was reached with, plus whatever the
+ * tab pins itself.
+ *
+ * Without this a tab link resolves to an empty query, so the grid and Gantt filters that got you
+ * to the page are dropped the moment you move across its tabs. A tab's own params win, which is
+ * how a tab keeps pointing at one try or one iteration's row.
+ */
+export const mergeTabSearch = (
+  currentSearch: string | URLSearchParams,
+  tabSearch?: string,
+): string | undefined => {
+  const merged = stripExecutionParams(currentSearch);
+
+  for (const [key, value] of new URLSearchParams(tabSearch ?? "")) {
+    merged.set(key, value);
+  }
+
+  return merged.toString() || undefined;
+};
+
+/**
  * Point a link at one execution. A task inside a loop has a row per iteration, so a link with
  * no coordinate is ambiguous and the API rejects it; the newest iteration is the sensible
  * landing place from a view that shows the task once.

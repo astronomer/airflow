@@ -18,7 +18,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { setExecutionCoordinates, stripExecutionParams } from "./executionParams";
+import { mergeTabSearch, setExecutionCoordinates, stripExecutionParams } from "./executionParams";
 
 describe("stripExecutionParams", () => {
   it("drops the params that pin one execution or try and keeps the rest", () => {
@@ -34,6 +34,29 @@ describe("stripExecutionParams", () => {
     const stripped = stripExecutionParams(new URLSearchParams("region_id=r&loop_id=batch&iteration=3"));
 
     expect(stripped.toString()).toBe("loop_id=batch&iteration=3");
+  });
+});
+
+describe("mergeTabSearch", () => {
+  it("carries the page's filters onto a tab that pins nothing", () => {
+    const merged = mergeTabSearch(new URLSearchParams("dag_run_state=failed&run_type=manual"));
+
+    expect(merged).toBe("dag_run_state=failed&run_type=manual");
+  });
+
+  it("lets the tab's own execution params win over the ones it arrived with", () => {
+    const merged = mergeTabSearch(
+      new URLSearchParams("dag_run_state=failed&try_number=1&region_index=0"),
+      "try_number=3&region_index=2",
+    );
+
+    expect(new URLSearchParams(merged).get("try_number")).toBe("3");
+    expect(new URLSearchParams(merged).get("region_index")).toBe("2");
+    expect(new URLSearchParams(merged).get("dag_run_state")).toBe("failed");
+  });
+
+  it("is undefined rather than empty when there is nothing to carry", () => {
+    expect(mergeTabSearch(new URLSearchParams(""))).toBeUndefined();
   });
 });
 
