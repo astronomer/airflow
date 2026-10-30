@@ -5129,7 +5129,7 @@ azure-identity = [
     { name = "azure-identity" },
 ]
 common-ai = [
-    { name = "apache-airflow-providers-common-ai" },
+    { name = "apache-airflow-providers-common-ai", extra = ["openai"] },
 ]
 fab = [
     { name = "apache-airflow-providers-fab" },
@@ -5175,7 +5175,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.0,<4" },
     { name = "apache-airflow", editable = "." },
     { name = "apache-airflow-providers-amazon", marker = "extra == 'amazon'", editable = "providers/amazon" },
-    { name = "apache-airflow-providers-common-ai", marker = "extra == 'common-ai'", editable = "providers/common/ai" },
+    { name = "apache-airflow-providers-common-ai", extras = ["openai"], marker = "extra == 'common-ai'", editable = "providers/common/ai" },
     { name = "apache-airflow-providers-common-compat", editable = "providers/common/compat" },
     { name = "apache-airflow-providers-common-sql", editable = "providers/common/sql" },
     { name = "apache-airflow-providers-fab", marker = "extra == 'fab'", editable = "providers/fab" },
