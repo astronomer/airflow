@@ -6144,6 +6144,16 @@ def test_nondumpable_noop_on_non_linux():
     _make_process_nondumpable()
 
 
+def test_in_process_api_server_serves_only_this_sdk_api_version():
+    from airflow.sdk.api.datamodels._generated import API_VERSION
+
+    in_process_api_server.cache_clear()
+    try:
+        assert in_process_api_server().only_version == API_VERSION
+    finally:
+        in_process_api_server.cache_clear()
+
+
 def test_in_process_api_server_caches_instance():
     """in_process_api_server() returns the same instance on repeated calls."""
     in_process_api_server.cache_clear()

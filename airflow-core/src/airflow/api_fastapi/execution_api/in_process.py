@@ -119,6 +119,8 @@ class InProcessExecutionAPI:
 
     _app: FastAPI | None = None
     triggerer_id: int | None = None
+    # Set when every caller sends this API version; see create_task_execution_api_app.
+    only_version: str | None = None
 
     @cached_property
     def app(self):
@@ -131,7 +133,9 @@ class InProcessExecutionAPI:
             # Keep the stub private: a shared None validator would prevent lifespan() from
             # registering the real API server's validator.
             registry = svcs.Registry()
-            self._app = create_task_execution_api_app(lifespan=attrs.evolve(lifespan, registry=registry))
+            self._app = create_task_execution_api_app(
+                lifespan=attrs.evolve(lifespan, registry=registry), only_version=self.only_version
+            )
             # Auth dependency overrides bypass validation, so the stub skips validator setup in lifespan().
             registry.register_value(JWTValidator, None)
             _configure_in_process_auth(self._app, triggerer_id=self.triggerer_id)

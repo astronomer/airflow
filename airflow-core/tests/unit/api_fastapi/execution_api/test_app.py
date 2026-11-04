@@ -70,6 +70,52 @@ def test_create_app_initializes_dag_bag(mock_create_dag_bag, supply_dag_bag):
         mock_create_dag_bag.assert_called_once_with()
 
 
+NEWEST_VERSION = bundle.versions[0].value
+ALL_VERSIONS = [version.value for version in bundle.versions]
+
+
+@pytest.mark.parametrize(
+    ("only_version", "served"),
+    [
+        pytest.param(None, ALL_VERSIONS, id="not-requested"),
+        pytest.param(NEWEST_VERSION, [NEWEST_VERSION], id="newest"),
+        pytest.param(ALL_VERSIONS[-1], ALL_VERSIONS, id="older"),
+    ],
+)
+def test_only_version_serves_just_the_newest_version(only_version, served):
+    app = create_task_execution_api_app(dag_bag=mock.sentinel.dag_bag, only_version=only_version)
+
+    assert [version.value for version in app.versions.versions] == served
+
+
+def test_newest_version_only_app_handles_requests():
+    # Routes that exist only in older versions are left out; a single version could not place them.
+    app = create_task_execution_api_app(dag_bag=mock.sentinel.dag_bag, only_version=NEWEST_VERSION)
+
+    with TestClient(app) as client:
+        assert client.get("/health", headers={"Airflow-API-Version": NEWEST_VERSION}).status_code == 200
+        assert client.get("/health", headers={"Airflow-API-Version": ALL_VERSIONS[-1]}).status_code != 200
+
+
+@pytest.mark.parametrize("missing", ["_DELETED_ROUTE_TAG", "copy_router"])
+def test_only_version_serves_every_version_without_cadwyn_helpers(monkeypatch, missing):
+    from cadwyn import route_generation
+
+    monkeypatch.delattr(route_generation, missing)
+
+    app = create_task_execution_api_app(dag_bag=mock.sentinel.dag_bag, only_version=NEWEST_VERSION)
+
+    assert [version.value for version in app.versions.versions] == ALL_VERSIONS
+
+
+def test_only_version_serves_every_version_when_head_has_changes(monkeypatch):
+    monkeypatch.setattr(bundle.head_version, "changes", (mock.sentinel.change,))
+
+    app = create_task_execution_api_app(dag_bag=mock.sentinel.dag_bag, only_version=NEWEST_VERSION)
+
+    assert [version.value for version in app.versions.versions] == ALL_VERSIONS
+
+
 @pytest.mark.parametrize("in_process_first", [False, True])
 @conf_vars({("api_auth", "jwt_secret"): "execution-api-hosting-test-secret"})
 def test_server_and_in_process_apps_isolate_auth(in_process_first, monkeypatch):

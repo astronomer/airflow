@@ -25,10 +25,13 @@ from typing import TYPE_CHECKING, Any, cast
 import svcs
 from cadwyn import (
     Cadwyn,
+    Version,
+    VersionBundle,
     current_dependency_solver,
     generate_versioned_models,
+    route_generation,
 )
-from fastapi import Depends, FastAPI, Request, Response
+from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, iter_route_contexts
 from opentelemetry import context as otel_context, propagate as otel_propagate
@@ -296,18 +299,26 @@ def create_task_execution_api_app(
     lifespan: svcs.fastapi.lifespan = lifespan,
     *,
     dag_bag: DBDagBag | None = None,
+    only_version: str | None = None,
 ) -> FastAPI:
     """
     Create the Execution API app.
 
     :param lifespan: Lifespan manager that registers the app's services.
     :param dag_bag: Dag bag to use; a new one is created when omitted.
+    :param only_version: serve just this API version when it is the newest one, for a caller that sends
+        no other. Preparing every historical version costs seconds on the first request, which each
+        short-lived in-process run pays. Any other value serves all versions.
     """
     from airflow.api_fastapi.common.dagbag import create_dag_bag
     from airflow.api_fastapi.common.exceptions import init_error_handlers
     from airflow.api_fastapi.execution_api.routes import execution_api_router
     from airflow.api_fastapi.execution_api.versions import bundle
     from airflow.configuration import conf
+
+    versions = bundle
+    if newest := _get_newest_version_only(execution_api_router, bundle, only_version):
+        versions, execution_api_router = newest
 
     def custom_generate_unique_id(route: APIRoute):
         # This is called only if the route doesn't provide an explicit operation ID
@@ -321,8 +332,8 @@ def create_task_execution_api_app(
         lifespan=lifespan,
         generate_unique_id_function=custom_generate_unique_id,
         api_version_parameter_name="Airflow-API-Version",
-        api_version_default_value=bundle.versions[0].value,
-        versions=bundle,
+        api_version_default_value=versions.versions[0].value,
+        versions=versions,
         changelog_url=None,
         dependencies=[Depends(_extract_w3c_trace_context)] if mode == "unsafe-always" else None,
         telemetry=NATIVE_TELEMETRY_DISABLED,
@@ -348,6 +359,35 @@ def create_task_execution_api_app(
 
     app.state.dag_bag = dag_bag if dag_bag is not None else create_dag_bag()
     return app
+
+
+def _get_newest_version_only(
+    router: APIRouter, bundle: VersionBundle, version: str | None
+) -> tuple[VersionBundle, APIRouter] | None:
+    """
+    Return ``version`` alone, with the routes that exist in it, if it is the newest API version.
+
+    Relies on two Cadwyn internals; without them, or when the head version carries changes the newest
+    version does not have, returns None and callers serve every version.
+    """
+    deleted_route_tag = getattr(route_generation, "_DELETED_ROUTE_TAG", None)
+    copy_router = getattr(route_generation, "copy_router", None)
+    if (
+        version is None
+        or version != bundle.versions[0].value
+        or deleted_route_tag is None
+        or copy_router is None
+        or bundle.head_version.changes
+    ):
+        return None
+    newest_router = copy_router(router)
+    # Routes that only older versions have; with no older version they cannot be placed.
+    newest_router.routes = [
+        route
+        for route in newest_router.routes
+        if not (isinstance(route, APIRoute) and deleted_route_tag in route.tags)
+    ]
+    return VersionBundle(Version(version), api_version_var=bundle.api_version_var), newest_router
 
 
 def get_extra_schemas(version: str) -> dict[str, dict]:

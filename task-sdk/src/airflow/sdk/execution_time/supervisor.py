@@ -2509,9 +2509,10 @@ class ActivitySubprocess(WatchedSubprocess):
 @functools.lru_cache(maxsize=1)
 def in_process_api_server():
     from airflow.api_fastapi.execution_api.app import InProcessExecutionAPI
+    from airflow.sdk.api.datamodels._generated import API_VERSION
 
-    api = InProcessExecutionAPI()
-    return api
+    # Its only caller is this process's own client, so it never needs older API versions.
+    return InProcessExecutionAPI(only_version=API_VERSION)
 
 
 _IN_PROCESS_RESPONSE_SINK: ContextVar[deque[BaseModel | None] | None] = ContextVar(
