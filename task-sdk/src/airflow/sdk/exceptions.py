@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Collection
 
     from airflow.sdk.definitions.asset import AssetNameRef, AssetUniqueKey, AssetUriRef
+    from airflow.sdk.definitions.local_run import DagRunResult
     from airflow.sdk.execution_time.comms import ErrorResponse
 
 
@@ -443,3 +444,23 @@ class DeprecatedVariableNoneValueWarning(FutureWarning):
     a variable to *None* (null) is not possible at the database level, and the
     Execution API rejects it since 2027-02-28.
     """
+
+
+class LocalRunError(RuntimeError):
+    """A local Dag run could not be started, or ended without reporting a result."""
+
+
+class DagExecutionError(RuntimeError):
+    """A local Dag run finished in a failed state; ``result`` holds its task states and outputs."""
+
+    def __init__(self, result: DagRunResult) -> None:
+        self.result = result
+        failed = sorted(
+            task_id if map_index < 0 else f"{task_id}[{map_index}]"
+            for (task_id, map_index), state in result.task_states.items()
+            if state == "failed"
+        )
+        message = f"Dag {result.dag_id!r} failed (run {result.run_id})"
+        if failed:
+            message += f"; failed tasks: {', '.join(failed)}"
+        super().__init__(message)
