@@ -2680,9 +2680,22 @@ class InProcessTestSupervisor(ActivitySubprocess):
             )
 
             # Create a socketpair preemptively, in case the task process runs VirtualEnv operator or run_as_user
-            with supervisor._setup_subprocess_socket():
+            # In-process runs skip task_runner.main() and startup(), which open the Pre Execute group that
+            # run() closes and bind these identifiers onto every task log line.
+            with (
+                supervisor._setup_subprocess_socket(),
+                structlog.contextvars.bound_contextvars(
+                    ti_id=str(what.id),
+                    dag_id=what.dag_id,
+                    task_id=what.task_id,
+                    run_id=what.run_id,
+                    try_number=what.try_number,
+                    map_index=what.map_index,
+                ),
+            ):
                 context = ti.get_template_context()
                 log = structlog.get_logger(logger_name="task")
+                log.info("::group::Pre Execute")
 
                 state, msg, error = run(ti, context, log)
                 context["exception"] = error

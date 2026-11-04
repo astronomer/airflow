@@ -4997,6 +4997,42 @@ class TestInProcessTestSupervisor:
 
         client.task_instances.start.assert_not_called()
 
+    def test_runs_like_a_worker_started_the_task(self, make_ti_context, mocker, cap_structlog):
+        client = mocker.Mock(spec=sdk_client.Client)
+        client.task_instances = mocker.create_autospec(sdk_client.TaskInstanceOperations, instance=True)
+        client.task_instances.start.return_value = make_ti_context()
+        seen_context = {}
+
+        class RecordingOperator(BaseOperator):
+            def execute(self, context):
+                seen_context.update(structlog.contextvars.get_contextvars())
+
+        with DAG(dag_id="test_dag"):
+            task = RecordingOperator(task_id="noop")
+        ti = TaskInstance(
+            id=uuid7(),
+            dag_version_id=uuid7(),
+            dag_id="test_dag",
+            task_id=task.task_id,
+            run_id="test_run",
+            try_number=1,
+            queue="default",
+        )
+
+        InProcessTestSupervisor.start(what=ti, task=task, client=client)
+
+        groups = [entry["event"] for entry in cap_structlog.entries if entry["event"].startswith("::")]
+        assert groups[:2] == ["::group::Pre Execute", "::endgroup::"]
+        assert seen_context == {
+            "ti_id": str(ti.id),
+            "dag_id": "test_dag",
+            "task_id": "noop",
+            "run_id": "test_run",
+            "try_number": 1,
+            "map_index": -1,
+        }
+        assert "ti_id" not in structlog.contextvars.get_contextvars()
+
     @pytest.mark.parametrize("callback_error", [None, RuntimeError])
     def test_retry_callback_finishes_before_retry_report(self, make_ti_context, mocker, callback_error):
         client = mocker.Mock(spec=sdk_client.Client)
