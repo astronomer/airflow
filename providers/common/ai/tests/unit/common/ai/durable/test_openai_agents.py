@@ -60,6 +60,7 @@ class _ScriptedModel(Model):
 
     ``calls`` counts the requests that reached the model. ``fail_on_answer`` makes the
     request that would answer raise instead, as a crashed worker would leave it.
+    ``raw_arguments`` replaces the arguments of every ``lookup`` call it sends.
     """
 
     def __init__(
@@ -70,9 +71,11 @@ class _ScriptedModel(Model):
         usage: int = 7,
         argument: str = "key",
         fail_first_request: bool = False,
+        raw_arguments: str | None = None,
     ) -> None:
         self.lookups = lookups
         self.argument = argument
+        self.raw_arguments = raw_arguments
         self.fail_first_request = fail_first_request
         self.fail_on_answer = fail_on_answer
         self.usage = usage
@@ -97,7 +100,9 @@ class _ScriptedModel(Model):
                     id=f"fc-{len(outputs)}",
                     call_id=f"call-{len(outputs)}",
                     name="lookup",
-                    arguments=json.dumps({self.argument: f"k{len(outputs)}"}),
+                    arguments=self.raw_arguments
+                    if self.raw_arguments is not None
+                    else json.dumps({self.argument: f"k{len(outputs)}"}),
                     type="function_call",
                 )
             ]
@@ -120,15 +125,18 @@ class _ScriptedModel(Model):
 
 
 class _CountingTool:
-    """A ``lookup`` tool that counts the calls that reached it."""
+    """A ``lookup`` tool that counts the calls that reached it, answering ``first_result`` to the first."""
 
-    def __init__(self, result: str = "42") -> None:
+    def __init__(self, result: str = "42", *, first_result: ToolResult | None = None) -> None:
         self.result = result
+        self.first_result = first_result
         self.calls = 0
 
     def tool(self) -> AirflowTool:
         async def function(arguments: dict[str, Any]) -> ToolResult:
             self.calls += 1
+            if self.calls == 1 and self.first_result is not None:
+                return self.first_result
             return ToolResult(f"{arguments['key']}={self.result}")
 
         return AirflowTool(
@@ -471,6 +479,47 @@ class TestRunDurably:
 
         assert len(calls) == 2
         assert retry_model.calls == 1
+
+    def test_an_error_result_airflow_tools_returned_runs_again_on_retry(self):
+        """The model saw a correctable error; the retry must call the tool again, not replay it."""
+        storage = MemoryStorage()
+        tool = _CountingTool(first_result=ToolResult("table orders does not exist yet", is_error=True))
+        with pytest.raises(RuntimeError, match="worker lost"):
+            _attempt(storage, _ScriptedModel(fail_on_answer=True), tool)
+        assert tool.calls == 1
+
+        result, journal = _attempt(storage, _ScriptedModel(), tool)
+
+        assert tool.calls == 2
+        assert result.final_output == "answer: k0=42"
+        # The answer that asked for the lookup still replays.
+        assert journal.stats.replayed == {"model": 1}
+
+    @pytest.mark.parametrize(
+        "raw_arguments",
+        [pytest.param("{not json", id="not-json"), pytest.param("[1]", id="not-an-object")],
+    )
+    def test_arguments_airflow_tools_rejected_are_not_replayed(self, raw_arguments):
+        storage, tool = MemoryStorage(), _CountingTool()
+        with pytest.raises(RuntimeError, match="worker lost"):
+            _attempt(storage, _ScriptedModel(fail_on_answer=True, raw_arguments=raw_arguments), tool)
+
+        _, journal = _attempt(storage, _ScriptedModel(raw_arguments=raw_arguments), tool)
+
+        assert tool.calls == 0
+        assert journal.stats.replayed == {"model": 1}
+
+    def test_a_result_with_an_error_key_that_is_not_an_error_replays(self):
+        """Only a result the tool marked as an error runs again, not one that merely mentions one."""
+        storage = MemoryStorage()
+        tool = _CountingTool(first_result=ToolResult({"error": "no orders match"}))
+        with pytest.raises(RuntimeError, match="worker lost"):
+            _attempt(storage, _ScriptedModel(fail_on_answer=True), tool)
+
+        _, journal = _attempt(storage, _ScriptedModel(), tool)
+
+        assert tool.calls == 1
+        assert journal.stats.replayed == {"model": 1, "tool": 1}
 
     def test_a_model_behavior_error_a_tool_raises_reruns_the_tool_and_replays_the_answer_before_it(self):
         calls = []

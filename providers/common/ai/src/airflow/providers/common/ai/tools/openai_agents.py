@@ -66,10 +66,15 @@ if TYPE_CHECKING:
     from agents.tracing import Span, SpanData, Trace
     from opentelemetry.context import Context
     from opentelemetry.trace import Span as OtelSpan, TracerProvider
+    from pydantic import JsonValue
 
     from airflow.providers.common.ai.tools import ToolProvider
 
 __all__ = ["AirflowTools", "AirflowTraceProcessor"]
+
+# Set on a tool call's context when the call answered the model with an error it can correct,
+# so durable execution runs the call again on a retry instead of replaying the error.
+_RETURNED_ERROR = "_airflow_tool_returned_error"
 
 
 class AirflowTools(list[Tool]):
@@ -155,9 +160,9 @@ def _to_function_tool(tool: AirflowTool) -> FunctionTool:
         try:
             parsed = json.loads(arguments) if arguments else {}
         except json.JSONDecodeError as e:
-            return serialize_for_llm({"error": f"The arguments are not valid JSON: {e}"})
+            return _error_for_model(ctx, f"The arguments are not valid JSON: {e}")
         if not isinstance(parsed, dict):
-            return serialize_for_llm({"error": "The arguments must be a JSON object."})
+            return _error_for_model(ctx, "The arguments must be a JSON object.")
         # The SDK does not identify the model turn, so calls that run at the same time count once.
         try:
             with calling_framework("openai_agents"), tool_call_scope(run=_SameRun(ctx.usage)):
@@ -166,7 +171,7 @@ def _to_function_tool(tool: AirflowTool) -> FunctionTool:
             # Already masked, and logged to the task log with its traceback by AirflowTool.call.
             raise _FailedToolCall(str(e)) from None
         if result.is_error:
-            return serialize_for_llm({"error": result.content})
+            return _error_for_model(ctx, result.content)
         return serialize_for_llm(result.content)
 
     return FunctionTool(
@@ -177,6 +182,13 @@ def _to_function_tool(tool: AirflowTool) -> FunctionTool:
         on_invoke_tool=call_airflow_tool,
         strict_json_schema=False,
     )
+
+
+def _error_for_model(ctx: ToolContext[Any], error: JsonValue) -> str:
+    """Return ``{"error": ...}`` for the model, marking the call so a durable retry runs it again."""
+    # The SDK gives every tool call a context of its own, so the mark never outlives the call.
+    setattr(ctx, _RETURNED_ERROR, True)
+    return serialize_for_llm({"error": error})
 
 
 class AirflowTraceProcessor(TracingProcessor):

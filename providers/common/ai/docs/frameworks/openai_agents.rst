@@ -273,7 +273,7 @@ Where an agent's tools come from decides how they behave in a task:
     * - ``AirflowTools``
       - Yes
       - Returned to the model as ``{"error": ...}``; for a toolset's tools, up to a retry limit
-      - Yes, an ``{"error": ...}`` result too; a call that raised runs again
+      - Yes, unless it raised or returned ``{"error": ...}``
     * - Your own ``@function_tool``
       - No
       - As its ``failure_error_function`` decides
@@ -595,10 +595,12 @@ What always runs live
 - A call that was running when the try failed, so tools that change data must still be
   safe to repeat.
 - A tool call that raised, including one whose exception ``failure_error_function``
-  turned into text for the model. An ``{"error": ...}`` result from ``AirflowTools`` is
-  not a raise: it is recorded, and the retry replays it. A ``ModelBehaviorError`` that a tool raises, such as
-  arguments that fail validation with ``failure_error_function=None``, counts as the
-  tool's failure: the tool call runs again, but the answer that asked for it replays.
+  turned into text for the model, and one ``AirflowTools`` answered with
+  ``{"error": ...}``, such as a query naming a missing column. A ``{"error": ...}`` your
+  own ``@function_tool`` returns is its result, and replays. A ``ModelBehaviorError`` that
+  a tool raises, such as arguments that fail validation with
+  ``failure_error_function=None``, counts as the tool's failure: the tool call runs again,
+  but the answer that asked for it replays.
 - Tools other than function tools: hosted tools, the tools of ``mcp_servers``, and shell
   and computer tools.
 - A function tool whose ``needs_approval`` is a function: the SDK checks that the

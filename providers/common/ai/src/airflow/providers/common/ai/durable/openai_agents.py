@@ -63,6 +63,7 @@ except ImportError as e:
 
 from airflow.providers.common.ai.durable.fingerprint import _digest, fingerprint_tool_call
 from airflow.providers.common.ai.durable.journal import _EXECUTING_STEP, current_journal
+from airflow.providers.common.ai.tools.openai_agents import _RETURNED_ERROR
 from airflow.providers.common.ai.utils.coroutines import run_coroutine_sync
 from airflow.providers.common.ai.utils.masking import mask_secrets
 from airflow.providers.common.ai.utils.task_logger import get_task_logger
@@ -144,9 +145,10 @@ async def run_durably(
     a function, since the SDK checks its arguments only through its own invoker, the
     function tools of an agent reached through ``handoff()``, and its model too unless the
     agent's ``model`` is a model name or not set, and streamed runs. A tool call that fails,
-    including one whose exception ``failure_error_function`` turns into text for the model,
-    is not recorded either, so a retry runs it again. A replayed model call reports no
-    usage, since it costs nothing.
+    including one whose exception ``failure_error_function`` turns into text for the model
+    and one an ``AirflowTools`` tool answers with ``{"error": ...}``, is not recorded
+    either, so a retry runs it again. A replayed model call reports no usage, since it
+    costs nothing.
 
     A ``session`` makes every retry run live: the SDK adds the failed try's prompt to it
     before the first model call, so that call no longer asks what it asked then.
@@ -256,10 +258,11 @@ def _get_durable_tool(tool: Tool, durable_run: DurableRun) -> Tool:
             step.fail(error)
             raise
         # A failure the SDK turned into text for the model is not recorded, so a retry runs the
-        # call again, as it does a call that raised.
+        # call again, as it does a call that raised. Nor is an error AirflowTools answered with:
+        # the retry might not hit it, such as a warehouse table that exists by then.
         if (handled_error := handled.pop(ctx.tool_call_id, None)) is not None:
             step.fail(handled_error)
-        elif not getattr(ctx, _DEFAULT_FAILURE_HANDLED, False):
+        elif not getattr(ctx, _DEFAULT_FAILURE_HANDLED, False) and not getattr(ctx, _RETURNED_ERROR, False):
             # Secrets must not reach the journal any more than the model.
             step.record(mask_secrets(_as_sent(output)))
         return output
