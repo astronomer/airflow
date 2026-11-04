@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 from textwrap import dedent
+from unittest import mock
 
 import pytest
 
@@ -63,6 +64,16 @@ def test_app_reexports_in_process_api():
     from airflow.api_fastapi.execution_api.in_process import InProcessExecutionAPI
 
     assert legacy_api is InProcessExecutionAPI
+
+
+@pytest.mark.parametrize("only_version", [None, "2025-01-01"])
+@mock.patch("airflow.api_fastapi.execution_api.app.create_task_execution_api_app", autospec=True)
+def test_app_passes_only_version_through(mock_create_app, only_version):
+    from airflow.api_fastapi.execution_api.in_process import InProcessExecutionAPI
+
+    InProcessExecutionAPI(only_version=only_version).app
+
+    assert mock_create_app.call_args.kwargs["only_version"] == only_version
 
 
 @pytest.mark.parametrize("serve_while_debugger_paused", [True, False])
