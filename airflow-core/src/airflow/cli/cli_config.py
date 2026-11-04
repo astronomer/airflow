@@ -516,6 +516,15 @@ ARG_IMGCAT = Arg(("--imgcat",), help="Displays graph using the imgcat tool.", ac
 # trigger_dag
 ARG_RUN_ID = Arg(("-r", "--run-id"), help="Helps to identify this run")
 ARG_CONF = Arg(("-c", "--conf"), help="JSON string that gets pickled into the DagRun's conf attribute")
+
+# run
+ARG_RUN_FILE = Arg(("file",), help="Python file that defines the Dag")
+ARG_RUN_CONNECTIONS_FILE = Arg(
+    ("--connections-file",), help="Connections file (JSON, YAML or env) available to the run"
+)
+ARG_RUN_VARIABLES_FILE = Arg(
+    ("--variables-file",), help="Variables file (JSON, YAML or env) available to the run"
+)
 ARG_REPLACE_MICRO = Arg(
     ("--no-replace-microseconds",),
     help="whether microseconds should be zeroed",
@@ -2414,6 +2423,17 @@ core_commands: list[CLICommand] = [
         help="Run an all-in-one copy of Airflow",
         func=lazy_load_command("airflow.cli.commands.standalone_command.standalone"),
         args=(),
+    ),
+    ActionCommand(
+        name="run",
+        help="Run a Dag from a Python file in the project's local Airflow environment",
+        description=(
+            "Import the file the way Airflow discovers Dags (its __main__ block does not run), run the Dag "
+            "once, and keep the run in .airflow/ next to the project's pyproject.toml. No scheduler, "
+            "API server or database setup is needed."
+        ),
+        func=lazy_load_command("airflow.cli.commands.run_command.run"),
+        args=(ARG_RUN_FILE, ARG_DAG_ID_OPT, ARG_CONF, ARG_RUN_CONNECTIONS_FILE, ARG_RUN_VARIABLES_FILE),
     ),
     GroupCommand(
         name="db-manager",

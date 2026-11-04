@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import re
+import runpy
 import warnings
 import weakref
 from datetime import UTC, datetime, timedelta
@@ -40,11 +41,13 @@ from airflow.sdk import (
 )
 from airflow.sdk.bases.operator import BaseOperator
 from airflow.sdk.bases.timetable import BaseTimetable
+from airflow.sdk.definitions._internal.contextmanager import DagContext
 from airflow.sdk.definitions._internal.loop import create_loop
 from airflow.sdk.definitions.param import DagParam, ParamsDict
 from airflow.sdk.exceptions import (
     AirflowDagCycleException,
     DuplicateTaskIdFound,
+    LocalRunError,
     RemovedInAirflow4Warning,
     TaskGroupCycleDeprecationWarning,
 )
@@ -1389,3 +1392,46 @@ class TestDagGetItem:
         dag = DAG("test_dag", schedule=None, start_date=DEFAULT_DATE)
         with pytest.raises(KeyError):
             dag["nonexistent"]
+
+
+class TestDagRunMethod:
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_hands_its_file_and_id_to_the_launcher(self, mock_run_dag_file):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+
+        returned = dag.run(run_conf={"n": 1}, conn_file_path="conns.yaml", variable_file_path="vars.json")
+
+        assert returned is mock_run_dag_file.return_value
+        mock_run_dag_file.assert_called_once_with(
+            dag.fileloc,
+            dag_id="local_dag",
+            run_conf={"n": 1},
+            connections_file="conns.yaml",
+            variables_file="vars.json",
+        )
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_refuses_while_a_dag_file_is_being_imported(self, mock_run_dag_file):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+
+        with (
+            mock.patch.object(DagContext, "current_autoregister_module_name", "unusual_prefix_pipeline"),
+            pytest.raises(
+                LocalRunError, match=r"Call local_dag\.run\(\) under `if __name__ == \"__main__\":`"
+            ),
+        ):
+            dag.run()
+
+        mock_run_dag_file.assert_not_called()
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_refuses_an_unguarded_call_without_starting_a_run(self, mock_run_dag_file, tmp_path):
+        path = tmp_path / "pipeline.py"
+        path.write_text(
+            "from airflow.sdk import DAG\n\nworkflow = DAG('local_dag', schedule=None)\nworkflow.run()\n"
+        )
+
+        with pytest.raises(LocalRunError, match=r"Call local_dag\.run\(\) under `if __name__"):
+            runpy.run_path(str(path), run_name="__main__")
+
+        mock_run_dag_file.assert_not_called()

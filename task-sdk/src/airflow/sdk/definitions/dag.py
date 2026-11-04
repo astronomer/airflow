@@ -29,6 +29,7 @@ import warnings
 import weakref
 from collections import abc
 from collections.abc import Callable, Collection, Iterable, MutableSet
+from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta
 from inspect import signature
 from typing import TYPE_CHECKING, Any, ClassVar, TypeGuard, Union, cast, overload
@@ -49,6 +50,7 @@ from airflow.sdk.definitions._internal.types import NOTSET, ArgNotSet, is_arg_se
 from airflow.sdk.definitions.asset import AssetAll, BaseAsset
 from airflow.sdk.definitions.context import Context
 from airflow.sdk.definitions.deadline import DeadlineAlert
+from airflow.sdk.definitions.local_run import is_unguarded_module_level_call, run_dag_file
 from airflow.sdk.definitions.param import DagParam, ParamsDict
 from airflow.sdk.definitions.timetables.assets import AssetTriggeredTimetable
 from airflow.sdk.definitions.timetables.simple import ContinuousTimetable, NullTimetable, OnceTimetable
@@ -56,6 +58,7 @@ from airflow.sdk.exceptions import (
     AirflowDagCycleException,
     DuplicateTaskIdFound,
     FailFastDagInvalidTriggerRule,
+    LocalRunError,
     NodeNotFound,
     ParamValidationError,
     RemovedInAirflow4Warning,
@@ -68,12 +71,15 @@ if TYPE_CHECKING:
     from typing import Self, TypeAlias, TypeVar
 
     from pendulum.tz.timezone import FixedTimezone, Timezone
+    from sqlalchemy.orm import Session
     from typing_extensions import TypeIs
 
+    from airflow.models.dagrun import DagRun
     from airflow.models.taskinstance import TaskInstance as SchedulerTaskInstance
     from airflow.sdk.api.datamodels._generated import DagRunType
     from airflow.sdk.definitions.decorators import TaskDecoratorCollection
     from airflow.sdk.definitions.edges import EdgeInfoType
+    from airflow.sdk.definitions.local_run import DagRunResult
     from airflow.sdk.definitions.mappedoperator import MappedOperator
     from airflow.sdk.definitions.taskgroup import TaskGroup
     from airflow.sdk.definitions.xcom_arg import PlainXComArg
@@ -107,6 +113,9 @@ FINISHED_STATES = frozenset(
         TaskInstanceState.REMOVED,
     ]
 )
+
+# A run with a task in one of these states is not stuck: the task becomes schedulable after its delay.
+_WAITING_TO_RERUN = frozenset([TaskInstanceState.UP_FOR_RETRY, TaskInstanceState.UP_FOR_RESCHEDULE])
 
 DagStateChangeCallback = Callable[[Context], None]
 ScheduleInterval = None | str | timedelta | relativedelta
@@ -1275,14 +1284,12 @@ class DAG:
         :param use_executor: if set, uses an executor to test the Dag
         :param mark_success_pattern: regex of task_ids to mark as success instead of running
         """
-        import re
-        import time
         from contextlib import ExitStack
         from unittest.mock import patch
 
         from airflow import settings
         from airflow.models.dagrun import DagRun, get_or_create_dagrun
-        from airflow.sdk import DagRunState, timezone
+        from airflow.sdk import timezone
         from airflow.serialization.definitions.dag import SerializedDAG
         from airflow.serialization.encoders import coerce_to_core_timetable
         from airflow.serialization.serialized_objects import DagSerialization
@@ -1414,109 +1421,184 @@ class DAG:
                 triggering_user_name="dag_test",
             )
 
-            log.debug("starting dagrun")
-            # Instead of starting a scheduler, we run the minimal loop possible to check
-            # for task readiness and dependency management.
-            # Instead of starting a scheduler, we run the minimal loop possible to check
-            # for task readiness and dependency management.
-
-            # ``Dag.test()`` works in two different modes depending on ``use_executor``:
-            # - if ``use_executor`` is False, runs the task locally with no executor using ``_run_task``
-            # - if ``use_executor`` is True, sends workloads to the executor with
-            #   ``BaseExecutor.queue_workload``
-            if use_executor:
-                from airflow.executors.base_executor import ExecutorLoader
-
-                executor = ExecutorLoader.get_default_executor()
-                executor.start()
-
-            while dr.state == DagRunState.RUNNING:
-                session.expire_all()
-                schedulable_tis, _ = dr.update_state(session=session)
-                for s in schedulable_tis:
-                    if s.try_number == 0:
-                        s.try_number = 1
-                    s.state = TaskInstanceState.SCHEDULED
-                    s.scheduled_dttm = timezone.utcnow()
-                session.commit()
-                # triggerer may mark tasks scheduled so we read from DB
-                all_tis = set(dr.get_task_instances(session=session))
-                scheduled_tis = {x for x in all_tis if x.state == TaskInstanceState.SCHEDULED}
-                awaiting_input_tis = {x for x in all_tis if x.state == TaskInstanceState.AWAITING_INPUT}
-                ids_unrunnable = (
-                    {x for x in all_tis if x.state not in FINISHED_STATES}
-                    - scheduled_tis
-                    - awaiting_input_tis
-                )
-                if not scheduled_tis and awaiting_input_tis:
-                    # Human-in-the-loop tasks stay parked in AWAITING_INPUT: dag.test() never
-                    # resolves them itself. Keep the run alive until a response recorded from
-                    # outside -- the Required Actions UI or the HITL REST API of an api-server
-                    # sharing this metadata DB -- flips them back to SCHEDULED.
-                    log.info(
-                        "Waiting for Human-in-the-loop input for tasks: %s",
-                        sorted(x.task_id for x in awaiting_input_tis),
-                    )
-                    time.sleep(1)
-                elif not scheduled_tis and ids_unrunnable:
-                    log.warning("No tasks to run. unrunnable tasks: %s", ids_unrunnable)
-                    time.sleep(1)
-
-                for ti in scheduled_tis:
-                    task = self.task_dict[ti.task_id]
-
-                    mark_success = (
-                        re.compile(mark_success_pattern).fullmatch(ti.task_id) is not None
-                        if mark_success_pattern is not None
-                        else False
-                    )
-
-                    if use_executor:
-                        if executor.has_task(ti):
-                            continue
-
-                        from pathlib import Path
-
-                        from airflow.executors import workloads
-                        from airflow.executors.base_executor import ExecutorLoader
-                        from airflow.executors.workloads import BundleInfo
-
-                        workload = workloads.ExecuteTask.make(
-                            ti,
-                            dag_rel_path=Path(self.fileloc),
-                            generator=executor.jwt_generator,
-                            sentry_integration=executor.sentry_integration,
-                            # For the system test/debug purpose, we use the default bundle which uses
-                            # local file system. If it turns out to be a feature people want, we could
-                            # plumb the Bundle to use as a parameter to dag.test
-                            bundle_info=BundleInfo(name="dags-folder"),
-                        )
-                        executor.queue_workload(workload, session=session)
-                        ti.state = TaskInstanceState.QUEUED
-                        session.commit()
-                    else:
-                        # Run the task locally
-                        try:
-                            if mark_success:
-                                ti.set_state(TaskInstanceState.SUCCESS)
-                                log.info("[DAG TEST] Marking success for %s on %s", task, ti.logical_date)
-                            else:
-                                _run_task(ti=ti, task=task, run_triggerer=True)
-                        except Exception:
-                            log.exception("Task failed; ti=%s", ti)
-                if use_executor:
-                    executor.heartbeat()
-                    session.expire_all()
-
-                    from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
-                    from airflow.models.dagbag import DBDagBag
-
-                    SchedulerJobRunner.process_executor_events(
-                        executor=executor, job_id=None, scheduler_dag_bag=DBDagBag(), session=session
-                    )
-            if use_executor:
-                executor.end()
+            _run_dag_run_to_completion(
+                self,
+                dr,
+                session=session,
+                use_executor=use_executor,
+                mark_success_pattern=mark_success_pattern,
+            )
         return dr
+
+    def run(
+        self,
+        *,
+        run_conf: dict[str, Any] | None = None,
+        conn_file_path: str | os.PathLike[str] | None = None,
+        variable_file_path: str | os.PathLike[str] | None = None,
+    ) -> DagRunResult:
+        """
+        Run this Dag once in its project's local Airflow environment and return the detached result.
+
+        The run happens in a separate Python process that imports this Dag's file the way Airflow
+        discovers Dags, so the Dag must be defined at module level, and the call belongs under
+        ``if __name__ == "__main__":``. History is kept in ``.airflow/`` next to the project's
+        ``pyproject.toml`` (or next to the file when there is none).
+
+        :param run_conf: configuration for the Dag run
+        :param conn_file_path: connections file (JSON, YAML or env) available to the run
+        :param variable_file_path: variables file (JSON, YAML or env) available to the run
+        :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
+        :raises LocalRunError: the run could not start, e.g. the file failed to import.
+        """
+        from airflow.sdk.definitions._internal.contextmanager import DagContext
+
+        if DagContext.current_autoregister_module_name is not None or is_unguarded_module_level_call(
+            self.fileloc, sys._getframe(1)
+        ):
+            raise LocalRunError(
+                f'Call {self.dag_id}.run() under `if __name__ == "__main__":`. The run imports this file '
+                "the way Airflow discovers Dags, and that import must not start another run."
+            )
+        return run_dag_file(
+            self.fileloc,
+            dag_id=self.dag_id,
+            run_conf=run_conf,
+            connections_file=conn_file_path,
+            variables_file=variable_file_path,
+        )
+
+
+def _run_dag_run_to_completion(
+    dag: DAG,
+    dr: DagRun,
+    *,
+    session: Session,
+    use_executor: bool = False,
+    mark_success_pattern: Pattern | str | None = None,
+    should_stop: Callable[[], bool] | None = None,
+    task_context: Callable[[SchedulerTaskInstance], AbstractContextManager[object]] | None = None,
+) -> None:
+    """
+    Drive a created Dag run until it finishes, running its tasks from the in-memory ``dag``.
+
+    :param should_stop: polled before each loop pass and each task; when it returns True the run
+        stops with ``KeyboardInterrupt``. In-process tasks turn an interrupt into an ordinary task
+        failure, so without this the remaining tasks would still run after Ctrl-C.
+    :param task_context: entered around each task that runs in-process (not with ``use_executor``),
+        e.g. to capture its log or report progress once it finished.
+    """
+    import re
+    import time
+
+    from airflow.sdk import DagRunState, timezone
+
+    log.debug("starting dagrun")
+    # Instead of starting a scheduler, we run the minimal loop possible to check
+    # for task readiness and dependency management.
+
+    # ``Dag.test()`` works in two different modes depending on ``use_executor``:
+    # - if ``use_executor`` is False, runs the task locally with no executor using ``_run_task``
+    # - if ``use_executor`` is True, sends workloads to the executor with
+    #   ``BaseExecutor.queue_workload``
+    if use_executor:
+        from airflow.executors.base_executor import ExecutorLoader
+
+        executor = ExecutorLoader.get_default_executor()
+        executor.start()
+
+    while dr.state == DagRunState.RUNNING:
+        if should_stop is not None and should_stop():
+            raise KeyboardInterrupt
+        session.expire_all()
+        schedulable_tis, _ = dr.update_state(session=session)
+        for s in schedulable_tis:
+            if s.try_number == 0:
+                s.try_number = 1
+            s.state = TaskInstanceState.SCHEDULED
+            s.scheduled_dttm = timezone.utcnow()
+        session.commit()
+        # triggerer may mark tasks scheduled so we read from DB
+        all_tis = set(dr.get_task_instances(session=session))
+        scheduled_tis = {x for x in all_tis if x.state == TaskInstanceState.SCHEDULED}
+        awaiting_input_tis = {x for x in all_tis if x.state == TaskInstanceState.AWAITING_INPUT}
+        ids_unrunnable = (
+            {x for x in all_tis if x.state not in FINISHED_STATES} - scheduled_tis - awaiting_input_tis
+        )
+        if not scheduled_tis and awaiting_input_tis:
+            # Human-in-the-loop tasks stay parked in AWAITING_INPUT: dag.test() never
+            # resolves them itself. Keep the run alive until a response recorded from
+            # outside -- the Required Actions UI or the HITL REST API of an api-server
+            # sharing this metadata DB -- flips them back to SCHEDULED.
+            log.info(
+                "Waiting for Human-in-the-loop input for tasks: %s",
+                sorted(x.task_id for x in awaiting_input_tis),
+            )
+            time.sleep(1)
+        elif not scheduled_tis and ids_unrunnable:
+            if any(x.state in _WAITING_TO_RERUN for x in ids_unrunnable):
+                log.debug("Waiting for tasks to retry or reschedule: %s", ids_unrunnable)
+            else:
+                log.warning("No tasks to run. unrunnable tasks: %s", ids_unrunnable)
+            time.sleep(1)
+
+        for ti in scheduled_tis:
+            if should_stop is not None and should_stop():
+                raise KeyboardInterrupt
+            task = dag.task_dict[ti.task_id]
+
+            mark_success = (
+                re.compile(mark_success_pattern).fullmatch(ti.task_id) is not None
+                if mark_success_pattern is not None
+                else False
+            )
+
+            if use_executor:
+                if executor.has_task(ti):
+                    continue
+
+                from pathlib import Path
+
+                from airflow.executors import workloads
+                from airflow.executors.base_executor import ExecutorLoader
+                from airflow.executors.workloads import BundleInfo
+
+                workload = workloads.ExecuteTask.make(
+                    ti,
+                    dag_rel_path=Path(dag.fileloc),
+                    generator=executor.jwt_generator,
+                    sentry_integration=executor.sentry_integration,
+                    # For the system test/debug purpose, we use the default bundle which uses
+                    # local file system. If it turns out to be a feature people want, we could
+                    # plumb the Bundle to use as a parameter to dag.test
+                    bundle_info=BundleInfo(name="dags-folder"),
+                )
+                executor.queue_workload(workload, session=session)
+                ti.state = TaskInstanceState.QUEUED
+                session.commit()
+            else:
+                # Run the task locally
+                with task_context(ti) if task_context is not None else nullcontext():
+                    try:
+                        if mark_success:
+                            ti.set_state(TaskInstanceState.SUCCESS)
+                            log.info("[DAG TEST] Marking success for %s on %s", task, ti.logical_date)
+                        else:
+                            _run_task(ti=ti, task=task, run_triggerer=True)
+                    except Exception:
+                        log.exception("Task failed; ti=%s", ti)
+        if use_executor:
+            executor.heartbeat()
+            session.expire_all()
+
+            from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
+            from airflow.models.dagbag import DBDagBag
+
+            SchedulerJobRunner.process_executor_events(
+                executor=executor, job_id=None, scheduler_dag_bag=DBDagBag(), session=session
+            )
+    if use_executor:
+        executor.end()
 
 
 def _run_task(

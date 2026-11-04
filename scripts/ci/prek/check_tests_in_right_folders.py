@@ -57,6 +57,7 @@ POSSIBLE_TEST_FOLDERS = [
     "jobs",
     "lineage",
     "listeners",
+    "local_run",
     "logging",
     "macros",
     "migrations",
