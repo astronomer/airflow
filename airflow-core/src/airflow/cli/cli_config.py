@@ -533,6 +533,17 @@ ARG_RUN_DEBUG = Arg(
     ),
     action="store_true",
 )
+# standalone
+ARG_STANDALONE_PROJECT = Arg(
+    ("--project",),
+    help="Serve the local run history of the project in the current directory instead, read-only",
+    action="store_true",
+)
+ARG_STANDALONE_PORT = Arg(
+    ("-p", "--port"),
+    type=int,
+    help="With --project, the port to serve on, e.g. to keep a bookmark; a free one if left out",
+)
 ARG_REPLACE_MICRO = Arg(
     ("--no-replace-microseconds",),
     help="whether microseconds should be zeroed",
@@ -2429,8 +2440,15 @@ core_commands: list[CLICommand] = [
     ActionCommand(
         name="standalone",
         help="Run an all-in-one copy of Airflow",
+        description=(
+            "Run an all-in-one copy of Airflow on AIRFLOW_HOME. With --project, serve Airflow's UI instead on "
+            "the runs kept in .airflow/ next to the project's pyproject.toml, found from the current "
+            "directory. That server listens on 127.0.0.1 only, on a free port unless --port names one, and "
+            "needs no login. The history is read-only: no scheduler runs, so changes such as Trigger and "
+            "Clear are refused. While it runs, runs in the project print a link to their page."
+        ),
         func=lazy_load_command("airflow.cli.commands.standalone_command.standalone"),
-        args=(),
+        args=(ARG_STANDALONE_PROJECT, ARG_STANDALONE_PORT),
     ),
     ActionCommand(
         name="run",

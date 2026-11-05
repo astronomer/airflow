@@ -51,7 +51,9 @@ def main():
     # not corrupt that output (e.g. ``airflow ... -o json | jq``).
     if hasattr(args, "output"):
         redirect_stdout_log_handlers_to_stderr()
-    if args.subcommand not in ["lazy_loaded", "version", "run"]:
+    # These keep their files in the project's .airflow/, not in AIRFLOW_HOME.
+    uses_project_home = args.subcommand == "run" or (args.subcommand == "standalone" and args.project)
+    if args.subcommand not in ["lazy_loaded", "version"] and not uses_project_home:
         # Here we ensure that the default configuration is written if needed before running any command
         # that might need it. This used to be done during configuration initialization but having it
         # in main ensures that it is not done during tests and other ways airflow imports are used

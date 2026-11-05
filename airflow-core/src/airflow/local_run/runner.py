@@ -61,6 +61,7 @@ from airflow.local_run.logs import (
     record_startup_events,
 )
 from airflow.local_run.supervised import SupervisedTries
+from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
 from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
@@ -233,7 +234,9 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             cancelled=cancelled,
             session=session,
         )
-        report(summarize_run(payload, time.monotonic() - started, home))
+        ui_url = read_live_ui_url(home)
+        run_url = build_run_url(ui_url, dag_run.dag_id, dag_run.run_id) if ui_url else None
+        report(summarize_run(payload, time.monotonic() - started, home, run_url=run_url))
         return payload
     finally:
         session.close()
@@ -379,7 +382,8 @@ def report_task(
         report(f"  · {label} {state}")
 
 
-def summarize_run(payload: dict[str, Any], elapsed: float, home: Path) -> str:
+def summarize_run(payload: dict[str, Any], elapsed: float, home: Path, *, run_url: str | None = None) -> str:
+    """Say how the run ended, and where to look at it: its page in the project's UI while one runs."""
     if payload["cancelled"]:
         outcome = f"Cancelled after {elapsed:.1f}s"
     elif payload["state"] == DagRunState.SUCCESS:
@@ -391,7 +395,8 @@ def summarize_run(payload: dict[str, Any], elapsed: float, home: Path) -> str:
             if state == "failed"
         )
         outcome = f"Failed in {elapsed:.1f}s" + (f": {', '.join(failed)}" if failed else "")
-    return f"{outcome}. History: {home}"
+    where = f"View it at {run_url}" if run_url else f"History: {home}"
+    return f"{outcome}. {where}"
 
 
 @contextmanager
