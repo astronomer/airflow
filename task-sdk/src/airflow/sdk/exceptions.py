@@ -455,11 +455,14 @@ class DagExecutionError(RuntimeError):
 
     def __init__(self, result: DagRunResult) -> None:
         self.result = result
-        failed = sorted(
-            task_id if map_index < 0 else f"{task_id}[{map_index}]"
-            for (task_id, map_index), state in result.task_states.items()
-            if state == "failed"
-        )
+        failed = []
+        for task_id, map_index in sorted(
+            key for key, state in result.task_states.items() if state == "failed"
+        ):
+            label = task_id if map_index < 0 else f"{task_id}[{map_index}]"
+            # Named here, the task's error is the last line an uncaught failure prints.
+            error = result.failures.get((task_id, map_index))
+            failed.append(f"{label} ({error})" if error else label)
         message = f"Dag {result.dag_id!r} failed (run {result.run_id})"
         if failed:
             message += f"; failed tasks: {', '.join(failed)}"

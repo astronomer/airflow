@@ -41,7 +41,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
-from typing import Any
+from typing import Any, NoReturn
 
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
@@ -67,6 +67,8 @@ class DagRunResult:
     project_home: Path
     outputs: Mapping[tuple[str, int, str], Any] = field(default_factory=dict, repr=False)
     output_errors: Mapping[tuple[str, int, str], str] = field(default_factory=dict, repr=False)
+    # The error each failed task instance's last attempt ended with, e.g. "ValueError: boom".
+    failures: Mapping[tuple[str, int], str] = field(default_factory=dict, repr=False)
 
     @property
     def succeeded(self) -> bool:
@@ -288,6 +290,7 @@ def build_result(payload: dict[str, Any] | None, return_code: int, home: Path, s
         project_home=home,
         outputs=outputs,
         output_errors=output_errors,
+        failures=payload.get("failures", {}),
     )
     if not result.succeeded:
         raise DagExecutionError(result)
@@ -350,4 +353,53 @@ def is_unguarded_module_level_call(source: str | os.PathLike[str], caller: Frame
     return not any(
         isinstance(node, (ast.IfExp, ast.BoolOp)) or (isinstance(node, ast.Name) and node.id == "__name__")
         for node in ast.walk(statement)
+    )
+
+
+def is_dropped_call_under_main_guard(caller: FrameType) -> bool:
+    """
+    Whether ``caller`` is a script's ``if __name__ == "__main__":`` block calling in a bare statement.
+
+    A script drops a call's result like that only when it expects the call to do the work itself.
+    """
+    if caller.f_globals.get("__name__") != "__main__":
+        return False
+    code = caller.f_code
+    # One position per two-byte code unit; the frame's last instruction is the call being made.
+    position = list(code.co_positions())[caller.f_lasti // 2]
+    if position[0] is None:
+        return False
+    try:
+        module = ast.parse(Path(code.co_filename).read_bytes(), filename=code.co_filename)
+    except (OSError, SyntaxError, ValueError):
+        return False
+    guards = [node for node in module.body if isinstance(node, ast.If) and _is_main_guard(node.test)]
+    return any(
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and (node.value.lineno, node.value.end_lineno, node.value.col_offset, node.value.end_col_offset)
+        == position
+        for guard in guards
+        for node in ast.walk(guard)
+    )
+
+
+def _is_main_guard(test: ast.expr) -> bool:
+    if not isinstance(test, ast.Compare) or len(test.comparators) != 1:
+        return False
+    sides = (test.left, test.comparators[0])
+    return any(isinstance(side, ast.Name) and side.id == "__name__" for side in sides) and any(
+        isinstance(side, ast.Constant) and side.value == "__main__" for side in sides
+    )
+
+
+def refuse_breakpoint(*args: Any, **kwargs: Any) -> NoReturn:
+    """
+    Stand in for ``breakpoint()`` in a task try that runs in a process of its own.
+
+    That process does not read the terminal, so a debugger started in it could never take input.
+    """
+    raise RuntimeError(
+        "breakpoint() needs the task to run in the run's own process, where the debugger can read the "
+        "terminal: run the Dag with .run(debug=True) or airflow run --debug."
     )

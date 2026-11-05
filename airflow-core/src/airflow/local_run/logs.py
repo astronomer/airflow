@@ -26,10 +26,10 @@ errors, but not Airflow's progress lines; the runner prints a summary instead.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import sys
-import traceback
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 
 import structlog
 
+import airflow
 from airflow.sdk.log import logging_processors
 
 if TYPE_CHECKING:
@@ -77,14 +78,6 @@ _LEVELS = logging.getLevelNamesMapping()
 _task_log: Any = None
 
 
-@dataclass
-class TaskAttempt:
-    """What the terminal held back while a task attempt ran in this process."""
-
-    # Shown only once it is known whether the task will retry.
-    failure: BaseException | None = None
-
-
 @dataclass(frozen=True)
 class TaskFailure:
     """Why a task attempt failed, as the terminal shows it."""
@@ -94,15 +87,6 @@ class TaskFailure:
     # For the attempt that fails the task, e.g. a traceback.
     details: str
 
-    @classmethod
-    def from_exception(cls, error: BaseException) -> TaskFailure:
-        return cls(
-            summary="".join(traceback.format_exception_only(error)).strip(),
-            details="".join(traceback.format_exception(error)).rstrip(),
-        )
-
-
-_attempt: TaskAttempt | None = None
 
 # This run's startup lines (bundle loading, Dag file parsing). A worker logs its own startup inside each
 # task's Pre Execute section; a local run parses once, so the same lines go into every task's section.
@@ -138,9 +122,9 @@ def record_startup_events() -> Iterator[None]:
 
 
 @contextmanager
-def capture_task_log(path: Path) -> Iterator[TaskAttempt]:
+def capture_task_log(path: Path) -> Iterator[None]:
     """Write the running task's log to ``path`` as JSON lines, as a deployed task's supervisor does."""
-    global _task_log, _attempt
+    global _task_log
     path.parent.mkdir(parents=True, exist_ok=True)
     *processors_to_json, write_json = logging_processors(json_output=True)
     with path.open("ab") as log_file:
@@ -151,20 +135,22 @@ def capture_task_log(path: Path) -> Iterator[TaskAttempt]:
         stdout = _LineTee(sys.stdout, lambda line: task_log.info(line, logger="task.stdout"))
         stderr = _LineTee(sys.stderr, lambda line: task_log.error(line, logger="task.stderr"))
         _task_log = task_log
-        _attempt = attempt = TaskAttempt()
         sys.stdout, sys.stderr = stdout, stderr  # type: ignore[assignment]
         try:
-            yield attempt
+            yield
         finally:
             sys.stdout, sys.stderr = stdout.stream, stderr.stream
             stdout.emit_pending()
             stderr.emit_pending()
             _task_log = None
-            _attempt = None
 
 
 def read_attempt_failure(path: Path) -> TaskFailure | None:
-    """Return why the attempt whose supervisor wrote the log at ``path`` failed, if it says."""
+    """
+    Return why the attempt logged in ``path`` failed, if the log says.
+
+    The traceback starts where Airflow handed over to code of the task's own; the log keeps every frame.
+    """
     failure = None
     with suppress(OSError), path.open() as log_file:
         for line in log_file:
@@ -175,9 +161,13 @@ def read_attempt_failure(path: Path) -> TaskFailure | None:
             message = str(event.get("event", ""))
             if message == TASK_FAILED_EVENT and event.get("error_detail"):
                 stacks = event["error_detail"]
-                failure = TaskFailure(
-                    summary=_format_exception_only(stacks[0]), details=_format_stacks(stacks)
-                )
+                details, left_out = _format_stacks(stacks)
+                if left_out:
+                    details += (
+                        f"\n({left_out} frames of Airflow running the task are left out; the task's log has "
+                        f"the full traceback: {_describe_path(path)})"
+                    )
+                failure = TaskFailure(summary=_format_exception_only(stacks[0]), details=details)
             elif message.startswith(PROCESS_EXIT_EVENTS):
                 detail = ", ".join(
                     f"{key}={event[key]}" for key in ("exit_code", "signal_name") if key in event
@@ -187,25 +177,28 @@ def read_attempt_failure(path: Path) -> TaskFailure | None:
     return failure
 
 
-def _format_stacks(stacks: list[dict[str, Any]]) -> str:
+def _format_stacks(stacks: list[dict[str, Any]]) -> tuple[str, int]:
     """
-    Render a structured traceback the way Python prints the exception.
+    Render a structured traceback the way Python prints the exception, and count the frames left out.
 
-    The supervisor logs the raised exception first, then each exception it was raised from or while handling.
+    The log holds the raised exception first, then each exception it was raised from or while handling.
     """
-    text = _format_stack(stacks[-1])
+    text, left_out = _format_stack(stacks[-1])
     for inner, outer in zip(reversed(stacks), reversed(stacks[:-1])):
         if inner.get("is_cause"):
             text += "\nThe above exception was the direct cause of the following exception:\n\n"
         else:
             text += "\nDuring handling of the above exception, another exception occurred:\n\n"
-        text += _format_stack(outer)
-    return text.rstrip()
+        outer_text, outer_left_out = _format_stack(outer)
+        text += outer_text
+        left_out += outer_left_out
+    return text.rstrip(), left_out
 
 
-def _format_stack(stack: dict[str, Any]) -> str:
+def _format_stack(stack: dict[str, Any]) -> tuple[str, int]:
     lines = []
-    if frames := stack.get("frames"):
+    frames = _drop_frames_leading_to_task_code(stack.get("frames") or [])
+    if frames:
         lines.append("Traceback (most recent call last):")
         for frame in frames:
             lines.append(
@@ -215,7 +208,37 @@ def _format_stack(stack: dict[str, Any]) -> str:
                 lines.append(f"    {code}")
     lines.append(_format_exception_only(stack))
     lines.extend(stack.get("exc_notes") or ())
-    return "\n".join(lines) + "\n"
+    return "\n".join(lines) + "\n", len(stack.get("frames") or []) - len(frames)
+
+
+def _drop_frames_leading_to_task_code(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Drop the frames of Airflow code that lead to the first frame of other code, e.g. the Dag file's.
+
+    Airflow frames below that one stay: they show what the task's code called. When every frame is Airflow's,
+    as for a failing operator, the frame that raised stays.
+    """
+    for index, frame in enumerate(frames):
+        if not _is_airflow_code(str(frame.get("filename", ""))):
+            return frames[index:]
+    return frames[-1:]
+
+
+def _is_airflow_code(filename: str) -> bool:
+    return any(Path(filename).is_relative_to(directory) for directory in _get_airflow_directories())
+
+
+@functools.cache
+def _get_airflow_directories() -> tuple[Path, ...]:
+    # One directory per installed distribution of the ``airflow`` namespace, e.g. core, the SDK, providers.
+    return tuple(Path(directory) for directory in airflow.__path__)
+
+
+def _describe_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return str(path)
 
 
 def _format_exception_only(stack: dict[str, Any]) -> str:
@@ -250,21 +273,11 @@ def _route_event(logger: WrappedLogger, method_name: str, event_dict: EventDict)
     if _belongs_in_task_log(name):
         _copy_to_task_log(method_name, event_dict)
     if name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
-        # The runner reports the failure once it knows whether the task will retry.
-        if _attempt is not None:
-            _attempt.failure = _get_exception(event_dict.get("exc_info"))
+        # The runner reports the failure from the task's log, once it knows whether the task will retry.
         raise structlog.DropEvent
     if not _is_on_console(name, _LEVELS[str(event_dict.get("level", method_name)).upper()]):
         raise structlog.DropEvent
     return event_dict
-
-
-def _get_exception(exc_info: Any) -> BaseException | None:
-    if isinstance(exc_info, BaseException):
-        return exc_info
-    if isinstance(exc_info, tuple):
-        return exc_info[1]
-    return sys.exc_info()[1] if exc_info else None
 
 
 def _copy_to_task_log(method_name: str, event_dict: Mapping[str, Any]) -> None:

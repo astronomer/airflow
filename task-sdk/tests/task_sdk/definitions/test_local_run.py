@@ -270,13 +270,18 @@ class TestBuildResult:
 
     def test_failed_run_raises_with_result(self, tmp_path):
         payload = make_payload(
-            state="failed", task_states={("numbers", -1): "failed", ("double", 1): "failed"}
+            state="failed",
+            task_states={("numbers", -1): "failed", ("double", 1): "failed"},
+            failures={("double", 1): "ValueError: boom"},
         )
 
-        with pytest.raises(DagExecutionError, match=r"failed tasks: double\[1\], numbers$") as ctx:
+        with pytest.raises(
+            DagExecutionError, match=r"failed tasks: double\[1\] \(ValueError: boom\), numbers$"
+        ) as ctx:
             build_result(payload, 1, tmp_path, tmp_path / "dag.py")
 
         assert ctx.value.result.task_states[("numbers", -1)] == "failed"
+        assert ctx.value.result.failures == {("double", 1): "ValueError: boom"}
 
     @pytest.mark.parametrize(
         ("payload", "match"),

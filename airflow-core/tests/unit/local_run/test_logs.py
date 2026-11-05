@@ -25,6 +25,7 @@ import traceback
 import pytest
 import structlog
 
+import airflow
 from airflow._shared.logging.structlog import LoggerFactory, NamedWriteLogger, logger_name
 from airflow.local_run import logs
 from airflow.local_run.logs import (
@@ -227,16 +228,15 @@ def test_task_failure_is_held_back_from_the_terminal(console, capsys, tmp_path):
     configure_local_run_logging()
     path = tmp_path / "attempt=1.log"
 
-    with capture_task_log(path) as attempt:
+    with capture_task_log(path):
         try:
             raise ValueError("boom")
-        except ValueError as e:
-            error = e
+        except ValueError:
             structlog.get_logger("task").exception("Task failed with exception")
 
-    assert attempt.failure is error
     assert "boom" not in capsys.readouterr().out + console.getvalue()
     assert read_events(path) == [("Task failed with exception", "error", "task")]
+    assert read_attempt_failure(path).summary == "ValueError: boom"
 
 
 def test_import_errors_are_left_to_the_run_to_report(console, capsys):
@@ -336,3 +336,51 @@ def test_attempt_failure_is_none_without_one(tmp_path, content):
         path.write_text(content)
 
     assert read_attempt_failure(path) is None
+
+
+def frame(filename: str, line: str) -> dict:
+    return {"filename": filename, "lineno": 1, "name": "f", "line": line}
+
+
+@pytest.mark.parametrize(
+    ("frames", "shown", "left_out"),
+    [
+        pytest.param(
+            [
+                frame(f"{airflow.__path__[0]}/runner.py", "run the task"),
+                frame(f"{airflow.__path__[0]}/operator.py", "call the function"),
+                frame("/project/pipeline.py", "task code"),
+                frame(f"{airflow.__path__[0]}/hook.py", "hook the task called"),
+            ],
+            ["task code", "hook the task called"],
+            2,
+            id="airflow-calling-task-code",
+        ),
+        pytest.param(
+            [
+                frame(f"{airflow.__path__[0]}/runner.py", "run the task"),
+                frame(f"{airflow.__path__[0]}/bash.py", "raise for the exit code"),
+            ],
+            ["raise for the exit code"],
+            1,
+            id="operator-failing",
+        ),
+    ],
+)
+def test_attempt_failure_starts_at_the_task_code(tmp_path, frames, shown, left_out):
+    path = tmp_path / "attempt=1.log"
+    stack = {"exc_type": "ValueError", "exc_value": "boom", "frames": frames}
+    path.write_text(
+        json.dumps({"event": TASK_FAILED_EVENT, "level": "error", "error_detail": [stack]}) + "\n"
+    )
+
+    failure = read_attempt_failure(path)
+
+    assert failure is not None
+    assert [line.strip() for line in failure.details.splitlines() if not line.startswith("  File")] == [
+        "Traceback (most recent call last):",
+        *shown,
+        "ValueError: boom",
+        f"({left_out} frames of Airflow running the task are left out; the task's log has the full "
+        f"traceback: {path})",
+    ]

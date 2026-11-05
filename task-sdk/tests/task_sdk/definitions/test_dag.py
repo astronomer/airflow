@@ -1439,3 +1439,45 @@ class TestDagRunMethod:
             runpy.run_path(str(path), run_name="__main__")
 
         mock_run_dag_file.assert_not_called()
+
+
+DAG_SCRIPT = """
+from airflow.sdk import dag
+
+@dag(schedule=None)
+def example():
+    pass
+
+"""
+
+
+class TestDagFunctionCalledInAScript:
+    @pytest.mark.parametrize(
+        "main_block",
+        [
+            pytest.param("    example()\n", id="bare"),
+            pytest.param("    if True:\n        example()\n", id="nested"),
+            pytest.param("    def main():\n        example()\n\n    main()\n", id="in-a-function"),
+        ],
+    )
+    def test_dropped_call_under_main_guard_is_refused(self, tmp_path, main_block):
+        path = tmp_path / "pipeline.py"
+        path.write_text(DAG_SCRIPT + 'if __name__ == "__main__":\n' + main_block)
+
+        with pytest.raises(RuntimeError, match=r"example\(\) builds the Dag but does not run it"):
+            runpy.run_path(str(path), run_name="__main__")
+
+    @pytest.mark.parametrize(
+        "script",
+        [
+            pytest.param(DAG_SCRIPT + "example()\n", id="unguarded-module-level"),
+            pytest.param(DAG_SCRIPT + 'if __name__ == "__main__":\n    built = example()\n', id="assigned"),
+            pytest.param(DAG_SCRIPT + 'if __name__ == "__main__":\n    example().dag_id\n', id="used"),
+            pytest.param(DAG_SCRIPT + 'if __name__ == "__main__":\n    str(example())\n', id="argument"),
+        ],
+    )
+    def test_call_whose_result_is_kept_or_registers_the_dag_is_allowed(self, tmp_path, script):
+        path = tmp_path / "pipeline.py"
+        path.write_text(script)
+
+        runpy.run_path(str(path), run_name="__main__")

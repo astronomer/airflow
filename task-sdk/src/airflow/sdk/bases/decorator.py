@@ -19,6 +19,7 @@ from __future__ import annotations
 import inspect
 import itertools
 import re
+import sys
 import textwrap
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import suppress
@@ -57,6 +58,8 @@ from airflow.sdk.definitions.mappedoperator import (
 from airflow.sdk.definitions.xcom_arg import XComArg
 
 if TYPE_CHECKING:
+    from types import FrameType
+
     from airflow.sdk.definitions._internal.expandinput import (
         ExpandInput,
         OperatorExpandArgument,
@@ -561,6 +564,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         update_wrapper(self, self.function)
 
     def __call__(self, *args: FParams.args, **kwargs: FParams.kwargs) -> XComArg:
+        self._refuse_script_call_outside_dag(f"{self.function.__name__}()", sys._getframe(1))
         if self.is_teardown:
             if "trigger_rule" in self.kwargs:
                 raise ValueError("Trigger rule not configurable for teardown tasks.")
@@ -601,6 +605,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         super()._validate_arg_names(func, kwargs)
 
     def expand(self, **map_kwargs: OperatorExpandArgument) -> XComArg:
+        self._refuse_script_call_outside_dag(f"{self.function.__name__}.expand()", sys._getframe(1))
         if self.kwargs.get("trigger_rule") == TriggerRule.ALWAYS and any(
             [isinstance(expanded, XComArg) for expanded in map_kwargs.values()]
         ):
@@ -620,6 +625,7 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         return self._expand(DictOfListsExpandInput(map_kwargs), strict=False)
 
     def expand_kwargs(self, kwargs: OperatorExpandKwargsArgument, *, strict: bool = True) -> XComArg:
+        self._refuse_script_call_outside_dag(f"{self.function.__name__}.expand_kwargs()", sys._getframe(1))
         if (
             self.kwargs.get("trigger_rule") == TriggerRule.ALWAYS
             and not isinstance(kwargs, XComArg)
@@ -642,6 +648,27 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         elif not isinstance(kwargs, XComArg):
             raise TypeError(f"expected XComArg or list[dict], not {type(kwargs).__name__}")
         return self._expand(ListOfDictsExpandInput(kwargs), strict=strict)
+
+    def _refuse_script_call_outside_dag(self, call: str, caller: FrameType) -> None:
+        """
+        Refuse a call from a script's own code that adds the task to no Dag.
+
+        Such a call only returns a reference to an output nothing will produce, while a script calling a task
+        expects it to run. Tests and helper modules build tasks without a Dag to inspect them; they are not
+        ``__main__``, and neither is a Dag file that Airflow imports.
+        """
+        if (
+            caller.f_globals.get("__name__") != "__main__"
+            or DagContext.get_current() is not None
+            or self.kwargs.get("dag") is not None
+            or self.kwargs.get("task_group") is not None
+        ):
+            return
+        raise RuntimeError(
+            f"{call} was called outside a Dag, so it did not run: calling a task inside a @dag function adds "
+            f"it to that Dag. Run the Dag with .run(), or call {self.function.__name__}.function(...) to run "
+            "the function itself."
+        )
 
     def _expand(self, expand_input: ExpandInput, *, strict: bool) -> XComArg:
         ensure_xcomarg_return_value(expand_input.value)

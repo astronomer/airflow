@@ -188,14 +188,14 @@ def test_task_logs_are_written_where_the_ui_reads_them(project, debug, parse_eve
     events = [json.loads(line) for line in log_file.read_text().splitlines()]
     # A deployed task's log: the worker's startup in Pre Execute, the task, then Post Execute. A supervised
     # try is a worker's task process; in debug mode the run's own parse of the Dag file fills Pre Execute.
-    # Installed listener plugins may log lines of their own in between.
+    # Installed listener plugins may log lines of their own in between. What the task printed reaches a
+    # supervisor separately from its log events, so its place among them can vary.
     expected = [
         "::group::Pre Execute",
         "DAG bundles loaded: dags-folder",
         f"Filling up the DagBag from {source}",
         parse_event,
         "::endgroup::",
-        "hello local log",
         "Done. Returned value was: hi",
         "::group::Post Execute",
         "Pushing xcom",
@@ -229,7 +229,8 @@ def test_structural_edit_rerun_immediately_gets_a_new_dag_version(project):
     ) == [(first.run_id, 1), (second.run_id, 2)]
 
 
-def test_failed_run_raises_with_result(project, capfd):
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_failed_run_raises_with_result(project, capfd, debug):
     source = write_dag_file(
         project,
         "failing.py",
@@ -252,14 +253,19 @@ def test_failed_run_raises_with_result(project, capfd):
         """,
     )
 
-    with pytest.raises(DagExecutionError, match="failed tasks: boom") as ctx:
-        run_dag_file(source)
+    with pytest.raises(DagExecutionError, match=r"failed tasks: boom \(ValueError: boom\)$") as ctx:
+        run_dag_file(source, debug=debug)
 
     assert ctx.value.result.task_states == {("boom", -1): "failed", ("after", -1): "upstream_failed"}
+    assert ctx.value.result.failures == {("boom", -1): "ValueError: boom"}
     with pytest.raises(KeyError, match="task state: upstream_failed"):
         ctx.value.result.output("after")
     out, err = capfd.readouterr()
-    assert "  ✗ boom failed\nTraceback (most recent call last):\n" in err
+    # The traceback starts in the Dag file; Airflow's frames that ran the task stay in the task's log.
+    assert f'  ✗ boom failed\nTraceback (most recent call last):\n  File "{source}", line ' in err
+    assert re.search(
+        r"\(\d+ frames of Airflow running the task are left out; the task's log has the full", err
+    )
     assert (out + err).count("ValueError: boom") == 1
     assert "Task failed with exception" not in out + err
     assert ": boom. History: " in err
@@ -596,6 +602,26 @@ def test_database_from_newer_airflow_is_refused(project):
         run_dag_file(source)
 
 
+def write_run_request(tmp_path: Path, source: Path, *, debug: bool) -> tuple[Path, Path]:
+    """Write a request as the launcher does; return its path and the path the result will be written to."""
+    request = tmp_path / "request.json"
+    result_path = tmp_path / "result.pickle"
+    request.write_text(
+        json.dumps(
+            {
+                "version": PROTOCOL_VERSION,
+                "source": str(source),
+                "dag_id": None,
+                "run_conf": None,
+                "triggered_by": "test",
+                "debug": debug,
+                "result_path": str(result_path),
+            }
+        )
+    )
+    return request, result_path
+
+
 def start_sleepy_run(project: Path, tmp_path: Path, *, debug: bool) -> tuple[subprocess.Popen, Path, Path]:
     """
     Start a run of a slow task in its own process, as the launcher does, and wait until the task is running.
@@ -628,25 +654,10 @@ def start_sleepy_run(project: Path, tmp_path: Path, *, debug: bool) -> tuple[sub
         workflow = sleepy()
         """,
     )
-    home = prepare_project_home(project)
-    request = tmp_path / "request.json"
-    result_path = tmp_path / "result.pickle"
-    request.write_text(
-        json.dumps(
-            {
-                "version": PROTOCOL_VERSION,
-                "source": str(source),
-                "dag_id": None,
-                "run_conf": None,
-                "triggered_by": "test",
-                "debug": debug,
-                "result_path": str(result_path),
-            }
-        )
-    )
+    request, result_path = write_run_request(tmp_path, source, debug=debug)
     child = subprocess.Popen(
         [sys.executable, "-m", CHILD_MODULE, str(request)],
-        env=build_child_environment(os.environ, home=home, root=project),
+        env=build_child_environment(os.environ, home=prepare_project_home(project), root=project),
     )
     deadline = time.monotonic() + 120
     while not started.exists() or not started.read_text():
@@ -675,6 +686,61 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path, debug):
     # A supervised try runs in a process group of its own, which the interrupt did not reach directly.
     with pytest.raises(ProcessLookupError):
         os.kill(int(started.read_text()), 0)
+
+
+BREAKPOINT_DAG = """
+from airflow.sdk import dag, task
+
+@task
+def stop_here():
+    x = 41
+    breakpoint()
+    return x + 1
+
+@dag(schedule=None)
+def stopping():
+    stop_here()
+
+workflow = stopping()
+"""
+
+
+def test_breakpoint_in_a_supervised_try_says_how_to_debug(project, monkeypatch):
+    monkeypatch.delenv("PYTHONBREAKPOINT", raising=False)
+    source = write_dag_file(project, "stopping.py", BREAKPOINT_DAG)
+
+    with pytest.raises(
+        DagExecutionError,
+        match=r"stop_here \(RuntimeError: breakpoint\(\) needs the task to run in the run's own process.*"
+        r"\.run\(debug=True\) or airflow run --debug\.\)$",
+    ):
+        run_dag_file(source)
+
+
+def test_breakpoint_hook_of_the_users_own_is_kept(project, monkeypatch):
+    monkeypatch.setenv("PYTHONBREAKPOINT", "0")
+
+    assert run_dag_file(write_dag_file(project, "stopping.py", BREAKPOINT_DAG)).output("stop_here") == 42
+
+
+def test_breakpoint_in_debug_mode_opens_the_debugger(project, tmp_path):
+    source = write_dag_file(project, "stopping.py", BREAKPOINT_DAG)
+    request, _ = write_run_request(tmp_path, source, debug=True)
+    env = build_child_environment(os.environ, home=prepare_project_home(project), root=project)
+    env.pop("PYTHONBREAKPOINT", None)
+
+    child = subprocess.run(
+        [sys.executable, "-m", CHILD_MODULE, str(request)],
+        env=env,
+        input="p x * 10\nc\n",
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert child.returncode == 0, child.stderr
+    assert "(Pdb) 410" in child.stdout
 
 
 def test_run_whose_process_ended_early_is_recorded_failed_by_the_next_run(project, capfd):
@@ -918,16 +984,16 @@ def test_report_task(capsys, state, cancelled, retry_in, expected):
 
 def test_report_task_shows_the_failure_that_ended_the_task(capsys):
     ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=3)
-    try:
-        raise ValueError("boom")
-    except ValueError as e:
-        failure = TaskFailure.from_exception(e)
+    failure = TaskFailure(
+        summary="ValueError: boom", details="Traceback (most recent call last):\nValueError: boom"
+    )
 
     runner.report_task(ti, "failed", failure, cancelled=False)
 
-    err = capsys.readouterr().err
-    assert err.startswith("  ✗ load[3] failed\nTraceback (most recent call last):\n")
-    assert err.endswith("ValueError: boom\n")
+    assert (
+        capsys.readouterr().err
+        == "  ✗ load[3] failed\nTraceback (most recent call last):\nValueError: boom\n"
+    )
 
 
 @mock.patch.object(runner.settings, "dispose_async_engine", autospec=True)
