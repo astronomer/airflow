@@ -17,18 +17,21 @@
 """
 Logging for a local run: a quiet terminal, and a full log file per task attempt.
 
-A deployed task's supervisor writes the task log from the task process's output. A local run executes
-tasks in its own process, so while a task runs its log events, log records and printed output are also
-written to its log file, the same as a deployed task's log. The terminal shows the task's own output,
-hook output, warnings and errors, but not Airflow's progress lines; the runner prints a summary instead.
+A deployed task's supervisor writes the task log from the task process's output, and so does a local run's,
+which forwards that output here as well. In debug mode tasks run in the run's own process, so while a task
+runs its log events, log records and printed output are also written to its log file, the same as a
+deployed task's log. Either way the terminal shows the task's own output, hook output, warnings and
+errors, but not Airflow's progress lines; the runner prints a summary instead.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
+import traceback
 from collections.abc import Callable, Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TextIO
@@ -45,6 +48,7 @@ CONSOLE_LEVELS = {
     "airflow": logging.WARNING,
     "airflow.task.hooks": logging.INFO,
     "task": logging.WARNING,
+    "supervisor": logging.WARNING,
     "alembic": logging.WARNING,
     "sqlalchemy": logging.WARNING,
 }
@@ -61,6 +65,12 @@ PRE_EXECUTE_GROUP = "::group::Pre Execute"
 # What the task runner logs, with the exception, when a task attempt fails.
 TASK_FAILED_EVENT = "Task failed with exception"
 
+# What a supervised task printed, as its supervisor forwards it; shown as printed.
+OUTPUT_LOGGERS = {"task.stdout": "stdout", "task.stderr": "stderr"}
+
+# What the supervisor logs when a task's process ends without the task runner reporting a failure.
+PROCESS_EXIT_EVENTS = ("Process exited abnormally", "Process terminated by signal")
+
 _LEVELS = logging.getLevelNamesMapping()
 
 # Writes the log file of the task that is running, if any.
@@ -69,10 +79,27 @@ _task_log: Any = None
 
 @dataclass
 class TaskAttempt:
-    """What the terminal held back while a task attempt ran."""
+    """What the terminal held back while a task attempt ran in this process."""
 
     # Shown only once it is known whether the task will retry.
     failure: BaseException | None = None
+
+
+@dataclass(frozen=True)
+class TaskFailure:
+    """Why a task attempt failed, as the terminal shows it."""
+
+    # One line, for an attempt that will be retried.
+    summary: str
+    # For the attempt that fails the task, e.g. a traceback.
+    details: str
+
+    @classmethod
+    def from_exception(cls, error: BaseException) -> TaskFailure:
+        return cls(
+            summary="".join(traceback.format_exception_only(error)).strip(),
+            details="".join(traceback.format_exception(error)).rstrip(),
+        )
 
 
 _attempt: TaskAttempt | None = None
@@ -136,6 +163,66 @@ def capture_task_log(path: Path) -> Iterator[TaskAttempt]:
             _attempt = None
 
 
+def read_attempt_failure(path: Path) -> TaskFailure | None:
+    """Return why the attempt whose supervisor wrote the log at ``path`` failed, if it says."""
+    failure = None
+    with suppress(OSError), path.open() as log_file:
+        for line in log_file:
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            message = str(event.get("event", ""))
+            if message == TASK_FAILED_EVENT and event.get("error_detail"):
+                stacks = event["error_detail"]
+                failure = TaskFailure(
+                    summary=_format_exception_only(stacks[0]), details=_format_stacks(stacks)
+                )
+            elif message.startswith(PROCESS_EXIT_EVENTS):
+                detail = ", ".join(
+                    f"{key}={event[key]}" for key in ("exit_code", "signal_name") if key in event
+                )
+                summary = f"{message} ({detail})" if detail else message
+                failure = TaskFailure(summary=summary, details=summary)
+    return failure
+
+
+def _format_stacks(stacks: list[dict[str, Any]]) -> str:
+    """
+    Render a structured traceback the way Python prints the exception.
+
+    The supervisor logs the raised exception first, then each exception it was raised from or while handling.
+    """
+    text = _format_stack(stacks[-1])
+    for inner, outer in zip(reversed(stacks), reversed(stacks[:-1])):
+        if inner.get("is_cause"):
+            text += "\nThe above exception was the direct cause of the following exception:\n\n"
+        else:
+            text += "\nDuring handling of the above exception, another exception occurred:\n\n"
+        text += _format_stack(outer)
+    return text.rstrip()
+
+
+def _format_stack(stack: dict[str, Any]) -> str:
+    lines = []
+    if frames := stack.get("frames"):
+        lines.append("Traceback (most recent call last):")
+        for frame in frames:
+            lines.append(
+                f'  File "{frame.get("filename")}", line {frame.get("lineno")}, in {frame.get("name")}'
+            )
+            if code := (frame.get("line") or "").strip():
+                lines.append(f"    {code}")
+    lines.append(_format_exception_only(stack))
+    lines.extend(stack.get("exc_notes") or ())
+    return "\n".join(lines) + "\n"
+
+
+def _format_exception_only(stack: dict[str, Any]) -> str:
+    value = stack.get("exc_value")
+    return f"{stack.get('exc_type')}: {value}" if value else str(stack.get("exc_type"))
+
+
 def _is_within(logger_name: str, prefix: str) -> bool:
     return logger_name == prefix or logger_name.startswith(f"{prefix}.")
 
@@ -157,10 +244,15 @@ def _belongs_in_task_log(logger_name: str) -> bool:
 
 def _route_event(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
     name = event_dict.get("logger") or ""
+    if (stream := OUTPUT_LOGGERS.get(name)) is not None:
+        print(event_dict.get("event", ""), file=getattr(sys, stream), flush=True)
+        raise structlog.DropEvent
     if _belongs_in_task_log(name):
         _copy_to_task_log(method_name, event_dict)
-    if _attempt is not None and name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
-        _attempt.failure = _get_exception(event_dict.get("exc_info"))
+    if name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
+        # The runner reports the failure once it knows whether the task will retry.
+        if _attempt is not None:
+            _attempt.failure = _get_exception(event_dict.get("exc_info"))
         raise structlog.DropEvent
     if not _is_on_console(name, _LEVELS[str(event_dict.get("level", method_name)).upper()]):
         raise structlog.DropEvent

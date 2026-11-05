@@ -188,11 +188,13 @@ def run_dag_file(
     connections_file: str | os.PathLike[str] | None = None,
     variables_file: str | os.PathLike[str] | None = None,
     triggered_by: str = "test",
+    debug: bool = False,
 ) -> DagRunResult:
     """
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
 
     :param dag_id: required when the file defines more than one Dag.
+    :param debug: run task tries inside the run's process rather than each in a process of its own.
     :raises DagExecutionError: the run finished in a failed state.
     :raises LocalRunError: the run could not start or did not report a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
@@ -228,6 +230,7 @@ def run_dag_file(
                     "dag_id": dag_id,
                     "run_conf": run_conf,
                     "triggered_by": triggered_by,
+                    "debug": debug,
                     "result_path": str(result_path),
                 }
             )

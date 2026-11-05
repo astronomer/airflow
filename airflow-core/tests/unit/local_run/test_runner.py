@@ -23,6 +23,7 @@ The child gets its own environment and SQLite database, so these tests never tou
 from __future__ import annotations
 
 import datetime
+import fcntl
 import importlib.util
 import json
 import os
@@ -43,6 +44,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, scoped_session
 
 from airflow.local_run import runner
+from airflow.local_run.logs import TaskFailure
 from airflow.models.taskinstance import TaskInstance
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
@@ -145,7 +147,14 @@ def test_first_run_reports_progress_without_airflow_internals(project, capfd):
         assert noise not in err
 
 
-def test_task_logs_are_written_where_the_ui_reads_them(project):
+@pytest.mark.parametrize(
+    ("debug", "parse_event"),
+    [
+        pytest.param(False, "Worker startup parse complete", id="supervised"),
+        pytest.param(True, "Local run startup parse complete", id="debug"),
+    ],
+)
+def test_task_logs_are_written_where_the_ui_reads_them(project, debug, parse_event):
     source = write_dag_file(
         project,
         "logged.py",
@@ -165,7 +174,7 @@ def test_task_logs_are_written_where_the_ui_reads_them(project):
         """,
     )
 
-    result = run_dag_file(source)
+    result = run_dag_file(source, debug=debug)
 
     log_file = (
         project
@@ -177,14 +186,14 @@ def test_task_logs_are_written_where_the_ui_reads_them(project):
         / "attempt=1.log"
     )
     events = [json.loads(line) for line in log_file.read_text().splitlines()]
-    # A deployed task's log: the worker's startup in Pre Execute, the task, then Post Execute. Locally the
-    # Dag file is parsed once per run, and that parse fills Pre Execute. Installed listener plugins may log
-    # lines of their own in between.
+    # A deployed task's log: the worker's startup in Pre Execute, the task, then Post Execute. A supervised
+    # try is a worker's task process; in debug mode the run's own parse of the Dag file fills Pre Execute.
+    # Installed listener plugins may log lines of their own in between.
     expected = [
         "::group::Pre Execute",
         "DAG bundles loaded: dags-folder",
         f"Filling up the DagBag from {source}",
-        "Local run startup parse complete",
+        parse_event,
         "::endgroup::",
         "hello local log",
         "Done. Returned value was: hi",
@@ -194,10 +203,11 @@ def test_task_logs_are_written_where_the_ui_reads_them(project):
     ]
     assert [e["event"] for e in events if e["event"] in expected] == expected
     by_event = {e["event"]: e for e in events}
-    assert by_event["Local run startup parse complete"]["dag_file"] == "logged.py"
-    assert isinstance(by_event["Local run startup parse complete"]["dag_file_parse_ms"], int)
+    assert by_event[parse_event]["bundle_name"] == "dags-folder"
+    assert by_event[parse_event]["dag_file"] == "logged.py"
+    assert isinstance(by_event[parse_event]["dag_file_parse_ms"], int)
     assert by_event["hello local log"]["logger"] == "task.stdout"
-    assert {(e["dag_id"], e["task_id"], e["run_id"]) for e in events} == {("logged", "hello", result.run_id)}
+    assert len({e["ti_id"] for e in events}) == 1
 
 
 def test_structural_edit_rerun_immediately_gets_a_new_dag_version(project):
@@ -289,6 +299,127 @@ def test_retried_attempt_is_reported_on_one_line(project, capfd):
     )
     for noise in ("Traceback", "Task failed with exception", "No tasks to run"):
         assert noise not in out + err
+
+
+@pytest.mark.parametrize(
+    ("debug", "expected_state"),
+    [
+        pytest.param(False, "failed", id="supervised"),
+        pytest.param(True, "success", id="debug"),
+    ],
+)
+def test_module_state_starts_fresh_for_each_supervised_try(project, debug, expected_state):
+    source = write_dag_file(
+        project,
+        "counter.py",
+        """
+        from datetime import timedelta
+        from airflow.sdk import dag, task
+
+        ATTEMPTS = 0
+
+        @task(retries=2, retry_delay=timedelta(0))
+        def counter():
+            global ATTEMPTS
+            ATTEMPTS += 1
+            if ATTEMPTS < 3:
+                raise ValueError(f"attempt {ATTEMPTS} in this process")
+            return ATTEMPTS
+
+        @dag(schedule=None)
+        def counting():
+            counter()
+
+        workflow = counting()
+        """,
+    )
+
+    try:
+        result = run_dag_file(source, debug=debug)
+    except DagExecutionError as e:
+        result = e.result
+
+    assert result.task_states == {("counter", -1): expected_state}
+    assert query(project, "SELECT COUNT(*) FROM task_instance") == [(3,)]
+
+
+def test_task_that_ends_its_process_fails_only_its_own_try(project, capfd):
+    source = write_dag_file(
+        project,
+        "exits.py",
+        """
+        import os
+        from airflow.sdk import dag, task
+
+        @task
+        def crash():
+            print("about to exit")
+            os._exit(3)
+
+        @task
+        def other():
+            return 1
+
+        @dag(schedule=None)
+        def exits():
+            crash()
+            other()
+
+        workflow = exits()
+        """,
+    )
+
+    with pytest.raises(DagExecutionError) as ctx:
+        run_dag_file(source)
+
+    assert ctx.value.result.task_states == {("crash", -1): "failed", ("other", -1): "success"}
+    assert ctx.value.result.output("other") == 1
+    out, err = capfd.readouterr()
+    assert "about to exit\n" in out
+    assert "  ✗ crash failed\nProcess exited abnormally (exit_code=3)\n" in err
+
+
+def test_deferred_task_resumes_after_its_trigger(project):
+    source = write_dag_file(
+        project,
+        "deferring.py",
+        """
+        from datetime import timedelta
+
+        from airflow.providers.standard.triggers.temporal import TimeDeltaTrigger
+        from airflow.sdk import BaseOperator, dag
+
+
+        class Waits(BaseOperator):
+            def execute(self, context):
+                self.defer(
+                    trigger=TimeDeltaTrigger(timedelta(0)), method_name="resume", kwargs={"note": "kept"}
+                )
+
+            def resume(self, context, event=None, note=None):
+                return [note, event is not None]
+
+
+        @dag(schedule=None)
+        def deferring():
+            Waits(task_id="waits")
+
+
+        workflow = deferring()
+        """,
+    )
+
+    result = run_dag_file(source)
+
+    assert result.output("waits") == ["kept", True]
+    log_file = (
+        project / ".airflow" / "logs" / "dag_id=deferring" / f"run_id={result.run_id}" / "task_id=waits"
+    )
+    events = [json.loads(line) for line in (log_file / "attempt=1.log").read_text().splitlines()]
+    loggers = [e.get("logger", "") for e in events]
+    # Both process starts, and the trigger between them, log to the one attempt.
+    assert [e["event"] for e in events].count("::group::Pre Execute") == 2
+    assert any(name.startswith("airflow.providers.standard.triggers") for name in loggers)
 
 
 def test_outputs_are_the_objects_tasks_returned(project, monkeypatch):
@@ -400,6 +531,35 @@ def test_import_failure_is_reported_once(project, capfd):
     assert "not_a_real_module" not in out + err
 
 
+def test_dag_file_below_the_project_root_imports_from_the_root(project):
+    (project / "sub").mkdir()
+    write_dag_file(project, "sub/helper.py", "VALUE = 'from helper'\n")
+    dag_file = """
+        from airflow.sdk import dag, task
+        import helper
+
+        @task
+        def show():
+            return helper.VALUE
+
+        @dag(schedule=None)
+        def helped():
+            show()
+
+        workflow = helped()
+        """
+    source = write_dag_file(project, "sub/pipeline.py", dag_file)
+
+    with pytest.raises(
+        LocalRunError,
+        match=r"'helper' is next to pipeline.py, .* import it as sub\.helper, .*python -m sub\.pipeline",
+    ):
+        run_dag_file(source)
+
+    write_dag_file(project, "sub/pipeline.py", dag_file.replace("import helper", "from sub import helper"))
+    assert run_dag_file(source).output("show") == "from helper"
+
+
 def test_dag_id_selection(project):
     path = write_dag_file(project, "two.py", TWO_DAGS)
 
@@ -436,19 +596,25 @@ def test_database_from_newer_airflow_is_refused(project):
         run_dag_file(source)
 
 
-def test_interrupted_child_records_a_failed_run(project, tmp_path):
+def start_sleepy_run(project: Path, tmp_path: Path, *, debug: bool) -> tuple[subprocess.Popen, Path, Path]:
+    """
+    Start a run of a slow task in its own process, as the launcher does, and wait until the task is running.
+
+    Returns the run's process, the file its result will be written to, and the file holding the task's pid.
+    """
     started = tmp_path / "started"
     source = write_dag_file(
         project,
         "sleepy.py",
         f"""
+        import os
         import time
         from pathlib import Path
         from airflow.sdk import dag, task
 
         @task
         def slow():
-            Path({str(started)!r}).touch()
+            Path({str(started)!r}).write_text(str(os.getpid()))
             time.sleep(120)
 
         @task(trigger_rule="all_done")
@@ -473,6 +639,7 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path):
                 "dag_id": None,
                 "run_conf": None,
                 "triggered_by": "test",
+                "debug": debug,
                 "result_path": str(result_path),
             }
         )
@@ -482,10 +649,16 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path):
         env=build_child_environment(os.environ, home=home, root=project),
     )
     deadline = time.monotonic() + 120
-    while not started.exists():
+    while not started.exists() or not started.read_text():
         assert child.poll() is None, "child exited before the task started"
         assert time.monotonic() < deadline, "task did not start"
         time.sleep(0.2)
+    return child, result_path, started
+
+
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_interrupted_child_records_a_failed_run(project, tmp_path, debug):
+    child, result_path, started = start_sleepy_run(project, tmp_path, debug=debug)
 
     child.send_signal(signal.SIGINT)
 
@@ -499,11 +672,98 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path):
         "slow": "failed",
         "after": "skipped",
     }
+    # A supervised try runs in a process group of its own, which the interrupt did not reach directly.
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(started.read_text()), 0)
 
 
+def test_run_whose_process_ended_early_is_recorded_failed_by_the_next_run(project, capfd):
+    source = write_dag_file(
+        project,
+        "exits.py",
+        """
+        import os
+        from airflow.sdk import dag, task
+
+        @task
+        def crash():
+            os._exit(3)
+
+        @task
+        def other():
+            return 1
+
+        @dag(schedule=None)
+        def exits():
+            crash() >> other()
+
+        workflow = exits()
+        """,
+    )
+    # In debug mode the task runs in the run's process, so ending it ends the run's process too.
+    with pytest.raises(LocalRunError, match="exited with code 3 without reporting a result"):
+        run_dag_file(source, debug=True)
+    ((stuck_run, stuck_state),) = query(project, "SELECT run_id, state FROM dag_run")
+    assert stuck_state == "running"
+
+    run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
+
+    assert query(project, "SELECT dag_id, state FROM dag_run ORDER BY run_after") == [
+        ("exits", "failed"),
+        ("example", "success"),
+    ]
+    assert dict(query(project, "SELECT task_id, state FROM task_instance WHERE dag_id = 'exits'")) == {
+        "crash": "failed",
+        "other": "skipped",
+    }
+    expected = f"Recorded run {stuck_run} of Dag 'exits' as failed: its process ended before the run finished"
+    assert expected in capfd.readouterr().err
+    assert not list((project / ".airflow" / "runs").iterdir())
+
+
+def test_run_is_recorded_failed_only_once_its_process_is_gone(project, tmp_path):
+    child, _, _ = start_sleepy_run(project, tmp_path, debug=True)
+    try:
+        pipeline = write_dag_file(project, "pipeline.py", PIPELINE)
+        run_dag_file(pipeline)
+        assert query(project, "SELECT state FROM dag_run WHERE dag_id = 'sleepy'") == [("running",)]
+
+        child.kill()
+        child.wait(timeout=60)
+        run_dag_file(pipeline)
+    finally:
+        child.kill()
+        child.wait()
+
+    assert query(project, "SELECT state FROM dag_run WHERE dag_id = 'sleepy'") == [("failed",)]
+
+
+@pytest.mark.parametrize(
+    ("exists", "held", "expected"),
+    [
+        pytest.param(False, False, False, id="missing"),
+        pytest.param(True, False, False, id="free"),
+        pytest.param(True, True, True, id="held"),
+    ],
+)
+def test_is_run_lock_held(tmp_path, exists, held, expected):
+    path = tmp_path / "1.lock"
+    if exists:
+        path.touch()
+    with open(path if exists else tmp_path / "other", "w") as holder:
+        if held:
+            fcntl.flock(holder, fcntl.LOCK_EX)
+
+        assert runner.is_run_lock_held(path) is expected
+
+
+@mock.patch.object(runner, "lock_run", autospec=True)
+@mock.patch.object(runner, "fail_abandoned_runs", autospec=True, return_value=[])
 @mock.patch.object(runner, "create_dag_run", autospec=True)
 @mock.patch.object(runner, "register_dags", autospec=True)
-def test_start_run_retries_in_a_new_transaction_when_the_database_is_locked(register, create, tmp_path):
+def test_start_run_retries_in_a_new_transaction_when_the_database_is_locked(
+    register, create, fail_abandoned, lock, tmp_path
+):
     session = mock.create_autospec(Session, instance=True)
     locked = OperationalError("INSERT INTO dag_run", {}, sqlite3.OperationalError("database is locked"))
     create.side_effect = [locked, (mock.sentinel.scheduler_dag, mock.sentinel.dag_run)]
@@ -522,6 +782,8 @@ def test_start_run_retries_in_a_new_transaction_when_the_database_is_locked(regi
 
     assert started == (mock.sentinel.scheduler_dag, mock.sentinel.dag_run)
     assert register.call_count == 2
+    assert fail_abandoned.call_count == 2
+    lock.assert_called_once_with(tmp_path, mock.sentinel.dag_run)
     session.rollback.assert_called_once_with()
 
 
@@ -641,25 +903,27 @@ def test_summarize_run(payload, expected):
             id="retry-now",
         ),
         pytest.param("failed", True, None, "  ✗ load cancelled", id="cancelled"),
+        pytest.param("up_for_retry", True, None, "  ✗ load cancelled", id="cancelled-with-retries-left"),
         pytest.param("skipped", False, None, "  · load skipped", id="other"),
     ],
 )
 def test_report_task(capsys, state, cancelled, retry_in, expected):
-    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=-1, state=state, try_number=1, max_tries=2)
+    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=-1, try_number=1, max_tries=2)
+    failure = TaskFailure(summary="ValueError: boom", details="Traceback ...")
 
-    runner.report_task(ti, ValueError("boom"), cancelled=cancelled, retry_in=retry_in)
+    runner.report_task(ti, state, failure, cancelled=cancelled, retry_in=retry_in)
 
     assert capsys.readouterr().err == f"{expected}\n"
 
 
 def test_report_task_shows_the_failure_that_ended_the_task(capsys):
-    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=3, state="failed")
+    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=3)
     try:
         raise ValueError("boom")
     except ValueError as e:
-        failure = e
+        failure = TaskFailure.from_exception(e)
 
-    runner.report_task(ti, failure, cancelled=False)
+    runner.report_task(ti, "failed", failure, cancelled=False)
 
     err = capsys.readouterr().err
     assert err.startswith("  ✗ load[3] failed\nTraceback (most recent call last):\n")

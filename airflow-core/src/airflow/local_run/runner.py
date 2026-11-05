@@ -31,16 +31,16 @@ import logging
 import math
 import os
 import pickle
+import re
 import signal
 import sys
 import threading
 import time
-import traceback
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 import structlog
 from alembic.util import CommandError
@@ -53,8 +53,16 @@ from airflow.api.common.mark_tasks import set_dag_run_state_to_failed
 from airflow.configuration import conf
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
-from airflow.local_run.logs import capture_task_log, configure_local_run_logging, record_startup_events
+from airflow.local_run.logs import (
+    TaskFailure,
+    capture_task_log,
+    configure_local_run_logging,
+    read_attempt_failure,
+    record_startup_events,
+)
+from airflow.local_run.supervised import SupervisedTries
 from airflow.models.dag import DagModel
+from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.xcom import XComModel
@@ -75,11 +83,19 @@ from airflow.utils.types import DagRunTriggeredByType, DagRunType
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from airflow.sdk.types import Operator
     from airflow.serialization.definitions.dag import SerializedDAG
 
 # The default bundle configuration maps this bundle to ``[core] dags_folder``, the project root.
 BUNDLE_NAME = "dags-folder"
 RUN_CREATION_ATTEMPTS = 5
+
+# How ``DAG.run()`` and ``airflow run`` start runs. Nothing else drives runs in a project's history, so a run
+# started any other way is left alone.
+LOCAL_RUN_TRIGGERS = (DagRunTriggeredByType.TEST, DagRunTriggeredByType.CLI)
+
+# The locks this process holds on the runs it executes; the operating system releases them however it ends.
+_run_locks: list[TextIO] = []
 
 
 class LocalRunSetupError(Exception):
@@ -119,6 +135,8 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
     source = Path(request["source"])
     root = Path(settings.DAGS_FOLDER)
     home = Path(os.environ["AIRFLOW_HOME"])
+    # Debug runs each task try in this process, so breakpoint() and debuggers work.
+    debug = bool(request.get("debug"))
     ensure_database(home)
     with record_startup_events():
         bundles = DagBundlesManager()
@@ -143,21 +161,34 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             triggered_by=triggered_by,
         )
         interrupted = threading.Event()
+        tries = SupervisedTries(session=session)
 
         def handle_interrupt(signum, frame):
             interrupted.set()
             # Further Ctrl-C presses would interrupt recording the cancellation.
             signal.signal(signal.SIGINT, signal.SIG_IGN)
-            raise KeyboardInterrupt
+            # A try in a process of its own is interrupted instead; once it ended, the run loop stops.
+            if not tries.stop():
+                raise KeyboardInterrupt
+
+        def report_attempt(ti: TaskInstance, state: str, failure: TaskFailure | None) -> None:
+            retry_in = (
+                get_retry_delay(ti, session=session) if state == TaskInstanceState.UP_FOR_RETRY else None
+            )
+            report_task(ti, state, failure, cancelled=interrupted.is_set(), retry_in=retry_in)
 
         @contextmanager
-        def run_task(ti: TaskInstance) -> Iterator[None]:
+        def run_task_in_process(ti: TaskInstance) -> Iterator[None]:
             with capture_task_log(get_task_log_path(ti, session=session)) as attempt:
                 yield
-            retry_in = (
-                get_retry_delay(ti, session=session) if ti.state == TaskInstanceState.UP_FOR_RETRY else None
-            )
-            report_task(ti, attempt.failure, cancelled=interrupted.is_set(), retry_in=retry_in)
+            failure = None if attempt.failure is None else TaskFailure.from_exception(attempt.failure)
+            report_attempt(ti, _state_name(ti.state), failure)
+
+        def run_supervised_try(ti: TaskInstance, task: Operator) -> None:
+            outcome, log_path = tries.run(ti, task)
+            state = _state_name(outcome)
+            failed = state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY)
+            report_attempt(ti, state, read_attempt_failure(log_path) if failed else None)
 
         signal.signal(signal.SIGINT, handle_interrupt)
         report(f"Running Dag {dag.dag_id!r} from {source.name} (run {dag_run.run_id})")
@@ -169,7 +200,8 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
                 dag_run,
                 session=session,
                 should_stop=interrupted.is_set,
-                task_context=run_task,
+                task_context=run_task_in_process if debug else None,
+                execute_try=None if debug else run_supervised_try,
             )
         except KeyboardInterrupt:
             session.rollback()
@@ -178,6 +210,10 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             )
             session.commit()
             cancelled = True
+        # The outcome is recorded, so no later run needs to tell whether this process still runs it. Under the
+        # project lock, a start checking for abandoned runs sees either the lock held or the outcome recorded.
+        with project_lock(home):
+            get_run_lock_path(home, dag_run.id).unlink(missing_ok=True)
         payload = collect_result(
             dag_run.dag_id, dag_run.run_id, source=source, cancelled=cancelled, session=session
         )
@@ -203,7 +239,8 @@ def start_run(
 
     Starts in one project take turns. A run that is already executing can still commit between this step's
     reads and its writes, which SQLite in WAL mode reports at once as a locked database instead of waiting;
-    only a new transaction gets past it.
+    only a new transaction gets past it. The new run's lock is taken before the project lock is released, so
+    a later start never mistakes this run for an abandoned one.
     """
     if TYPE_CHECKING:
         assert settings.Session is not None
@@ -211,14 +248,68 @@ def start_run(
     for attempt in run_with_db_retries():
         with attempt, project_lock(home):
             try:
+                abandoned = fail_abandoned_runs(home, session=session)
                 register_dags(bag, source, root, bundles, session=session)
                 session.commit()
-                created = create_dag_run(dag, run_conf, triggered_by, session=session)
+                scheduler_dag, dag_run = create_dag_run(dag, run_conf, triggered_by, session=session)
                 session.commit()
             except DBAPIError:
                 session.rollback()
                 raise
-    return created
+            lock_run(home, dag_run)
+    for abandoned_run in abandoned:
+        report(
+            f"Recorded run {abandoned_run.run_id} of Dag {abandoned_run.dag_id!r} as failed: its process "
+            "ended before the run finished"
+        )
+        get_run_lock_path(home, abandoned_run.id).unlink(missing_ok=True)
+    return scheduler_dag, dag_run
+
+
+def get_run_lock_path(home: Path, dag_run_id: int) -> Path:
+    return home / "runs" / f"{dag_run_id}.lock"
+
+
+def lock_run(home: Path, dag_run: DagRun) -> None:
+    """Hold ``dag_run``'s lock until this process ends, however it ends."""
+    path = get_run_lock_path(home, dag_run.id)
+    path.parent.mkdir(exist_ok=True)
+    lock_file = path.open("w")
+    fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    _run_locks.append(lock_file)
+
+
+def is_run_lock_held(path: Path) -> bool:
+    if not path.exists():
+        return False
+    with path.open("a") as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+    return False
+
+
+def fail_abandoned_runs(home: Path, *, session: Session) -> list[DagRun]:
+    """
+    Record as failed, and return, each local run that is still running but whose process has ended.
+
+    A run's process holds the run's lock until it ends. It can end before recording the run's outcome when it
+    is killed, or in debug mode when a task ends it, e.g. with ``os._exit``. Call under the project lock.
+    """
+    running = session.scalars(
+        select(DagRun).where(DagRun.state == DagRunState.RUNNING, DagRun.triggered_by.in_(LOCAL_RUN_TRIGGERS))
+    )
+    abandoned = [dag_run for dag_run in running if not is_run_lock_held(get_run_lock_path(home, dag_run.id))]
+    dag_bag = DBDagBag()
+    for dag_run in abandoned:
+        if (scheduler_dag := dag_bag.get_dag_for_run(dag_run, session=session)) is not None:
+            set_dag_run_state_to_failed(
+                dag=scheduler_dag, run_id=dag_run.run_id, commit=True, session=session
+            )
+        else:
+            dag_run.set_state(DagRunState.FAILED)
+    return abandoned
 
 
 def get_task_log_path(ti: TaskInstance, *, session: Session) -> Path:
@@ -247,23 +338,27 @@ def report(message: str) -> None:
 
 
 def report_task(
-    ti: TaskInstance, failure: BaseException | None, *, cancelled: bool, retry_in: timedelta | None = None
+    ti: TaskInstance,
+    state: str,
+    failure: TaskFailure | None,
+    *,
+    cancelled: bool,
+    retry_in: timedelta | None = None,
 ) -> None:
-    """Report a finished attempt; ``failure`` is the exception it failed with, held back from the terminal."""
+    """Report a finished attempt in ``state``; ``failure`` is why it failed, held back from the terminal."""
     label = _task_label(ti.task_id, ti.map_index)
-    state = _state_name(ti.state)
     if state == "success":
         report(f"  ✓ {label}")
+    elif cancelled and state in ("failed", "up_for_retry"):
+        report(f"  ✗ {label} cancelled")
     elif state == "up_for_retry":
         when = f" in {_describe_delay(retry_in)}" if retry_in else ""
-        reason = f": {_describe(failure)}" if failure is not None else ""
+        reason = f": {failure.summary}" if failure is not None else ""
         report(f"  ↻ {label} failed attempt {ti.try_number} of {ti.max_tries + 1}, retrying{when}{reason}")
-    elif state == "failed" and cancelled:
-        report(f"  ✗ {label} cancelled")
     elif state == "failed":
         report(f"  ✗ {label} failed")
         if failure is not None:
-            traceback.print_exception(failure, file=sys.stderr)
+            report(failure.details)
     else:
         report(f"  · {label} {state}")
 
@@ -314,17 +409,19 @@ def ensure_database(home: Path) -> None:
 
 
 def import_dag_file(source: Path, root: Path) -> BundleDagBag:
-    """Import ``source`` the way Airflow discovers Dags; its ``__main__`` block does not run."""
-    # Modules next to the file import as they do under ``python file.py``. Appended after Airflow is
-    # imported, so a user module named like a standard-library one cannot shadow Airflow's own imports.
-    if str(source.parent) not in sys.path:
-        sys.path.append(str(source.parent))
+    """
+    Import ``source`` the way Airflow discovers Dags; its ``__main__`` block does not run.
+
+    Imports in the file resolve from the project root, as they do in each task's process and when deployed,
+    not from the file's own directory as under ``python file.py``.
+    """
     started = time.monotonic()
     bag = BundleDagBag(dag_folder=source, bundle_path=root, bundle_name=BUNDLE_NAME, collect_dags=False)
     bag.collect_dags(dag_folder=source, only_if_updated=False, safe_mode=False)
     if bag.import_errors:
         details = "\n".join(error.rstrip() for error in bag.import_errors.values())
-        raise LocalRunSetupError(f"Importing {source} failed:\n{details}")
+        hint = suggest_project_root_import(details, source, root)
+        raise LocalRunSetupError(f"Importing {source} failed:\n{details}" + (f"\n{hint}" if hint else ""))
     structlog.get_logger(logger_name="task").info(
         "Local run startup parse complete",
         bundle_name=BUNDLE_NAME,
@@ -334,6 +431,22 @@ def import_dag_file(source: Path, root: Path) -> BundleDagBag:
         parsed_at=timezone.utcnow().isoformat(),
     )
     return bag
+
+
+def suggest_project_root_import(import_error: str, source: Path, root: Path) -> str | None:
+    """Name the import that works for a missing module that is next to a Dag file below the project root."""
+    if source.parent == root or not (match := re.search(r"No module named '([^'.]+)", import_error)):
+        return None
+    name = match.group(1)
+    if not ((source.parent / f"{name}.py").is_file() or (source.parent / name).is_dir()):
+        return None
+    package = ".".join(source.parent.relative_to(root).parts)
+    # ``python sub/pipeline.py`` puts sub/, not the project root, on the path of the caller's own process.
+    return (
+        f"{name!r} is next to {source.name}, but Dag files import from the project root, as when deployed: "
+        f"import it as {package}.{name}, and run the file as `python -m {package}.{source.stem}` from the "
+        f"project root, or with `airflow run`."
+    )
 
 
 def select_dag(bag: BundleDagBag, dag_id: str | None, source: Path) -> DAG:
@@ -494,10 +607,6 @@ def _state_name(state: Any) -> str:
 
 def _task_label(task_id: str, map_index: int) -> str:
     return task_id if map_index < 0 else f"{task_id}[{map_index}]"
-
-
-def _describe(error: BaseException) -> str:
-    return "".join(traceback.format_exception_only(error)).strip()
 
 
 def _describe_delay(delay: timedelta) -> str:

@@ -399,7 +399,7 @@ class TestRunDagFile:
 
         mock_popen.side_effect = fake_child
 
-        result = run_dag_file(source, dag_id="example", run_conf={"n": 1}, triggered_by="cli")
+        result = run_dag_file(source, dag_id="example", run_conf={"n": 1}, triggered_by="cli", debug=True)
 
         assert result.output("numbers") == [1, 2]
         assert result.project_home == tmp_path / ".airflow"
@@ -411,6 +411,7 @@ class TestRunDagFile:
             "dag_id": "example",
             "run_conf": {"n": 1},
             "triggered_by": "cli",
+            "debug": True,
             "result_path": seen["request"]["result_path"],
         }
         assert not Path(seen["request"]["result_path"]).parent.exists()
