@@ -20,12 +20,15 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections import deque
 from importlib import reload
 from unittest import mock
 
 import pytest
 
+from airflow.cli import cli_parser
+from airflow.cli.commands import standalone_command
 from airflow.cli.commands.standalone_command import StandaloneCommand, SubCommand
 from airflow.configuration import conf
 from airflow.executors import executor_loader
@@ -404,3 +407,101 @@ class TestStandaloneCommand:
         env = cmd.calculate_env()
 
         assert "AIRFLOW__CORE__EXECUTOR" not in env
+
+
+class TestStandaloneEntrypoint:
+    @classmethod
+    def setup_class(cls):
+        cls.parser = cli_parser.get_parser()
+
+    @mock.patch.object(StandaloneCommand, "run", autospec=True)
+    @mock.patch.object(standalone_command, "serve_project_history", autospec=True)
+    def test_without_project_runs_every_component(self, mock_serve_project_history, mock_run):
+        args = self.parser.parse_args(["standalone"])
+
+        args.func(args)
+
+        mock_run.assert_called_once()
+        mock_serve_project_history.assert_not_called()
+
+    @mock.patch.object(StandaloneCommand, "run", autospec=True)
+    def test_port_without_project_is_refused(self, mock_run):
+        args = self.parser.parse_args(["standalone", "--port", "8091"])
+
+        with pytest.raises(SystemExit, match="--port needs --project"):
+            args.func(args)
+
+        mock_run.assert_not_called()
+
+
+class TestStandaloneProject:
+    @classmethod
+    def setup_class(cls):
+        cls.parser = cli_parser.get_parser()
+
+    @pytest.mark.parametrize(
+        ("has_pyproject", "cwd"),
+        [
+            pytest.param(True, "pipelines", id="pyproject-above"),
+            pytest.param(False, ".", id="history-without-pyproject"),
+        ],
+    )
+    @mock.patch.object(standalone_command.os, "execve", autospec=True)
+    def test_starts_the_server_for_the_project_around_the_current_directory(
+        self, mock_execve, tmp_path, monkeypatch, has_pyproject, cwd
+    ):
+        if has_pyproject:
+            (tmp_path / "pyproject.toml").touch()
+        else:
+            (tmp_path / ".airflow").mkdir()
+        (tmp_path / cwd).mkdir(exist_ok=True)
+        monkeypatch.chdir(tmp_path / cwd)
+        args = self.parser.parse_args(["standalone", "--project"])
+
+        args.func(args)
+
+        mock_execve.assert_called_once_with(
+            sys.executable, [sys.executable, "-m", "airflow.local_run.ui_server"], mock.ANY
+        )
+        env = mock_execve.call_args.args[2]
+        assert env["AIRFLOW_HOME"] == str(tmp_path / ".airflow")
+        assert env["AIRFLOW__CORE__DAGS_FOLDER"] == str(tmp_path)
+        assert env.items() >= standalone_command.PROJECT_SERVER_ENVIRONMENT.items()
+
+    @mock.patch.object(standalone_command.os, "execve", autospec=True)
+    def test_port_is_passed_to_the_server(self, mock_execve, tmp_path, monkeypatch):
+        (tmp_path / "pyproject.toml").touch()
+        monkeypatch.chdir(tmp_path)
+        args = self.parser.parse_args(["standalone", "--project", "--port", "8091"])
+
+        args.func(args)
+
+        assert mock_execve.call_args.args[1] == [sys.executable, "-m", "airflow.local_run.ui_server", "8091"]
+
+    @mock.patch.object(standalone_command.os, "execve", autospec=True)
+    @mock.patch.object(standalone_command, "read_live_ui_url", autospec=True)
+    def test_running_ui_is_reused(self, mock_read_live_ui_url, mock_execve, tmp_path, monkeypatch, capsys):
+        (tmp_path / "pyproject.toml").touch()
+        monkeypatch.chdir(tmp_path)
+        mock_read_live_ui_url.return_value = "http://127.0.0.1:8080/"
+        args = self.parser.parse_args(["standalone", "--project"])
+
+        args.func(args)
+
+        mock_execve.assert_not_called()
+        assert (
+            capsys.readouterr().out == f"The UI for {tmp_path} is already running: http://127.0.0.1:8080/\n"
+        )
+
+    @mock.patch.object(standalone_command.os, "execve", autospec=True)
+    def test_folder_outside_a_project_is_refused(self, mock_execve, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        args = self.parser.parse_args(["standalone", "--project"])
+
+        with pytest.raises(
+            SystemExit, match=f"No project in {tmp_path}: run airflow standalone --project in"
+        ):
+            args.func(args)
+
+        mock_execve.assert_not_called()
+        assert not (tmp_path / ".airflow").exists()

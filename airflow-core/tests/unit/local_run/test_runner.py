@@ -943,6 +943,15 @@ def test_summarize_run(payload, expected):
     assert runner.summarize_run(payload, 1.49, Path("/p/.airflow")) == f"{expected}. History: /p/.airflow"
 
 
+def test_summarize_run_links_to_the_run_while_the_ui_runs():
+    payload = {"cancelled": False, "state": "success", "task_states": {}}
+    run_url = "http://127.0.0.1:8080/dags/example/runs/manual__1"
+
+    summary = runner.summarize_run(payload, 1.49, Path("/p/.airflow"), run_url=run_url)
+
+    assert summary == f"Succeeded in 1.5s. View it at {run_url}"
+
+
 @pytest.mark.parametrize(
     ("state", "cancelled", "retry_in", "expected"),
     [

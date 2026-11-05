@@ -21,9 +21,11 @@ import logging
 import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from termcolor import colored
@@ -36,6 +38,13 @@ from airflow.jobs.dag_processor_job_runner import DagProcessorJobRunner
 from airflow.jobs.job import most_recent_job
 from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
+from airflow.local_run.ui import read_live_ui_url
+from airflow.sdk.definitions.local_run import (
+    PROJECT_HOME_NAME,
+    build_child_environment,
+    find_project_root,
+    prepare_project_home,
+)
 from airflow.utils import db
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
 
@@ -46,6 +55,23 @@ FORCE_COLOR = bool(os.environ.get("FORCE_COLOR", ""))
 NO_COLOR = bool(os.environ.get("NO_COLOR", ""))
 
 REFRESH_INTERVAL_ENV_VAR = "AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL"
+
+PROJECT_SERVER_MODULE = "airflow.local_run.ui_server"
+
+PROJECT_SERVER_ENVIRONMENT = {
+    "_AIRFLOW_PROCESS_CONTEXT": "server",
+    "AIRFLOW__CORE__AUTH_MANAGER": (
+        "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+    ),
+    # The server makes every request a viewer's itself; with no users nobody can log in as anyone else, and
+    # the auth manager generates and prints no password.
+    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS": "False",
+    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS": "",
+    # The address the server binds; the default 0.0.0.0 makes the auth manager warn of a production setup.
+    "AIRFLOW__API__HOST": "127.0.0.1",
+    # Otherwise a line per request and per migration step buries the address on the terminal.
+    "AIRFLOW__LOGGING__LOGGING_LEVEL": "WARNING",
+}
 
 
 class StandaloneCommand:
@@ -58,7 +84,12 @@ class StandaloneCommand:
     @classmethod
     def entrypoint(cls, args):
         """CLI entrypoint, called by the main CLI system."""
-        StandaloneCommand().run()
+        if args.project:
+            serve_project_history(args.port)
+        elif args.port is not None:
+            raise SystemExit("--port needs --project; standalone without it serves on [api] port.")
+        else:
+            StandaloneCommand().run()
 
     def __init__(self):
         self.subcommands = {}
@@ -343,6 +374,29 @@ class SubCommand(threading.Thread):
         """Call to stop this process (and thus this thread)."""
         if self.process is not None:
             self.process.terminate()
+
+
+def serve_project_history(port: int | None) -> None:
+    """
+    Replace this process with the UI server, configured for the project's history as a run's process is.
+
+    Not wrapped in ``action_cli``: that would log the command to the ambient database, not the project's.
+    """
+    # The project a run of a file in this directory would keep its history in.
+    root = find_project_root(Path.cwd() / PROJECT_HOME_NAME)
+    if not (root / "pyproject.toml").is_file() and not (root / PROJECT_HOME_NAME).is_dir():
+        raise SystemExit(
+            f"No project in {root}: run airflow standalone --project in a folder with a pyproject.toml, or "
+            "one where Dags were run before."
+        )
+    home = prepare_project_home(root)
+    if (url := read_live_ui_url(home)) is not None:
+        print(f"The UI for {root} is already running: {url}")
+        return
+    env = build_child_environment(os.environ, home=home, root=root)
+    env.update(PROJECT_SERVER_ENVIRONMENT)
+    port_args = [str(port)] if port else []
+    os.execve(sys.executable, [sys.executable, "-m", PROJECT_SERVER_MODULE, *port_args], env)
 
 
 # Alias for use in the CLI parser

@@ -19,14 +19,30 @@ from __future__ import annotations
 import sys
 from unittest import mock
 
+import pytest
+
 from airflow.__main__ import main
 
+STANDALONE = "airflow.cli.commands.standalone_command.standalone"
 
+
+@pytest.mark.parametrize(
+    ("argv", "command", "writes_default_config"),
+    [
+        pytest.param(["run", "pipeline.py"], "airflow.cli.commands.run_command.run", False, id="run"),
+        pytest.param(["standalone", "--project"], STANDALONE, False, id="standalone-project"),
+        pytest.param(["standalone"], STANDALONE, True, id="standalone"),
+    ],
+)
 @mock.patch("airflow.configuration.write_default_airflow_configuration_if_needed", autospec=True)
-@mock.patch("airflow.cli.commands.run_command.run", autospec=True)
-def test_run_command_does_not_write_default_config(mock_run, mock_write_default_config):
-    with mock.patch.object(sys, "argv", ["airflow", "run", "pipeline.py"]):
+def test_default_config_is_written_only_for_commands_using_airflow_home(
+    mock_write_default_config, argv, command, writes_default_config
+):
+    with (
+        mock.patch(command, autospec=True) as mock_command,
+        mock.patch.object(sys, "argv", ["airflow", *argv]),
+    ):
         main()
 
-    mock_run.assert_called_once()
-    mock_write_default_config.assert_not_called()
+    mock_command.assert_called_once()
+    assert mock_write_default_config.called is writes_default_config

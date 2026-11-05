@@ -1,6 +1,7 @@
 airflow-core/src/airflow/__init__.py::1
 airflow-core/src/airflow/api_fastapi/execution_api/versions/v2026_04_06.py::1
 airflow-core/src/airflow/cli/commands/run_command.py::2
+airflow-core/src/airflow/cli/commands/standalone_command.py::1
 airflow-core/src/airflow/cli/commands/task_command.py::7
 airflow-core/src/airflow/cli/commands/triggerer_command.py::1
 airflow-core/src/airflow/configuration.py::1
