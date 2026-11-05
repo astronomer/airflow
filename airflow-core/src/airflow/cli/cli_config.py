@@ -525,6 +525,14 @@ ARG_RUN_CONNECTIONS_FILE = Arg(
 ARG_RUN_VARIABLES_FILE = Arg(
     ("--variables-file",), help="Variables file (JSON, YAML or env) available to the run"
 )
+ARG_RUN_DEBUG = Arg(
+    ("--debug",),
+    help=(
+        "Run every task try inside the run's process instead of a process of its own, so breakpoint() "
+        "and debuggers work"
+    ),
+    action="store_true",
+)
 ARG_REPLACE_MICRO = Arg(
     ("--no-replace-microseconds",),
     help="whether microseconds should be zeroed",
@@ -2433,7 +2441,14 @@ core_commands: list[CLICommand] = [
             "API server or database setup is needed."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
-        args=(ARG_RUN_FILE, ARG_DAG_ID_OPT, ARG_CONF, ARG_RUN_CONNECTIONS_FILE, ARG_RUN_VARIABLES_FILE),
+        args=(
+            ARG_RUN_FILE,
+            ARG_DAG_ID_OPT,
+            ARG_CONF,
+            ARG_RUN_CONNECTIONS_FILE,
+            ARG_RUN_VARIABLES_FILE,
+            ARG_RUN_DEBUG,
+        ),
     ),
     GroupCommand(
         name="db-manager",

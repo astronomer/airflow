@@ -20,13 +20,22 @@ import io
 import json
 import logging
 import sys
+import traceback
 
 import pytest
 import structlog
 
 from airflow._shared.logging.structlog import LoggerFactory, NamedWriteLogger, logger_name
 from airflow.local_run import logs
-from airflow.local_run.logs import capture_task_log, configure_local_run_logging, record_startup_events
+from airflow.local_run.logs import (
+    TASK_FAILED_EVENT,
+    TaskFailure,
+    capture_task_log,
+    configure_local_run_logging,
+    read_attempt_failure,
+    record_startup_events,
+)
+from airflow.sdk.execution_time.supervisor import forward_to_log, process_log_messages_from_subprocess
 
 
 @pytest.fixture
@@ -77,12 +86,52 @@ def test_terminal_hides_airflow_progress_but_not_task_output(console, capsys):
     logging.getLogger("alembic.runtime.migration").info("migration progress")
     logging.getLogger("alembic.runtime.migration").error("migration error")
     logging.getLogger("my.module").info("user record")
+    structlog.get_logger("supervisor").info("supervisor progress")
+    structlog.get_logger("supervisor").warning("supervisor warning")
 
     shown = capsys.readouterr().out + console.getvalue()
-    for line in ("internal warning", "hook output", "user log", "migration error", "user record"):
+    for line in (
+        "internal warning",
+        "hook output",
+        "user log",
+        "migration error",
+        "user record",
+        "supervisor warning",
+    ):
         assert line in shown
-    for line in ("internal progress", "migration progress"):
+    for line in ("internal progress", "migration progress", "supervisor progress"):
         assert line not in shown
+
+
+def send_lines(reader, *lines: bytes) -> None:
+    next(reader)
+    for line in lines:
+        reader.send(line)
+
+
+def test_supervised_task_output_is_shown_as_printed(console, capsys):
+    configure_local_run_logging()
+    supervisor_log = structlog.get_logger("supervisor")
+
+    send_lines(forward_to_log((supervisor_log,), "task.stdout", logging.INFO), b"hello from the task\n")
+    send_lines(forward_to_log((supervisor_log,), "task.stderr", logging.ERROR), b"to stderr\n")
+
+    captured = capsys.readouterr()
+    assert captured.out == "hello from the task\n"
+    assert captured.err == "to stderr\n"
+    assert console.getvalue() == ""
+
+
+def test_supervised_task_failure_is_left_to_the_runner(console, capsys):
+    configure_local_run_logging()
+    failure = {"event": TASK_FAILED_EVENT, "level": "error", "logger": "task", "exception": [{}]}
+
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps(failure).encode(),
+    )
+
+    assert capsys.readouterr().out + console.getvalue() == ""
 
 
 def test_task_log_gets_what_a_deployed_task_log_has(console, tmp_path):
@@ -213,3 +262,77 @@ def test_startup_lines_are_only_written_inside_pre_execute(console, tmp_path):
         print("no startup section in this log")
 
     assert [event for event, _, _ in read_events(path)] == ["no startup section in this log"]
+
+
+def raise_chained(chain: str) -> None:
+    try:
+        raise KeyError("inner")
+    except KeyError as e:
+        if chain == "cause":
+            raise ValueError("outer") from e
+        raise ValueError("outer")
+
+
+@pytest.mark.parametrize("chain", ["cause", "context"])
+def test_attempt_failure_reads_the_traceback_the_supervisor_logged(console, tmp_path, chain):
+    configure_local_run_logging()
+    path = tmp_path / "attempt=1.log"
+    with capture_task_log(path):
+        try:
+            raise_chained(chain)
+        except ValueError as e:
+            error = e
+            structlog.get_logger("task").exception(TASK_FAILED_EVENT)
+
+    failure = read_attempt_failure(path)
+
+    assert failure is not None
+    assert failure.summary == "ValueError: outer"
+    # Code lines and caret markers are indented; the rest is what Python prints for the same exception.
+    expected = "".join(traceback.format_exception(error)).rstrip()
+    assert [line for line in failure.details.splitlines() if not line.startswith("  ")] == [
+        line for line in expected.splitlines() if not line.startswith("  ")
+    ]
+    assert f'  File "{__file__}", line ' in failure.details
+
+
+@pytest.mark.parametrize(
+    ("event", "summary"),
+    [
+        pytest.param(
+            {"event": "Process exited abnormally", "exit_code": 3},
+            "Process exited abnormally (exit_code=3)",
+            id="exit-code",
+        ),
+        pytest.param(
+            {"event": "Process terminated by signal.", "signal": -9, "signal_name": "SIGKILL"},
+            "Process terminated by signal. (signal_name=SIGKILL)",
+            id="signal",
+        ),
+    ],
+)
+def test_attempt_failure_reads_why_the_process_ended(tmp_path, event, summary):
+    path = tmp_path / "attempt=1.log"
+    path.write_text(
+        "\n".join(json.dumps(e) for e in [{"event": "about to exit", "level": "info"}, event]) + "\n"
+    )
+
+    assert read_attempt_failure(path) == TaskFailure(summary=summary, details=summary)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(None, id="no-log"),
+        pytest.param(
+            json.dumps({"event": "Done. Returned value was: 1", "level": "info"}) + "\nnot json\n",
+            id="no-failure",
+        ),
+    ],
+)
+def test_attempt_failure_is_none_without_one(tmp_path, content):
+    path = tmp_path / "attempt=1.log"
+    if content is not None:
+        path.write_text(content)
+
+    assert read_attempt_failure(path) is None

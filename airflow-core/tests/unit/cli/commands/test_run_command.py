@@ -43,8 +43,9 @@ class TestRunCommand:
     def setup_class(cls):
         cls.parser = cli_parser.get_parser()
 
+    @pytest.mark.parametrize(("extra_args", "debug"), [([], False), (["--debug"], True)])
     @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_passes_arguments_to_launcher(self, mock_run_dag_file, capsys):
+    def test_passes_arguments_to_launcher(self, mock_run_dag_file, capsys, extra_args, debug):
         mock_run_dag_file.return_value = make_result()
         args = self.parser.parse_args(
             [
@@ -58,6 +59,7 @@ class TestRunCommand:
                 "conns.yaml",
                 "--variables-file",
                 "vars.json",
+                *extra_args,
             ]
         )
 
@@ -70,6 +72,7 @@ class TestRunCommand:
             connections_file="conns.yaml",
             variables_file="vars.json",
             triggered_by="cli",
+            debug=debug,
         )
         assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
 

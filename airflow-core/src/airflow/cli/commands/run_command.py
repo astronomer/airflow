@@ -50,6 +50,7 @@ def run(args) -> None:
             connections_file=args.connections_file,
             variables_file=args.variables_file,
             triggered_by="cli",
+            debug=args.debug,
         )
     except DagExecutionError as e:
         print_outputs(e.result)

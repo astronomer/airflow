@@ -1436,6 +1436,7 @@ class DAG:
         run_conf: dict[str, Any] | None = None,
         conn_file_path: str | os.PathLike[str] | None = None,
         variable_file_path: str | os.PathLike[str] | None = None,
+        debug: bool = False,
     ) -> DagRunResult:
         """
         Run this Dag once in its project's local Airflow environment and return the detached result.
@@ -1443,11 +1444,14 @@ class DAG:
         The run happens in a separate Python process that imports this Dag's file the way Airflow
         discovers Dags, so the Dag must be defined at module level, and the call belongs under
         ``if __name__ == "__main__":``. History is kept in ``.airflow/`` next to the project's
-        ``pyproject.toml`` (or next to the file when there is none).
+        ``pyproject.toml`` (or next to the file when there is none). Each task try runs in a process
+        of its own, as on a worker.
 
         :param run_conf: configuration for the Dag run
         :param conn_file_path: connections file (JSON, YAML or env) available to the run
         :param variable_file_path: variables file (JSON, YAML or env) available to the run
+        :param debug: run every task try inside the run's process instead, so ``breakpoint()`` and
+            debuggers work. Module state then carries over from one try to the next.
         :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
         :raises LocalRunError: the run could not start, e.g. the file failed to import.
         """
@@ -1466,6 +1470,7 @@ class DAG:
             run_conf=run_conf,
             connections_file=conn_file_path,
             variables_file=variable_file_path,
+            debug=debug,
         )
 
 
@@ -1478,6 +1483,7 @@ def _run_dag_run_to_completion(
     mark_success_pattern: Pattern | str | None = None,
     should_stop: Callable[[], bool] | None = None,
     task_context: Callable[[SchedulerTaskInstance], AbstractContextManager[object]] | None = None,
+    execute_try: Callable[[SchedulerTaskInstance, Operator], object] | None = None,
 ) -> None:
     """
     Drive a created Dag run until it finishes, running its tasks from the in-memory ``dag``.
@@ -1487,6 +1493,9 @@ def _run_dag_run_to_completion(
         failure, so without this the remaining tasks would still run after Ctrl-C.
     :param task_context: entered around each task that runs in-process (not with ``use_executor``),
         e.g. to capture its log or report progress once it finished.
+    :param execute_try: runs one try of a scheduled task instance in place of ``_run_task``, which
+        runs it in this process; e.g. to run each try in a process of its own. Not used with
+        ``use_executor``.
     """
     import re
     import time
@@ -1583,6 +1592,8 @@ def _run_dag_run_to_completion(
                         if mark_success:
                             ti.set_state(TaskInstanceState.SUCCESS)
                             log.info("[DAG TEST] Marking success for %s on %s", task, ti.logical_date)
+                        elif execute_try is not None:
+                            execute_try(ti, task)
                         else:
                             _run_task(ti=ti, task=task, run_triggerer=True)
                     except Exception:
