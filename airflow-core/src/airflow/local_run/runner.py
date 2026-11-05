@@ -68,7 +68,7 @@ from airflow.models.taskinstance import TaskInstance
 from airflow.models.xcom import XComModel
 from airflow.sdk import DAG
 from airflow.sdk.definitions.dag import _run_dag_run_to_completion
-from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module
+from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module, refuse_breakpoint
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import allow_class
 from airflow.serialization.encoders import coerce_to_core_timetable
@@ -137,6 +137,11 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
     home = Path(os.environ["AIRFLOW_HOME"])
     # Debug runs each task try in this process, so breakpoint() and debuggers work.
     debug = bool(request.get("debug"))
+    if not debug:
+        # Each try's process inherits the hook, which explains the debug mode instead of failing to read input.
+        os.environ.setdefault(
+            "PYTHONBREAKPOINT", f"{refuse_breakpoint.__module__}.{refuse_breakpoint.__qualname__}"
+        )
     ensure_database(home)
     with record_startup_events():
         bundles = DagBundlesManager()
@@ -171,24 +176,30 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             if not tries.stop():
                 raise KeyboardInterrupt
 
-        def report_attempt(ti: TaskInstance, state: str, failure: TaskFailure | None) -> None:
+        # Why each task that failed for good failed, for the caller.
+        failures: dict[tuple[str, int], str] = {}
+
+        def report_attempt(ti: TaskInstance, state: str, log_path: Path) -> None:
+            failure = None
+            if state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY):
+                failure = read_attempt_failure(log_path)
             retry_in = (
                 get_retry_delay(ti, session=session) if state == TaskInstanceState.UP_FOR_RETRY else None
             )
             report_task(ti, state, failure, cancelled=interrupted.is_set(), retry_in=retry_in)
+            if state == TaskInstanceState.FAILED and failure is not None:
+                failures[ti.task_id, ti.map_index] = failure.summary
 
         @contextmanager
         def run_task_in_process(ti: TaskInstance) -> Iterator[None]:
-            with capture_task_log(get_task_log_path(ti, session=session)) as attempt:
+            log_path = get_task_log_path(ti, session=session)
+            with capture_task_log(log_path):
                 yield
-            failure = None if attempt.failure is None else TaskFailure.from_exception(attempt.failure)
-            report_attempt(ti, _state_name(ti.state), failure)
+            report_attempt(ti, _state_name(ti.state), log_path)
 
         def run_supervised_try(ti: TaskInstance, task: Operator) -> None:
             outcome, log_path = tries.run(ti, task)
-            state = _state_name(outcome)
-            failed = state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY)
-            report_attempt(ti, state, read_attempt_failure(log_path) if failed else None)
+            report_attempt(ti, _state_name(outcome), log_path)
 
         signal.signal(signal.SIGINT, handle_interrupt)
         report(f"Running Dag {dag.dag_id!r} from {source.name} (run {dag_run.run_id})")
@@ -215,7 +226,12 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
         with project_lock(home):
             get_run_lock_path(home, dag_run.id).unlink(missing_ok=True)
         payload = collect_result(
-            dag_run.dag_id, dag_run.run_id, source=source, cancelled=cancelled, session=session
+            dag_run.dag_id,
+            dag_run.run_id,
+            source=source,
+            failures=failures,
+            cancelled=cancelled,
+            session=session,
         )
         report(summarize_run(payload, time.monotonic() - started, home))
         return payload
@@ -530,7 +546,13 @@ def create_dag_run(
 
 
 def collect_result(
-    dag_id: str, run_id: str, *, source: Path, cancelled: bool, session: Session
+    dag_id: str,
+    run_id: str,
+    *,
+    source: Path,
+    failures: dict[tuple[str, int], str],
+    cancelled: bool,
+    session: Session,
 ) -> dict[str, Any]:
     """
     Read the run's outcome; each output is pickled on its own, so one the caller cannot load spares the rest.
@@ -563,6 +585,7 @@ def collect_result(
         "outputs": outputs,
         "output_errors": output_errors,
         "dag_module": dag_module,
+        "failures": failures,
         "cancelled": cancelled,
     }
 

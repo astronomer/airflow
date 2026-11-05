@@ -50,7 +50,11 @@ from airflow.sdk.definitions._internal.types import NOTSET, ArgNotSet, is_arg_se
 from airflow.sdk.definitions.asset import AssetAll, BaseAsset
 from airflow.sdk.definitions.context import Context
 from airflow.sdk.definitions.deadline import DeadlineAlert
-from airflow.sdk.definitions.local_run import is_unguarded_module_level_call, run_dag_file
+from airflow.sdk.definitions.local_run import (
+    is_dropped_call_under_main_guard,
+    is_unguarded_module_level_call,
+    run_dag_file,
+)
 from airflow.sdk.definitions.param import DagParam, ParamsDict
 from airflow.sdk.definitions.timetables.assets import AssetTriggeredTimetable
 from airflow.sdk.definitions.timetables.simple import ContinuousTimetable, NullTimetable, OnceTimetable
@@ -1812,6 +1816,12 @@ def dag(dag_id_or_func=None, __DAG_class=DAG, __warnings_stacklevel_delta=2, **d
 
         @functools.wraps(f)
         def factory(*args, **kwargs):
+            back = sys._getframe().f_back
+            if back is not None and is_dropped_call_under_main_guard(back):
+                raise RuntimeError(
+                    f"{f.__name__}() builds the Dag but does not run it. Call .run() on it: "
+                    f"{f.__name__}().run()."
+                )
             # Generate signature for decorated function and bind the arguments when called
             # we do this to extract parameters, so we can annotate them on the DAG object.
             # In addition, this fails if we are missing any args/kwargs with TypeError as expected.
@@ -1832,7 +1842,6 @@ def dag(dag_id_or_func=None, __DAG_class=DAG, __warnings_stacklevel_delta=2, **d
                     f_kwargs[name] = dag_obj.param(name, value)
 
                 # set file location to caller source path
-                back = sys._getframe().f_back
                 dag_obj.fileloc = back.f_code.co_filename if back else ""
 
                 # Invoke function to create operators in the Dag scope.

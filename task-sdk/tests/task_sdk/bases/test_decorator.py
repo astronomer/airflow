@@ -19,13 +19,15 @@ from __future__ import annotations
 import ast
 import functools
 import importlib.util
+import re
 import textwrap
 from pathlib import Path
 
 import pytest
 
-from airflow.sdk import task
+from airflow.sdk import DAG, task
 from airflow.sdk.bases.decorator import KNOWN_CONTEXT_KEYS, DecoratedOperator, is_async_callable
+from airflow.sdk.definitions.xcom_arg import XComArg
 
 RAW_CODE = """
 from airflow.sdk import task
@@ -425,3 +427,61 @@ class TestAsyncCallable:
             return 42
 
         assert not is_async_callable(sync_task_fn)
+
+
+@task
+def double(number: int) -> int:
+    return number * 2
+
+
+def run_as(module_name: str, source: str) -> dict:
+    """Run ``source`` as the code of module ``module_name``, e.g. ``__main__`` for a script."""
+    namespace = {"__name__": module_name, "DAG": DAG, "double": double}
+    exec(textwrap.dedent(source), namespace)
+    return namespace
+
+
+class TestTaskCalledOutsideADag:
+    @pytest.mark.parametrize(
+        ("statement", "call"),
+        [
+            pytest.param("double(1)", "double()", id="call"),
+            pytest.param("double.override(task_id='again')(1)", "double()", id="override"),
+            pytest.param("double.expand(number=[1, 2])", "double.expand()", id="expand"),
+            pytest.param(
+                "double.expand_kwargs([{'number': 1}])", "double.expand_kwargs()", id="expand-kwargs"
+            ),
+        ],
+    )
+    def test_script_call_is_refused_with_the_alternatives(self, statement, call):
+        with pytest.raises(
+            RuntimeError,
+            match=re.escape(f"{call} was called outside a Dag, so it did not run")
+            + r".*call double\.function\(\.\.\.\) to run the function itself",
+        ):
+            run_as("__main__", statement)
+
+    @pytest.mark.parametrize(
+        ("module_name", "source"),
+        [
+            pytest.param("helpers", "result = double(1)", id="module-that-is-not-a-script"),
+            pytest.param(
+                "__main__",
+                """
+                with DAG("in_a_script") as dag:
+                    result = double(1)
+                """,
+                id="script-inside-a-dag",
+            ),
+            pytest.param(
+                "__main__",
+                """
+                dag = DAG("given_to_the_task")
+                result = double.override(dag=dag)(1)
+                """,
+                id="script-naming-the-dag",
+            ),
+        ],
+    )
+    def test_call_that_is_not_a_script_mistake_still_builds_the_task(self, module_name, source):
+        assert isinstance(run_as(module_name, source)["result"], XComArg)
