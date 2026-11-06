@@ -124,6 +124,68 @@ def test_runs_are_kept_with_their_outputs(project):
     assert query(project, "SELECT DISTINCT triggered_by FROM dag_run") == [("TEST",)]
 
 
+RUN_JOBS = """
+SELECT dag_run.dag_id, dag_run.state, job.job_type, job.state FROM dag_run
+JOIN job ON job.id = dag_run.creating_job_id ORDER BY dag_run.run_after
+"""
+
+
+def test_run_is_driven_by_a_job_that_ends_with_it(project):
+    run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
+
+    assert query(project, RUN_JOBS) == [("example", "success", "LocalRunJob", "success")]
+
+
+def test_job_left_running_after_its_run_finished_is_ended_by_the_next_run(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    run_dag_file(source)
+    # As if the process was killed after recording the run's outcome but before ending its job.
+    with sqlite3.connect(project / ".airflow" / "airflow.db") as conn:
+        conn.execute("UPDATE job SET state = 'running', end_date = NULL")
+    ((dag_run_id,),) = query(project, "SELECT id FROM dag_run")
+    (project / ".airflow" / "runs" / f"{dag_run_id}.lock").touch()
+
+    run_dag_file(source)
+
+    assert query(project, RUN_JOBS) == [
+        ("example", "success", "LocalRunJob", "failed"),
+        ("example", "success", "LocalRunJob", "success"),
+    ]
+    assert not list((project / ".airflow" / "runs").iterdir())
+
+
+def test_run_from_before_local_runs_recorded_a_job_is_recorded_failed(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+    # As a run started before this change, whose process was killed, looks: no job, and its lock file left.
+    with sqlite3.connect(project / ".airflow" / "airflow.db") as conn:
+        conn.execute(
+            "UPDATE dag_run SET state = 'running', creating_job_id = NULL WHERE run_id = ?", (first.run_id,)
+        )
+    ((dag_run_id,),) = query(project, f"SELECT id FROM dag_run WHERE run_id = '{first.run_id}'")
+    (project / ".airflow" / "runs" / f"{dag_run_id}.lock").touch()
+
+    run_dag_file(source)
+
+    assert query(project, f"SELECT state FROM dag_run WHERE run_id = '{first.run_id}'") == [("failed",)]
+    assert not list((project / ".airflow" / "runs").iterdir())
+
+
+def test_running_run_no_local_process_drives_is_left_alone(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+    # As a run started with `airflow dags trigger` looks while the scheduler runs it.
+    with sqlite3.connect(project / ".airflow" / "airflow.db") as conn:
+        conn.execute(
+            "UPDATE dag_run SET state = 'running', triggered_by = 'CLI', creating_job_id = NULL WHERE run_id = ?",
+            (first.run_id,),
+        )
+
+    run_dag_file(source)
+
+    assert query(project, f"SELECT state FROM dag_run WHERE run_id = '{first.run_id}'") == [("running",)]
+
+
 def test_first_run_reports_progress_without_airflow_internals(project, capfd):
     run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
 
@@ -418,6 +480,8 @@ def test_deferred_task_resumes_after_its_trigger(project):
     result = run_dag_file(source)
 
     assert result.output("waits") == ["kept", True]
+    # A triggerer started without --queues, as the project's will be, leaves the trigger to this run.
+    assert query(project, "SELECT queue FROM trigger") == [("local-run",)]
     log_file = (
         project / ".airflow" / "logs" / "dag_id=deferring" / f"run_id={result.run_id}" / "task_id=waits"
     )
@@ -678,6 +742,7 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path, debug):
     assert payload["cancelled"] is True
     assert payload["state"] == "failed"
     assert query(project, "SELECT state FROM dag_run") == [("failed",)]
+    assert query(project, "SELECT state FROM job") == [("success",)]
     # Without stopping, the all_done task would run after the interrupted one.
     assert dict(query(project, "SELECT task_id, state FROM task_instance")) == {
         "slow": "failed",
@@ -774,9 +839,9 @@ def test_run_whose_process_ended_early_is_recorded_failed_by_the_next_run(projec
 
     run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
 
-    assert query(project, "SELECT dag_id, state FROM dag_run ORDER BY run_after") == [
-        ("exits", "failed"),
-        ("example", "success"),
+    assert query(project, RUN_JOBS) == [
+        ("exits", "failed", "LocalRunJob", "failed"),
+        ("example", "success", "LocalRunJob", "success"),
     ]
     assert dict(query(project, "SELECT task_id, state FROM task_instance WHERE dag_id = 'exits'")) == {
         "crash": "failed",

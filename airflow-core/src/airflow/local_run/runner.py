@@ -44,7 +44,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 import structlog
 from alembic.util import CommandError
-from sqlalchemy import select
+from sqlalchemy import event, select
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from airflow import settings
@@ -53,6 +53,7 @@ from airflow.api.common.mark_tasks import set_dag_run_state_to_failed
 from airflow.configuration import conf
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
+from airflow.jobs.job import Job, JobState
 from airflow.local_run.logs import (
     TaskFailure,
     capture_task_log,
@@ -60,12 +61,14 @@ from airflow.local_run.logs import (
     read_attempt_failure,
     record_startup_events,
 )
+from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger_queue
 from airflow.local_run.supervised import SupervisedTries
 from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
 from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance
+from airflow.models.trigger import Trigger
 from airflow.models.xcom import XComModel
 from airflow.sdk import DAG
 from airflow.sdk.definitions.dag import _run_dag_run_to_completion
@@ -90,10 +93,6 @@ if TYPE_CHECKING:
 # The default bundle configuration maps this bundle to ``[core] dags_folder``, the project root.
 BUNDLE_NAME = "dags-folder"
 RUN_CREATION_ATTEMPTS = 5
-
-# How ``DAG.run()`` and ``airflow run`` start runs. Nothing else drives runs in a project's history, so a run
-# started any other way is left alone.
-LOCAL_RUN_TRIGGERS = (DagRunTriggeredByType.TEST, DagRunTriggeredByType.CLI)
 
 # The locks this process holds on the runs it executes; the operating system releases them however it ends.
 _run_locks: list[TextIO] = []
@@ -166,6 +165,9 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             run_conf=request.get("run_conf"),
             triggered_by=triggered_by,
         )
+        # From here on every trigger this process creates is for one of its tries; those created while storing
+        # the Dags, for asset watchers, are the project triggerer's.
+        event.listen(Trigger, "before_insert", assign_local_trigger_queue)
         interrupted = threading.Event()
         tries = SupervisedTries(session=session)
 
@@ -222,6 +224,10 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
             )
             session.commit()
             cancelled = True
+        # Once the job has ended, the scheduler treats the run as any other, e.g. runs tries cleared in the UI.
+        job = session.get_one(Job, dag_run.creating_job_id)
+        job.state = JobState.SUCCESS
+        job.complete_execution(session=session)
         # The outcome is recorded, so no later run needs to tell whether this process still runs it. Under the
         # project lock, a start checking for abandoned runs sees either the lock held or the outcome recorded.
         with project_lock(home):
@@ -276,12 +282,7 @@ def start_run(
                 session.rollback()
                 raise
             lock_run(home, dag_run)
-    for abandoned_run in abandoned:
-        report(
-            f"Recorded run {abandoned_run.run_id} of Dag {abandoned_run.dag_id!r} as failed: its process "
-            "ended before the run finished"
-        )
-        get_run_lock_path(home, abandoned_run.id).unlink(missing_ok=True)
+    report_abandoned_runs(home, abandoned)
     return scheduler_dag, dag_run
 
 
@@ -311,24 +312,62 @@ def is_run_lock_held(path: Path) -> bool:
 
 def fail_abandoned_runs(home: Path, *, session: Session) -> list[DagRun]:
     """
-    Record as failed, and return, each local run that is still running but whose process has ended.
+    Record as failed, and return, each local run still running whose process has ended; fail that process's job.
 
     A run's process holds the run's lock until it ends. It can end before recording the run's outcome when it
-    is killed, or in debug mode when a task ends it, e.g. with ``os._exit``. Call under the project lock.
+    is killed, or in debug mode when a task ends it, e.g. with ``os._exit``. It can also end after recording
+    the outcome but before ending its job, which would keep the scheduler away from the run for good; that job
+    is failed too. Call under the project lock.
     """
-    running = session.scalars(
-        select(DagRun).where(DagRun.state == DagRunState.RUNNING, DagRun.triggered_by.in_(LOCAL_RUN_TRIGGERS))
+    candidates: list[tuple[Job | None, DagRun]] = [
+        (job, dag_run)
+        for job, dag_run in session.execute(
+            select(Job, DagRun)
+            .join(DagRun, DagRun.creating_job_id == Job.id)
+            .where(Job.job_type == LOCAL_RUN_JOB_TYPE, Job.state == JobState.RUNNING)
+        )
+    ]
+    # Runs created before local runs recorded a job have none. Only a local run's process leaves a lock file
+    # behind, so a run started any other way, e.g. with ``airflow dags trigger``, is left alone.
+    candidates.extend(
+        (None, dag_run)
+        for dag_run in session.scalars(
+            select(DagRun).where(DagRun.state == DagRunState.RUNNING, DagRun.creating_job_id.is_(None))
+        )
+        if get_run_lock_path(home, dag_run.id).exists()
     )
-    abandoned = [dag_run for dag_run in running if not is_run_lock_held(get_run_lock_path(home, dag_run.id))]
+    abandoned = []
     dag_bag = DBDagBag()
-    for dag_run in abandoned:
-        if (scheduler_dag := dag_bag.get_dag_for_run(dag_run, session=session)) is not None:
-            set_dag_run_state_to_failed(
-                dag=scheduler_dag, run_id=dag_run.run_id, commit=True, session=session
-            )
+    for job, dag_run in candidates:
+        lock_path = get_run_lock_path(home, dag_run.id)
+        if is_run_lock_held(lock_path):
+            continue
+        if dag_run.state == DagRunState.RUNNING:
+            if (scheduler_dag := dag_bag.get_dag_for_run(dag_run, session=session)) is not None:
+                set_dag_run_state_to_failed(
+                    dag=scheduler_dag, run_id=dag_run.run_id, commit=True, session=session
+                )
+            else:
+                dag_run.set_state(DagRunState.FAILED)
+            abandoned.append(dag_run)
         else:
-            dag_run.set_state(DagRunState.FAILED)
+            # The caller removes the lock files of the runs returned; this run's job alone tells that its
+            # process ended.
+            lock_path.unlink(missing_ok=True)
+        if job is not None:
+            job.state = JobState.FAILED
+            job.end_date = timezone.utcnow()
     return abandoned
+
+
+def report_abandoned_runs(home: Path, dag_runs: list[DagRun]) -> None:
+    """Say which runs ``fail_abandoned_runs`` recorded as failed, once that is committed, and drop their locks."""
+    for dag_run in dag_runs:
+        report(
+            f"Recorded run {dag_run.run_id} of Dag {dag_run.dag_id!r} as failed: its process ended before "
+            "the run finished"
+        )
+        get_run_lock_path(home, dag_run.id).unlink(missing_ok=True)
 
 
 def get_task_log_path(ti: TaskInstance, *, session: Session) -> Path:
@@ -525,6 +564,10 @@ def create_dag_run(
     scheduler_dag.on_success_callback = dag.on_success_callback  # type: ignore[attr-defined]
     scheduler_dag.on_failure_callback = dag.on_failure_callback  # type: ignore[attr-defined]
     timetable = coerce_to_core_timetable(dag.timetable)
+    # Committed with the run, so a scheduler never sees the run without the job driving it.
+    job = Job(job_type=LOCAL_RUN_JOB_TYPE, state=JobState.RUNNING)
+    session.add(job)
+    session.flush()
     for _ in range(RUN_CREATION_ATTEMPTS):
         now = timezone.coerce_datetime(timezone.utcnow())
         try:
@@ -542,6 +585,7 @@ def create_dag_run(
                     triggered_by=triggered_by,
                     triggering_user_name=getpass.getuser(),
                     start_date=now,
+                    creating_job_id=job.id,
                     session=session,
                 )
         except IntegrityError:
