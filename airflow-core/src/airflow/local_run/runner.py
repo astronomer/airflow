@@ -62,7 +62,7 @@ from airflow.local_run.logs import (
     record_startup_events,
 )
 from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger_queue
-from airflow.local_run.supervised import SupervisedTries
+from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
 from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
 from airflow.models.dagbag import DBDagBag
@@ -218,6 +218,9 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
                 execute_try=None if debug else run_supervised_try,
             )
         except KeyboardInterrupt:
+            # A task interrupted in this process, in debug mode, leaves what it started running, such as a
+            # BashOperator's command in a session of its own.
+            stop_processes(find_descendants(os.getpid()))
             session.rollback()
             set_dag_run_state_to_failed(
                 dag=scheduler_dag, run_id=dag_run.run_id, commit=True, session=session

@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 from unittest import mock
 
+import psutil
 import pytest
 from alembic.util import CommandError
 from sqlalchemy.exc import OperationalError
@@ -718,6 +719,14 @@ def start_sleepy_run(project: Path, tmp_path: Path, *, debug: bool) -> tuple[sub
         workflow = sleepy()
         """,
     )
+    child, result_path = start_run(project, tmp_path, source, started, debug=debug)
+    return child, result_path, started
+
+
+def start_run(
+    project: Path, tmp_path: Path, source: Path, started: Path, *, debug: bool
+) -> tuple[subprocess.Popen, Path]:
+    """Start a run in its own process, as the launcher does, and wait until its task writes to ``started``."""
     request, result_path = write_run_request(tmp_path, source, debug=debug)
     child = subprocess.Popen(
         [sys.executable, "-m", CHILD_MODULE, str(request)],
@@ -728,7 +737,7 @@ def start_sleepy_run(project: Path, tmp_path: Path, *, debug: bool) -> tuple[sub
         assert child.poll() is None, "child exited before the task started"
         assert time.monotonic() < deadline, "task did not start"
         time.sleep(0.2)
-    return child, result_path, started
+    return child, result_path
 
 
 @pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
@@ -751,6 +760,62 @@ def test_interrupted_child_records_a_failed_run(project, tmp_path, debug):
     # A supervised try runs in a process group of its own, which the interrupt did not reach directly.
     with pytest.raises(ProcessLookupError):
         os.kill(int(started.read_text()), 0)
+
+
+# Each starts a command in a session of its own, which the run's interrupt does not reach.
+STARTS_A_COMMAND = {
+    # The command holds the try's sockets, so a supervised run waits for it.
+    "bash-operator": """
+        from airflow.providers.standard.operators.bash import BashOperator
+        from airflow.sdk import dag
+
+        @dag(schedule=None)
+        def starts_a_command():
+            BashOperator(task_id="starts", bash_command="echo $$ > {started}; exec sleep 120")
+
+        workflow = starts_a_command()
+        """,
+    # Unlike BashOperator's, nothing in the task stops the command when it is killed.
+    "detached-process": """
+        import subprocess
+        import time
+        from pathlib import Path
+        from airflow.sdk import dag, task
+
+        @task
+        def starts():
+            command = subprocess.Popen(
+                ["sleep", "120"],
+                start_new_session=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            Path({started!r}).write_text(str(command.pid))
+            time.sleep(120)
+
+        @dag(schedule=None)
+        def starts_a_command():
+            starts()
+
+        workflow = starts_a_command()
+        """,
+}
+
+
+@pytest.mark.parametrize("starts_a_command", list(STARTS_A_COMMAND.values()), ids=list(STARTS_A_COMMAND))
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_interrupt_stops_the_command_a_task_started(project, tmp_path, starts_a_command, debug):
+    started = tmp_path / "started"
+    source = write_dag_file(project, "starts_a_command.py", starts_a_command.format(started=str(started)))
+    child, result_path = start_run(project, tmp_path, source, started, debug=debug)
+    command = psutil.Process(int(started.read_text()))
+
+    child.send_signal(signal.SIGINT)
+
+    assert child.wait(timeout=60) == 130
+    assert pickle.loads(result_path.read_bytes())["cancelled"] is True
+    command.wait(timeout=10)
 
 
 BREAKPOINT_DAG = """

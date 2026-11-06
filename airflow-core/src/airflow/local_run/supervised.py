@@ -29,7 +29,9 @@ import threading
 import warnings
 from contextlib import suppress
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
+
+import psutil
 
 from airflow._shared.module_loading import import_string
 from airflow.configuration import conf
@@ -46,12 +48,16 @@ from airflow.sdk.execution_time.supervisor import (
 from airflow.utils.state import TaskInstanceState
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from sqlalchemy.orm import Session
 
     from airflow.models.taskinstance import TaskInstance
     from airflow.sdk.types import Operator
 
-# How long an interrupted try's processes get to exit before they are killed, as in the supervisor's own kill.
+# How long a stopped try gets to clean up after SIGTERM, e.g. in its operator's on_kill, before it is interrupted.
+INTERRUPT_DELAY = 1.0
+# How long a stopped try's processes get to exit before they are killed, as in the supervisor's own kill.
 KILL_DELAY = 5.0
 
 
@@ -61,6 +67,7 @@ class SupervisedTries:
     def __init__(self, *, session: Session) -> None:
         self._session = session
         self._running: ActivitySubprocess | None = None
+        self._left_behind: list[psutil.Process] = []
 
     def run(self, ti: TaskInstance, task: Operator) -> tuple[str, Path]:
         """
@@ -96,20 +103,32 @@ class SupervisedTries:
         """
         Interrupt the running try, if any, and return whether there was one.
 
-        The try runs in a process group of its own, so the terminal's Ctrl-C does not reach it. It gets the
-        same interrupt here, and is killed if it is still running after ``KILL_DELAY``.
+        The try runs in a process group of its own, so the terminal's Ctrl-C does not reach it. It gets
+        SIGTERM here, so that its operator stops what it started, as on a worker (``on_kill``), such as a
+        ``BashOperator``'s command in a session of its own. If it is still running after ``INTERRUPT_DELAY`` it
+        gets the terminal's interrupt, which stops plain Python code, and after ``KILL_DELAY`` it is killed,
+        with whatever it started outside its group.
         """
         if (process := self._running) is None:
             return False
-        _signal_group(process.pid, signal.SIGINT)
-        timer = threading.Timer(KILL_DELAY, self._kill_if_running, args=(process,))
-        timer.daemon = True
-        timer.start()
+        self._left_behind = find_descendants(process.pid)
+        _signal_group(process.pid, signal.SIGTERM)
+        # SIGINT sent with SIGTERM would be handled first, and end the task before its operator cleans up.
+        _call_later(INTERRUPT_DELAY, self._interrupt_if_running, process)
+        _call_later(KILL_DELAY, self._kill_if_running, process)
         return True
+
+    def _interrupt_if_running(self, process: ActivitySubprocess) -> None:
+        if self._running is process:
+            _signal_group(process.pid, signal.SIGINT)
 
     def _kill_if_running(self, process: ActivitySubprocess) -> None:
         if self._running is process:
             _signal_group(process.pid, signal.SIGKILL)
+            # They can hold the try's sockets, which the supervisor waits on.
+            for left_behind in self._left_behind:
+                with suppress(psutil.NoSuchProcess):
+                    left_behind.kill()
 
     def _supervise(self, workload: ExecuteTask, relative_log_path: str, task: Operator) -> str:
         """Run the workload as ``supervise_task`` does, but keep this process's Ctrl-C handler installed."""
@@ -134,6 +153,8 @@ class SupervisedTries:
                 process.wait()
             finally:
                 self._running = None
+                stop_processes(self._left_behind)
+                self._left_behind = []
             return process.final_state
         finally:
             log_file.close()
@@ -153,7 +174,31 @@ class SupervisedTries:
         self._session.refresh(ti)
 
 
+def _call_later(delay: float, func: Callable[..., None], *args: Any) -> None:
+    timer = threading.Timer(delay, func, args=args)
+    timer.daemon = True
+    timer.start()
+
+
 def _signal_group(pid: int, signum: signal.Signals) -> None:
     # The supervisor starts each try as the leader of its own process group.
     with suppress(ProcessLookupError):
         os.killpg(pid, signum)
+
+
+def find_descendants(pid: int) -> list[psutil.Process]:
+    try:
+        return psutil.Process(pid).children(recursive=True)
+    except psutil.NoSuchProcess:
+        return []
+
+
+def stop_processes(processes: list[psutil.Process]) -> None:
+    """Terminate ``processes`` that are still running, and kill any still running after ``KILL_DELAY``."""
+    for process in processes:
+        with suppress(psutil.NoSuchProcess):
+            process.terminate()
+    _, still_running = psutil.wait_procs(processes, timeout=KILL_DELAY)
+    for process in still_running:
+        with suppress(psutil.NoSuchProcess):
+            process.kill()
