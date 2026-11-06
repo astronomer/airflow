@@ -1268,7 +1268,8 @@ class DatabricksRunNowOperator(ResumableJobMixin, BaseOperator):
         context into the ``OPENLINEAGE_CONTEXT`` job parameter so Databricks tasks can link their
         OpenLineage events back to the Airflow task. Defaults to the
         ``openlineage.spark_inject_parent_job_info`` config value.
-    :param repair_run: Repair the databricks run in case of failure.
+    :param repair_run: Repair the databricks run in case of failure. On a retry after the run already
+        failed, the failed run is repaired instead of starting a new one.
     :param databricks_repair_reason_new_settings: A dict of reason and new_settings JSON object for which
             to repair the run. `None` by default. `None` means to repair at all cases with existing job
             settings otherwise check whether `RunState` state_message contains reason and
@@ -1541,6 +1542,28 @@ class DatabricksRunNowOperator(ResumableJobMixin, BaseOperator):
 
     def is_job_succeeded(self, status: str) -> bool:
         return status == "TERMINATED:SUCCESS"
+
+    def resume_failed_job(self, external_id: JsonValue, status: str, context: Context) -> JsonValue | None:
+        # Opt-in through ``repair_run``, the same switch that repairs a run failing while it is watched.
+        if not self.repair_run or status.startswith("NOT_FOUND"):
+            return None
+        run_id = cast("int", external_id)
+        self._merged_json = self._build_run_now_payload(context)
+        if self.databricks_repair_reason_new_settings:
+            run_state = self._hook.get_run_state(run_id)
+            if not is_repair_reason_match_exist(self, run_state):
+                return None
+            update_job_for_repair(self, self._hook, self._merged_json["job_id"], run_state)
+        repair_json: dict[str, Any] = {"run_id": run_id, "rerun_all_failed_tasks": True}
+        latest_repair_id = self._hook.get_latest_repair_id(run_id)
+        if latest_repair_id is not None:
+            repair_json["latest_repair_id"] = latest_repair_id
+        if "job_parameters" in self._merged_json:
+            repair_json["job_parameters"] = self._merged_json["job_parameters"]
+        self._hook.repair_run(repair_json)
+        # One repair per attempt, matching the repair done while a run is watched.
+        self.repair_run = False
+        return run_id
 
     def poll_until_complete(self, external_id: JsonValue, context: Context) -> None:
         # submit_job and the stored external id are always Databricks run ids (int).
