@@ -517,6 +517,11 @@ ARG_IMGCAT = Arg(("--imgcat",), help="Displays graph using the imgcat tool.", ac
 ARG_RUN_ID = Arg(("-r", "--run-id"), help="Helps to identify this run")
 ARG_CONF = Arg(("-c", "--conf"), help="JSON string that gets pickled into the DagRun's conf attribute")
 
+# bootstrap
+ARG_BOOTSTRAP_PATH = Arg(
+    ("path",), nargs="?", default=".", help="Folder to create the project in; the current one by default"
+)
+
 # run
 ARG_RUN_FILE = Arg(("file",), help="Python file that defines the Dag")
 ARG_RUN_CONNECTIONS_FILE = Arg(
@@ -2451,6 +2456,18 @@ core_commands: list[CLICommand] = [
         ),
         func=lazy_load_command("airflow.cli.commands.standalone_command.standalone"),
         args=(ARG_STANDALONE_PROJECT, ARG_STANDALONE_PORT),
+    ),
+    ActionCommand(
+        name="bootstrap",
+        help="Create a project to run Dags locally",
+        description=(
+            "Write a pyproject.toml that depends on this version of Airflow, and a .python-version naming "
+            "the Python this command runs on. A new or empty folder also gets an example Dag in pipeline.py. "
+            "Run it with `uvx --from apache-airflow-core airflow bootstrap demo`, then `uv run pipeline.py` "
+            "in demo/."
+        ),
+        func=lazy_load_command("airflow.cli.commands.bootstrap_command.bootstrap"),
+        args=(ARG_BOOTSTRAP_PATH,),
     ),
     ActionCommand(
         name="run",

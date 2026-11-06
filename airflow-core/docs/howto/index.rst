@@ -29,6 +29,7 @@ configuring an Airflow environment.
 .. toctree::
     :maxdepth: 2
 
+    run-dags-locally
     Using the CLI <usage-cli>
     Using the REST API <../security/api>
     add-dag-tags

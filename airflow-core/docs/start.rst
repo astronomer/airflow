@@ -23,6 +23,9 @@ Install Airflow on your machine and start it with ``airflow standalone``, which 
 processor, triggerer and API server together on a SQLite database. Use it to try Airflow and to develop
 Dags locally, not in production. For other ways to install and run Airflow, see :doc:`/installation/index`.
 
+To run a Dag from its Python file instead, with nothing to start first and every run kept in your project,
+see :doc:`/howto/run-dags-locally`.
+
 Before you start
 ''''''''''''''''
 
