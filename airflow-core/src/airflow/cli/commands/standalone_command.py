@@ -38,7 +38,7 @@ from airflow.jobs.dag_processor_job_runner import DagProcessorJobRunner
 from airflow.jobs.job import most_recent_job
 from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
-from airflow.local_run.ui import read_live_ui_url
+from airflow.local_run.ui import PROJECT_SERVER_ENVIRONMENT, read_live_ui_url
 from airflow.sdk.definitions.local_run import (
     PROJECT_HOME_NAME,
     build_child_environment,
@@ -57,21 +57,6 @@ NO_COLOR = bool(os.environ.get("NO_COLOR", ""))
 REFRESH_INTERVAL_ENV_VAR = "AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL"
 
 PROJECT_SERVER_MODULE = "airflow.local_run.ui_server"
-
-PROJECT_SERVER_ENVIRONMENT = {
-    "_AIRFLOW_PROCESS_CONTEXT": "server",
-    "AIRFLOW__CORE__AUTH_MANAGER": (
-        "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
-    ),
-    # The server makes every request a viewer's itself; with no users nobody can log in as anyone else, and
-    # the auth manager generates and prints no password.
-    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS": "False",
-    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS": "",
-    # The address the server binds; the default 0.0.0.0 makes the auth manager warn of a production setup.
-    "AIRFLOW__API__HOST": "127.0.0.1",
-    # Otherwise a line per request and per migration step buries the address on the terminal.
-    "AIRFLOW__LOGGING__LOGGING_LEVEL": "WARNING",
-}
 
 
 class StandaloneCommand:

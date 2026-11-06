@@ -30,6 +30,23 @@ from urllib.parse import quote, urlsplit
 
 UI_FILE_NAME = "ui.json"
 
+# The server's own settings, on top of a run's environment; the components it starts get none of them.
+PROJECT_SERVER_ENVIRONMENT = {
+    "_AIRFLOW_PROCESS_CONTEXT": "server",
+    "AIRFLOW__CORE__AUTH_MANAGER": (
+        "airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager"
+    ),
+    # The server makes every request the local user's itself; with no users nobody can log in as anyone else,
+    # and the auth manager generates and prints no password.
+    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS": "False",
+    "AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS": "",
+    # The address the server binds; the default 0.0.0.0 makes the auth manager warn of a production setup.
+    "AIRFLOW__API__HOST": "127.0.0.1",
+    # Otherwise a line per request and per migration step buries the address on the terminal. The components
+    # log at the default level, which their tasks log at too.
+    "AIRFLOW__LOGGING__LOGGING_LEVEL": "WARNING",
+}
+
 # Long enough for a loopback connection on a busy machine; a run waits this long when the server hangs.
 CONNECT_TIMEOUT_SECONDS = 0.5
 
