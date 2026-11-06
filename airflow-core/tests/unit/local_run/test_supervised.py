@@ -19,9 +19,12 @@
 from __future__ import annotations
 
 import signal
+import subprocess
+import sys
 from pathlib import Path
 from unittest import mock
 
+import psutil
 import pytest
 from sqlalchemy.orm import Session
 
@@ -47,25 +50,56 @@ def test_stop_without_a_running_try_reports_none(session):
     assert SupervisedTries(session=session).stop() is False
 
 
-@pytest.mark.parametrize(("still_running", "killed"), [(True, True), (False, False)])
+@pytest.mark.parametrize(("still_running", "escalated"), [(True, True), (False, False)])
+@mock.patch.object(supervised, "find_descendants", autospec=True)
 @mock.patch.object(supervised.threading, "Timer", autospec=True)
 @mock.patch.object(supervised.os, "killpg", autospec=True)
-def test_stop_interrupts_the_running_try_and_kills_it_if_it_keeps_running(
-    killpg, timer, session, still_running, killed
+def test_stop_lets_the_try_clean_up_then_interrupts_and_kills_it_if_it_keeps_running(
+    killpg, timer, find_descendants, session, still_running, escalated
 ):
     tries = SupervisedTries(session=session)
     process = mock.create_autospec(ActivitySubprocess, instance=True)
     process.pid = 123
     tries._running = process
+    left_behind = mock.create_autospec(psutil.Process, instance=True)
+    find_descendants.return_value = [left_behind]
 
     assert tries.stop() is True
 
-    killpg.assert_called_once_with(123, signal.SIGINT)
-    timer.assert_called_once_with(supervised.KILL_DELAY, tries._kill_if_running, args=(process,))
+    killpg.assert_called_once_with(123, signal.SIGTERM)
+    assert timer.call_args_list == [
+        mock.call(supervised.INTERRUPT_DELAY, tries._interrupt_if_running, args=(process,)),
+        mock.call(supervised.KILL_DELAY, tries._kill_if_running, args=(process,)),
+    ]
     if not still_running:
         tries._running = None
+    tries._interrupt_if_running(process)
     tries._kill_if_running(process)
-    assert (mock.call(123, signal.SIGKILL) in killpg.mock_calls) is killed
+    escalation = [mock.call(123, signal.SIGINT), mock.call(123, signal.SIGKILL)]
+    assert killpg.call_args_list[1:] == (escalation if escalated else [])
+    assert left_behind.kill.called is escalated
+
+
+@mock.patch.object(supervised, "KILL_DELAY", 2.0)
+def test_stop_processes_kills_one_that_ignores_sigterm():
+    stops = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    ignores = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print(flush=True); time.sleep(60)",
+        ],
+        stdout=subprocess.PIPE,
+    )
+    assert ignores.stdout is not None
+    # Once it ignores SIGTERM.
+    ignores.stdout.readline()
+
+    supervised.stop_processes([psutil.Process(stops.pid), psutil.Process(ignores.pid)])
+
+    # Under pytest a child's SIGTERM handler can exit 0, so this checks only that SIGTERM was enough.
+    assert stops.wait(timeout=10) != -signal.SIGKILL
+    assert ignores.wait(timeout=10) == -signal.SIGKILL
 
 
 @pytest.mark.parametrize(
