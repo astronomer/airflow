@@ -29,6 +29,9 @@ STANDALONE = "airflow.cli.commands.standalone_command.standalone"
 @pytest.mark.parametrize(
     ("argv", "command", "writes_default_config"),
     [
+        pytest.param(
+            ["bootstrap", "demo"], "airflow.cli.commands.bootstrap_command.bootstrap", False, id="bootstrap"
+        ),
         pytest.param(["run", "pipeline.py"], "airflow.cli.commands.run_command.run", False, id="run"),
         pytest.param(["standalone", "--project"], STANDALONE, False, id="standalone-project"),
         pytest.param(["standalone"], STANDALONE, True, id="standalone"),

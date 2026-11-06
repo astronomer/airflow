@@ -53,7 +53,7 @@ def main():
         redirect_stdout_log_handlers_to_stderr()
     # These keep their files in the project's .airflow/, not in AIRFLOW_HOME.
     uses_project_home = args.subcommand == "run" or (args.subcommand == "standalone" and args.project)
-    if args.subcommand not in ["lazy_loaded", "version"] and not uses_project_home:
+    if args.subcommand not in ["lazy_loaded", "version", "bootstrap"] and not uses_project_home:
         # Here we ensure that the default configuration is written if needed before running any command
         # that might need it. This used to be done during configuration initialization but having it
         # in main ensures that it is not done during tests and other ways airflow imports are used
