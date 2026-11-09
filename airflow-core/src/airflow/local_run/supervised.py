@@ -28,6 +28,7 @@ import signal
 import threading
 import warnings
 from contextlib import suppress
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -36,6 +37,7 @@ import psutil
 from airflow._shared.module_loading import import_string
 from airflow.configuration import conf
 from airflow.executors.workloads import ExecuteTask
+from airflow.local_run.fork_server import ForkServer, ForkServerError
 from airflow.local_run.logs import capture_task_log
 from airflow.models.trigger import Trigger
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
@@ -62,10 +64,16 @@ KILL_DELAY = 5.0
 
 
 class SupervisedTries:
-    """Run task tries one at a time, each in a process of its own, using the run loop's session."""
+    """
+    Run task tries one at a time, each in a process of its own, using the run loop's session.
 
-    def __init__(self, *, session: Session) -> None:
+    With a ``fork_server``, it forks each try's process. Without one, or once it is gone, the supervisor starts
+    them, which on macOS means a new interpreter for each.
+    """
+
+    def __init__(self, *, session: Session, fork_server: ForkServer | None = None) -> None:
         self._session = session
+        self._fork_server = fork_server
         self._running: ActivitySubprocess | None = None
         self._left_behind: list[psutil.Process] = []
 
@@ -140,7 +148,8 @@ class SupervisedTries:
                 # The Execution API's thread is idle while this thread forks, as in the Dag processor, which
                 # forks the same way.
                 warnings.filterwarnings("ignore", message=r".* is multi-threaded, use of fork\(\)")
-                process = ActivitySubprocess.start(
+                start = partial(
+                    ActivitySubprocess.start,
                     what=workload.ti,  # type: ignore[arg-type]  # duck-types as the SDK's TaskInstance
                     dag_rel_path=workload.dag_rel_path,
                     bundle_info=workload.bundle_info,
@@ -148,6 +157,11 @@ class SupervisedTries:
                     logger=logger.bind(ti_id=str(workload.ti.id)),
                     subprocess_logs_to_stdout=True,
                 )
+                try:
+                    process = start(launcher=self._fork_server)
+                except ForkServerError:
+                    self._fork_server = None
+                    process = start()
             self._running = process
             try:
                 process.wait()

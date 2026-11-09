@@ -69,8 +69,11 @@ The run prints one line per task on stderr, then your script goes on:
       ✓ double[1]
       ✓ double[2]
       ✓ total
-    Succeeded in 3.1s. History: /path/to/demo/.airflow
+    Succeeded in 1.3s (4.4s total). History: /path/to/demo/.airflow
     total: 12
+
+The first time is how long the tasks took; the total also counts starting the run, from the
+``workflow.run()`` call.
 
 ``workflow.run()`` returns the run's result. ``result.output("total")`` is what the ``total`` task
 returned, as the object it returned; ``result.output("double", 1)`` is the second mapped ``double``.

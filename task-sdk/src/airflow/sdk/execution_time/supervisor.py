@@ -786,6 +786,28 @@ class PsutilTracker(ProcessTracker):
         return self._impl.wait(timeout)
 
 
+class ChildLauncher(Protocol):
+    """
+    Starts a supervised child somewhere other than in a fork of this process, e.g. in a fork server.
+
+    The child runs ``_fork_main`` with copies of these sockets and ``target``, which must be importable by name.
+    The caller closes its own copies once this returns.
+
+    :meta private:
+    """
+
+    def launch(
+        self,
+        target: Callable[[], None],
+        requests: socket,
+        stdout: socket,
+        stderr: socket,
+        logs: socket,
+        *,
+        new_process_group: bool,
+    ) -> ProcessTracker: ...
+
+
 def signal_process_tree(pid: int, sig: signal.Signals, *, fallback: Callable[[signal.Signals], None]) -> None:
     """
     Deliver ``sig`` to *pid*'s process group, so every process it spawned is reached too.
@@ -908,6 +930,7 @@ class WatchedSubprocess:
         logger: FilteringBoundLogger | None = None,
         use_exec: bool = False,
         new_process_group: bool = False,
+        launcher: ChildLauncher | None = None,
         **constructor_kwargs,
     ) -> Self:
         """
@@ -928,11 +951,14 @@ class WatchedSubprocess:
             can be delivered to the child's whole process tree via
             ``os.killpg``. Task execution opts in; DAG processor and triggerer
             keep the supervisor's process group and are signalled directly.
+        :param launcher: If given, it starts the child instead, and ``use_exec`` is ignored.
         """
-        if use_exec and "<" in getattr(target, "__qualname__", "<"):
+        if (use_exec or launcher is not None) and "<" in getattr(target, "__qualname__", "<"):
             # Closures/lambdas (``<locals>`` / ``<lambda>`` in the qualname) and
             # objects without a qualname can't be named for the spawned child.
-            raise ValueError(f"use_exec=True requires a top-level importable target, got {target!r}")
+            raise ValueError(
+                f"use_exec=True or a launcher requires a top-level importable target, got {target!r}"
+            )
         # Create socketpairs/"pipes" to connect to the stdin and out from the subprocess
         child_stdout, read_stdout = socketpair()
         child_stderr, read_stderr = socketpair()
@@ -943,7 +969,18 @@ class WatchedSubprocess:
         # Open the socketpair before starting the child, so that it is open when we do.
         child_logs, read_logs = socketpair()
 
-        if use_exec:
+        launched: ProcessTracker | None = None
+        if launcher is not None:
+            launched = launcher.launch(
+                target,
+                child_requests,
+                child_stdout,
+                child_stderr,
+                child_logs,
+                new_process_group=new_process_group,
+            )
+            pid = launched.pid
+        elif use_exec:
             # file_actions run as part of the spawn itself -- no forked child to run
             # imperative dup2 code in. All four source FDs here are guaranteed >= 3
             # (0/1/2 are already open in every launch path), so no dup2 target below
@@ -1022,7 +1059,7 @@ class WatchedSubprocess:
         proc = cls(
             pid=pid,
             stdin=read_requests,
-            process=PsutilTracker(psutil.Process(pid)),
+            process=launched or PsutilTracker(psutil.Process(pid)),
             process_log=logger,
             start_time=time.monotonic(),
             new_process_group=new_process_group,

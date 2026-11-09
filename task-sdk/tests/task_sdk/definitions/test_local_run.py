@@ -30,6 +30,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+import time_machine
 
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
@@ -390,6 +391,7 @@ class TestRunDagFile:
         source.touch()
         return source
 
+    @time_machine.travel("2026-11-09T10:00:00Z", tick=False)
     @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
     def test_runs_child_with_request_and_project_environment(self, mock_popen, source, tmp_path):
         seen = {}
@@ -418,6 +420,7 @@ class TestRunDagFile:
             "triggered_by": "cli",
             "debug": True,
             "result_path": seen["request"]["result_path"],
+            "started_at": 1794218400.0,
         }
         assert not Path(seen["request"]["result_path"]).parent.exists()
 

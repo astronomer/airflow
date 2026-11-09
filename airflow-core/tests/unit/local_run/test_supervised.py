@@ -29,6 +29,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from airflow.local_run import supervised
+from airflow.local_run.fork_server import ForkServer, ForkServerError
 from airflow.local_run.supervised import SupervisedTries
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.trigger import Trigger
@@ -100,6 +101,26 @@ def test_stop_processes_kills_one_that_ignores_sigterm():
     # Under pytest a child's SIGTERM handler can exit 0, so this checks only that SIGTERM was enough.
     assert stops.wait(timeout=10) != -signal.SIGKILL
     assert ignores.wait(timeout=10) == -signal.SIGKILL
+
+
+@mock.patch.object(supervised, "reset_secrets_masker", autospec=True)
+@mock.patch.object(supervised, "_configure_logging", autospec=True, return_value=(mock.Mock(), mock.Mock()))
+@mock.patch.object(supervised.InProcessTestSupervisor, "_api_client", autospec=True)
+@mock.patch.object(supervised.ActivitySubprocess, "start", autospec=True)
+def test_tries_start_without_the_fork_server_once_it_is_gone(start, *_):
+    process = mock.create_autospec(ActivitySubprocess, instance=True)
+    start.side_effect = [ForkServerError("gone"), process, process]
+    fork_server = mock.create_autospec(ForkServer, instance=True)
+    tries = SupervisedTries(session=mock.create_autospec(Session, instance=True), fork_server=fork_server)
+    # The workload's fields are pydantic fields, which autospec does not see.
+    workload = mock.NonCallableMock(spec=["ti", "dag_rel_path", "bundle_info"])
+    task = mock.NonCallableMock(spec=["dag"])
+
+    assert tries._supervise(workload, "attempt=1.log", task) is process.final_state
+    tries._supervise(workload, "attempt=2.log", task)
+
+    assert [call.kwargs.get("launcher") for call in start.call_args_list] == [fork_server, None, None]
+    process.wait.assert_called_with()
 
 
 @pytest.mark.parametrize(

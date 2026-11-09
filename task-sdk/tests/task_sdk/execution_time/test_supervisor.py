@@ -6317,10 +6317,43 @@ class TestResolveChildTarget:
         assert resolved == supervisor.WatchedSubprocess.start
         assert callable(resolved)
 
-    def test_start_rejects_non_importable_target_under_exec(self):
+    @pytest.mark.parametrize(
+        "start_kwargs",
+        [
+            pytest.param({"use_exec": True}, id="exec"),
+            pytest.param({"launcher": mock.Mock(spec=["launch"])}, id="launcher"),
+        ],
+    )
+    def test_start_rejects_non_importable_target_under_exec(self, start_kwargs):
         """A closure/lambda target can't be named for the exec'd child, so start() fails fast."""
         with pytest.raises(ValueError, match="top-level importable target"):
-            supervisor.WatchedSubprocess.start(target=lambda: None, use_exec=True)
+            supervisor.WatchedSubprocess.start(target=lambda: None, **start_kwargs)
+
+
+def test_start_lets_a_launcher_start_the_child(mocker):
+    """A launcher, such as a fork server, starts the child in place of a fork or a spawn here."""
+    fork = mocker.patch.object(supervisor.os, "fork", autospec=True)
+    spawn = mocker.patch.object(supervisor.os, "posix_spawn", autospec=True)
+    tracker = mocker.Mock(spec=ProcessTracker, pid=12345)
+    launcher = mocker.Mock(spec=["launch"])
+    launcher.launch.return_value = tracker
+
+    proc = supervisor.WatchedSubprocess.start(
+        id=uuid7(),
+        target=supervisor._subprocess_main,
+        use_exec=True,
+        new_process_group=True,
+        launcher=launcher,
+    )
+
+    fork.assert_not_called()
+    spawn.assert_not_called()
+    target, *sockets = launcher.launch.call_args.args
+    assert target is supervisor._subprocess_main
+    assert [type(sock) for sock in sockets] == [socket.socket] * 4
+    assert launcher.launch.call_args.kwargs == {"new_process_group": True}
+    assert proc.pid == 12345
+    assert proc._process is tracker
 
 
 class TestStartUsesPosixSpawn:
