@@ -24,7 +24,7 @@ Check that the "Run Dags locally" guide works with Airflow installed from wheels
 
 Builds the wheels, creates a project outside the repository with ``airflow bootstrap`` run by ``uvx`` from
 them, installs them there, and follows the guide with the example Dag ``airflow bootstrap`` wrote: running
-the file, ``airflow run``, and ``airflow standalone --project``
+the file, ``airflow run``, rerunning one task with it, and ``airflow standalone --project``
 serving the runs and scheduling a run triggered through the API. Packages the guide does not build come from
 PyPI, as they would for a new user.
 
@@ -143,6 +143,11 @@ def check_the_guide(project: Path, *, env: dict[str, str]) -> None:
     step("uv run airflow run pipeline.py")
     result = run(["uv", "run", "airflow", "run", "pipeline.py"], cwd=project, env=env)
     expect("Succeeded in" in result.stderr, "airflow run did not report success", result)
+
+    step("uv run airflow run pipeline.py --task total")
+    result = run(["uv", "run", "airflow", "run", "pipeline.py", "--task", "total"], cwd=project, env=env)
+    expect("total (try 2)" in result.stderr, "the rerun did not run total as its second try", result)
+    expect("total = 12" in result.stdout, "the rerun did not print `total = 12`", result)
 
     step("uv run airflow standalone --project")
     port = find_free_port()

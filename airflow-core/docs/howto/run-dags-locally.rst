@@ -98,6 +98,60 @@ To run a Dag from the command line instead, without a ``__main__`` block:
 ``airflow run`` prints the same summary, then each task's output. It takes ``--dag-id`` for a file that
 defines several Dags, ``--conf``, ``--connections-file``, ``--variables-file`` and ``--debug``.
 
+.. _run-dags-locally:run-one-task:
+
+Run one task
+------------
+
+After a run, you can change one task and run only that task again. The tasks before it don't run again: it
+gets the outputs they returned in the earlier run.
+
+.. code-block:: bash
+
+    uv run airflow run pipeline.py --task total
+
+.. code-block:: text
+
+    Rerunning total in run manual__2026-11-06T10:00:00.000000+00:00, with the outputs of double, numbers
+      ✓ total (try 2)
+    Succeeded in 0.4s (2.1s total). History: /path/to/demo/.airflow
+    Outputs:
+      total = 12
+
+The task runs as a new try in the latest run that has the outputs it needs, the way **Clear** reruns a task
+in the UI. The new try runs the file as it is now, and the earlier try and its log stay in the history.
+``airflow run`` prints the outputs of the tasks it ran.
+
+``--task`` takes a task ID, or one mapped try as the run prints it: ``--task 'double[1]'``. Repeat it to
+select more tasks, and use ``--group`` to select every task in a task group. With a selection:
+
+* ``--downstream`` also runs the tasks after the selected ones, and ``--upstream`` the tasks before them.
+* ``--run-id`` reruns the tasks in that run instead of the latest one.
+* ``--conf`` starts a new run with that conf, in which the selected tasks and the tasks before them run.
+
+When no earlier run has the outputs the selected tasks need, for example after you add a task before them,
+they run in a new run too. The tasks they need run first, and the run records the tasks it leaves out as
+skipped.
+
+In Python, ``workflow.run()`` takes the same selection as keyword arguments:
+
+.. code-block:: python
+
+    if __name__ == "__main__":
+        result = workflow.run(task_ids=["total"])
+        print("total:", result.output("total"))
+
+``task_ids`` takes task IDs and ``(task_id, map_index)`` tuples. The other arguments are
+``task_group_ids``, ``include_upstream``, ``include_downstream`` and ``run_id``.
+
+To stop in one task with your IDE's debugger, add ``debug=True`` to that call and use the IDE's Debug
+button. Or leave the file as it is, and add a run configuration for the module ``airflow`` with the
+arguments ``run pipeline.py --task total --debug``: ``"module": "airflow"`` in VS Code's ``launch.json``,
+or **Module name** in PyCharm.
+
+To test a task's code without Airflow, call its function with the arguments you choose:
+``total.function([2, 4, 6])`` returns ``12``.
+
 Look at the runs
 ----------------
 
@@ -125,8 +179,8 @@ Put a Dag on a schedule
 the same history. They find every Dag in the project. Dags start paused: unpause one in the UI and it runs
 on its schedule. **Trigger** and **Clear** work as in any Airflow deployment.
 
-A run you start with ``workflow.run()`` or ``airflow run`` while the server runs stays with the process that
-started it: the scheduler leaves it alone, so no task runs twice. The components log to
+A run you start or rerun with ``workflow.run()`` or ``airflow run`` while the server runs stays with the
+process that started it: the scheduler leaves it alone, so no task runs twice. The components log to
 ``.airflow/logs/scheduler.log``, ``dag-processor.log`` and ``triggerer.log``.
 
 Limits
