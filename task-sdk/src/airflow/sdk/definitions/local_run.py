@@ -204,7 +204,9 @@ def run_dag_file(
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
 
     With ``task_ids`` or ``task_group_ids``, rerun only those tasks, as Clear does in the UI, in the latest
-    finished run that has the outputs of their upstream tasks, or in ``run_id``.
+    finished run that has the outputs of their upstream tasks, or in ``run_id``. With ``run_conf``, or when no
+    earlier run has those outputs, a new run runs them and the tasks they need, and records the others as
+    skipped.
 
     :param dag_id: required when the file defines more than one Dag.
     :param task_ids: task IDs, or ``(task_id, map_index)`` tuples for one mapped task instance.
@@ -304,9 +306,10 @@ def build_task_selection(
                 "pass task_ids or task_group_ids"
             )
         return {}
-    if run_conf is not None:
+    if run_conf is not None and run_id is not None:
         raise ValueError(
-            "Selected tasks rerun in an earlier run and keep its conf; run the whole Dag to use a new conf"
+            f"Run {run_id} keeps the conf it ran with; leave out run_id to run the tasks in a new run "
+            "with this conf"
         )
     return {
         "task_ids": markers,

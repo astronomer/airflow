@@ -490,7 +490,10 @@ class TestRunDagFile:
             ),
             pytest.param({"run_id": "manual__1"}, ValueError, "apply to selected tasks", id="run-id-alone"),
             pytest.param(
-                {"task_ids": ["total"], "run_conf": {"n": 1}}, ValueError, "keep its conf", id="new-conf"
+                {"task_ids": ["total"], "run_id": "manual__1", "run_conf": {"n": 1}},
+                ValueError,
+                "Run manual__1 keeps the conf it ran with",
+                id="conf-for-an-earlier-run",
             ),
         ],
     )
