@@ -57,6 +57,8 @@ from airflow.sdk.definitions.local_run import (
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 from airflow.utils.types import DagRunTriggeredByType
 
+from tests_common.test_utils.config import conf_vars
+
 PIPELINE = """
 from airflow.sdk import dag, task
 
@@ -197,9 +199,12 @@ def test_first_run_reports_progress_without_airflow_internals(project, capfd):
         "  ✓ numbers",
         "  ✓ double[2]",
         "  ✓ total",
-        "Succeeded in ",
     ):
         assert line in err
+    # The total also counts the time before the tasks ran, from the call that started the run.
+    times = re.search(r"Succeeded in (\d+\.\d)s \((\d+\.\d)s total\)\. History: ", err)
+    assert times is not None
+    assert float(times[2]) > float(times[1])
     for noise in (
         "MissingGreenlet",
         "XCom not found",
@@ -410,6 +415,43 @@ def test_module_state_starts_fresh_for_each_supervised_try(project, debug, expec
 
     assert result.task_states == {("counter", -1): expected_state}
     assert query(project, "SELECT COUNT(*) FROM task_instance") == [(3,)]
+
+
+def test_each_try_is_forked_from_the_runs_fork_server(project):
+    source = write_dag_file(
+        project,
+        "family.py",
+        """
+        import psutil
+        from airflow.sdk import dag, task
+
+        @task
+        def ancestors():
+            return [parent.pid for parent in psutil.Process().parents()[:3]]
+
+        @dag(schedule=None)
+        def family():
+            ancestors()
+
+        workflow = family()
+        """,
+    )
+
+    fork_server, run_process, caller = run_dag_file(source).output("ancestors")
+
+    assert caller == os.getpid()
+    assert len({fork_server, run_process, caller}) == 3
+
+
+@mock.patch.dict(os.environ)
+@mock.patch.object(runner.ForkServer, "start", autospec=True)
+@pytest.mark.parametrize(("new_interpreter", "forks_tries"), [(False, True), (True, False)])
+def test_tries_are_forked_unless_a_new_interpreter_is_configured(start, new_interpreter, forks_tries):
+    with conf_vars({("core", "execute_tasks_new_python_interpreter"): str(new_interpreter)}):
+        fork_server = runner.prepare_supervised_tries()
+
+    assert start.called is forks_tries
+    assert (fork_server is start.return_value) is forks_tries
 
 
 def test_task_that_ends_its_process_fails_only_its_own_try(project, capfd):
@@ -681,6 +723,7 @@ def write_run_request(tmp_path: Path, source: Path, *, debug: bool) -> tuple[Pat
                 "triggered_by": "test",
                 "debug": debug,
                 "result_path": str(result_path),
+                "started_at": time.time(),
             }
         )
     )
@@ -988,30 +1031,32 @@ class TestEnsureDatabase:
     @mock.patch.object(runner, "upgradedb", autospec=True)
     @mock.patch.object(runner, "initdb", autospec=True)
     @mock.patch.object(runner, "_get_script_object", autospec=True)
-    @mock.patch.object(runner, "_get_current_revision", autospec=True)
+    @mock.patch.object(runner, "read_schema_revision", autospec=True)
     @pytest.mark.parametrize(
-        ("current", "expected_call"),
+        ("current", "expected_call", "reads_migrations"),
         [
-            pytest.param(None, "initdb", id="new-database"),
-            pytest.param("head", None, id="current"),
-            pytest.param("older", "upgradedb", id="older"),
+            pytest.param(None, "initdb", False, id="new-database"),
+            pytest.param(runner.get_newest_revision(), None, False, id="newest"),
+            pytest.param("head", None, True, id="head-missing-from-revision-map"),
+            pytest.param("older", "upgradedb", True, id="older"),
         ],
     )
     def test_brings_schema_to_this_version(
-        self, get_current, get_script, initdb, upgradedb, tmp_path, current, expected_call
+        self, read_revision, get_script, initdb, upgradedb, tmp_path, current, expected_call, reads_migrations
     ):
-        get_current.return_value = current
+        read_revision.return_value = current
         get_script.return_value.get_heads.return_value = ["head"]
 
         runner.ensure_database(tmp_path)
 
         assert initdb.called is (expected_call == "initdb")
         assert upgradedb.called is (expected_call == "upgradedb")
+        assert get_script.called is reads_migrations
 
     @pytest.mark.db_test
     @mock.patch.object(runner, "upgradedb", autospec=True)
     @mock.patch.object(runner, "_get_script_object", autospec=True)
-    @mock.patch.object(runner, "_get_current_revision", autospec=True, return_value="unknown")
+    @mock.patch.object(runner, "read_schema_revision", autospec=True, return_value="unknown")
     def test_unknown_revision_is_refused(self, _, get_script, upgradedb, tmp_path):
         get_script.return_value.get_heads.return_value = ["head"]
         get_script.return_value.get_revision.side_effect = CommandError("no such revision")
@@ -1020,6 +1065,10 @@ class TestEnsureDatabase:
             runner.ensure_database(tmp_path)
 
         upgradedb.assert_not_called()
+
+
+def test_newest_revision_is_the_migrations_head():
+    assert runner._get_script_object().get_heads() == [runner.get_newest_revision()]
 
 
 @pytest.mark.parametrize(
@@ -1053,7 +1102,9 @@ def test_main_exit_codes(tmp_path, request_overrides, outcome, expected_code):
     ("payload", "expected"),
     [
         pytest.param(
-            {"cancelled": False, "state": "success", "task_states": {}}, "Succeeded in 1.5s", id="success"
+            {"cancelled": False, "state": "success", "task_states": {}},
+            "Succeeded in 1.5s (4.2s total)",
+            id="success",
         ),
         pytest.param(
             {
@@ -1061,25 +1112,29 @@ def test_main_exit_codes(tmp_path, request_overrides, outcome, expected_code):
                 "state": "failed",
                 "task_states": {("b", -1): "failed", ("a", 2): "failed", ("c", -1): "upstream_failed"},
             },
-            "Failed in 1.5s: a[2], b",
+            "Failed in 1.5s (4.2s total): a[2], b",
             id="failed",
         ),
         pytest.param(
-            {"cancelled": True, "state": "failed", "task_states": {}}, "Cancelled after 1.5s", id="cancelled"
+            {"cancelled": True, "state": "failed", "task_states": {}},
+            "Cancelled after 1.5s (4.2s total)",
+            id="cancelled",
         ),
     ],
 )
 def test_summarize_run(payload, expected):
-    assert runner.summarize_run(payload, 1.49, Path("/p/.airflow")) == f"{expected}. History: /p/.airflow"
+    summary = runner.summarize_run(payload, 1.49, 4.16, Path("/p/.airflow"))
+
+    assert summary == f"{expected}. History: /p/.airflow"
 
 
 def test_summarize_run_links_to_the_run_while_the_ui_runs():
     payload = {"cancelled": False, "state": "success", "task_states": {}}
     run_url = "http://127.0.0.1:8080/dags/example/runs/manual__1"
 
-    summary = runner.summarize_run(payload, 1.49, Path("/p/.airflow"), run_url=run_url)
+    summary = runner.summarize_run(payload, 1.49, 4.16, Path("/p/.airflow"), run_url=run_url)
 
-    assert summary == f"Succeeded in 1.5s. View it at {run_url}"
+    assert summary == f"Succeeded in 1.5s (4.2s total). View it at {run_url}"
 
 
 @pytest.mark.parametrize(
@@ -1136,11 +1191,18 @@ def test_report_task_shows_the_failure_that_ended_the_task(capsys):
 
 
 @mock.patch.object(runner.settings, "dispose_async_engine", autospec=True)
+@mock.patch.object(runner, "configure_local_run_logging", autospec=True)
+@mock.patch.object(runner, "prepare_supervised_tries", autospec=True)
 @mock.patch.object(runner, "run_requested_dag", autospec=True, side_effect=runner.LocalRunSetupError("nope"))
-def test_execute_disposes_async_engine_even_when_setup_fails(_, mock_dispose):
+@pytest.mark.parametrize(("debug", "forks_tries"), [(False, True), (True, False)])
+def test_execute_ends_fork_server_and_disposes_async_engine_even_when_setup_fails(
+    _, prepare, configure_logging, mock_dispose, debug, forks_tries
+):
     with pytest.raises(runner.LocalRunSetupError):
-        runner.execute({})
+        runner.execute({"debug": debug})
 
+    assert prepare.called is forks_tries
+    assert prepare.return_value.close.called is forks_tries
     mock_dispose.assert_awaited_once_with()
 
 

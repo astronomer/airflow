@@ -37,6 +37,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -201,6 +202,7 @@ def run_dag_file(
     :raises LocalRunError: the run could not start or did not report a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
     """
+    started_at = time.time()
     source_path = Path(source).resolve()
     if source_path.suffix != ".py" or not source_path.is_file():
         raise LocalRunError(f"A local run needs a Python Dag file; {source_path} is not one")
@@ -234,6 +236,7 @@ def run_dag_file(
                     "triggered_by": triggered_by,
                     "debug": debug,
                     "result_path": str(result_path),
+                    "started_at": started_at,
                 }
             )
         )

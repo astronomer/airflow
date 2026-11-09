@@ -43,8 +43,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 import structlog
-from alembic.util import CommandError
-from sqlalchemy import event, select
+from packaging.version import Version
+from sqlalchemy import event, inspect, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from airflow import settings
@@ -54,6 +54,7 @@ from airflow.configuration import conf
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
 from airflow.jobs.job import Job, JobState
+from airflow.local_run.fork_server import ForkServer
 from airflow.local_run.logs import (
     TaskFailure,
     capture_task_log,
@@ -77,7 +78,7 @@ from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import allow_class
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
-from airflow.utils.db import _get_current_revision, _get_script_object, initdb, upgradedb
+from airflow.utils.db import _REVISION_HEADS_MAP, _get_script_object, initdb, upgradedb
 from airflow.utils.log.task_log_address import prepare_task_log_contexts, render_task_log_filename
 from airflow.utils.retries import run_with_db_retries
 from airflow.utils.session import create_session
@@ -122,26 +123,40 @@ def main(argv: list[str]) -> int:
 
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
+    # Debug runs each task try in this process, so breakpoint() and debuggers work.
+    fork_server = None if request.get("debug") else prepare_supervised_tries()
     configure_local_run_logging()
     try:
-        return run_requested_dag(request)
+        return run_requested_dag(request, fork_server=fork_server)
     finally:
+        if fork_server is not None:
+            fork_server.close()
         # Otherwise dispose_orm() at exit closes the async engine's aiosqlite connections outside an
         # event loop, and SQLAlchemy reports each one as a MissingGreenlet error.
         asyncio.run(settings.dispose_async_engine())
 
 
-def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
+def prepare_supervised_tries() -> ForkServer | None:
+    """
+    Set up the environment each try's process inherits, and fork the server that starts those processes.
+
+    Called first: a try's process gets this process's state as of now, before logging is routed, the database
+    opened or the Dag file imported. A deployment that asked for a new interpreter for each task gets that.
+    """
+    # The hook explains the debug mode instead of failing to read input.
+    os.environ.setdefault(
+        "PYTHONBREAKPOINT", f"{refuse_breakpoint.__module__}.{refuse_breakpoint.__qualname__}"
+    )
+    if conf.getboolean("core", "execute_tasks_new_python_interpreter", fallback=False):
+        return None
+    return ForkServer.start()
+
+
+def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None = None) -> dict[str, Any]:
     source = Path(request["source"])
     root = Path(settings.DAGS_FOLDER)
     home = Path(os.environ["AIRFLOW_HOME"])
-    # Debug runs each task try in this process, so breakpoint() and debuggers work.
     debug = bool(request.get("debug"))
-    if not debug:
-        # Each try's process inherits the hook, which explains the debug mode instead of failing to read input.
-        os.environ.setdefault(
-            "PYTHONBREAKPOINT", f"{refuse_breakpoint.__module__}.{refuse_breakpoint.__qualname__}"
-        )
     ensure_database(home)
     with record_startup_events():
         bundles = DagBundlesManager()
@@ -169,7 +184,7 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
         # the Dags, for asset watchers, are the project triggerer's.
         event.listen(Trigger, "before_insert", assign_local_trigger_queue)
         interrupted = threading.Event()
-        tries = SupervisedTries(session=session)
+        tries = SupervisedTries(session=session, fork_server=fork_server)
 
         def handle_interrupt(signum, frame):
             interrupted.set()
@@ -245,7 +260,9 @@ def run_requested_dag(request: dict[str, Any]) -> dict[str, Any]:
         )
         ui_url = read_live_ui_url(home)
         run_url = build_run_url(ui_url, dag_run.dag_id, dag_run.run_id) if ui_url else None
-        report(summarize_run(payload, time.monotonic() - started, home, run_url=run_url))
+        # The run started in the caller's process; wall-clock time is the only clock both processes read.
+        total = time.time() - request["started_at"]
+        report(summarize_run(payload, time.monotonic() - started, total, home, run_url=run_url))
         return payload
     finally:
         session.close()
@@ -424,19 +441,26 @@ def report_task(
         report(f"  · {label} {state}")
 
 
-def summarize_run(payload: dict[str, Any], elapsed: float, home: Path, *, run_url: str | None = None) -> str:
-    """Say how the run ended, and where to look at it: its page in the project's UI while one runs."""
+def summarize_run(
+    payload: dict[str, Any], elapsed: float, total: float, home: Path, *, run_url: str | None = None
+) -> str:
+    """
+    Say how the run ended, and where to look at it: its page in the project's UI while one runs.
+
+    ``elapsed`` is the time its tasks took, and ``total`` that of the whole run, from the call that started it.
+    """
+    times = f"{elapsed:.1f}s ({total:.1f}s total)"
     if payload["cancelled"]:
-        outcome = f"Cancelled after {elapsed:.1f}s"
+        outcome = f"Cancelled after {times}"
     elif payload["state"] == DagRunState.SUCCESS:
-        outcome = f"Succeeded in {elapsed:.1f}s"
+        outcome = f"Succeeded in {times}"
     else:
         failed = sorted(
             _task_label(task_id, map_index)
             for (task_id, map_index), state in payload["task_states"].items()
             if state == "failed"
         )
-        outcome = f"Failed in {elapsed:.1f}s" + (f": {', '.join(failed)}" if failed else "")
+        outcome = f"Failed in {times}" + (f": {', '.join(failed)}" if failed else "")
     where = f"View it at {run_url}" if run_url else f"History: {home}"
     return f"{outcome}. {where}"
 
@@ -452,11 +476,16 @@ def ensure_database(home: Path) -> None:
     """Create the project database, or migrate it to this Airflow version; refuse a newer schema."""
     with project_lock(home):
         with create_session() as session:
-            current = _get_current_revision(session)
+            current = read_schema_revision(session)
         if current is None:
             report(f"Creating the project database in {home} (first run only)")
             initdb()
             return
+        if current == get_newest_revision():
+            return
+        # Imported only when the schema may need migrating: importing Alembic is a noticeable part of a rerun.
+        from alembic.util import CommandError
+
         script = _get_script_object()
         if current in script.get_heads():
             return
@@ -469,6 +498,18 @@ def ensure_database(home: Path) -> None:
             ) from None
         report(f"Upgrading the project database in {home} to this Airflow version")
         upgradedb()
+
+
+def read_schema_revision(session: Session) -> str | None:
+    """Return the schema revision Alembic recorded in the database, None for a new database."""
+    if not inspect(session.connection()).has_table("alembic_version"):
+        return None
+    return session.scalar(text("SELECT version_num FROM alembic_version"))
+
+
+def get_newest_revision() -> str:
+    """Return the newest migration's revision, which a prek hook keeps in ``_REVISION_HEADS_MAP``."""
+    return _REVISION_HEADS_MAP[max(_REVISION_HEADS_MAP, key=Version)]
 
 
 def import_dag_file(source: Path, root: Path) -> BundleDagBag:
