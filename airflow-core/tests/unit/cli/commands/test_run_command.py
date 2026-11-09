@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import runpy
 from pathlib import Path
 from unittest import mock
 
@@ -42,6 +43,16 @@ class TestRunCommand:
     @classmethod
     def setup_class(cls):
         cls.parser = cli_parser.get_parser()
+
+    @mock.patch.object(run_command.reprlib, "Repr", autospec=True)
+    def test_import_supports_python_311_repr_constructor(self, mock_repr, capsys):
+        # Python 3.11's Repr constructor accepts no arguments.
+        mock_repr.side_effect = lambda: run_command._output_repr
+
+        namespace = runpy.run_path(run_command.__file__)
+        namespace["print_outputs"](make_result())
+
+        assert capsys.readouterr().out == "Outputs:\n  total = 12\n"
 
     @pytest.mark.parametrize(("extra_args", "debug"), [([], False), (["--debug"], True)])
     @mock.patch.object(run_command, "run_dag_file", autospec=True)

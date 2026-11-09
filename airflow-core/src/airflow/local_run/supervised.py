@@ -35,13 +35,15 @@ from typing import TYPE_CHECKING, Any
 import psutil
 
 from airflow._shared.module_loading import import_string
+from airflow._shared.timezones import timezone
 from airflow.configuration import conf
 from airflow.executors.workloads import ExecuteTask
 from airflow.local_run.fork_server import ForkServer, ForkServerError
 from airflow.local_run.logs import capture_task_log
-from airflow.models.trigger import Trigger
+from airflow.models.trigger import TRIGGER_FAIL_REPR, Trigger, TriggerFailureReason
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
-from airflow.sdk.definitions.dag import FINISHED_STATES, _run_inline_trigger
+from airflow.sdk.definitions.dag import FINISHED_STATES
+from airflow.sdk.exceptions import TaskDeferralTimeout
 from airflow.sdk.execution_time.supervisor import (
     ActivitySubprocess,
     InProcessTestSupervisor,
@@ -98,6 +100,13 @@ class SupervisedTries:
                 if state != TaskInstanceState.DEFERRED:
                     return state, log_path
                 self._resume_after_trigger(ti, workload, log_path)
+                if ti.working_set is None:
+                    # A failed terminal event archives this attempt and creates its retry's row.
+                    return TaskInstanceState.UP_FOR_RETRY, log_path
+                if ti.state != TaskInstanceState.SCHEDULED:
+                    if TYPE_CHECKING:
+                        assert ti.state is not None
+                    return ti.state, log_path
         except Exception:
             # Otherwise the run loop would wait forever for a task left queued.
             self._session.rollback()
@@ -177,13 +186,28 @@ class SupervisedTries:
         """Run the deferred try's trigger here, then schedule the task to resume, as the triggerer would."""
         trigger_row = self._session.get_one(Trigger, ti.trigger_id)
         trigger = import_string(trigger_row.classpath)(**trigger_row.kwargs)
-        with capture_task_log(log_path):
-            event = _run_inline_trigger(trigger, workload.ti)
-        if event is None:
+        timeout = (
+            max(0, (ti.trigger_timeout - timezone.utcnow()).total_seconds())
+            if ti.trigger_timeout is not None
+            else None
+        )
+        try:
+            with capture_task_log(log_path):
+                event = InProcessTestSupervisor.run_trigger_in_process(
+                    trigger=trigger, ti=workload.ti, timeout=timeout
+                )
+        except TaskDeferralTimeout:
             ti.state = TaskInstanceState.SCHEDULED
+            ti.next_method = TRIGGER_FAIL_REPR
+            ti.next_kwargs = {"error": TriggerFailureReason.TRIGGER_TIMEOUT}
+            ti.scheduled_dttm = timezone.utcnow()
             ti.trigger_id = None
         else:
-            Trigger.submit_event(trigger_row.id, event, session=self._session)
+            if event is None:
+                ti.state = TaskInstanceState.SCHEDULED
+                ti.trigger_id = None
+            else:
+                Trigger.submit_event(trigger_row.id, event, session=self._session)
         self._session.commit()
         self._session.refresh(ti)
 

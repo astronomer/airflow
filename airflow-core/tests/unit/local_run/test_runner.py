@@ -40,6 +40,7 @@ from unittest import mock
 
 import psutil
 import pytest
+import time_machine
 from alembic.util import CommandError
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, scoped_session
@@ -189,8 +190,11 @@ def test_running_run_no_local_process_drives_is_left_alone(project):
     assert query(project, f"SELECT state FROM dag_run WHERE run_id = '{first.run_id}'") == [("running",)]
 
 
+@time_machine.travel("2000-01-01", tick=False)
 def test_first_run_reports_progress_without_airflow_internals(project, capfd):
+    started = time.monotonic()
     run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
+    elapsed = time.monotonic() - started
 
     err = capfd.readouterr().err
     for line in (
@@ -205,6 +209,7 @@ def test_first_run_reports_progress_without_airflow_internals(project, capfd):
     times = re.search(r"Succeeded in (\d+\.\d)s \((\d+\.\d)s total\)\. History: ", err)
     assert times is not None
     assert float(times[2]) > float(times[1])
+    assert float(times[2]) <= elapsed + 0.1
     for noise in (
         "MissingGreenlet",
         "XCom not found",
@@ -723,7 +728,7 @@ def write_run_request(tmp_path: Path, source: Path, *, debug: bool) -> tuple[Pat
                 "triggered_by": "test",
                 "debug": debug,
                 "result_path": str(result_path),
-                "started_at": time.time(),
+                "started_at": time.monotonic(),
             }
         )
     )

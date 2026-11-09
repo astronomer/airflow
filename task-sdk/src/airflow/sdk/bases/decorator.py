@@ -564,7 +564,6 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         update_wrapper(self, self.function)
 
     def __call__(self, *args: FParams.args, **kwargs: FParams.kwargs) -> XComArg:
-        self._refuse_script_call_outside_dag(f"{self.function.__name__}()", sys._getframe(1))
         if self.is_teardown:
             if "trigger_rule" in self.kwargs:
                 raise ValueError("Trigger rule not configurable for teardown tasks.")
@@ -589,7 +588,9 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         # renders as Markdown rather than an indented code block.
         if self.function.__doc__ and not any(op_doc_attrs):
             op.doc_md = inspect.cleandoc(self.function.__doc__)
-        return XComArg(op)
+        result = XComArg(op)
+        self._refuse_script_call_outside_dag(f"{self.function.__name__}()", sys._getframe(1), result)
+        return result
 
     def _validate_arg_names(self, func: ValidationSource, kwargs: dict[str, Any]):
         # Ensure that context variables are not shadowed.
@@ -605,7 +606,6 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
         super()._validate_arg_names(func, kwargs)
 
     def expand(self, **map_kwargs: OperatorExpandArgument) -> XComArg:
-        self._refuse_script_call_outside_dag(f"{self.function.__name__}.expand()", sys._getframe(1))
         if self.kwargs.get("trigger_rule") == TriggerRule.ALWAYS and any(
             [isinstance(expanded, XComArg) for expanded in map_kwargs.values()]
         ):
@@ -622,10 +622,11 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
             if "trigger_rule" in self.kwargs:
                 raise ValueError("Trigger rule not configurable for teardown tasks.")
             self.kwargs.update(trigger_rule=TriggerRule.ALL_DONE_SETUP_SUCCESS)
-        return self._expand(DictOfListsExpandInput(map_kwargs), strict=False)
+        result = self._expand(DictOfListsExpandInput(map_kwargs), strict=False)
+        self._refuse_script_call_outside_dag(f"{self.function.__name__}.expand()", sys._getframe(1), result)
+        return result
 
     def expand_kwargs(self, kwargs: OperatorExpandKwargsArgument, *, strict: bool = True) -> XComArg:
-        self._refuse_script_call_outside_dag(f"{self.function.__name__}.expand_kwargs()", sys._getframe(1))
         if (
             self.kwargs.get("trigger_rule") == TriggerRule.ALWAYS
             and not isinstance(kwargs, XComArg)
@@ -647,21 +648,24 @@ class _TaskDecorator(ExpandableFactory, Generic[FParams, FReturn, OperatorSubcla
                     raise TypeError(f"expected XComArg or list[dict], not {type(kwargs).__name__}")
         elif not isinstance(kwargs, XComArg):
             raise TypeError(f"expected XComArg or list[dict], not {type(kwargs).__name__}")
-        return self._expand(ListOfDictsExpandInput(kwargs), strict=strict)
+        result = self._expand(ListOfDictsExpandInput(kwargs), strict=strict)
+        self._refuse_script_call_outside_dag(
+            f"{self.function.__name__}.expand_kwargs()", sys._getframe(1), result
+        )
+        return result
 
-    def _refuse_script_call_outside_dag(self, call: str, caller: FrameType) -> None:
+    def _refuse_script_call_outside_dag(self, call: str, caller: FrameType, result: XComArg) -> None:
         """
         Refuse a call from a script's own code that adds the task to no Dag.
 
         Such a call only returns a reference to an output nothing will produce, while a script calling a task
         expects it to run. Tests and helper modules build tasks without a Dag to inspect them; they are not
         ``__main__``, and neither is a Dag file that Airflow imports.
+
+        Check after construction, since XComArg inputs can assign the task to their Dag.
         """
-        if (
-            caller.f_globals.get("__name__") != "__main__"
-            or DagContext.get_current() is not None
-            or self.kwargs.get("dag") is not None
-            or self.kwargs.get("task_group") is not None
+        if caller.f_globals.get("__name__") != "__main__" or all(
+            operator.has_dag() for operator in result.roots
         ):
             return
         raise RuntimeError(
