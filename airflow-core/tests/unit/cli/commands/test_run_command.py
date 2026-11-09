@@ -28,14 +28,17 @@ from airflow.sdk.definitions.local_run import DagRunResult
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
 
-def make_result(state: str = "success", outputs: dict | None = None) -> DagRunResult:
+def make_result(state: str = "success", outputs: dict | None = None, ran: set | None = None) -> DagRunResult:
+    if outputs is None:
+        outputs = {("total", -1, "return_value"): 12}
     return DagRunResult(
         dag_id="example",
         run_id="manual__1",
         state=state,
         task_states={("total", -1): state},
         project_home=Path("/project/.airflow"),
-        outputs={("total", -1, "return_value"): 12} if outputs is None else outputs,
+        outputs=outputs,
+        ran=frozenset(ran) if ran is not None else frozenset((t, m) for t, m, _ in outputs),
     )
 
 
@@ -82,9 +85,83 @@ class TestRunCommand:
             run_conf={"n": 1},
             connections_file="conns.yaml",
             variables_file="vars.json",
+            task_ids=None,
+            task_group_ids=None,
+            include_upstream=False,
+            include_downstream=False,
+            run_id=None,
             triggered_by="cli",
             debug=debug,
         )
+        assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
+
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_passes_task_selection_to_launcher(self, mock_run_dag_file):
+        mock_run_dag_file.return_value = make_result()
+        args = self.parser.parse_args(
+            [
+                "run",
+                "pipeline.py",
+                "--task",
+                "total",
+                "--task",
+                "double[1]",
+                "--group",
+                "transform",
+                "--upstream",
+                "--downstream",
+                "--run-id",
+                "manual__1",
+            ]
+        )
+
+        args.func(args)
+
+        assert mock_run_dag_file.call_args.kwargs == {
+            "dag_id": None,
+            "run_conf": None,
+            "connections_file": None,
+            "variables_file": None,
+            "task_ids": ["total", ("double", 1)],
+            "task_group_ids": ["transform"],
+            "include_upstream": True,
+            "include_downstream": True,
+            "run_id": "manual__1",
+            "triggered_by": "cli",
+            "debug": False,
+        }
+
+    @pytest.mark.parametrize("flag", [["--upstream"], ["--downstream"], ["--run-id", "manual__1"]])
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_selection_options_need_a_selection(self, mock_run_dag_file, flag):
+        args = self.parser.parse_args(["run", "pipeline.py", *flag])
+
+        with pytest.raises(SystemExit, match="apply to the tasks chosen with --task or --group"):
+            args.func(args)
+
+        mock_run_dag_file.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("error", "expected_code"),
+        [
+            pytest.param(DagExecutionError(make_result("failed", ran={("total", -1)})), 1, id="failed"),
+            pytest.param(None, 0, id="succeeded"),
+        ],
+    )
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_selection_prints_only_the_outputs_it_ran(self, mock_run_dag_file, capsys, error, expected_code):
+        outputs = {("total", -1, "return_value"): 12, ("numbers", -1, "return_value"): [1, 2, 3]}
+        mock_run_dag_file.return_value = make_result(outputs=outputs, ran={("total", -1)})
+        mock_run_dag_file.side_effect = error
+        args = self.parser.parse_args(["run", "pipeline.py", "--task", "total"])
+
+        if expected_code:
+            with pytest.raises(SystemExit) as ctx:
+                args.func(args)
+            assert ctx.value.code == expected_code
+        else:
+            args.func(args)
+
         assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
 
     @pytest.mark.parametrize(
@@ -100,6 +177,9 @@ class TestRunCommand:
             pytest.param(LocalRunError("No Dags found"), 2, "", "Error: No Dags found\n", id="setup-error"),
             pytest.param(
                 FileNotFoundError("missing.yaml"), 2, "", "Error: missing.yaml\n", id="missing-file"
+            ),
+            pytest.param(
+                ValueError("keep its conf"), 2, "", "Error: keep its conf\n", id="invalid-selection"
             ),
             pytest.param(KeyboardInterrupt(), 130, "", "", id="interrupt"),
         ],

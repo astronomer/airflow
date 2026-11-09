@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import re
 import reprlib
 import sys
 
@@ -26,6 +27,8 @@ from airflow.sdk.definitions.local_run import DagRunResult, run_dag_file
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
 MAX_PRINTED_OUTPUTS = 10
+# How the run labels one map index of a task, e.g. double[1].
+TASK_MARKER = re.compile(r"(?P<task_id>.+)\[(?P<map_index>\d+)\]")
 
 _output_repr = reprlib.Repr()
 _output_repr.maxstring = 80
@@ -46,6 +49,11 @@ def run(args) -> None:
         raise SystemExit(f"--conf is not valid JSON: {e.msg}")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise SystemExit("--conf must be a JSON object")
+    selected = bool(args.task_ids or args.task_group_ids)
+    if not selected and (args.include_upstream or args.include_downstream or args.run_id):
+        raise SystemExit(
+            "--upstream, --downstream and --run-id apply to the tasks chosen with --task or --group"
+        )
     try:
         result = run_dag_file(
             args.file,
@@ -53,22 +61,42 @@ def run(args) -> None:
             run_conf=run_conf,
             connections_file=args.connections_file,
             variables_file=args.variables_file,
+            task_ids=parse_task_ids(args.task_ids),
+            task_group_ids=args.task_group_ids,
+            include_upstream=args.include_upstream,
+            include_downstream=args.include_downstream,
+            run_id=args.run_id,
             triggered_by="cli",
             debug=args.debug,
         )
     except DagExecutionError as e:
-        print_outputs(e.result)
+        print_outputs(e.result, only_ran=selected)
         raise SystemExit(1)
-    except (LocalRunError, OSError) as e:
+    except (LocalRunError, OSError, ValueError) as e:
         print(f"Error: {e}", file=sys.stderr)
         raise SystemExit(2)
     except KeyboardInterrupt:
         raise SystemExit(130)
-    print_outputs(result)
+    print_outputs(result, only_ran=selected)
 
 
-def print_outputs(result: DagRunResult) -> None:
-    keys = sorted({*result.outputs, *result.output_errors})
+def parse_task_ids(values: list[str] | None) -> list[str | tuple[str, int]] | None:
+    """Read ``--task`` values; ``TASK_ID[i]`` selects one map index."""
+    if not values:
+        return None
+    return [
+        (match["task_id"], int(match["map_index"])) if (match := TASK_MARKER.fullmatch(value)) else value
+        for value in values
+    ]
+
+
+def print_outputs(result: DagRunResult, *, only_ran: bool = False) -> None:
+    """Print the run's outputs; with ``only_ran``, those of the task instances this command ran."""
+    keys = sorted(
+        key
+        for key in {*result.outputs, *result.output_errors}
+        if not only_ran or (key[0], key[1]) in result.ran
+    )
     if keys:
         print("Outputs:")
     for task_id, map_index, key in keys[:MAX_PRINTED_OUTPUTS]:

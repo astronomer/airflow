@@ -374,7 +374,8 @@ def test_retried_attempt_is_reported_on_one_line(project, capfd):
     out, err = capfd.readouterr()
     # The wait left by the time the line is printed rounds up to whole seconds.
     assert re.search(
-        r"  ↻ flaky failed attempt 1 of 2, retrying in [12]s: ConnectionError: try again\n  ✓ flaky\n", err
+        r"  ↻ flaky failed attempt 1 of 2, retrying in [12]s: ConnectionError: try again\n  ✓ flaky \(try 2\)\n",
+        err,
     )
     for noise in ("Traceback", "Task failed with exception", "No tasks to run"):
         assert noise not in out + err
@@ -712,6 +713,214 @@ def test_database_from_newer_airflow_is_refused(project):
 
     with pytest.raises(LocalRunError, match=r"created by a newer Airflow version \(schema ffffffffffff\)"):
         run_dag_file(source)
+
+
+GROUPED = """
+from airflow.sdk import dag, task, task_group
+
+
+@task
+def extract():
+    return 1
+
+
+@task_group
+def transform(value):
+    @task
+    def add(number):
+        return number + 1
+
+    @task
+    def scale(number):
+        return number * 10
+
+    return scale(add(value))
+
+
+@task
+def load(value):
+    return value
+
+
+@dag(schedule=None)
+def grouped():
+    load(transform(extract()))
+
+
+workflow = grouped()
+"""
+
+CURRENT_TRIES = """
+SELECT task_instance.task_id, task_instance.region_index, task_instance.try_number FROM task_instance
+WHERE task_instance.working_set = 1 ORDER BY task_instance.task_id, task_instance.region_index
+"""
+
+
+def test_rerun_runs_the_selected_task_with_the_outputs_its_run_kept(project, capfd):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+    source.write_text(textwrap.dedent(PIPELINE).replace("return sum(values)", "return sum(values) * 10"))
+    capfd.readouterr()
+
+    rerun = run_dag_file(source, task_ids=["total"])
+
+    err = capfd.readouterr().err
+    assert f"Rerunning total in run {first.run_id}, with the outputs of double, numbers\n" in err
+    assert "  ✓ total (try 2)\n" in err
+    assert rerun.run_id == first.run_id
+    assert rerun.output("total") == 120
+    assert rerun.ran == {("total", -1)}
+    assert [row for row in query(project, CURRENT_TRIES) if row[2] != 1] == [("total", -1, 2)]
+    # The rerun's own job drove the run.
+    assert query(project, RUN_JOBS) == [("example", "success", "LocalRunJob", "success")]
+    assert query(project, "SELECT COUNT(*) FROM job") == [(2,)]
+
+
+def test_rerun_of_a_mapped_task_and_what_feeds_it_expands_it_again(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    run_dag_file(source)
+
+    rerun = run_dag_file(source, task_ids=["numbers"], include_downstream=True)
+
+    assert rerun.ran == {("numbers", -1), ("double", 0), ("double", 1), ("double", 2), ("total", -1)}
+    assert rerun.output("total") == 12
+
+
+def test_rerun_after_a_structural_edit_moves_the_run_to_the_new_dag_version(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    run_dag_file(source)
+    source.write_text(
+        textwrap.dedent(PIPELINE).replace("@dag(schedule=None)", "@dag(schedule=None, tags=['edited'])")
+    )
+
+    run_dag_file(source, task_ids=["total"])
+
+    assert query(
+        project,
+        "SELECT DISTINCT dag_version.version_number FROM dag_run "
+        "JOIN dag_version ON dag_version.id = dag_run.created_dag_version_id",
+    ) == [(2,)]
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected_ran"),
+    [
+        pytest.param({"task_ids": [("double", 1)]}, {("double", 1)}, id="one-map-index"),
+        pytest.param(
+            {"task_ids": ["double"], "include_downstream": True},
+            {("double", 0), ("double", 1), ("double", 2), ("total", -1)},
+            id="downstream",
+        ),
+        pytest.param(
+            {"task_ids": ["total"], "include_upstream": True},
+            {("numbers", -1), ("double", 0), ("double", 1), ("double", 2), ("total", -1)},
+            id="upstream",
+        ),
+    ],
+)
+def test_rerun_selects_relatives_as_clear_does(project, selection, expected_ran):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    run_dag_file(source)
+
+    rerun = run_dag_file(source, **selection)
+
+    assert rerun.ran == expected_ran
+    assert rerun.output("total") == 12
+
+
+def test_rerun_of_a_task_group_reruns_each_of_its_tasks(project):
+    source = write_dag_file(project, "grouped.py", GROUPED)
+    run_dag_file(source)
+
+    rerun = run_dag_file(source, task_group_ids=["transform"])
+
+    assert rerun.ran == {("transform.add", -1), ("transform.scale", -1)}
+    assert rerun.output("load") == 20
+
+
+def test_rerun_uses_the_latest_run_that_has_the_inputs(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+    source.write_text(textwrap.dedent(PIPELINE).replace("return number * 2", "raise ValueError('boom')"))
+    with pytest.raises(DagExecutionError) as failed:
+        run_dag_file(source)
+
+    assert run_dag_file(source, task_ids=["total"]).run_id == first.run_id
+    with pytest.raises(LocalRunError, match="lacks the outputs total needs: double did not succeed"):
+        run_dag_file(source, task_ids=["total"], run_id=failed.value.result.run_id)
+
+
+@pytest.fixture(scope="module")
+def finished_project(tmp_path_factory) -> Path:
+    """A project with one finished run of PIPELINE, for reruns refused before they change anything."""
+    project = tmp_path_factory.mktemp("finished")
+    (project / "pyproject.toml").write_text('[project]\nname = "demo"\nversion = "0"\n')
+    run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
+    return project
+
+
+@pytest.mark.parametrize(
+    ("selection", "match"),
+    [
+        pytest.param(
+            {"task_ids": ["totl"]}, "Dag 'example' has no task 'totl'. Did you mean 'total'?", id="task"
+        ),
+        pytest.param({"task_group_ids": ["nope"]}, "Dag 'example' has no task group 'nope'.$", id="group"),
+        pytest.param({"task_ids": [("total", 3)]}, "Task 'total' is not mapped", id="not-mapped"),
+        pytest.param(
+            {"task_ids": [("double", 7)]}, r"has no map index 7 in run \S+; it has 0, 1, 2", id="map-index"
+        ),
+        pytest.param(
+            {"task_ids": ["total"], "run_id": "nope"}, "Dag 'example' has no run 'nope'", id="run-id"
+        ),
+    ],
+)
+def test_rerun_of_what_the_dag_or_run_lacks_is_refused(finished_project, selection, match):
+    with pytest.raises(LocalRunError, match=match):
+        run_dag_file(finished_project / "pipeline.py", **selection)
+
+
+@pytest.mark.parametrize(
+    ("task_id", "match"),
+    [
+        pytest.param(
+            "total",
+            "No earlier run of Dag 'example' has the outputs total needs from double, numbers",
+            id="needs-inputs",
+        ),
+        pytest.param("numbers", "Dag 'example' has no finished run to rerun numbers in", id="no-inputs"),
+    ],
+)
+def test_rerun_without_an_earlier_run_is_refused(project, task_id, match):
+    with pytest.raises(LocalRunError, match=match):
+        run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), task_ids=[task_id])
+
+
+def test_rerun_in_a_run_still_running_or_without_the_task_is_refused(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+    source.write_text(
+        textwrap.dedent(PIPELINE)
+        .replace("    nothing()\n", "    nothing() >> extra()\n")
+        .replace("@dag(schedule=None)", EXTRA + "@dag(schedule=None)")
+    )
+
+    with pytest.raises(LocalRunError, match="has no extra: the Dag gained it after that run"):
+        run_dag_file(source, task_ids=["extra"], run_id=first.run_id)
+
+    with sqlite3.connect(project / ".airflow" / "airflow.db") as conn:
+        conn.execute("UPDATE dag_run SET state = 'running'")
+    with pytest.raises(LocalRunError, match="is still running; rerun its tasks once it has finished"):
+        run_dag_file(source, task_ids=["total"], run_id=first.run_id)
+
+
+EXTRA = """
+@task
+def extra():
+    pass
+
+
+"""
 
 
 def write_run_request(tmp_path: Path, source: Path, *, debug: bool) -> tuple[Path, Path]:
@@ -1181,8 +1390,27 @@ def test_report_task(capsys, state, cancelled, retry_in, expected):
     assert capsys.readouterr().err == f"{expected}\n"
 
 
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        pytest.param("success", "  ✓ load (try 2)", id="success"),
+        pytest.param("failed", "  ✗ load (try 2) failed", id="failed"),
+        pytest.param(
+            "up_for_retry", "  ↻ load failed attempt 2 of 3, retrying: ValueError: boom", id="retry"
+        ),
+    ],
+)
+def test_report_task_numbers_a_later_try(capsys, state, expected):
+    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=-1, try_number=2, max_tries=2)
+    failure = TaskFailure(summary="ValueError: boom", details="Traceback ...")
+
+    runner.report_task(ti, state, failure, cancelled=False, retry_in=datetime.timedelta(0))
+
+    assert capsys.readouterr().err.splitlines()[0] == expected
+
+
 def test_report_task_shows_the_failure_that_ended_the_task(capsys):
-    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=3)
+    ti = mock.Mock(spec=TaskInstance, task_id="load", map_index=3, try_number=1)
     failure = TaskFailure(
         summary="ValueError: boom", details="Traceback (most recent call last):\nValueError: boom"
     )
