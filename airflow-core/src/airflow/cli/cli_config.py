@@ -538,6 +538,39 @@ ARG_RUN_DEBUG = Arg(
     ),
     action="store_true",
 )
+ARG_RUN_TASK = Arg(
+    ("--task",),
+    dest="task_ids",
+    action="append",
+    metavar="TASK_ID",
+    help=(
+        "Rerun this task, as Clear does in the UI, in the latest run that has the outputs of its upstream "
+        "tasks; TASK_ID[i] reruns one map index. Repeatable"
+    ),
+)
+ARG_RUN_GROUP = Arg(
+    ("--group",),
+    dest="task_group_ids",
+    action="append",
+    metavar="GROUP_ID",
+    help="Rerun every task in this task group. Repeatable",
+)
+ARG_RUN_UPSTREAM = Arg(
+    ("--upstream",),
+    dest="include_upstream",
+    action="store_true",
+    help="Also rerun the upstream tasks of the selected ones",
+)
+ARG_RUN_DOWNSTREAM = Arg(
+    ("--downstream",),
+    dest="include_downstream",
+    action="store_true",
+    help="Also rerun the downstream tasks of the selected ones",
+)
+ARG_RUN_IN_RUN_ID = Arg(
+    ("--run-id",),
+    help="Rerun the selected tasks in this run instead of the latest one that has their inputs",
+)
 # standalone
 ARG_STANDALONE_PROJECT = Arg(
     ("--project",),
@@ -2475,7 +2508,8 @@ core_commands: list[CLICommand] = [
         description=(
             "Import the file the way Airflow discovers Dags (its __main__ block does not run), run the Dag "
             "once, and keep the run in .airflow/ next to the project's pyproject.toml. No scheduler, "
-            "API server or database setup is needed."
+            "API server or database setup is needed. With --task or --group, only those tasks run again, "
+            "in an earlier run whose upstream outputs they read."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
         args=(
@@ -2484,6 +2518,11 @@ core_commands: list[CLICommand] = [
             ARG_CONF,
             ARG_RUN_CONNECTIONS_FILE,
             ARG_RUN_VARIABLES_FILE,
+            ARG_RUN_TASK,
+            ARG_RUN_GROUP,
+            ARG_RUN_UPSTREAM,
+            ARG_RUN_DOWNSTREAM,
+            ARG_RUN_IN_RUN_ID,
             ARG_RUN_DEBUG,
         ),
     ),

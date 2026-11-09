@@ -28,7 +28,7 @@ import sys
 import warnings
 import weakref
 from collections import abc
-from collections.abc import Callable, Collection, Iterable, MutableSet
+from collections.abc import Callable, Collection, Iterable, MutableSet, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta
 from inspect import signature
@@ -1440,6 +1440,11 @@ class DAG:
         run_conf: dict[str, Any] | None = None,
         conn_file_path: str | os.PathLike[str] | None = None,
         variable_file_path: str | os.PathLike[str] | None = None,
+        task_ids: Sequence[str | tuple[str, int]] | None = None,
+        task_group_ids: Sequence[str] | None = None,
+        include_upstream: bool = False,
+        include_downstream: bool = False,
+        run_id: str | None = None,
         debug: bool = False,
     ) -> DagRunResult:
         """
@@ -1451,9 +1456,18 @@ class DAG:
         ``pyproject.toml`` (or next to the file when there is none). Each task try runs in a process
         of its own, as on a worker.
 
+        With ``task_ids`` or ``task_group_ids``, only those tasks run again, as Clear does in the UI:
+        in the latest finished run that has the outputs of their upstream tasks, or in ``run_id``.
+        The result still describes that whole run.
+
         :param run_conf: configuration for the Dag run
         :param conn_file_path: connections file (JSON, YAML or env) available to the run
         :param variable_file_path: variables file (JSON, YAML or env) available to the run
+        :param task_ids: task IDs, or ``(task_id, map_index)`` tuples for one mapped task instance
+        :param task_group_ids: task groups whose tasks to rerun
+        :param include_upstream: also rerun the upstream tasks of the selected ones
+        :param include_downstream: also rerun the downstream tasks of the selected ones
+        :param run_id: the run to rerun the selected tasks in, instead of the latest one with their inputs
         :param debug: run every task try inside the run's process instead, so ``breakpoint()`` and
             debuggers work. Module state then carries over from one try to the next.
         :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
@@ -1474,6 +1488,11 @@ class DAG:
             run_conf=run_conf,
             connections_file=conn_file_path,
             variables_file=variable_file_path,
+            task_ids=task_ids,
+            task_group_ids=task_group_ids,
+            include_upstream=include_upstream,
+            include_downstream=include_downstream,
+            run_id=run_id,
             debug=debug,
         )
 

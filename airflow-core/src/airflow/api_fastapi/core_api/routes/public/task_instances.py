@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Sequence
 from typing import Annotated, Literal, cast
 from uuid import UUID
 
@@ -150,7 +150,7 @@ from airflow.models.taskinstance import (
     TaskInstance as TI,
     apply_loop_clear_scope,
     clear_task_instances,
-    find_relevant_relatives,
+    find_task_markers_to_clear,
     select_loop_clear_scope,
 )
 from airflow.ti_deps.dep_context import DepContext
@@ -1114,31 +1114,24 @@ def post_clear_task_instances(
     )
     task_markers_to_clear = body.task_ids
     if task_markers_to_clear is not None and not loop_aware:
-        mapped_tasks_tuples = {t for t in task_markers_to_clear if isinstance(t, tuple)}
-        # Unmapped tasks are expressed in their task_ids (without map_indexes)
-        normal_task_ids = {t for t in task_markers_to_clear if not isinstance(t, tuple)}
-
-        def _find_relatives(
-            run_id: str,
-            normal_tasks: Iterable[str],
-            mapped_tasks: Iterable[tuple[str, int]],
-            direction: Literal["upstream", "downstream"],
-        ) -> Collection[str | tuple[str, int]]:
-            return find_relevant_relatives(
-                normal_tasks,
-                mapped_tasks,
+        if dag_run_id is not None:
+            task_markers_to_clear = find_task_markers_to_clear(
+                task_markers_to_clear,
                 dag=dag,
-                run_id=run_id,
-                direction=direction,
+                run_id=dag_run_id,
+                include_upstream=upstream,
+                include_downstream=downstream,
                 session=session,
             )
-
-        # We can't easily calculate upstream/downstream map indexes when not
-        # working for a specific dag run. It's possible by looking at the runs
-        # one by one, but that is both resource-consuming and logically complex.
-        # So instead we'll just clear all the tis based on task ID and hope
-        # that's good enough for most cases.
-        if dag_run_id is None:
+        else:
+            mapped_tasks_tuples = {t for t in task_markers_to_clear if isinstance(t, tuple)}
+            # Unmapped tasks are expressed in their task_ids (without map_indexes)
+            normal_task_ids = {t for t in task_markers_to_clear if not isinstance(t, tuple)}
+            # We can't easily calculate upstream/downstream map indexes when not
+            # working for a specific dag run. It's possible by looking at the runs
+            # one by one, but that is both resource-consuming and logically complex.
+            # So instead we'll just clear all the tis based on task ID and hope
+            # that's good enough for most cases.
             if upstream or downstream:
                 partial_dag = dag.partial_subset(
                     task_ids=normal_task_ids.union(tid for tid, _ in mapped_tasks_tuples),
@@ -1147,25 +1140,10 @@ def post_clear_task_instances(
                     exclude_original=True,
                 )
                 normal_task_ids.update(partial_dag.task_dict)
-        else:
-            # Both directions must start from the requested tasks only. Merging upstream results
-            # before the downstream pass would also select every descendant of those upstream tasks.
-            relatives: set[str | tuple[str, int]] = set()
-            if upstream:
-                relatives.update(
-                    _find_relatives(dag_run_id, normal_task_ids, mapped_tasks_tuples, "upstream")
-                )
-            if downstream:
-                relatives.update(
-                    _find_relatives(dag_run_id, normal_task_ids, mapped_tasks_tuples, "downstream")
-                )
-            normal_task_ids.update(t for t in relatives if not isinstance(t, tuple))
-            mapped_tasks_tuples.update(t for t in relatives if isinstance(t, tuple))
-
-        task_markers_to_clear = [
-            *normal_task_ids,
-            *((t, m) for t, m in mapped_tasks_tuples if t not in normal_task_ids),
-        ]
+            task_markers_to_clear = [
+                *normal_task_ids,
+                *((t, m) for t, m in mapped_tasks_tuples if t not in normal_task_ids),
+            ]
 
     clear_markers = task_markers_to_clear
     if loop_aware and task_markers_to_clear is not None:

@@ -3729,6 +3729,42 @@ def find_relevant_relatives(
     return visited
 
 
+def find_task_markers_to_clear(
+    task_markers: Iterable[str | tuple[str, int]],
+    *,
+    dag: SerializedDAG,
+    run_id: str,
+    include_upstream: bool,
+    include_downstream: bool,
+    session: Session,
+) -> list[str | tuple[str, int]]:
+    """
+    Return the task IDs and ``(task_id, map_index)`` pairs that clearing ``task_markers`` in one run covers.
+
+    A mapped task instance's relatives are limited to the map indexes it relates to in that run.
+    """
+    mapped_tasks = {marker for marker in task_markers if isinstance(marker, tuple)}
+    normal_task_ids = {marker for marker in task_markers if not isinstance(marker, tuple)}
+    # Both directions must start from the requested tasks only. Merging upstream results
+    # before the downstream pass would also select every descendant of those upstream tasks.
+    relatives: set[str | tuple[str, int]] = set()
+    if include_upstream:
+        relatives.update(
+            find_relevant_relatives(
+                normal_task_ids, mapped_tasks, dag=dag, run_id=run_id, direction="upstream", session=session
+            )
+        )
+    if include_downstream:
+        relatives.update(
+            find_relevant_relatives(
+                normal_task_ids, mapped_tasks, dag=dag, run_id=run_id, direction="downstream", session=session
+            )
+        )
+    normal_task_ids.update(relative for relative in relatives if not isinstance(relative, tuple))
+    mapped_tasks.update(relative for relative in relatives if isinstance(relative, tuple))
+    return [*normal_task_ids, *((t, m) for t, m in mapped_tasks if t not in normal_task_ids)]
+
+
 class TaskInstanceNote(Base):
     """For storage of arbitrary notes concerning the task instance."""
 

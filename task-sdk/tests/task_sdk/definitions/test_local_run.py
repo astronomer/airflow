@@ -75,6 +75,7 @@ def make_payload(**kwargs) -> dict[str, Any]:
         "outputs": {("numbers", -1, "return_value"): pickle.dumps([1, 2])},
         "output_errors": {},
         "dag_module": None,
+        "ran": frozenset({("numbers", -1)}),
         "cancelled": False,
     }
     payload.update(kwargs)
@@ -269,6 +270,7 @@ class TestBuildResult:
 
         assert result.output("numbers") == [1, 2]
         assert result.project_home == tmp_path
+        assert result.ran == {("numbers", -1)}
 
     def test_failed_run_raises_with_result(self, tmp_path):
         payload = make_payload(
@@ -384,6 +386,9 @@ class TestIsUnguardedModuleLevelCall:
         assert namespace["found"] == [expected]
 
 
+SELECTION_KEYS = ("task_ids", "task_group_ids", "include_upstream", "include_downstream", "run_id")
+
+
 class TestRunDagFile:
     @pytest.fixture
     def source(self, tmp_path):
@@ -438,6 +443,65 @@ class TestRunDagFile:
     def test_rejects_non_dict_run_conf(self, source):
         with pytest.raises(TypeError, match="run_conf must be a dict, not list"):
             run_dag_file(source, run_conf=[1])
+
+    @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
+    def test_task_selection_reaches_the_request(self, mock_popen, source):
+        seen = {}
+
+        def fake_child(command, env):
+            seen.update(json.loads(Path(command[-1]).read_text()))
+            Path(seen["result_path"]).write_bytes(pickle.dumps(make_payload()))
+            process = mock.create_autospec(REAL_POPEN, instance=True)
+            process.wait.return_value = 0
+            return process
+
+        mock_popen.side_effect = fake_child
+
+        run_dag_file(
+            source,
+            task_ids=["total", ("double", 1)],
+            task_group_ids=["transform"],
+            include_downstream=True,
+            run_id="manual__1",
+        )
+
+        # JSON carries the (task_id, map_index) tuple as a list.
+        assert {key: seen[key] for key in SELECTION_KEYS} == {
+            "task_ids": ["total", ["double", 1]],
+            "task_group_ids": ["transform"],
+            "include_upstream": False,
+            "include_downstream": True,
+            "run_id": "manual__1",
+        }
+
+    @pytest.mark.parametrize(
+        ("kwargs", "error", "match"),
+        [
+            pytest.param({"task_ids": "total"}, TypeError, "take a list", id="string-task-ids"),
+            pytest.param({"task_group_ids": "group"}, TypeError, "take a list", id="string-group-ids"),
+            pytest.param(
+                {"task_ids": [("double", "1")]}, TypeError, "not \\('double', '1'\\)", id="bad-index"
+            ),
+            pytest.param(
+                {"task_ids": [("double", True)]}, TypeError, "not \\('double', True\\)", id="bool-index"
+            ),
+            pytest.param(
+                {"include_upstream": True}, ValueError, "apply to selected tasks", id="no-selection"
+            ),
+            pytest.param({"run_id": "manual__1"}, ValueError, "apply to selected tasks", id="run-id-alone"),
+            pytest.param(
+                {"task_ids": ["total"], "run_conf": {"n": 1}}, ValueError, "keep its conf", id="new-conf"
+            ),
+        ],
+    )
+    @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
+    def test_invalid_task_selection_is_refused_before_the_run_starts(
+        self, mock_popen, source, kwargs, error, match
+    ):
+        with pytest.raises(error, match=match):
+            run_dag_file(source, **kwargs)
+
+        mock_popen.assert_not_called()
 
     def test_missing_resource_file_raises(self, source, tmp_path):
         with pytest.raises(FileNotFoundError):

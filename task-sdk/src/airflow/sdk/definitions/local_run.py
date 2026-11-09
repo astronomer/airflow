@@ -38,7 +38,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import FrameType
@@ -46,7 +46,7 @@ from typing import Any, NoReturn
 
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 
@@ -70,6 +70,8 @@ class DagRunResult:
     output_errors: Mapping[tuple[str, int, str], str] = field(default_factory=dict, repr=False)
     # The error each failed task instance's last attempt ended with, e.g. "ValueError: boom".
     failures: Mapping[tuple[str, int], str] = field(default_factory=dict, repr=False)
+    # The task instances this call ran: in a rerun, the selected ones; otherwise every one that ran.
+    ran: frozenset[tuple[str, int]] = field(default_factory=frozenset, repr=False)
 
     @property
     def succeeded(self) -> bool:
@@ -190,13 +192,26 @@ def run_dag_file(
     run_conf: dict[str, Any] | None = None,
     connections_file: str | os.PathLike[str] | None = None,
     variables_file: str | os.PathLike[str] | None = None,
+    task_ids: Sequence[str | tuple[str, int]] | None = None,
+    task_group_ids: Sequence[str] | None = None,
+    include_upstream: bool = False,
+    include_downstream: bool = False,
+    run_id: str | None = None,
     triggered_by: str = "test",
     debug: bool = False,
 ) -> DagRunResult:
     """
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
 
+    With ``task_ids`` or ``task_group_ids``, rerun only those tasks, as Clear does in the UI, in the latest
+    finished run that has the outputs of their upstream tasks, or in ``run_id``.
+
     :param dag_id: required when the file defines more than one Dag.
+    :param task_ids: task IDs, or ``(task_id, map_index)`` tuples for one mapped task instance.
+    :param task_group_ids: task groups whose tasks to rerun.
+    :param include_upstream: also rerun the upstream tasks of the selected ones.
+    :param include_downstream: also rerun the downstream tasks of the selected ones.
+    :param run_id: the run to rerun the selected tasks in.
     :param debug: run task tries inside the run's process rather than each in a process of its own.
     :raises DagExecutionError: the run finished in a failed state.
     :raises LocalRunError: the run could not start or did not report a result.
@@ -208,6 +223,14 @@ def run_dag_file(
         raise LocalRunError(f"A local run needs a Python Dag file; {source_path} is not one")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise TypeError(f"run_conf must be a dict, not {type(run_conf).__name__}")
+    selection = build_task_selection(
+        task_ids,
+        task_group_ids,
+        include_upstream=include_upstream,
+        include_downstream=include_downstream,
+        run_id=run_id,
+        run_conf=run_conf,
+    )
     connections_path = Path(connections_file).resolve(strict=True) if connections_file else None
     variables_path = Path(variables_file).resolve(strict=True) if variables_file else None
     if importlib.util.find_spec(CHILD_MODULE) is None:
@@ -233,6 +256,7 @@ def run_dag_file(
                     "source": str(source_path),
                     "dag_id": dag_id,
                     "run_conf": run_conf,
+                    **selection,
                     "triggered_by": triggered_by,
                     "debug": debug,
                     "result_path": str(result_path),
@@ -244,6 +268,53 @@ def run_dag_file(
         return_code = wait_for_child(process)
         payload = pickle.loads(result_path.read_bytes()) if result_path.exists() else None
     return build_result(payload, return_code, home, source_path)
+
+
+def build_task_selection(
+    task_ids: Sequence[str | tuple[str, int]] | None,
+    task_group_ids: Sequence[str] | None,
+    *,
+    include_upstream: bool,
+    include_downstream: bool,
+    run_id: str | None,
+    run_conf: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Check a selection of tasks to rerun, and return it as the run's request carries it."""
+    if isinstance(task_ids, str) or isinstance(task_group_ids, str):
+        raise TypeError("task_ids and task_group_ids take a list, e.g. task_ids=['total']")
+    markers: list[str | list[str | int]] = []
+    for marker in task_ids or ():
+        if isinstance(marker, str):
+            markers.append(marker)
+        elif (
+            isinstance(marker, tuple)
+            and len(marker) == 2
+            and isinstance(marker[0], str)
+            and isinstance(marker[1], int)
+            and not isinstance(marker[1], bool)
+        ):
+            markers.append([marker[0], marker[1]])
+        else:
+            raise TypeError(f"A task ID or a (task_id, map_index) tuple is expected, not {marker!r}")
+    group_ids = list(task_group_ids or ())
+    if not markers and not group_ids:
+        if include_upstream or include_downstream or run_id is not None:
+            raise ValueError(
+                "include_upstream, include_downstream and run_id apply to selected tasks; "
+                "pass task_ids or task_group_ids"
+            )
+        return {}
+    if run_conf is not None:
+        raise ValueError(
+            "Selected tasks rerun in an earlier run and keep its conf; run the whole Dag to use a new conf"
+        )
+    return {
+        "task_ids": markers,
+        "task_group_ids": group_ids,
+        "include_upstream": include_upstream,
+        "include_downstream": include_downstream,
+        "run_id": run_id,
+    }
 
 
 def wait_for_child(process: subprocess.Popen) -> int:
@@ -294,6 +365,7 @@ def build_result(payload: dict[str, Any] | None, return_code: int, home: Path, s
         outputs=outputs,
         output_errors=output_errors,
         failures=payload.get("failures", {}),
+        ran=payload["ran"],
     )
     if not result.succeeded:
         raise DagExecutionError(result)

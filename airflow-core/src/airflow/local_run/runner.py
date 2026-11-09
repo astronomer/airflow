@@ -24,6 +24,7 @@ which set ``AIRFLOW_HOME`` and the database before this interpreter imported Air
 from __future__ import annotations
 
 import asyncio
+import difflib
 import fcntl
 import getpass
 import json
@@ -38,6 +39,7 @@ import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, TextIO
@@ -66,9 +68,10 @@ from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger
 from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
 from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
+from airflow.models.dag_version import DagVersion
 from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
-from airflow.models.taskinstance import TaskInstance
+from airflow.models.taskinstance import TaskInstance, find_task_markers_to_clear
 from airflow.models.trigger import Trigger
 from airflow.models.xcom import XComModel
 from airflow.sdk import DAG
@@ -82,7 +85,7 @@ from airflow.utils.db import _REVISION_HEADS_MAP, _get_script_object, initdb, up
 from airflow.utils.log.task_log_address import prepare_task_log_contexts, render_task_log_filename
 from airflow.utils.retries import run_with_db_retries
 from airflow.utils.session import create_session
-from airflow.utils.state import DagRunState, TaskInstanceState
+from airflow.utils.state import DagRunState, State, TaskInstanceState
 from airflow.utils.types import DagRunTriggeredByType, DagRunType
 
 if TYPE_CHECKING:
@@ -169,17 +172,25 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     if settings.Session is None:
         raise RuntimeError("Session not configured. Call configure_orm() first.")
     session = settings.Session()
+    selection = read_task_selection(request)
     try:
-        scheduler_dag, dag_run = start_run(
-            bag,
-            dag,
-            source=source,
-            root=root,
-            home=home,
-            bundles=bundles,
-            run_conf=request.get("run_conf"),
-            triggered_by=triggered_by,
-        )
+        if selection is None:
+            scheduler_dag, dag_run = start_run(
+                bag,
+                dag,
+                source=source,
+                root=root,
+                home=home,
+                bundles=bundles,
+                run_conf=request.get("run_conf"),
+                triggered_by=triggered_by,
+            )
+            heading = f"Running Dag {dag.dag_id!r} from {source.name} (run {dag_run.run_id})"
+        else:
+            scheduler_dag, dag_run, reused = start_rerun(
+                bag, dag, selection, source=source, root=root, home=home, bundles=bundles
+            )
+            heading = describe_rerun(selection, dag_run.run_id, reused)
         # From here on every trigger this process creates is for one of its tries; those created while storing
         # the Dags, for asset watchers, are the project triggerer's.
         event.listen(Trigger, "before_insert", assign_local_trigger_queue)
@@ -196,8 +207,10 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
 
         # Why each task that failed for good failed, for the caller.
         failures: dict[tuple[str, int], str] = {}
+        ran: set[tuple[str, int]] = set()
 
         def report_attempt(ti: TaskInstance, state: str, log_path: Path) -> None:
+            ran.add((ti.task_id, ti.map_index))
             failure = None
             if state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY):
                 failure = read_attempt_failure(log_path)
@@ -220,7 +233,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             report_attempt(ti, _state_name(outcome), log_path)
 
         signal.signal(signal.SIGINT, handle_interrupt)
-        report(f"Running Dag {dag.dag_id!r} from {source.name} (run {dag_run.run_id})")
+        report(heading)
         started = time.monotonic()
         cancelled = False
         try:
@@ -255,6 +268,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             dag_run.run_id,
             source=source,
             failures=failures,
+            ran=ran,
             cancelled=cancelled,
             session=session,
         )
@@ -303,6 +317,270 @@ def start_run(
             lock_run(home, dag_run)
     report_abandoned_runs(home, abandoned)
     return scheduler_dag, dag_run
+
+
+@dataclass(frozen=True)
+class TaskSelection:
+    """The tasks a request reruns in an earlier run, and how the run to rerun them in is chosen."""
+
+    task_ids: tuple[str | tuple[str, int], ...]
+    task_group_ids: tuple[str, ...]
+    include_upstream: bool
+    include_downstream: bool
+    run_id: str | None
+
+
+def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
+    if not request.get("task_ids") and not request.get("task_group_ids"):
+        return None
+    return TaskSelection(
+        # JSON has no tuples; a map index arrives as a [task_id, map_index] list.
+        task_ids=tuple(
+            marker if isinstance(marker, str) else (marker[0], marker[1])
+            for marker in request.get("task_ids") or ()
+        ),
+        task_group_ids=tuple(request.get("task_group_ids") or ()),
+        include_upstream=bool(request.get("include_upstream")),
+        include_downstream=bool(request.get("include_downstream")),
+        run_id=request.get("run_id"),
+    )
+
+
+def start_rerun(
+    bag: BundleDagBag,
+    dag: DAG,
+    selection: TaskSelection,
+    *,
+    source: Path,
+    root: Path,
+    home: Path,
+    bundles: DagBundlesManager,
+) -> tuple[SerializedDAG, DagRun, list[str]]:
+    """
+    Clear the selected tasks in the run that has their inputs, committed in the thread's session, as Clear does.
+
+    Returns the run and the upstream tasks whose outputs it keeps. The cleared tries run the file as it is
+    now, and move the run to the file's Dag version when that is newer. The run is taken over by pointing
+    its ``creating_job_id`` at this process's job in the transaction that clears the tasks: the history
+    server's scheduler leaves alone the runs whose creating job is a running local run's, so it never runs
+    the cleared tries itself. Takes turns with other starts in the project, as :func:`start_run` does.
+    """
+    if TYPE_CHECKING:
+        assert settings.Session is not None
+    session = settings.Session()
+    for attempt in run_with_db_retries():
+        with attempt, project_lock(home):
+            try:
+                abandoned = fail_abandoned_runs(home, session=session)
+                register_dags(bag, source, root, bundles, session=session)
+                session.commit()
+                scheduler_dag = build_scheduler_dag(dag)
+                markers = expand_task_selection(scheduler_dag, selection)
+                selected = {get_task_id(marker) for marker in markers}
+                reused = find_reused_upstream(
+                    scheduler_dag, selected, include_upstream=selection.include_upstream
+                )
+                dag_run = find_rerun_target(scheduler_dag, selection, selected, reused, session=session)
+                check_map_indexes(markers, dag_run, session=session)
+                dag_run.creating_job_id = start_local_run_job(session=session).id
+                scheduler_dag.clear(
+                    task_ids=find_task_markers_to_clear(
+                        markers,
+                        dag=scheduler_dag,
+                        run_id=dag_run.run_id,
+                        include_upstream=selection.include_upstream,
+                        include_downstream=selection.include_downstream,
+                        session=session,
+                    ),
+                    run_id=dag_run.run_id,
+                    dag_run_state=DagRunState.RUNNING,
+                    run_on_latest_version=has_newer_dag_version(dag_run, session=session),
+                    session=session,
+                )
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            lock_run(home, dag_run)
+    report_abandoned_runs(home, abandoned)
+    # Clearing gave the run the latest Dag version from the database, which lacks the callbacks.
+    dag_run.dag = scheduler_dag
+    return scheduler_dag, dag_run, sorted(reused)
+
+
+def has_newer_dag_version(dag_run: DagRun, *, session: Session) -> bool:
+    """
+    Tell whether the file's Dag is a newer version than the run's, which the cleared tries then move to.
+
+    Only then: moving a run to the latest version re-verifies its task instances while it is cleared. A
+    mapped task cleared with the task that feeds it then has its expansion recorded as removed before that
+    task reruns, and it is never expanded again, so its downstream tasks run without its outputs. An edit
+    to a task's code alone keeps the Dag's version, so most reruns stay clear of that.
+    """
+    latest = DagVersion.get_latest_version(dag_run.dag_id, session=session)
+    return latest is not None and latest.id != dag_run.created_dag_version_id
+
+
+def expand_task_selection(dag: SerializedDAG, selection: TaskSelection) -> list[str | tuple[str, int]]:
+    """Return the selected tasks, with every task of each selected task group; an unknown ID is refused."""
+    markers: list[str | tuple[str, int]] = []
+    for marker in selection.task_ids:
+        task_id = get_task_id(marker)
+        if not dag.has_task(task_id):
+            raise LocalRunSetupError(
+                f"Dag {dag.dag_id!r} has no task {task_id!r}.{suggest_ids(task_id, dag.task_ids)}"
+            )
+        markers.append(marker)
+    group_ids = [group_id for group_id in dag.task_group_dict if group_id]
+    for group_id in selection.task_group_ids:
+        if group_id not in group_ids:
+            raise LocalRunSetupError(
+                f"Dag {dag.dag_id!r} has no task group {group_id!r}.{suggest_ids(group_id, group_ids)}"
+            )
+        markers.extend(task.task_id for task in dag.task_group_dict[group_id].iter_tasks())
+    return list(dict.fromkeys(markers))
+
+
+def get_task_id(marker: str | tuple[str, int]) -> str:
+    return marker[0] if isinstance(marker, tuple) else marker
+
+
+def suggest_ids(given: str, known: list[str]) -> str:
+    close = difflib.get_close_matches(given, known, n=3)
+    return f" Did you mean {' or '.join(repr(match) for match in close)}?" if close else ""
+
+
+def find_reused_upstream(dag: SerializedDAG, selected: set[str], *, include_upstream: bool) -> set[str]:
+    """Return the tasks upstream of the selected ones whose outputs the rerun reads from its run."""
+    if include_upstream:
+        return set()
+    return set(
+        dag.partial_subset(
+            task_ids=selected, include_upstream=True, include_downstream=False, exclude_original=True
+        ).task_dict
+    )
+
+
+def find_rerun_target(
+    dag: SerializedDAG,
+    selection: TaskSelection,
+    selected: set[str],
+    reused: set[str],
+    *,
+    session: Session,
+) -> DagRun:
+    """
+    Return the run to rerun the selection in: the one asked for, else the latest finished run that has its inputs.
+
+    A run has the inputs when every task whose outputs the rerun reads succeeded or was skipped, and every
+    selected task has an instance in it.
+    """
+    labels = describe_selection(selection)
+    if selection.run_id is not None:
+        dag_run = session.scalar(
+            select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.run_id == selection.run_id)
+        )
+        if dag_run is None:
+            raise LocalRunSetupError(f"Dag {dag.dag_id!r} has no run {selection.run_id!r} in this project")
+        if dag_run.state not in State.finished_dr_states:
+            raise LocalRunSetupError(
+                f"Run {dag_run.run_id} is still {dag_run.state}; rerun its tasks once it has finished"
+            )
+        if missing := find_missing_tasks(dag_run, selected, session=session):
+            raise LocalRunSetupError(
+                f"Run {dag_run.run_id} has no {', '.join(missing)}: the Dag gained "
+                f"{'it' if len(missing) == 1 else 'them'} after that run. Run the whole Dag instead."
+            )
+        if lacking := find_missing_inputs(dag_run, reused, session=session):
+            raise LocalRunSetupError(
+                f"Run {dag_run.run_id} lacks the outputs {labels} needs: {', '.join(lacking)} did not succeed"
+            )
+        return dag_run
+    finished = session.scalars(
+        select(DagRun)
+        .where(DagRun.dag_id == dag.dag_id, DagRun.state.in_(State.finished_dr_states))
+        .order_by(DagRun.run_after.desc(), DagRun.id.desc())
+    )
+    for dag_run in finished:
+        if not find_missing_tasks(dag_run, selected, session=session) and not find_missing_inputs(
+            dag_run, reused, session=session
+        ):
+            return dag_run
+    if reused:
+        raise LocalRunSetupError(
+            f"No earlier run of Dag {dag.dag_id!r} has the outputs {labels} needs from "
+            f"{', '.join(sorted(reused))}. Run the whole Dag first."
+        )
+    raise LocalRunSetupError(
+        f"Dag {dag.dag_id!r} has no finished run to rerun {labels} in. Run the whole Dag first."
+    )
+
+
+def find_missing_tasks(dag_run: DagRun, task_ids: set[str], *, session: Session) -> list[str]:
+    """Return the tasks among ``task_ids`` that have no instance in ``dag_run``, e.g. added to the Dag since."""
+    present = set(
+        session.scalars(
+            select(TaskInstance.task_id).where(
+                TaskInstance.dag_id == dag_run.dag_id,
+                TaskInstance.run_id == dag_run.run_id,
+                TaskInstance.task_id.in_(task_ids),
+                TaskInstance.working_set.is_(True),
+            )
+        )
+    )
+    return sorted(task_ids - present)
+
+
+def find_missing_inputs(dag_run: DagRun, task_ids: set[str], *, session: Session) -> list[str]:
+    """Return the tasks among ``task_ids`` that did not finish as success or skipped in ``dag_run``."""
+    done: dict[str, bool] = {}
+    for task_id, state in session.execute(
+        select(TaskInstance.task_id, TaskInstance.state).where(
+            TaskInstance.dag_id == dag_run.dag_id,
+            TaskInstance.run_id == dag_run.run_id,
+            TaskInstance.task_id.in_(task_ids),
+            TaskInstance.working_set.is_(True),
+        )
+    ):
+        # Every map index of a mapped task has to have finished.
+        done[task_id] = done.get(task_id, True) and state in (
+            TaskInstanceState.SUCCESS,
+            TaskInstanceState.SKIPPED,
+        )
+    return sorted(task_id for task_id in task_ids if not done.get(task_id, False))
+
+
+def check_map_indexes(markers: list[str | tuple[str, int]], dag_run: DagRun, *, session: Session) -> None:
+    for task_id, map_index in (marker for marker in markers if isinstance(marker, tuple)):
+        indexes = sorted(
+            session.scalars(
+                select(TaskInstance.map_index).where(
+                    TaskInstance.dag_id == dag_run.dag_id,
+                    TaskInstance.run_id == dag_run.run_id,
+                    TaskInstance.task_id == task_id,
+                    TaskInstance.working_set.is_(True),
+                )
+            )
+        )
+        if map_index in indexes:
+            continue
+        if indexes == [-1]:
+            raise LocalRunSetupError(f"Task {task_id!r} is not mapped; select it as {task_id}")
+        raise LocalRunSetupError(
+            f"Task {task_id!r} has no map index {map_index} in run {dag_run.run_id}; "
+            f"it has {', '.join(map(str, indexes))}"
+        )
+
+
+def describe_selection(selection: TaskSelection) -> str:
+    labels = [_task_label(*marker) if isinstance(marker, tuple) else marker for marker in selection.task_ids]
+    labels += [f"task group {group_id}" for group_id in selection.task_group_ids]
+    return ", ".join(labels)
+
+
+def describe_rerun(selection: TaskSelection, run_id: str, reused: list[str]) -> str:
+    message = f"Rerunning {describe_selection(selection)} in run {run_id}"
+    return message + (f", with the outputs of {', '.join(reused)}" if reused else "")
 
 
 def get_run_lock_path(home: Path, dag_run_id: int) -> Path:
@@ -424,6 +702,9 @@ def report_task(
 ) -> None:
     """Report a finished attempt in ``state``; ``failure`` is why it failed, held back from the terminal."""
     label = _task_label(ti.task_id, ti.map_index)
+    if ti.try_number > 1 and state != "up_for_retry":
+        # A rerun's try, or one after retries; the retry line already numbers its attempt.
+        label += f" (try {ti.try_number})"
     if state == "success":
         report(f"  ✓ {label}")
     elif cancelled and state in ("failed", "up_for_retry"):
@@ -592,6 +873,23 @@ def register_dags(
     sync_bag_to_db(bag, BUNDLE_NAME, None, session=session)
 
 
+def build_scheduler_dag(dag: DAG) -> SerializedDAG:
+    dag.validate()
+    scheduler_dag = DagSerialization.deserialize_dag(DagSerialization.serialize_dag(dag))
+    # Serialization drops callbacks; the run loop finds them on the scheduler Dag, as in dag.test().
+    scheduler_dag.on_success_callback = dag.on_success_callback  # type: ignore[attr-defined]
+    scheduler_dag.on_failure_callback = dag.on_failure_callback  # type: ignore[attr-defined]
+    return scheduler_dag
+
+
+def start_local_run_job(*, session: Session) -> Job:
+    """Add the running job of this process, which the run it drives names as its ``creating_job_id``."""
+    job = Job(job_type=LOCAL_RUN_JOB_TYPE, state=JobState.RUNNING)
+    session.add(job)
+    session.flush()
+    return job
+
+
 def create_dag_run(
     dag: DAG, run_conf: dict | None, triggered_by: DagRunTriggeredByType, *, session: Session
 ) -> tuple[SerializedDAG, DagRun]:
@@ -601,16 +899,10 @@ def create_dag_run(
     ``get_or_create_dagrun`` (used by ``dag.test()``) deletes a run sharing the logical date, which a
     concurrent local run of the same Dag could hit; here a collision retries with a fresh timestamp.
     """
-    dag.validate()
-    scheduler_dag = DagSerialization.deserialize_dag(DagSerialization.serialize_dag(dag))
-    # Serialization drops callbacks; the run loop finds them on the scheduler Dag, as in dag.test().
-    scheduler_dag.on_success_callback = dag.on_success_callback  # type: ignore[attr-defined]
-    scheduler_dag.on_failure_callback = dag.on_failure_callback  # type: ignore[attr-defined]
+    scheduler_dag = build_scheduler_dag(dag)
     timetable = coerce_to_core_timetable(dag.timetable)
     # Committed with the run, so a scheduler never sees the run without the job driving it.
-    job = Job(job_type=LOCAL_RUN_JOB_TYPE, state=JobState.RUNNING)
-    session.add(job)
-    session.flush()
+    job = start_local_run_job(session=session)
     for _ in range(RUN_CREATION_ATTEMPTS):
         now = timezone.coerce_datetime(timezone.utcnow())
         try:
@@ -643,13 +935,14 @@ def collect_result(
     *,
     source: Path,
     failures: dict[tuple[str, int], str],
+    ran: set[tuple[str, int]],
     cancelled: bool,
     session: Session,
 ) -> dict[str, Any]:
     """
     Read the run's outcome; each output is pickled on its own, so one the caller cannot load spares the rest.
 
-    Outputs are read the way a downstream task reads them.
+    Outputs are read the way a downstream task reads them. ``ran`` holds the task instances this process ran.
     """
     session.expire_all()
     dag_run = session.scalars(select(DagRun).where(DagRun.dag_id == dag_id, DagRun.run_id == run_id)).one()
@@ -678,6 +971,7 @@ def collect_result(
         "output_errors": output_errors,
         "dag_module": dag_module,
         "failures": failures,
+        "ran": frozenset(ran),
         "cancelled": cancelled,
     }
 
