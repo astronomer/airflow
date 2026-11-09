@@ -260,8 +260,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
         )
         ui_url = read_live_ui_url(home)
         run_url = build_run_url(ui_url, dag_run.dag_id, dag_run.run_id) if ui_url else None
-        # The run started in the caller's process; wall-clock time is the only clock both processes read.
-        total = time.time() - request["started_at"]
+        total = time.monotonic() - request["started_at"]
         report(summarize_run(payload, time.monotonic() - started, total, home, run_url=run_url))
         return payload
     finally:

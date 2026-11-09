@@ -226,15 +226,16 @@ def test_each_server_keeps_the_previous_servers_component_logs(mock_popen, tmp_p
     assert mock_popen.call_count == len(ui_server.COMPONENTS)
 
 
-# Ignores SIGTERM, as does the worker it starts, as a component waiting on a long task does; prints the
-# worker's pid once both ignore it.
-STUBBORN_COMPONENT = """
+# Prints the worker's pid only once its SIGTERM handler is installed.
+COMPONENT_WITH_WORKER = """
 import signal, subprocess, sys, time
 
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
+signal.signal(signal.SIGTERM, signal.SIG_IGN if sys.argv[2] == "ignore" else signal.SIG_DFL)
 worker = subprocess.Popen(
     [sys.executable, "-c", "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print(flush=True); time.sleep(60)"],
     stdout=subprocess.PIPE,
+    process_group=0 if sys.argv[1] == "group" else None,
+    start_new_session=sys.argv[1] == "session",
 )
 worker.stdout.readline()
 print(worker.pid, flush=True)
@@ -242,9 +243,14 @@ time.sleep(60)
 """
 
 
-def start_stubborn_component() -> tuple[subprocess.Popen, int]:
+def start_component_with_worker(
+    *, worker_group: str = "same", ignore_sigterm: bool = True
+) -> tuple[subprocess.Popen, int]:
     component = subprocess.Popen(
-        [sys.executable, "-c", STUBBORN_COMPONENT], stdout=subprocess.PIPE, text=True, start_new_session=True
+        [sys.executable, "-c", COMPONENT_WITH_WORKER, worker_group, "ignore" if ignore_sigterm else "exit"],
+        stdout=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
     )
     assert component.stdout is not None
     return component, int(component.stdout.readline())
@@ -259,7 +265,7 @@ def wait_for_exit(pid: int) -> bool:
 @mock.patch.object(ui_server, "COMPONENT_STOP_TIMEOUT", 1.0)
 def test_a_component_that_does_not_stop_is_killed_with_its_workers():
     stops = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
-    stubborn, worker_pid = start_stubborn_component()
+    stubborn, worker_pid = start_component_with_worker()
 
     ui_server.stop_components([stops, stubborn])
 
@@ -269,7 +275,7 @@ def test_a_component_that_does_not_stop_is_killed_with_its_workers():
 
 
 def test_stopping_components_ends_the_wait_when_forced():
-    stubborn, worker_pid = start_stubborn_component()
+    stubborn, worker_pid = start_component_with_worker()
     started = time.monotonic()
 
     ui_server.stop_components([stubborn], should_force=lambda: True)
@@ -277,6 +283,31 @@ def test_stopping_components_ends_the_wait_when_forced():
     assert time.monotonic() - started < ui_server.COMPONENT_STOP_TIMEOUT
     assert stubborn.returncode == -signal.SIGKILL
     assert wait_for_exit(worker_pid)
+
+
+@pytest.mark.parametrize("worker_group", ["group", "session"])
+@pytest.mark.parametrize(("ignore_sigterm", "force"), [(True, False), (True, True), (False, False)])
+@mock.patch.object(ui_server, "COMPONENT_STOP_TIMEOUT", 0.1)
+@mock.patch.object(ui_server, "COMPONENT_POLL_INTERVAL", 0.01)
+def test_stopping_components_kills_tasks_outside_the_component_group(worker_group, ignore_sigterm, force):
+    component, worker_pid = start_component_with_worker(
+        worker_group=worker_group, ignore_sigterm=ignore_sigterm
+    )
+    worker = psutil.Process(worker_pid)
+    try:
+        ui_server.stop_components([component], should_force=lambda: force)
+
+        assert component.returncode == (-signal.SIGKILL if ignore_sigterm else -signal.SIGTERM)
+        assert wait_for_exit(worker_pid)
+    finally:
+        with suppress(psutil.NoSuchProcess):
+            worker.kill()
+            worker.wait(timeout=10)
+        if component.poll() is None:
+            component.kill()
+        component.wait(timeout=10)
+        if component.stdout is not None:
+            component.stdout.close()
 
 
 @mock.patch.object(ui_server, "report", autospec=True)

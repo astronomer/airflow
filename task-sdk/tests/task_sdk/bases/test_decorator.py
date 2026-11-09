@@ -485,3 +485,29 @@ class TestTaskCalledOutsideADag:
     )
     def test_call_that_is_not_a_script_mistake_still_builds_the_task(self, module_name, source):
         assert isinstance(run_as(module_name, source)["result"], XComArg)
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            pytest.param("double(upstream)", id="positional"),
+            pytest.param("double(number=upstream)", id="keyword"),
+            pytest.param("double({'nested': [upstream]})", id="nested-input"),
+            pytest.param("double.override(task_id='downstream')(upstream)", id="override"),
+            pytest.param("double.expand(number=upstream)", id="expand"),
+            pytest.param("double.expand_kwargs(upstream)", id="expand-kwargs"),
+            pytest.param("double.expand_kwargs([{'number': upstream}])", id="expand-kwargs-nested"),
+        ],
+    )
+    def test_script_task_inherits_dag_from_xcom_inputs(self, call):
+        namespace = run_as(
+            "__main__",
+            f"""
+            dag = DAG("inferred_assignment")
+            upstream = double.override(task_id="upstream", dag=dag)(1)
+            result = {call}
+            """,
+        )
+
+        operator = namespace["result"].operator
+        assert operator.get_dag() is namespace["dag"]
+        assert operator.upstream_task_ids == {"upstream"}

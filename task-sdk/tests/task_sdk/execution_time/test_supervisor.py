@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 import logging
@@ -79,7 +80,12 @@ from airflow.sdk.api.datamodels._generated import (
     VariableResponse,
 )
 from airflow.sdk.definitions._internal.loop import create_loop
-from airflow.sdk.exceptions import AirflowRuntimeError, ErrorType, TaskAlreadyRunningError
+from airflow.sdk.exceptions import (
+    AirflowRuntimeError,
+    ErrorType,
+    TaskAlreadyRunningError,
+    TaskDeferralTimeout,
+)
 from airflow.sdk.execution_time import supervisor, task_runner
 from airflow.sdk.execution_time.comms import (
     AssetEventsResult,
@@ -192,6 +198,7 @@ from airflow.sdk.execution_time.supervisor import (
     supervise_task,
 )
 from airflow.sdk.execution_time.task_runner import run
+from airflow.triggers.base import BaseTrigger
 
 from tests_common.test_utils.config import conf_vars
 from tests_common.test_utils.xcom_backends import SerializeValueOnlyXCom
@@ -4928,6 +4935,68 @@ def test_terminal_message_parameter_coverage(test_method, excluded_message_types
     marks = TestHandleRequest.test_task_state_waits_for_exit_and_keeps_heartbeating.pytestmark
     states = next(mark.args[1] for mark in marks if mark.name == "parametrize" and mark.args[0] == "state")
     assert set(states) == set(get_args(TaskState.model_fields["state"].annotation))
+
+
+@pytest.mark.parametrize("expires", [False, True])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+@mock.patch.object(InProcessTestSupervisor, "_api_client", autospec=True)
+def test_in_process_trigger_timeout_closes_generator_and_cleans_up(api_client, expires, cleanup_fails):
+    trigger = mock.create_autospec(BaseTrigger, instance=True)
+    closed = []
+
+    async def run():
+        try:
+            if expires:
+                await asyncio.Event().wait()
+            yield mock.sentinel.event
+        finally:
+            closed.append(True)
+
+    trigger.run.side_effect = run
+    if cleanup_fails:
+        trigger.cleanup.side_effect = RuntimeError("cleanup failed")
+    ti = mock.Mock(spec=["id"], id=uuid7())
+
+    if expires:
+        with pytest.raises(TaskDeferralTimeout):
+            InProcessTestSupervisor.run_trigger_in_process(trigger=trigger, ti=ti, timeout=0.01)
+    else:
+        assert InProcessTestSupervisor.run_trigger_in_process(trigger=trigger, ti=ti) is mock.sentinel.event
+
+    assert closed == [True]
+    trigger.cleanup.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize("timeout", [None, 10])
+@mock.patch.object(InProcessTestSupervisor, "_api_client", autospec=True)
+def test_in_process_trigger_preserves_its_own_timeout_error(api_client, timeout):
+    trigger = mock.create_autospec(BaseTrigger, instance=True)
+
+    async def run():
+        raise TimeoutError("Remote request timed out")
+        yield
+
+    trigger.run.side_effect = run
+
+    with pytest.raises(TimeoutError, match="Remote request timed out"):
+        InProcessTestSupervisor.run_trigger_in_process(
+            trigger=trigger, ti=mock.Mock(spec=["id"], id=uuid7()), timeout=timeout
+        )
+
+    trigger.cleanup.assert_awaited_once_with()
+
+
+@mock.patch.object(InProcessTestSupervisor, "_api_client", autospec=True)
+def test_in_process_trigger_does_not_run_after_its_deadline(api_client):
+    trigger = mock.create_autospec(BaseTrigger, instance=True)
+
+    with pytest.raises(TaskDeferralTimeout):
+        InProcessTestSupervisor.run_trigger_in_process(
+            trigger=trigger, ti=mock.Mock(spec=["id"], id=uuid7()), timeout=0
+        )
+
+    trigger.run.assert_not_called()
+    trigger.cleanup.assert_awaited_once_with()
 
 
 class TestSetSupervisorComms:

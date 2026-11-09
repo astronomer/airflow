@@ -27,7 +27,11 @@ from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
 MAX_PRINTED_OUTPUTS = 10
 
-_output_repr = reprlib.Repr(maxstring=80, maxother=80, maxlist=10, maxdict=10)
+_output_repr = reprlib.Repr()
+_output_repr.maxstring = 80
+_output_repr.maxother = 80
+_output_repr.maxlist = 10
+_output_repr.maxdict = 10
 
 
 def run(args) -> None:

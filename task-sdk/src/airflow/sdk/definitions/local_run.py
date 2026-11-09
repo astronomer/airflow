@@ -202,7 +202,7 @@ def run_dag_file(
     :raises LocalRunError: the run could not start or did not report a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
     """
-    started_at = time.time()
+    started_at = time.monotonic()
     source_path = Path(source).resolve()
     if source_path.suffix != ".py" or not source_path.is_file():
         raise LocalRunError(f"A local run needs a Python Dag file; {source_path} is not one")

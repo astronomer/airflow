@@ -24,6 +24,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+import time
 import types
 from pathlib import Path
 from typing import Any
@@ -406,7 +407,9 @@ class TestRunDagFile:
 
         mock_popen.side_effect = fake_child
 
+        before = time.monotonic()
         result = run_dag_file(source, dag_id="example", run_conf={"n": 1}, triggered_by="cli", debug=True)
+        after = time.monotonic()
 
         assert result.output("numbers") == [1, 2]
         assert result.project_home == tmp_path / ".airflow"
@@ -420,8 +423,9 @@ class TestRunDagFile:
             "triggered_by": "cli",
             "debug": True,
             "result_path": seen["request"]["result_path"],
-            "started_at": 1794218400.0,
+            "started_at": mock.ANY,
         }
+        assert before <= seen["request"]["started_at"] <= after
         assert not Path(seen["request"]["result_path"]).parent.exists()
 
     def test_rejects_non_python_file(self, tmp_path):

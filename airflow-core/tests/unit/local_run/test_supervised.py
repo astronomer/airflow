@@ -21,6 +21,7 @@ from __future__ import annotations
 import signal
 import subprocess
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -140,18 +141,28 @@ def test_try_that_cannot_run_does_not_leave_its_task_waiting(
     assert (mock.call(TaskInstanceState.FAILED, session=session) in ti.set_state.mock_calls) is marked_failed
 
 
-@mock.patch.object(supervised, "_run_inline_trigger", autospec=True, return_value=None)
+@mock.patch.object(
+    supervised.InProcessTestSupervisor, "run_trigger_in_process", autospec=True, return_value=None
+)
 @mock.patch.object(supervised, "import_string", autospec=True)
 @mock.patch.object(supervised, "capture_task_log", autospec=True)
-def test_trigger_without_an_event_lets_the_task_resume(_, import_string, run_trigger, session, ti, tmp_path):
+@pytest.mark.parametrize(("seconds_left", "timeout"), [(None, None), (-1, 0), (30, 30)])
+def test_trigger_without_an_event_lets_the_task_resume(
+    _, import_string, run_trigger, session, ti, tmp_path, time_machine, seconds_left, timeout
+):
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    time_machine.move_to(now, tick=False)
     session.get_one.return_value = mock.Mock(spec=Trigger, classpath="pkg.Trigger", kwargs={"n": 1})
+    ti.trigger_timeout = now + timedelta(seconds=seconds_left) if seconds_left is not None else None
     # The workload's fields are pydantic fields, which autospec does not see.
     workload = mock.NonCallableMock(spec=["ti"], ti=mock.sentinel.ti)
 
     SupervisedTries(session=session)._resume_after_trigger(ti, workload, Path(tmp_path, "attempt=1.log"))
 
     import_string.return_value.assert_called_once_with(n=1)
-    run_trigger.assert_called_once_with(import_string.return_value.return_value, workload.ti)
+    run_trigger.assert_called_once_with(
+        trigger=import_string.return_value.return_value, ti=workload.ti, timeout=timeout
+    )
     assert ti.state == TaskInstanceState.SCHEDULED
     assert ti.trigger_id is None
     session.commit.assert_called_once_with()

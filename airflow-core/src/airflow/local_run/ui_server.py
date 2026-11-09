@@ -39,6 +39,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import psutil
 import uvicorn
 from starlette import status
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -57,6 +58,7 @@ from airflow.local_run.runner import (
     report,
     report_abandoned_runs,
 )
+from airflow.local_run.supervised import find_descendants
 from airflow.local_run.ui import PROJECT_SERVER_ENVIRONMENT, remove_ui_file, write_ui_file
 from airflow.utils.session import create_session
 
@@ -233,8 +235,7 @@ def start_components(home: Path, url: str) -> dict[str, subprocess.Popen]:
                 stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                # A process group of its own, for its workers too: Ctrl-C on the terminal reaches the server
-                # alone, which stops each component once, and a component that will not stop is killed whole.
+                # Ctrl-C on the terminal reaches the server alone, which stops each component once.
                 start_new_session=True,
             )
     return processes
@@ -244,13 +245,17 @@ def stop_components(
     processes: Iterable[subprocess.Popen], *, should_force: Callable[[], bool] = lambda: False
 ) -> None:
     """
-    Ask each component to stop, then kill the process group of any still running after the timeout.
+    Ask each component to stop, then kill any remaining components and their descendants.
 
     ``should_force`` cuts the wait short, e.g. once Ctrl-C is pressed a second time.
     """
     processes = list(processes)
+    descendants: set[psutil.Process] = set()
     for process in processes:
         if process.poll() is None:
+            # Task tries and operators can start their own groups or sessions. Keep their identities before
+            # stopping the component: once their parent exits, they can no longer be found through it.
+            descendants.update(find_descendants(process.pid))
             process.terminate()
     deadline = time.monotonic() + COMPONENT_STOP_TIMEOUT
     while any(process.poll() is None for process in processes):
@@ -259,9 +264,16 @@ def stop_components(
         time.sleep(COMPONENT_POLL_INTERVAL)
     for process in processes:
         if process.poll() is None:
+            descendants.update(find_descendants(process.pid))
+    for descendant in descendants:
+        with suppress(psutil.NoSuchProcess):
+            descendant.kill()
+    for process in processes:
+        if process.poll() is None:
             with suppress(ProcessLookupError):
                 os.killpg(process.pid, signal.SIGKILL)
             process.wait()
+    psutil.wait_procs(descendants, timeout=5)
 
 
 def watch_components(processes: dict[str, subprocess.Popen], home: Path, stop: threading.Event) -> None:

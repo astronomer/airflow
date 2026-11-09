@@ -35,7 +35,7 @@ import time
 import weakref
 from collections import deque
 from collections.abc import Callable, Generator
-from contextlib import contextmanager, nullcontext, suppress
+from contextlib import aclosing, contextmanager, nullcontext, suppress
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from enum import Enum, auto
@@ -73,7 +73,7 @@ from airflow.sdk.api.datamodels._generated import (
     TerminalStateNonSuccess,
 )
 from airflow.sdk.configuration import conf
-from airflow.sdk.exceptions import ErrorType
+from airflow.sdk.exceptions import ErrorType, TaskDeferralTimeout
 from airflow.sdk.execution_time import comms
 from airflow.sdk.execution_time.comms import (
     AssetEventsResult,
@@ -2788,7 +2788,7 @@ class InProcessTestSupervisor(ActivitySubprocess):
         sink.append(msg)
 
     @classmethod
-    def run_trigger_in_process(cls, *, trigger, ti):
+    def run_trigger_in_process(cls, *, trigger, ti, timeout: float | None = None):
         """
         Run a trigger in-process for testing, similar to how we run tasks.
 
@@ -2812,7 +2812,19 @@ class InProcessTestSupervisor(ActivitySubprocess):
             import asyncio
 
             async def _run_trigger():
-                return await anext(trigger.run(), None)
+                deadline = asyncio.timeout(timeout)
+                try:
+                    if timeout is not None and timeout <= 0:
+                        raise TaskDeferralTimeout("Trigger deadline expired")
+                    async with deadline, aclosing(trigger.run()) as events:
+                        return await anext(events, None)
+                except TimeoutError as error:
+                    if deadline.expired():
+                        raise TaskDeferralTimeout("Trigger deadline expired") from error
+                    raise
+                finally:
+                    with suppress(Exception):
+                        await trigger.cleanup()
 
             return asyncio.run(_run_trigger())
 
