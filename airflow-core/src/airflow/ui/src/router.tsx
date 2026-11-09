@@ -94,6 +94,10 @@ const loadTaskInstanceAssetEvents = lazyRoute(
 const loadTaskInstanceDefaultTab = lazyRoute(() => import("src/pages/TaskInstance/DefaultTab"), "DefaultTab");
 const loadTaskInstanceDetails = lazyRoute(() => import("src/pages/TaskInstance/Details"), "Details");
 const loadHITLResponse = lazyRoute(() => import("src/pages/TaskInstance/HITLResponse"), "HITLResponse");
+const loadDurableExecution = lazyRoute(
+  () => import("src/pages/TaskInstance/DurableExecution"),
+  "DurableExecution",
+);
 const loadRenderedTemplates = lazyRoute(
   () => import("src/pages/TaskInstance/RenderedTemplates"),
   "RenderedTemplates",
@@ -159,6 +163,7 @@ export const taskInstanceRoutes = [
   { lazy: loadTaskInstances, path: TaskInstanceTab.TaskInstances },
   { lazy: loadTaskInstanceAssetEvents, path: TaskInstanceTab.AssetEvents },
   { lazy: loadHITLResponse, path: TaskInstanceTab.RequiredActions },
+  { lazy: loadDurableExecution, path: TaskInstanceTab.DurableExecution },
   pluginRoute,
 ];
 

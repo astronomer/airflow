@@ -40,6 +40,7 @@ export enum TaskInstanceTab {
   AssetEvents = "asset_events",
   Code = "code",
   Details = "details",
+  DurableExecution = "durable_execution",
   Events = "events",
   Logs = "logs",
   RenderedTemplates = "rendered_templates",

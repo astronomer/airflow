@@ -26,7 +26,7 @@ import { Link, MemoryRouter, Outlet, Route, Routes, useLocation } from "react-ro
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UseTaskInstanceServiceGetMappedTaskInstanceKeyFn } from "openapi/queries";
-import { TaskInstanceService, type TaskInstanceResponse } from "openapi/requests";
+import { TaskInstanceService, TaskStateStoreService, type TaskInstanceResponse } from "openapi/requests";
 
 import { NavTabs, type NavTab } from "src/layouts/Details/NavTabs";
 
@@ -435,6 +435,51 @@ describe("TaskInstance", () => {
       expect(await screen.findByText(`${TASK_A}:success:1`)).toBeTruthy();
 
       expect(screen.queryByRole("link", { name: "tabs.mappedTaskInstances_other" }) !== null).toBe(visible);
+    },
+  );
+
+  it.each([
+    { hasHistory: true, visible: true },
+    { hasHistory: false, visible: false },
+  ])(
+    "shows the durable execution tab only when the task has a history (hasHistory=$hasHistory)",
+    async ({ hasHistory, visible }) => {
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+      vi.spyOn(TaskInstanceService, "getMappedTaskInstance").mockResolvedValue(
+        buildTaskInstance(TASK_A, "success", 2),
+      );
+      const getStore = vi.spyOn(TaskStateStoreService, "getTaskStateStore");
+
+      if (hasHistory) {
+        getStore.mockResolvedValue({
+          expires_at: null,
+          key: "__airflow_resumable_history__",
+          updated_at: "2026-11-08T01:24:00Z",
+          value: { can_resume_failed_job: false, external_id_key: "spark_job_id", operator: "Op", tries: [] },
+        });
+      } else {
+        getStore.mockRejectedValue(new Error("404"));
+      }
+
+      render(
+        <MemoryRouter initialEntries={[`/dags/${DAG_ID}/runs/${DAG_RUN_ID}/tasks/${TASK_A}`]}>
+          <Routes>
+            <Route element={<TaskInstance />} path="/dags/:dagId/runs/:runId/tasks/:taskId">
+              <Route element={<div />} path="*" />
+            </Route>
+          </Routes>
+        </MemoryRouter>,
+        { wrapper: createWrapper(queryClient) },
+      );
+      expect(await screen.findByText(`${TASK_A}:success:2`)).toBeTruthy();
+      await vi.waitFor(() => expect(getStore).toHaveBeenCalled());
+
+      if (visible) {
+        expect(await screen.findByRole("link", { name: "tabs.durableExecution" })).toBeVisible();
+      } else {
+        expect(screen.queryByRole("link", { name: "tabs.durableExecution" })).not.toBeInTheDocument();
+      }
     },
   );
 

@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from opentelemetry import trace
@@ -31,6 +32,21 @@ if TYPE_CHECKING:
     from airflow.sdk.types import Logger
 
 tracer = trace.get_tracer(__name__)
+
+# Read by the "Durable execution" tab on the task instance page. Renaming it hides the history of
+# every task that wrote the old key.
+RESUMABLE_HISTORY_KEY = "__airflow_resumable_history__"
+
+
+class ResumeDecision:
+    """What a try of a resumable operator did with the external job. Stored in the try history."""
+
+    SUBMITTED = "submitted"
+    RECONNECTED = "reconnected"
+    ALREADY_SUCCEEDED = "already_succeeded"
+    RESUMED = "resumed"
+    RESUBMITTED = "resubmitted"
+    RESUME_FELL_BACK = "resume_fell_back"
 
 
 class ResumableJobMixin(ABC):
@@ -129,6 +145,9 @@ class ResumableJobMixin(ABC):
         reconnect_to: Any = None
         already_succeeded_id: Any = None
         resumed_id: Any = None
+        decision = ResumeDecision.SUBMITTED
+        time_not_rerun: timedelta | None = None
+        prior_status: str | None = None
 
         with tracer.start_as_current_span("resumable_job.resume_decision") as span:
             span.set_attribute("operator", type(self).__name__)
@@ -147,6 +166,7 @@ class ResumableJobMixin(ABC):
                     stats.incr("resumable_job.reconnect_attempt", tags=stats_tags)
 
                     status = self.get_job_status(external_id, context)
+                    prior_status = status
 
                     span.set_attribute("resumable.external_id", str(external_id))
                     span.set_attribute("resumable.prior_status", status)
@@ -162,6 +182,10 @@ class ResumableJobMixin(ABC):
                             status=status,
                         )
                         reconnect_to = external_id
+                        decision = ResumeDecision.RECONNECTED
+                        started_at, _ = self._get_job_timing_safely(external_id, context)
+                        if started_at is not None:
+                            time_not_rerun = datetime.now(tz=UTC) - started_at
                     elif self.is_job_succeeded(status):
                         # Job already finished successfully, skip polling and return result directly.
                         span.set_attribute("resumable.decision", "already_succeeded")
@@ -172,9 +196,23 @@ class ResumableJobMixin(ABC):
                             external_id=external_id,
                         )
                         already_succeeded_id = external_id
+                        decision = ResumeDecision.ALREADY_SUCCEEDED
+                        started_at, ended_at = self._get_job_timing_safely(external_id, context)
+                        if started_at is not None and ended_at is not None:
+                            time_not_rerun = ended_at - started_at
                     else:
-                        resumed_id = self._resume_failed_job_safely(external_id, status, context)
+                        # Measured before resuming, because resuming may reset what the engine reports.
+                        work_kept = self._call_optional_hook(
+                            self.get_work_kept_on_resume, external_id, context
+                        )
+                        if not isinstance(work_kept, timedelta):
+                            work_kept = None
+                        resumed_id, resume_raised = self._resume_failed_job_safely(
+                            external_id, status, context
+                        )
                         if resumed_id is not None:
+                            decision = ResumeDecision.RESUMED
+                            time_not_rerun = work_kept
                             span.set_attribute("resumable.decision", "resume_failed")
                             stats.incr("resumable_job.resume_failed", tags=stats_tags)
                             self.log.info(
@@ -185,6 +223,12 @@ class ResumableJobMixin(ABC):
                                 status=status,
                             )
                         else:
+                            decision = (
+                                ResumeDecision.RESUME_FELL_BACK
+                                if resume_raised
+                                else ResumeDecision.RESUBMITTED
+                            )
+                            time_not_rerun = timedelta(0)
                             span.set_attribute("resumable.decision", "terminal_resubmit")
                             stats.incr("resumable_job.terminal_resubmit", tags=stats_tags)
                             self.log.warning(
@@ -202,12 +246,15 @@ class ResumableJobMixin(ABC):
                     )
 
         if reconnect_to is not None:
+            self._record_try(context, decision, reconnect_to, prior_status, time_not_rerun)
             return self.poll_until_complete(reconnect_to, context)
         if already_succeeded_id is not None:
+            self._record_try(context, decision, already_succeeded_id, prior_status, time_not_rerun)
             return self.get_job_result(already_succeeded_id, context)
         if resumed_id is not None:
             if task_state_store is not None and resumed_id != external_id:
                 task_state_store.set(self.external_id_key, resumed_id)
+            self._record_try(context, decision, resumed_id, prior_status, time_not_rerun)
             self.poll_until_complete(resumed_id, context)
             return self.get_job_result(resumed_id, context)
         external_id = self.submit_job(context)
@@ -219,6 +266,7 @@ class ResumableJobMixin(ABC):
                 external_id_key=self.external_id_key,
                 external_id=external_id,
             )
+        self._record_try(context, decision, external_id, prior_status, time_not_rerun)
 
         self.poll_until_complete(external_id, context)
         return self.get_job_result(external_id, context)
@@ -235,9 +283,33 @@ class ResumableJobMixin(ABC):
         """
         return None
 
-    def _resume_failed_job_safely(self, external_id: JsonValue, status: str, context: Context) -> JsonValue:
+    def get_job_timing(
+        self, external_id: JsonValue, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        """
+        Return when the job started and ended in the external system, as timezone-aware datetimes.
+
+        Optional. Used only to estimate how much work a retry did not redo, shown on the task's
+        "Durable execution" tab. The end is ``None`` while the job runs. Return ``None`` if the
+        system does not report it, which is the default.
+        """
+        return None
+
+    def get_work_kept_on_resume(self, external_id: JsonValue, context: Context) -> timedelta | None:
+        """
+        Return how much finished work a resume of this failed job would keep.
+
+        For example, the summed run time of the steps that succeeded. Optional. Called just before :meth:`resume_failed_job`, and only for display. Return ``None``
+        if the system does not report per-step durations, which is the default.
+        """
+        return None
+
+    def _resume_failed_job_safely(
+        self, external_id: JsonValue, status: str, context: Context
+    ) -> tuple[JsonValue, bool]:
+        """Return the ID to poll, or ``None``, and whether the resume raised."""
         try:
-            return self.resume_failed_job(external_id, status, context)
+            return self.resume_failed_job(external_id, status, context), False
         except Exception:
             # A failed resume must never leave a retry worse off than resubmitting.
             self.log.warning(
@@ -246,7 +318,75 @@ class ResumableJobMixin(ABC):
                 external_id=external_id,
                 exc_info=True,
             )
+            return None, True
+
+    def _call_optional_hook(self, hook: Any, external_id: JsonValue, context: Context) -> Any:
+        # These hooks only feed the UI, so a failing engine call must not fail the task.
+        try:
+            return hook(external_id, context)
+        except Exception:
+            self.log.debug("Optional resumable hook failed", hook=hook.__name__, exc_info=True)
             return None
+
+    def _get_job_timing_safely(
+        self, external_id: JsonValue, context: Context
+    ) -> tuple[datetime | None, datetime | None]:
+        timing = self._call_optional_hook(self.get_job_timing, external_id, context)
+        if not isinstance(timing, tuple) or len(timing) != 2:
+            return None, None
+        started_at, ended_at = timing
+        return (
+            started_at if isinstance(started_at, datetime) else None,
+            ended_at if isinstance(ended_at, datetime) else None,
+        )
+
+    def _record_try(
+        self,
+        context: Context,
+        decision: str,
+        external_id: JsonValue,
+        prior_status: str | None,
+        time_not_rerun: timedelta | None,
+    ) -> None:
+        """Append what this try did to the history read by the task's "Durable execution" tab."""
+        task_state_store = context.get("task_state_store")
+        if task_state_store is None:
+            return
+        ti = context.get("ti")
+        try:
+            history = task_state_store._get_from_metadata_db(RESUMABLE_HISTORY_KEY)
+            stored_tries = history.get("tries") if isinstance(history, dict) else None
+            try_number = getattr(ti, "try_number", None)
+            tries: list[JsonValue] = [
+                t
+                for t in (stored_tries if isinstance(stored_tries, list) else [])
+                if isinstance(t, dict) and t.get("try_number") != try_number
+            ]
+            tries.append(
+                {
+                    "try_number": try_number,
+                    "decision": decision,
+                    "external_id": external_id,
+                    "prior_status": prior_status,
+                    "time_not_rerun_seconds": (
+                        max(time_not_rerun.total_seconds(), 0.0) if time_not_rerun is not None else None
+                    ),
+                    "recorded_at": datetime.now(tz=UTC).isoformat(),
+                }
+            )
+            task_state_store._set_in_metadata_db(
+                RESUMABLE_HISTORY_KEY,
+                {
+                    "operator": type(self).__name__,
+                    "external_id_key": self.external_id_key,
+                    "can_resume_failed_job": (
+                        type(self).resume_failed_job is not ResumableJobMixin.resume_failed_job
+                    ),
+                    "tries": tries,
+                },
+            )
+        except Exception:
+            self.log.warning("Could not record resumable try history", exc_info=True)
 
     @abstractmethod
     def submit_job(self, context: Context) -> JsonValue:

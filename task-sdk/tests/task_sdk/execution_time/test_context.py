@@ -1994,6 +1994,48 @@ class TestTaskStateStoreAccessor:
             )
         )
 
+    def test_set_in_metadata_db_bypasses_custom_backend(self, mock_supervisor_comms):
+        mock_supervisor_comms.send.return_value = OKResponse(ok=True)
+        backend = MagicMock(spec=BaseStoreBackend)
+
+        with (
+            patch("airflow.sdk.execution_time.context._get_worker_state_store_backend", return_value=backend),
+            conf_vars({("state_store", "default_retention_days"): "0"}),
+        ):
+            TaskStateStoreAccessor(ti_id=self.TI_ID, scope=self.SCOPE)._set_in_metadata_db(
+                "history", {"tries": []}
+            )
+
+        backend.serialize_task_state_store_to_ref.assert_not_called()
+        mock_supervisor_comms.send.assert_called_once_with(
+            SetTaskStateStore(ti_id=self.TI_ID, key="history", value={"tries": []}, expires_at=None)
+        )
+
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            pytest.param(TaskStateStoreResult(value={"tries": []}), {"tries": []}, id="found"),
+            pytest.param(
+                ErrorResponse(error=ErrorType.TASK_STORE_NOT_FOUND, detail={"key": "history"}),
+                None,
+                id="missing",
+            ),
+        ],
+    )
+    def test_get_from_metadata_db_bypasses_custom_backend(self, mock_supervisor_comms, response, expected):
+        mock_supervisor_comms.send.return_value = response
+        backend = MagicMock(spec=BaseStoreBackend)
+
+        with patch(
+            "airflow.sdk.execution_time.context._get_worker_state_store_backend", return_value=backend
+        ):
+            result = TaskStateStoreAccessor(ti_id=self.TI_ID, scope=self.SCOPE)._get_from_metadata_db(
+                "history"
+            )
+
+        assert result == expected
+        backend.deserialize_task_state_store_from_ref.assert_not_called()
+
     def test_get_with_custom_backend_removes_decoration_marker(self, mock_supervisor_comms):
         """External Store marker is detected and the ref is passed to deserialize."""
         mock_supervisor_comms.send.return_value = TaskStateStoreResult(

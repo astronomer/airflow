@@ -84,6 +84,52 @@
     "upcomingCount_one": "{{count, number}} Upcoming Deadline",
     "upcomingCount_other": "{{count, number}} Upcoming Deadlines"
   },
+  "durableExecution": {
+    "avoided": "Avoided redoing {{duration}} (estimate)",
+    "clearNote": "History starts after the last clear. Clearing a task starts the job over from scratch, so earlier tries are not shown.",
+    "decision": {
+      "already_succeeded": "Job had already finished",
+      "reconnected": "Reconnected to running job",
+      "resubmitted": "Started fresh",
+      "resume_fell_back": "Resume failed, started fresh",
+      "resumed": "Resumed failed job",
+      "submitted": "Submitted new job"
+    },
+    "empty": "This task has no durable execution history.",
+    "explanation": {
+      "already_succeeded": "The stored job had already finished, so Airflow collected its result instead of running it again.",
+      "reconnected": "The stored job was still running ({{status}}), so Airflow watched it instead of starting a second copy.",
+      "resubmitted": "The stored job had failed ({{status}}). This engine cannot resume a failed job, so Airflow submitted a new one.",
+      "resubmittedDeclined": "The stored job had failed ({{status}}). The operator did not resume it, for example because resuming is switched off, so Airflow submitted a new one.",
+      "resume_fell_back": "The stored job had failed ({{status}}). Resuming it raised an error, so Airflow submitted a new one. Check the task logs.",
+      "resumed": "The stored job had failed ({{status}}). Airflow asked the engine to resume it from where it stopped.",
+      "submitted": "No job was stored, so Airflow submitted a new one."
+    },
+    "externalId": "Job ID",
+    "fellBackWarning_one": "A resume failed and fell back to a fresh run. This may point to a bug or a bad setting.",
+    "fellBackWarning_other": "{{count, number}} resumes failed and fell back to fresh runs. This may point to a bug or a bad setting.",
+    "notRerun": "Not rerun",
+    "subtitle": "{{operator}} keeps the external job ID between tries. On retry it checks that job before submitting a new one.",
+    "supports": {
+      "no": "No",
+      "reconnect": "Reconnect to a running job",
+      "resumeFailed": "Resume a failed job",
+      "skipFinished": "Skip a job that already finished",
+      "title": "What this operator supports",
+      "yes": "Yes"
+    },
+    "timingNotReported": "This engine does not report timing.",
+    "title": "What each try did",
+    "total": {
+      "estimate": "estimate",
+      "explanation": "Sum of the work each retry did not redo, as reported by the engine. A rerun could have been faster or slower.",
+      "notReported": "The engine did not report timing for these retries.",
+      "onlyOnSuccess": "Shown once the task succeeds.",
+      "title": "Time not rerun"
+    },
+    "try": "Try {{number}}",
+    "whatHappened": "What happened"
+  },
   "extraLinks": "Extra Links",
   "grid": {
     "buttons": {
@@ -264,6 +310,7 @@
     "callbacks": "Callbacks",
     "code": "Code",
     "details": "Details",
+    "durableExecution": "Durable Execution",
     "logs": "Logs",
     "mappedTaskInstances_one": "Task Instance [{{count, number}}]",
     "mappedTaskInstances_other": "Task Instances [{{count, number}}]",

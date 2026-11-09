@@ -122,6 +122,33 @@ resume never leaves a retry worse off.
 
 Clearing a task discards its stored identifier, so a cleared task always starts a fresh job.
 
+Seeing what each try did
+------------------------
+
+Each try records what it did with the external job: submitted a new one, reconnected to a running
+one, found it already finished, resumed it, or started fresh after it failed. The task instance page
+shows this history in a **Durable Execution** tab, with an estimate of how much work each retry did
+not redo.
+
+The history is written straight to the metadata database, bypassing a custom
+``[workers] state_store_backend``, the same way operator extra links bypass a custom XCom backend.
+Like the stored identifier, it is discarded when the task is cleared, and when
+``[state_store] clear_on_success`` is enabled.
+
+The estimate needs timing from the external system. Override these optional methods to provide it:
+
+``get_job_timing(external_id, context)``
+    Return ``(started_at, ended_at)`` as timezone aware datetimes, with ``ended_at`` set to ``None``
+    while the job runs. A reconnect counts the job's age as work not redone, and a job that already
+    finished counts its whole run time. The default returns ``None``, and the tab then says the
+    engine does not report timing.
+
+``get_work_kept_on_resume(external_id, context)``
+    Return a ``timedelta`` of finished work a resume keeps, for example the summed run time of the
+    steps that succeeded. Called just before ``resume_failed_job``. The default returns ``None``.
+
+Both are only used for display. If either raises, the mixin ignores it and the task carries on.
+
 .. note::
 
    There is a small window between ``submit_job`` returning and ``task_state_store.set`` completing.

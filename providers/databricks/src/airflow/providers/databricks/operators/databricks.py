@@ -26,6 +26,7 @@ import json as json_utils
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, cast
 
@@ -171,6 +172,45 @@ def _handle_databricks_operator_execution(
             time.sleep(operator.polling_period_seconds)
 
     log.info("View run status, Spark UI, and logs at %s", run_page_url)
+
+
+def _convert_epoch_ms_to_datetime(value: Any) -> datetime | None:
+    # Databricks reports 0 for an end time that has not happened yet.
+    return datetime.fromtimestamp(value / 1000, tz=UTC) if value else None
+
+
+def get_status_run_info(operator: Any, run_id: int) -> dict[str, Any]:
+    """
+    Return the run info fetched by the operator's last ``get_job_status`` call for this run.
+
+    Saves a second Databricks API call per retry when the mixin asks for timing right after the
+    status check. Falls back to fetching the run.
+    """
+    cached_run_id, run_info = getattr(operator, "_status_run_info", (None, None))
+    if cached_run_id == run_id and run_info is not None:
+        return run_info
+    return operator._hook.get_run(run_id)
+
+
+def get_run_timing(run_info: dict[str, Any]) -> tuple[datetime | None, datetime | None]:
+    """Return when a Databricks run started and ended, for ``ResumableJobMixin.get_job_timing``."""
+    return _convert_epoch_ms_to_datetime(run_info.get("start_time")), _convert_epoch_ms_to_datetime(
+        run_info.get("end_time")
+    )
+
+
+def compute_succeeded_task_duration(run_info: dict[str, Any]) -> timedelta | None:
+    """Return the summed run time of the tasks in a run that succeeded, which a repair does not rerun."""
+    tasks = run_info.get("tasks", [])
+    if not tasks:
+        return None
+    total = timedelta(0)
+    for task in tasks:
+        started = _convert_epoch_ms_to_datetime(task.get("start_time"))
+        ended = _convert_epoch_ms_to_datetime(task.get("end_time"))
+        if task.get("state", {}).get("result_state") == "SUCCESS" and started and ended:
+            total += ended - started
+    return total
 
 
 def is_repair_reason_match_exist(operator: Any, run_state: RunState) -> bool:
@@ -1023,6 +1063,7 @@ class DatabricksSubmitRunOperator(ResumableJobMixin, BaseOperator):
         # is_job_active / is_job_succeeded.
         try:
             run_info = self._hook.get_run(external_id)
+            self._status_run_info = (external_id, run_info)
         except DatabricksApiError as e:
             # A stored run whose history expired (or was deleted) returns 404. Report a sentinel that
             # is neither active nor succeeded so the mixin resubmits fresh instead of failing the task.
@@ -1045,6 +1086,11 @@ class DatabricksSubmitRunOperator(ResumableJobMixin, BaseOperator):
 
     def is_job_succeeded(self, status: str) -> bool:
         return status == "TERMINATED:SUCCESS"
+
+    def get_job_timing(
+        self, external_id: JsonValue, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        return get_run_timing(get_status_run_info(self, cast("int", external_id)))
 
     def poll_until_complete(self, external_id: JsonValue, context: Context) -> None:
         # submit_job and the stored external id are always Databricks run ids (int).
@@ -1520,6 +1566,7 @@ class DatabricksRunNowOperator(ResumableJobMixin, BaseOperator):
         # is_job_active / is_job_succeeded.
         try:
             run_info = self._hook.get_run(external_id)
+            self._status_run_info = (external_id, run_info)
         except DatabricksApiError as e:
             # A stored run whose history expired (or was deleted) returns 404. Report a sentinel that
             # is neither active nor succeeded so the mixin resubmits fresh instead of failing the task.
@@ -1542,6 +1589,16 @@ class DatabricksRunNowOperator(ResumableJobMixin, BaseOperator):
 
     def is_job_succeeded(self, status: str) -> bool:
         return status == "TERMINATED:SUCCESS"
+
+    def get_job_timing(
+        self, external_id: JsonValue, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        return get_run_timing(get_status_run_info(self, cast("int", external_id)))
+
+    def get_work_kept_on_resume(self, external_id: JsonValue, context: Context) -> timedelta | None:
+        if not self.repair_run:
+            return None
+        return compute_succeeded_task_duration(get_status_run_info(self, cast("int", external_id)))
 
     def resume_failed_job(self, external_id: JsonValue, status: str, context: Context) -> JsonValue | None:
         # Opt-in through ``repair_run``, the same switch that repairs a run failing while it is watched.

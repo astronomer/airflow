@@ -29,6 +29,7 @@ import time
 import uuid
 from collections import deque
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -1123,12 +1124,32 @@ class SparkSubmitHook(BaseHook, LoggingMixin):
             )
         try:
             app = resp.json()["app"]
-            return app["state"], app["finalStatus"], app.get("diagnostics", "")
+            status = app["state"], app["finalStatus"], app.get("diagnostics", "")
         except (ValueError, KeyError, TypeError) as exc:
             raise RuntimeError(
                 f"YARN RM REST API returned unexpected payload for application "
                 f"{application_id}: {resp.text[:200]}"
             ) from exc
+        self._last_yarn_application = (application_id, app)
+        return status
+
+    def get_yarn_application_timing(self, application_id: str) -> tuple[datetime | None, datetime | None]:
+        """
+        Return when a YARN application started and finished.
+
+        Reuses the application fetched by the last status query for the same ID, so a status check
+        followed by this call costs one ResourceManager request.
+        """
+        cached_id, app = getattr(self, "_last_yarn_application", (None, None))
+        if cached_id != application_id or app is None:
+            self._query_yarn_application_status(application_id)
+            _, app = self._last_yarn_application
+
+        def _convert(value: Any) -> datetime | None:
+            # YARN reports 0 for a finish time that has not happened yet.
+            return datetime.fromtimestamp(value / 1000, tz=UTC) if value else None
+
+        return _convert(app.get("startedTime")), _convert(app.get("finishedTime"))
 
     def _kill_yarn_application(self, application_id: str) -> None:
         """PUT ``/ws/v1/cluster/apps/{id}/state`` to kill the application (best-effort)."""

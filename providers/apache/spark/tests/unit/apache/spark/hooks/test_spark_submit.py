@@ -20,6 +20,7 @@ from __future__ import annotations
 import base64
 import os
 import time
+from datetime import UTC, datetime
 from io import StringIO
 from pathlib import Path
 from types import ModuleType
@@ -2235,6 +2236,39 @@ class TestSparkSubmitHook:
             hook._start_yarn_application_status_tracking(self._RM_APP_ID)
 
         assert mock_get.call_count == 11
+
+    @pytest.mark.parametrize(
+        ("finished_ms", "expected_end"),
+        [
+            pytest.param(0, None, id="still_running"),
+            pytest.param(1_762_566_240_000, datetime(2025, 11, 8, 1, 44, tzinfo=UTC), id="finished"),
+        ],
+    )
+    @patch("airflow.providers.apache.spark.hooks.spark_submit.requests.get")
+    def test_yarn_application_timing_reuses_status_query(self, mock_get, finished_ms, expected_end):
+        resp = self._rm_status_resp("UNDEFINED", state="RUNNING")
+        resp.json.return_value["app"].update(startedTime=1_762_563_600_000, finishedTime=finished_ms)
+        mock_get.return_value = resp
+        hook = SparkSubmitHook(conn_id="spark_yarn_rm", yarn_track_via_rm_api=True)
+
+        hook.query_yarn_application_status(self._RM_APP_ID)
+        timing = hook.get_yarn_application_timing(self._RM_APP_ID)
+
+        assert timing == (datetime(2025, 11, 8, 1, 0, tzinfo=UTC), expected_end)
+        mock_get.assert_called_once()
+
+    @patch("airflow.providers.apache.spark.hooks.spark_submit.requests.get")
+    def test_yarn_application_timing_fetches_without_prior_status_query(self, mock_get):
+        resp = self._rm_status_resp("UNDEFINED", state="RUNNING")
+        resp.json.return_value["app"]["startedTime"] = 1_762_563_600_000
+        mock_get.return_value = resp
+        hook = SparkSubmitHook(conn_id="spark_yarn_rm", yarn_track_via_rm_api=True)
+
+        assert hook.get_yarn_application_timing(self._RM_APP_ID) == (
+            datetime(2025, 11, 8, 1, 0, tzinfo=UTC),
+            None,
+        )
+        mock_get.assert_called_once()
 
     @pytest.mark.parametrize("use_auth", [False, True])
     @patch("airflow.providers.apache.spark.hooks.spark_submit.requests.get")

@@ -807,6 +807,26 @@ class TaskStateStoreAccessor:
         SUPERVISOR_COMMS.send(self._build_set_message(key, value, retention))
         self._incr("write")
 
+    def _set_in_metadata_db(self, key: str, value: JsonValue) -> None:
+        """
+        Write a value straight to the metadata DB row, bypassing the worker-side state backend.
+
+        For keys Airflow itself owns and the UI reads, the same way operator extra links bypass a
+        custom XCom backend. The UI reads rows directly and cannot resolve an external reference.
+        """
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        SUPERVISOR_COMMS.send(self._build_set_message(key, value, None, bypass_backend=True))
+
+    def _get_from_metadata_db(self, key: str) -> JsonValue:
+        """Read a value written by :meth:`_set_in_metadata_db`, or ``None`` if the key does not exist."""
+        from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
+
+        resp = SUPERVISOR_COMMS.send(GetTaskStateStore(ti_id=self._ti_id, key=key))
+        if isinstance(resp, ErrorResponse) and resp.error != ErrorType.TASK_STORE_NOT_FOUND:
+            raise AirflowRuntimeError(resp)
+        return resp.value if isinstance(resp, TaskStateStoreResult) else None
+
     async def aset(self, key: str, value: JsonValue, *, retention: timedelta | None = None) -> None:
         """Async version of :meth:`set` that awaits instead of blocking the event loop."""
         from airflow.sdk.execution_time.task_runner import SUPERVISOR_COMMS
@@ -815,7 +835,7 @@ class TaskStateStoreAccessor:
         self._incr("write")
 
     def _build_set_message(
-        self, key: str, value: JsonValue, retention: timedelta | None
+        self, key: str, value: JsonValue, retention: timedelta | None, *, bypass_backend: bool = False
     ) -> SetTaskStateStore:
         if value is None:
             raise ValueError("Cannot set value as None")
@@ -837,7 +857,7 @@ class TaskStateStoreAccessor:
 
         # if custom backend is configured, store the value on the custom backend, and return the reference
         # to the stored value to store in the DB
-        backend = _get_worker_state_store_backend()
+        backend = None if bypass_backend else _get_worker_state_store_backend()
         stored: JsonValue = value
         if backend is not None:
             ref: str = backend.serialize_task_state_store_to_ref(value=value, key=key, scope=self._scope)

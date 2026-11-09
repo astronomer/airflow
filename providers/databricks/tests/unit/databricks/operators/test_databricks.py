@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest import mock
 from unittest.mock import MagicMock, call
@@ -3598,6 +3598,44 @@ class TestDatabricksRunNowOperatorDurable:
         task_store.set.assert_not_called()
         assert op.run_id == RUN_ID
         assert op.repair_run is False
+
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_timing_reuses_run_fetched_by_status_check(self, db_mock_class):
+        op = DatabricksRunNowOperator(task_id=TASK_ID, job_id=JOB_ID)
+        db_mock = db_mock_class.return_value
+        db_mock.get_run.return_value = {
+            **self._state("RUNNING"),
+            "start_time": 1_762_563_600_000,
+            "end_time": 0,
+        }
+
+        op.get_job_status(RUN_ID, {})
+        timing = op.get_job_timing(RUN_ID, {})
+
+        assert timing == (datetime(2025, 11, 8, 1, 0, tzinfo=UTC), None)
+        db_mock.get_run.assert_called_once_with(RUN_ID)
+
+    @pytest.mark.parametrize(
+        ("repair_run", "expected"),
+        [
+            pytest.param(True, timedelta(minutes=39), id="sums_succeeded_tasks"),
+            pytest.param(False, None, id="no_repair_no_estimate"),
+        ],
+    )
+    @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
+    def test_work_kept_on_resume_counts_only_succeeded_tasks(self, db_mock_class, repair_run, expected):
+        op = DatabricksRunNowOperator(task_id=TASK_ID, job_id=JOB_ID, repair_run=repair_run)
+        minute = 60_000
+        db_mock_class.return_value.get_run.return_value = {
+            **self._state("TERMINATED", "FAILED"),
+            "tasks": [
+                {"state": {"result_state": "SUCCESS"}, "start_time": 1, "end_time": 18 * minute + 1},
+                {"state": {"result_state": "SUCCESS"}, "start_time": 1, "end_time": 21 * minute + 1},
+                {"state": {"result_state": "FAILED"}, "start_time": 1, "end_time": 2 * minute + 1},
+            ],
+        }
+
+        assert op.get_work_kept_on_resume(RUN_ID, {}) == expected
 
     @mock.patch("airflow.providers.databricks.operators.databricks.DatabricksHook")
     def test_resubmits_when_failure_does_not_match_repair_reason(self, db_mock_class):

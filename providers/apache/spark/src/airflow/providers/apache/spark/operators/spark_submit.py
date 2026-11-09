@@ -39,6 +39,8 @@ except ImportError:
 
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from pydantic import JsonValue
     from requests.auth import AuthBase
 
@@ -66,6 +68,11 @@ class _SparkSubmitDeploymentBackend:
 
     def poll_until_complete(self, external_id: str, context: Context) -> None:
         raise NotImplementedError()
+
+    def get_job_timing(
+        self, external_id: str, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        return None
 
     def on_kill(self) -> None:
         raise NotImplementedError()
@@ -97,6 +104,7 @@ class _KubernetesSparkSubmitBackend(_SparkSubmitDeploymentBackend):
         try:
             client = kube_client.get_kube_client()
             pod = client.read_namespaced_pod(pod_name, namespace)
+            self._status_pod = (external_id, pod)
             return pod.status.phase or "Pending"
         except kube_client.ApiException as e:
             if e.status == 404:
@@ -120,6 +128,16 @@ class _KubernetesSparkSubmitBackend(_SparkSubmitDeploymentBackend):
         if terminal_phase == "Succeeded" and self.operator.durable:
             if (task_state_store := context.get("task_state_store")) is not None:
                 task_state_store.set(self.operator._K8S_DRIVER_STATUS_KEY, "Succeeded")
+
+    def get_job_timing(
+        self, external_id: str, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        # Only the pod read by the status check is used: a driver whose success is cached in task
+        # state may already be garbage-collected, and an extra read is not worth it for display.
+        cached_id, pod = getattr(self, "_status_pod", (None, None))
+        if cached_id != external_id or pod is None:
+            return None
+        return pod.status.start_time, None
 
     def on_kill(self) -> None:
         self.hook.on_kill()
@@ -145,6 +163,11 @@ class _YarnSparkSubmitBackend(_SparkSubmitDeploymentBackend):
 
     def get_job_status(self, external_id: str, context: Context) -> str:
         return self.hook.query_yarn_application_status(external_id)
+
+    def get_job_timing(
+        self, external_id: str, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        return self.hook.get_yarn_application_timing(external_id)
 
     def is_job_active(self, status: str) -> bool:
         # https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/ResourceManagerRest.html
@@ -531,6 +554,11 @@ class SparkSubmitOperator(ResumableJobMixin, BaseOperator):
 
     def get_job_result(self, external_id: JsonValue, context: Context) -> None:
         return None
+
+    def get_job_timing(
+        self, external_id: JsonValue, context: Context
+    ) -> tuple[datetime | None, datetime | None] | None:
+        return self._backend.get_job_timing(cast("str", external_id), context)
 
     def on_kill(self) -> None:
         self._backend.on_kill()

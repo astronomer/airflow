@@ -16,7 +16,8 @@
 # under the License.
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, cast
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -28,6 +29,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 from airflow.sdk import ResumableJobMixin
 from airflow.sdk.bases.operator import BaseOperator
+from airflow.sdk.bases.resumablejobmixin import RESUMABLE_HISTORY_KEY
 
 if TYPE_CHECKING:
     from pydantic import JsonValue
@@ -70,6 +72,8 @@ class ConcreteResumableOperator(ResumableJobMixin, BaseOperator):
 class FakeTaskState:
     def __init__(self, stored: dict[str, str] | None = None):
         self._store: dict[str, str] = stored or {}
+        # Rows written past the worker-side backend, kept apart to prove the bypass is used.
+        self.metadata_db: dict[str, JsonValue] = {}
 
     def get(self, key: str) -> str | None:
         return self._store.get(key)
@@ -77,19 +81,28 @@ class FakeTaskState:
     def set(self, key: str, value: str) -> None:
         self._store[key] = value
 
+    def _get_from_metadata_db(self, key: str) -> JsonValue:
+        return self.metadata_db.get(key)
 
-def make_context(task_store: FakeTaskState | None = None) -> dict:
+    def _set_in_metadata_db(self, key: str, value: JsonValue) -> None:
+        self.metadata_db[key] = value
+
+
+def make_context(task_store: FakeTaskState | None = None, ti: FakeTI | None = None) -> dict:
     ctx: dict = {}
     if task_store is not None:
         ctx["task_state_store"] = task_store
+    if ti is not None:
+        ctx["ti"] = ti
     return ctx
 
 
 class FakeTI:
     """Minimal stand-in for RuntimeTaskInstance exposing stats_tags."""
 
-    def __init__(self, team_name: str | None = None):
+    def __init__(self, team_name: str | None = None, try_number: int = 1):
         self._team_name = team_name
+        self.try_number = try_number
 
     @property
     def stats_tags(self) -> dict[str, str]:
@@ -244,6 +257,151 @@ class TestResumeFailedJob:
         op.execute_resumable(make_context(FakeTaskState({"test_job_id": "job-001"})))
 
         assert op.resume_calls == []
+
+
+NOW = datetime(2026, 11, 8, 1, 24, tzinfo=UTC)
+
+
+class TimedResumingOperator(ResumingOperator):
+    """Reports engine timing and resumable work, like an engine with run history."""
+
+    def __init__(self, timing=None, work_kept=None, timing_error=None, **kwargs):
+        super().__init__(**kwargs)
+        self.timing = timing
+        self.work_kept = work_kept
+        self.timing_error = timing_error
+
+    def get_job_timing(self, external_id, context):
+        if self.timing_error is not None:
+            raise self.timing_error
+        return self.timing
+
+    def get_work_kept_on_resume(self, external_id, context):
+        return self.work_kept
+
+
+def get_tries(task_state: FakeTaskState) -> list[dict]:
+    history = cast("dict", task_state.metadata_db[RESUMABLE_HISTORY_KEY])
+    return history["tries"]
+
+
+class TestTryHistory:
+    @pytest.fixture(autouse=True)
+    def _freeze_time(self, time_machine):
+        time_machine.move_to(NOW, tick=False)
+
+    def test_first_try_records_submission_in_metadata_db_only(self):
+        op = ConcreteResumableOperator(task_id="test_task")
+        task_state = FakeTaskState()
+
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=1)))
+
+        assert RESUMABLE_HISTORY_KEY not in task_state._store
+        assert task_state.metadata_db[RESUMABLE_HISTORY_KEY] == {
+            "operator": "ConcreteResumableOperator",
+            "external_id_key": "test_job_id",
+            "can_resume_failed_job": False,
+            "tries": [
+                {
+                    "try_number": 1,
+                    "decision": "submitted",
+                    "external_id": "job-001",
+                    "prior_status": None,
+                    "time_not_rerun_seconds": None,
+                    "recorded_at": NOW.isoformat(),
+                }
+            ],
+        }
+
+    @pytest.mark.parametrize(
+        ("status", "timing", "decision", "expected_seconds"),
+        [
+            pytest.param(
+                "RUNNING",
+                (NOW - timedelta(minutes=24), None),
+                "reconnected",
+                24 * 60.0,
+                id="reconnect_counts_job_age",
+            ),
+            pytest.param(
+                "SUCCEEDED",
+                (NOW - timedelta(hours=2), NOW - timedelta(hours=1, minutes=15)),
+                "already_succeeded",
+                45 * 60.0,
+                id="already_succeeded_counts_whole_job",
+            ),
+            pytest.param("RUNNING", None, "reconnected", None, id="engine_without_timing"),
+        ],
+    )
+    def test_records_time_not_rerun_from_engine_timing(self, status, timing, decision, expected_seconds):
+        op = TimedResumingOperator(task_id="test_task", timing=timing)
+        op._status_map["job-001"] = status
+        task_state = FakeTaskState({"test_job_id": "job-001"})
+
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=2)))
+
+        [entry] = get_tries(task_state)
+        assert entry["decision"] == decision
+        assert entry["prior_status"] == status
+        assert entry["time_not_rerun_seconds"] == expected_seconds
+
+    @pytest.mark.parametrize(
+        ("resumed_id", "error", "decision", "expected_seconds", "expected_id"),
+        [
+            pytest.param("job-001", None, "resumed", 39 * 60.0, "job-001", id="resumed_keeps_work"),
+            pytest.param(None, None, "resubmitted", 0.0, "job-002", id="declined"),
+            pytest.param(None, RuntimeError("down"), "resume_fell_back", 0.0, "job-002", id="raised"),
+        ],
+    )
+    def test_records_outcome_for_failed_job(self, resumed_id, error, decision, expected_seconds, expected_id):
+        op = TimedResumingOperator(
+            task_id="test_task", resumed_id=resumed_id, error=error, work_kept=timedelta(minutes=39)
+        )
+        op._status_map["job-001"] = "FAILED"
+        op._next_id = "job-002"
+        task_state = FakeTaskState({"test_job_id": "job-001"})
+
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=2)))
+
+        history = task_state.metadata_db[RESUMABLE_HISTORY_KEY]
+        assert history["can_resume_failed_job"] is True
+        [entry] = history["tries"]
+        assert entry["decision"] == decision
+        assert entry["external_id"] == expected_id
+        assert entry["time_not_rerun_seconds"] == expected_seconds
+
+    def test_appends_across_tries_and_replaces_a_repeated_try(self):
+        op = ConcreteResumableOperator(task_id="test_task")
+        op._status_map["job-001"] = "RUNNING"
+        task_state = FakeTaskState()
+
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=1)))
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=2)))
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=2)))
+
+        assert [(t["try_number"], t["decision"]) for t in get_tries(task_state)] == [
+            (1, "submitted"),
+            (2, "reconnected"),
+        ]
+
+    def test_failing_timing_hook_does_not_fail_the_task(self):
+        op = TimedResumingOperator(task_id="test_task", timing_error=RuntimeError("engine API down"))
+        op._status_map["job-001"] = "RUNNING"
+        task_state = FakeTaskState({"test_job_id": "job-001"})
+
+        op.execute_resumable(make_context(task_state, FakeTI(try_number=2)))
+
+        assert op.polled_ids == ["job-001"]
+        assert get_tries(task_state)[0]["time_not_rerun_seconds"] is None
+
+    def test_failing_history_write_does_not_fail_the_task(self):
+        op = ConcreteResumableOperator(task_id="test_task")
+        task_state = FakeTaskState()
+        task_state._set_in_metadata_db = MagicMock(side_effect=RuntimeError("API server down"))
+
+        result = op.execute_resumable(make_context(task_state, FakeTI(try_number=1)))
+
+        assert result == "result-of-job-001"
 
 
 class TestNoneExternalId:

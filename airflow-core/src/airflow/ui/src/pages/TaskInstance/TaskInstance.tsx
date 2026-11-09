@@ -26,6 +26,7 @@ import {
   MdOutlineStorage,
   MdOutlineTask,
   MdReorder,
+  MdRestartAlt,
   MdSyncAlt,
 } from "react-icons/md";
 import { PiBracketsCurlyBold } from "react-icons/pi";
@@ -42,6 +43,7 @@ import { useResolvePassCoordinate } from "src/hooks/useResolvePassCoordinate";
 import { useTaskInstanceCoordinates } from "src/hooks/useTaskInstanceCoordinates";
 import { useTaskInstanceView } from "src/hooks/useTaskInstanceView";
 import { useDefaultTaskInstanceTab } from "src/hooks/useUserSettings";
+import { useDurableHistory } from "src/queries/useDurableHistory";
 import { useGridTiSummariesStream } from "src/queries/useGridTISummaries.ts";
 import { isStatePending, useAutoRefresh, useDocumentTitle } from "src/utils";
 import { getDefaultTaskInstanceTabPath, getTaskInstanceLink } from "src/utils/links";
@@ -84,6 +86,7 @@ export const TaskInstance = () => {
   // tab must point at the explicit /logs path to stay reachable.
   const [defaultTab] = useDefaultTaskInstanceTab();
   const logsTabValue = getDefaultTaskInstanceTabPath(defaultTab) === "" ? "" : "logs";
+  const durableHistory = useDurableHistory({ enabled: !historical });
 
   const tabs: Array<NavTab & TabItem> = [
     {
@@ -106,6 +109,9 @@ export const TaskInstance = () => {
     },
     { icon: <MdSyncAlt />, label: translate("tabs.xcom"), value: "xcom" },
     { icon: <MdOutlineStorage />, label: translate("tabs.taskStateStore"), value: "task-state-store" },
+    ...(durableHistory === undefined
+      ? []
+      : [{ icon: <MdRestartAlt />, label: translate("tabs.durableExecution"), value: "durable_execution" }]),
     { icon: <FiDatabase />, label: translate("tabs.assetEvents"), value: "asset_events" },
     { icon: <MdOutlineEventNote />, label: translate("tabs.auditLog"), value: "events" },
     { icon: <FiCode />, label: translate("tabs.code"), value: "code" },
