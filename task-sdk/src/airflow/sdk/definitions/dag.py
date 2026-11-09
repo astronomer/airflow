@@ -1458,7 +1458,8 @@ class DAG:
 
         With ``task_ids`` or ``task_group_ids``, only those tasks run again, as Clear does in the UI:
         in the latest finished run that has the outputs of their upstream tasks, or in ``run_id``.
-        The result still describes that whole run.
+        With ``run_conf``, or when no earlier run has those outputs, a new run runs them and the tasks
+        they need, and records the others as skipped. The result describes the whole run.
 
         :param run_conf: configuration for the Dag run
         :param conn_file_path: connections file (JSON, YAML or env) available to the run

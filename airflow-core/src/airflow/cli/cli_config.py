@@ -545,7 +545,8 @@ ARG_RUN_TASK = Arg(
     metavar="TASK_ID",
     help=(
         "Rerun this task, as Clear does in the UI, in the latest run that has the outputs of its upstream "
-        "tasks; TASK_ID[i] reruns one map index. Repeatable"
+        "tasks; with --conf, or when no run has them, run it and the tasks it needs in a new run. "
+        "TASK_ID[i] reruns one map index. Repeatable"
     ),
 )
 ARG_RUN_GROUP = Arg(
@@ -2509,7 +2510,7 @@ core_commands: list[CLICommand] = [
             "Import the file the way Airflow discovers Dags (its __main__ block does not run), run the Dag "
             "once, and keep the run in .airflow/ next to the project's pyproject.toml. No scheduler, "
             "API server or database setup is needed. With --task or --group, only those tasks run again, "
-            "in an earlier run whose upstream outputs they read."
+            "in an earlier run whose upstream outputs they read, or with the tasks they need in a new run."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
         args=(

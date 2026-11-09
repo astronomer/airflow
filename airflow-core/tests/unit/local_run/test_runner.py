@@ -880,20 +880,160 @@ def test_rerun_of_what_the_dag_or_run_lacks_is_refused(finished_project, selecti
         run_dag_file(finished_project / "pipeline.py", **selection)
 
 
+SKIPPED_TRIES = """
+SELECT task_instance.task_id, task_instance.start_date IS NULL, task_instance_note.content FROM task_instance
+LEFT JOIN task_instance_note ON task_instance_note.ti_id = task_instance.id
+WHERE task_instance.run_id = '{run_id}' AND task_instance.state = 'skipped' ORDER BY task_instance.task_id
+"""
+
+
 @pytest.mark.parametrize(
-    ("task_id", "match"),
+    ("task_id", "heading", "expected_ran", "skipped"),
     [
         pytest.param(
             "total",
-            "No earlier run of Dag 'example' has the outputs total needs from double, numbers",
+            "No earlier run has the outputs total needs; running double, numbers first, in run ",
+            {("numbers", -1), ("double", 0), ("double", 1), ("double", 2), ("total", -1)},
+            ["nothing"],
             id="needs-inputs",
         ),
-        pytest.param("numbers", "Dag 'example' has no finished run to rerun numbers in", id="no-inputs"),
+        pytest.param(
+            "numbers",
+            "No earlier run to rerun numbers in; running numbers in run ",
+            {("numbers", -1)},
+            ["double", "nothing", "total"],
+            id="no-inputs",
+        ),
     ],
 )
-def test_rerun_without_an_earlier_run_is_refused(project, task_id, match):
-    with pytest.raises(LocalRunError, match=match):
-        run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), task_ids=[task_id])
+def test_selection_without_an_earlier_run_runs_in_a_new_run(
+    project, capfd, task_id, heading, expected_ran, skipped
+):
+    result = run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), task_ids=[task_id])
+
+    assert heading + result.run_id in capfd.readouterr().err
+    assert result.ran == expected_ran
+    assert result.state == "success"
+    # Skipped without a start date, unlike a task the Dag skips itself.
+    assert query(project, SKIPPED_TRIES.format(run_id=result.run_id)) == [
+        (task, 1, f"Not selected: {task_id} did not need it") for task in skipped
+    ]
+    assert query(project, "SELECT content FROM dag_run_note") == [(f"Selected: {task_id}",)]
+
+
+def test_selection_with_a_new_conf_runs_in_a_new_run(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+
+    result = run_dag_file(source, task_ids=["total"], run_conf={"n": 1})
+
+    assert result.run_id != first.run_id
+    assert ("numbers", -1) in result.ran
+    assert query(project, f"SELECT conf FROM dag_run WHERE run_id = '{result.run_id}'") == [('{"n": 1}',)]
+
+
+def test_task_a_selection_left_out_is_not_an_input_of_a_later_rerun(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source, task_ids=["numbers"])
+
+    # Its upstream ran there, so the left-out task reruns in that run.
+    assert run_dag_file(source, task_ids=["nothing"]).run_id == first.run_id
+    # double was left out, so that run has no outputs for total.
+    assert run_dag_file(source, task_ids=["total"]).run_id != first.run_id
+
+
+BRANCHING = """
+from airflow.sdk import dag, task
+
+
+@task.branch
+def choose():
+    return "left"
+
+
+@task
+def left():
+    return 1
+
+
+@task
+def right():
+    return 2
+
+
+@task(trigger_rule="none_failed")
+def join():
+    return "joined"
+
+
+@dag(schedule=None)
+def branching():
+    chosen, sides = choose(), [left(), right()]
+    chosen >> sides
+    sides >> join()
+
+
+workflow = branching()
+"""
+
+
+def test_side_a_branch_skipped_still_lets_its_join_rerun_in_place(project):
+    source = write_dag_file(project, "branching.py", BRANCHING)
+    first = run_dag_file(source)
+    assert first.task_states[("right", -1)] == "skipped"
+
+    assert run_dag_file(source, task_ids=["join"]).run_id == first.run_id
+
+
+RESOURCES = """
+from airflow.sdk import dag, task
+
+
+@task
+def create():
+    return "resource"
+
+
+@task
+def use(resource):
+    return resource
+
+
+@task
+def delete():
+    pass
+
+
+@task
+def other():
+    pass
+
+
+@dag(schedule=None)
+def resources():
+    resource = create()
+    use(resource) >> delete().as_teardown(setups=resource)
+    other()
+
+
+workflow = resources()
+"""
+
+
+def test_new_run_for_a_selection_runs_the_teardown_of_its_setup(project, capfd):
+    result = run_dag_file(write_dag_file(project, "resources.py", RESOURCES), task_ids=["use"])
+
+    # The teardown runs after the selected task, not first.
+    assert f"running create first, in run {result.run_id}" in capfd.readouterr().err
+    assert result.ran == {("create", -1), ("use", -1), ("delete", -1)}
+    assert result.task_states[("other", -1)] == "skipped"
+
+
+def test_one_map_index_is_refused_in_a_new_run(project):
+    with pytest.raises(
+        LocalRunError, match="double\\[1\\] can be rerun only in a run where double has expanded"
+    ):
+        run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), task_ids=[("double", 1)])
 
 
 def test_rerun_in_a_run_still_running_or_without_the_task_is_refused(project):
