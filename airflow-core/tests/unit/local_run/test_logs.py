@@ -21,12 +21,19 @@ import json
 import logging
 import sys
 import traceback
+from pathlib import Path
 
 import pytest
 import structlog
 
 import airflow
-from airflow._shared.logging.structlog import LoggerFactory, NamedWriteLogger, logger_name
+from airflow._shared.logging.structlog import (
+    LoggerFactory,
+    NamedWriteLogger,
+    logger_name,
+    make_filtering_logger,
+)
+from airflow._shared.module_loading import get_unique_dag_module_name
 from airflow.local_run import logs
 from airflow.local_run.logs import (
     TASK_FAILED_EVENT,
@@ -40,36 +47,36 @@ from airflow.sdk.execution_time.supervisor import forward_to_log, process_log_me
 
 
 @pytest.fixture
-def console(monkeypatch):
+def console(monkeypatch, capsys):
     """
     Logging shaped like Airflow's console setup, restored afterwards.
 
-    Returns the stream of a root console handler, standing in for Airflow's stdlib console handler.
+    Its stdlib console handler writes to a stream of its own, standing in for Airflow's on stdout.
     """
     monkeypatch.setattr(logs, "_startup_events", [])
     saved_config = structlog.get_config()
     root = logging.getLogger()
     saved_handlers, saved_level = list(root.handlers), root.level
-    saved_filters = {handler: list(handler.filters) for handler in root.handlers}
+    renderer = structlog.dev.ConsoleRenderer(colors=False)
     structlog.configure(
-        processors=[
-            logger_name,
-            structlog.processors.add_log_level,
-            structlog.dev.ConsoleRenderer(colors=False),
-        ],
+        processors=[logger_name, structlog.processors.add_log_level, renderer],
         logger_factory=LoggerFactory(NamedWriteLogger),
-        wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+        wrapper_class=make_filtering_logger(),
         cache_logger_on_first_use=False,
     )
-    stream = io.StringIO()
-    root.addHandler(logging.StreamHandler(stream))
+    handler = logging.StreamHandler(io.StringIO())
+    handler.setFormatter(
+        structlog.stdlib.ProcessorFormatter(
+            processors=[structlog.stdlib.ProcessorFormatter.remove_processors_meta, renderer],
+            foreign_pre_chain=[structlog.stdlib.add_logger_name, structlog.processors.add_log_level],
+        )
+    )
+    root.handlers[:] = [handler]
     root.setLevel(logging.INFO)
-    yield stream
+    yield
     structlog.configure(**saved_config)
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
-    for handler, filters in saved_filters.items():
-        handler.filters[:] = filters
 
 
 def read_events(path) -> list[tuple[str, str, str | None]]:
@@ -90,7 +97,9 @@ def test_terminal_hides_airflow_progress_but_not_task_output(console, capsys):
     structlog.get_logger("supervisor").info("supervisor progress")
     structlog.get_logger("supervisor").warning("supervisor warning")
 
-    shown = capsys.readouterr().out + console.getvalue()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    shown = captured.err
     for line in (
         "internal warning",
         "hook output",
@@ -120,7 +129,6 @@ def test_supervised_task_output_is_shown_as_printed(console, capsys):
     captured = capsys.readouterr()
     assert captured.out == "hello from the task\n"
     assert captured.err == "to stderr\n"
-    assert console.getvalue() == ""
 
 
 def test_supervised_task_failure_is_left_to_the_runner(console, capsys):
@@ -132,7 +140,127 @@ def test_supervised_task_failure_is_left_to_the_runner(console, capsys):
         json.dumps(failure).encode(),
     )
 
-    assert capsys.readouterr().out + console.getvalue() == ""
+    captured = capsys.readouterr()
+    assert captured.out + captured.err == ""
+
+
+# What the task runner binds to each of a task's log events.
+TASK_CONTEXT = {
+    "dag_id": "etl",
+    "task_id": "load",
+    "map_index": -1,
+    "run_id": "manual__2026-11-10T16:00:00+00:00",
+    "try_number": 1,
+    "ti_id": "019a6c62-d1a0-7658-b737-b6034df6ae45",
+    "loc": "etl.py:3",
+    "timestamp": "2026-11-10T16:00:01.000000Z",
+}
+
+
+@pytest.mark.parametrize(
+    ("event", "shown"),
+    [
+        pytest.param(
+            {"event": "loaded", "level": "info", "logger": get_unique_dag_module_name("/project/etl.py")},
+            "  load | etl: loaded",
+            id="dag-file-module",
+        ),
+        pytest.param(
+            {"event": "only 3 rows", "level": "warning", "logger": "etl"},
+            "  load | etl: warning: only 3 rows",
+            id="warning",
+        ),
+        pytest.param(
+            {"event": "loaded", "level": "info", "logger": "etl", "rows": 3},
+            "  load | etl: loaded rows=3",
+            id="own-fields",
+        ),
+        pytest.param(
+            {
+                "event": "from bash",
+                "level": "info",
+                "logger": "airflow.task.hooks.airflow.providers.standard.hooks.subprocess.SubprocessHook",
+                "map_index": 2,
+            },
+            "  load[2] | SubprocessHook: from bash",
+            id="hook-in-mapped-try",
+        ),
+        pytest.param(
+            {"event": "slow to start", "level": "warning", "logger": "task"},
+            "  load | warning: slow to start",
+            id="task-runner",
+        ),
+        pytest.param(
+            {
+                "event": "old option",
+                "level": "warning",
+                "logger": "py.warnings",
+                "category": "UserWarning",
+                "filename": str(Path.cwd() / "etl.py"),
+                "lineno": 12,
+            },
+            "  load | etl.py:12: UserWarning: old option",
+            id="python-warning",
+        ),
+    ],
+)
+def test_supervised_task_log_is_one_short_line_on_stderr(console, capsys, event, shown):
+    configure_local_run_logging()
+
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps({**TASK_CONTEXT, **event}).encode(),
+    )
+
+    assert capsys.readouterr() == ("", f"{shown}\n")
+
+
+def test_supervised_task_log_shows_a_logged_traceback_from_the_task_code(console, capsys):
+    configure_local_run_logging()
+    stack = {
+        "exc_type": "KeyError",
+        "exc_value": "'missing'",
+        "frames": [
+            frame(f"{airflow.__path__[0]}/runner.py", "run the task"),
+            frame("/project/etl.py", "look"),
+        ],
+    }
+    event = {"event": "lookup failed", "level": "error", "logger": "etl", "exception": [stack]}
+
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps({**TASK_CONTEXT, **event}).encode(),
+    )
+
+    assert capsys.readouterr().err.splitlines() == [
+        "  load | etl: error: lookup failed",
+        "Traceback (most recent call last):",
+        '  File "/project/etl.py", line 1, in f',
+        "    look",
+        "KeyError: 'missing'",
+    ]
+
+
+def test_records_and_warnings_of_the_run_process_go_to_stderr(console, capsys):
+    configure_local_run_logging()
+
+    try:
+        raise KeyError("missing")
+    except KeyError:
+        logging.getLogger(get_unique_dag_module_name("/project/etl.py")).exception("lookup failed")
+    structlog.get_logger("py.warnings").warning(
+        "changelog_url does nothing", category="DeprecationWarning", filename="/elsewhere/app.py", lineno=329
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    first, traceback_start, *_, exception, warning = captured.err.splitlines()
+    assert (first, traceback_start, exception) == (
+        "etl: error: lookup failed",
+        "Traceback (most recent call last):",
+        "KeyError: 'missing'",
+    )
+    assert warning == "/elsewhere/app.py:329: DeprecationWarning: changelog_url does nothing"
 
 
 def test_task_log_gets_what_a_deployed_task_log_has(console, tmp_path):
@@ -190,13 +318,13 @@ def test_task_log_appends_to_an_existing_attempt_log(console, tmp_path):
 
 
 @pytest.mark.parametrize("bound", [None, io.StringIO()])
-def test_console_loggers_are_pinned_to_current_stdout(console, bound):
+def test_console_loggers_are_pinned_to_current_stderr(console, bound):
     factory = LoggerFactory(NamedWriteLogger, io=bound)
     structlog.configure(logger_factory=factory)
 
     configure_local_run_logging()
 
-    assert factory.io is (sys.stdout if bound is None else bound)
+    assert factory.io is (sys.stderr if bound is None else bound)
 
 
 def test_startup_lines_fill_each_task_pre_execute_section(console, tmp_path):
@@ -234,7 +362,8 @@ def test_task_failure_is_held_back_from_the_terminal(console, capsys, tmp_path):
         except ValueError:
             structlog.get_logger("task").exception("Task failed with exception")
 
-    assert "boom" not in capsys.readouterr().out + console.getvalue()
+    captured = capsys.readouterr()
+    assert "boom" not in captured.out + captured.err
     assert read_events(path) == [("Task failed with exception", "error", "task")]
     assert read_attempt_failure(path).summary == "ValueError: boom"
 
@@ -246,7 +375,7 @@ def test_import_errors_are_left_to_the_run_to_report(console, capsys):
     structlog.get_logger("airflow.sdk.importers.python_importer").error("Failed to import")
     logging.getLogger("airflow.dag_processing.dagbag.BundleDagBag").warning("DagBag warning")
 
-    shown = capsys.readouterr().out + console.getvalue()
+    shown = capsys.readouterr().err
     assert "DagBag warning" in shown
     for line in ("Error loading DAG", "Failed to import"):
         assert line not in shown

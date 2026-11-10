@@ -22,6 +22,9 @@ which forwards that output here as well. In debug mode tasks run in the run's ow
 runs its log events, log records and printed output are also written to its log file, the same as a
 deployed task's log. Either way the terminal shows the task's own output, hook output, warnings and
 errors, but not Airflow's progress lines; the runner prints a summary instead.
+
+What a task prints goes to stdout and stderr as printed. Log events go to stderr, as Python's own logging
+does, one short line each that names the task, so that stdout stays the script's.
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import re
 import sys
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
@@ -39,6 +43,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 import structlog
 
 import airflow
+from airflow._shared.module_loading import UNUSUAL_MODULE_PREFIX
 from airflow.sdk.log import logging_processors
 
 if TYPE_CHECKING:
@@ -72,6 +77,32 @@ OUTPUT_LOGGERS = {"task.stdout": "stdout", "task.stderr": "stderr"}
 # What the supervisor logs when a task's process ends without the task runner reporting a failure.
 PROCESS_EXIT_EVENTS = ("Process exited abnormally", "Process terminated by signal")
 
+# Which run and try a task's event belongs to, and where in Airflow it was logged: the task's log keeps them,
+# the terminal names the task instead.
+_TERMINAL_HIDDEN_FIELDS = (
+    "dag_id",
+    "task_id",
+    "run_id",
+    "map_index",
+    "try_number",
+    "ti_id",
+    "timestamp",
+    "loc",
+    "filename",
+    "lineno",
+    "func_name",
+)
+
+# Airflow imports a Dag file under its file name with this prefix, so a logger named after the file's module
+# would show it.
+_DAG_MODULE_PREFIX = re.compile(rf"{UNUSUAL_MODULE_PREFIX}[0-9a-f]{{40}}_")
+
+# Hooks and operators log as ``airflow.task.hooks.<module>.<class>``; the class names them well enough.
+_TASK_LOGGER_PREFIXES = ("airflow.task.hooks.", "airflow.task.operators.")
+
+# Airflow's task runner and the task supervisor: the task's name already says where their events came from.
+_UNNAMED_LOGGERS = ("task", "supervisor")
+
 _LEVELS = logging.getLevelNamesMapping()
 
 # Writes the log file of the task that is running, if any.
@@ -95,19 +126,67 @@ _recording_startup = False
 
 
 def configure_local_run_logging() -> None:
-    """Route this process's log output: quiet on the terminal, complete in the running task's log file."""
-    # Airflow's console loggers pick ``sys.stdout`` up when each one is created; pinned now, loggers first
-    # used while a task's printed output is being copied cannot write through that copy into the file.
+    """Route this process's log output: short on stderr, complete in the running task's log file."""
+    # Airflow's console loggers pick a stream up when each one is created; pinned now, loggers first used
+    # while a task's printed output is being copied cannot write through that copy into the file.
     factory = structlog.get_config()["logger_factory"]
-    if getattr(factory, "io", sys.stdout) is None:
-        factory.io = sys.stdout
-    # Cached loggers hold this very list, so the router is inserted in place, ahead of the renderer.
+    if getattr(factory, "io", sys.stderr) is None:
+        factory.io = sys.stderr
+    # Cached loggers hold this very list, so the router and renderer replace Airflow's renderer in place.
     processors = structlog.get_config()["processors"]
-    processors.insert(len(processors) - 1, _route_event)
+    processors[-1:] = [_route_event, render_for_terminal]
     root = logging.getLogger()
     for handler in root.handlers:
         handler.addFilter(_is_shown_on_console)
+        # Airflow's console handler, which renders records the way its console loggers render events.
+        if type(handler) is logging.StreamHandler and isinstance(
+            formatter := handler.formatter, structlog.stdlib.ProcessorFormatter
+        ):
+            handler.setStream(sys.stderr)
+            formatter.processors = [*formatter.processors[:-1], render_for_terminal]
     root.addHandler(_CopyRecordsToTaskLog())
+
+
+def render_for_terminal(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> str:
+    """
+    Render a log event as the terminal shows it: the task, where the event came from, and the message.
+
+    A Python warning reads as Python prints one. Tracebacks follow on the lines after.
+    """
+    fields = dict(structlog.processors.format_exc_info(logger, method_name, event_dict))
+    message = str(fields.pop("event", ""))
+    level = str(fields.pop("level", method_name))
+    name = str(fields.pop("logger", None) or "")
+    task_id, map_index = fields.get("task_id"), fields.get("map_index", -1)
+    if name == "py.warnings":
+        where = f"{_describe_path(Path(str(fields.pop('filename', ''))))}:{fields.pop('lineno', '')}"
+        line = f"{where}: {fields.pop('category', 'Warning')}: {message}"
+    else:
+        line = f"{level}: {message}" if _LEVELS.get(level.upper(), 0) >= logging.WARNING else message
+        if source := _get_display_name(name):
+            line = f"{source}: {line}"
+    for field in _TERMINAL_HIDDEN_FIELDS:
+        fields.pop(field, None)
+    details = [str(text) for key in ("exception", "stack") if (text := fields.pop(key, None))]
+    if stacks := fields.pop("error_detail", None):
+        details.append(_format_stacks(stacks)[0] if isinstance(stacks, list) else str(stacks))
+    line += "".join(f" {key}={value}" for key, value in fields.items())
+    if task_id:
+        line = f"  {get_task_label(str(task_id), map_index if isinstance(map_index, int) else -1)} | {line}"
+    return "\n".join([line, *details])
+
+
+def get_task_label(task_id: str, map_index: int) -> str:
+    """Return how the terminal names a task, or one mapped try of it."""
+    return task_id if map_index < 0 else f"{task_id}[{map_index}]"
+
+
+def _get_display_name(logger_name: str) -> str:
+    if logger_name in _UNNAMED_LOGGERS:
+        return ""
+    if logger_name.startswith(_TASK_LOGGER_PREFIXES):
+        return logger_name.rpartition(".")[2]
+    return _DAG_MODULE_PREFIX.sub("", logger_name)
 
 
 @contextmanager

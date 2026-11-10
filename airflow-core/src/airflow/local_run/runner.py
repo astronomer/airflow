@@ -61,6 +61,7 @@ from airflow.local_run.logs import (
     TaskFailure,
     capture_task_log,
     configure_local_run_logging,
+    get_task_label,
     read_attempt_failure,
     record_startup_events,
 )
@@ -465,7 +466,7 @@ def start_run_for_selection(
     """
     if mapped := next((marker for marker in markers if isinstance(marker, tuple)), None):
         raise LocalRunSetupError(
-            f"{_task_label(*mapped)} can be rerun only in a run where {mapped[0]} has expanded; select "
+            f"{get_task_label(*mapped)} can be rerun only in a run where {mapped[0]} has expanded; select "
             f"{mapped[0]} to run all of its map indexes"
         )
     scheduler_dag, dag_run = create_dag_run(dag, run_conf, triggered_by, session=session)
@@ -646,7 +647,9 @@ def check_map_indexes(markers: list[str | tuple[str, int]], dag_run: DagRun, *, 
 
 
 def describe_selection(selection: TaskSelection) -> str:
-    labels = [_task_label(*marker) if isinstance(marker, tuple) else marker for marker in selection.task_ids]
+    labels = [
+        get_task_label(*marker) if isinstance(marker, tuple) else marker for marker in selection.task_ids
+    ]
     labels += [f"task group {group_id}" for group_id in selection.task_group_ids]
     return ", ".join(labels)
 
@@ -787,7 +790,7 @@ def report_task(
     retry_in: timedelta | None = None,
 ) -> None:
     """Report a finished attempt in ``state``; ``failure`` is why it failed, held back from the terminal."""
-    label = _task_label(ti.task_id, ti.map_index)
+    label = get_task_label(ti.task_id, ti.map_index)
     if ti.try_number > 1 and state != "up_for_retry":
         # A rerun's try, or one after retries; the retry line already numbers its attempt.
         label += f" (try {ti.try_number})"
@@ -822,7 +825,7 @@ def summarize_run(
         outcome = f"Succeeded in {times}"
     else:
         failed = sorted(
-            _task_label(task_id, map_index)
+            get_task_label(task_id, map_index)
             for (task_id, map_index), state in payload["task_states"].items()
             if state == "failed"
         )
@@ -1098,10 +1101,6 @@ def write_result(path: Path, payload: dict[str, Any]) -> None:
 
 def _state_name(state: Any) -> str:
     return "none" if state is None else str(getattr(state, "value", state))
-
-
-def _task_label(task_id: str, map_index: int) -> str:
-    return task_id if map_index < 0 else f"{task_id}[{map_index}]"
 
 
 def _describe_delay(delay: timedelta) -> str:
