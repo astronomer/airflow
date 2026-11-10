@@ -75,6 +75,10 @@ The run prints one line per task on stderr, then your script goes on:
 The first time is how long the tasks took; the total also counts starting the run, from the
 ``workflow.run()`` call.
 
+Log lines and warnings go to stderr too, one line each, and a task's lines start with its name:
+``total | pipeline: summing 3 values``. What a task prints goes to stdout, as it would in a plain script.
+Each task's log in the history keeps every line in full.
+
 ``workflow.run()`` returns the run's result. ``result.output("total")`` is what the ``total`` task
 returned, as the object it returned; ``result.output("double", 1)`` is the second mapped ``double``.
 ``result.state`` and ``result.task_states`` hold the run's and each task's state. A run that fails raises
