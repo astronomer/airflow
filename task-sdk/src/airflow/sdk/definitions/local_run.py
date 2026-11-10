@@ -219,6 +219,9 @@ def run_dag_file(
     :raises LocalRunError: the run could not start or did not report a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
     """
+    # The run locks its project with fcntl and starts task tries by fork in process groups of their own.
+    if sys.platform == "win32":
+        raise LocalRunError("Running a Dag locally needs Linux or macOS; on Windows, run it in WSL2")
     started_at = time.monotonic()
     source_path = Path(source).resolve()
     if source_path.suffix != ".py" or not source_path.is_file():
