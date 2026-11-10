@@ -68,7 +68,6 @@ from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger
 from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
 from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
-from airflow.models.dag_version import DagVersion
 from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance, find_task_markers_to_clear
@@ -426,10 +425,10 @@ def rerun_selection(
     """
     Clear the selected tasks in ``dag_run`` and take the run over.
 
-    The cleared tries run the file as it is now, and move the run to the file's Dag version when that is
-    newer. The run is taken over by pointing its ``creating_job_id`` at this process's job in the
-    transaction that clears the tasks: the history server's scheduler leaves alone the runs whose creating
-    job is a running local run's, so it never runs the cleared tries itself.
+    The cleared tries run the file as it is now, and move the run to the file's Dag version. The run is taken
+    over by pointing its ``creating_job_id`` at this process's job in the transaction that clears the tasks:
+    the history server's scheduler leaves alone the runs whose creating job is a running local run's, so it
+    never runs the cleared tries itself.
     """
     check_map_indexes(markers, dag_run, session=session)
     dag_run.creating_job_id = start_local_run_job(session=session).id
@@ -444,7 +443,7 @@ def rerun_selection(
         ),
         run_id=dag_run.run_id,
         dag_run_state=DagRunState.RUNNING,
-        run_on_latest_version=has_newer_dag_version(dag_run, session=session),
+        run_on_latest_version=True,
         session=session,
     )
 
@@ -494,19 +493,6 @@ def start_run_for_selection(
     session.flush()
     first = (task_id for task_id in needed - wanted if not scheduler_dag.task_dict[task_id].is_teardown)
     return scheduler_dag, dag_run, sorted(first)
-
-
-def has_newer_dag_version(dag_run: DagRun, *, session: Session) -> bool:
-    """
-    Tell whether the file's Dag is a newer version than the run's, which the cleared tries then move to.
-
-    Only then: moving a run to the latest version re-verifies its task instances while it is cleared. A
-    mapped task cleared with the task that feeds it then has its expansion recorded as removed before that
-    task reruns, and it is never expanded again, so its downstream tasks run without its outputs. An edit
-    to a task's code alone keeps the Dag's version, so most reruns stay clear of that.
-    """
-    latest = DagVersion.get_latest_version(dag_run.dag_id, session=session)
-    return latest is not None and latest.id != dag_run.created_dag_version_id
 
 
 def expand_task_selection(dag: SerializedDAG, selection: TaskSelection) -> list[str | tuple[str, int]]:
