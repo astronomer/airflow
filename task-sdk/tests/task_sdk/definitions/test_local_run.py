@@ -433,6 +433,12 @@ class TestRunDagFile:
         assert before <= seen["request"]["started_at"] <= after
         assert not Path(seen["request"]["result_path"]).parent.exists()
 
+    @mock.patch("airflow.sdk.definitions.local_run.sys.platform", "win32")
+    def test_refuses_windows_before_anything_else(self, tmp_path):
+        # Any other check would refuse this file first.
+        with pytest.raises(LocalRunError, match="needs Linux or macOS; on Windows, run it in WSL2"):
+            run_dag_file(tmp_path / "missing.txt")
+
     def test_rejects_non_python_file(self, tmp_path):
         source = tmp_path / "pipeline.txt"
         source.touch()
