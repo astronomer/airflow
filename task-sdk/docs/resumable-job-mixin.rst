@@ -117,8 +117,18 @@ Databricks run or redriving a Step Functions execution. To use that on retry, ov
     Ask the external system to resume the failed job. Return the identifier to poll, which can be the
     same one or a new one. Return ``None`` to submit a fresh job instead. The default returns ``None``.
 
-If ``resume_failed_job`` raises, the mixin logs a warning and submits a fresh job, so a failed
-resume never leaves a retry worse off.
+If ``resume_failed_job`` raises, the engine may still have accepted the request, for example when
+the reply times out. Submitting a fresh job then would leave two jobs running. So the mixin reads
+the stored job's status again, up to ``resume_status_checks`` times (3 by default), waiting
+``resume_status_check_interval`` seconds (10 by default) between reads:
+
+- If the job is running or has succeeded, the mixin watches it instead of submitting a new one.
+- If the job still looks failed after every read, the mixin submits a fresh job.
+- If the status cannot be read, the try fails with the original error, and the next retry checks
+  again.
+
+This check only finds a job resumed under the stored identifier. An engine that resumes under a new
+identifier must handle a lost reply in ``resume_failed_job`` itself.
 
 Clearing a task discards its stored identifier, so a cleared task always starts a fresh job.
 

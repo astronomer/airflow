@@ -16,6 +16,7 @@
 # under the License.
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -107,6 +108,11 @@ class ResumableJobMixin(ABC):
     # Key used to store and retrieve the external job ID from task_state_store across retries.
     # Renaming this on a deployed operator breaks in-flight retries — the old key is already stored.
     external_id_key: str = "remote_job_id"
+
+    # After ``resume_failed_job`` raises, how many times to read the job's status, and how many
+    # seconds apart, before deciding the resume did not start and submitting a new job.
+    resume_status_checks: int = 3
+    resume_status_check_interval: float = 10.0
 
     # The mixin is not a BaseOperator subclass, but _apply_defaults is only ever called on concrete
     # operators that are BaseOperator subclasses. That is a runtime MRO guarantee not visible in the static
@@ -207,9 +213,13 @@ class ResumableJobMixin(ABC):
                         )
                         if not isinstance(work_kept, timedelta):
                             work_kept = None
-                        resumed_id, resume_raised = self._resume_failed_job_safely(
+                        resumed_id, resume_error = self._resume_failed_job_safely(
                             external_id, status, context
                         )
+                        if resume_error is not None:
+                            resumed_id = self._find_job_resumed_despite_error(
+                                external_id, context, resume_error, stats_tags
+                            )
                         if resumed_id is not None:
                             decision = ResumeDecision.RESUMED
                             time_not_rerun = work_kept
@@ -225,7 +235,7 @@ class ResumableJobMixin(ABC):
                         else:
                             decision = (
                                 ResumeDecision.RESUME_FELL_BACK
-                                if resume_raised
+                                if resume_error is not None
                                 else ResumeDecision.RESUBMITTED
                             )
                             time_not_rerun = timedelta(0)
@@ -279,6 +289,12 @@ class ResumableJobMixin(ABC):
         which may be the same ID (for example a Databricks run repaired in place) or a new one. Return
         ``None`` to submit a fresh job, which is the default.
 
+        If this raises, the engine may still have accepted the request, for example when the reply
+        times out. Before submitting a fresh job, the mixin reads the stored job's status again and
+        watches it if it is active or succeeded. If that status read fails too, the try fails rather
+        than risk running two jobs. That check only sees a job resumed under the stored ID; an engine
+        that resumes under a new ID must handle a lost reply itself.
+
         A cleared task never reaches this, because clearing discards the stored ID.
         """
         return None
@@ -306,19 +322,56 @@ class ResumableJobMixin(ABC):
 
     def _resume_failed_job_safely(
         self, external_id: JsonValue, status: str, context: Context
-    ) -> tuple[JsonValue, bool]:
-        """Return the ID to poll, or ``None``, and whether the resume raised."""
+    ) -> tuple[JsonValue, Exception | None]:
+        """Return the ID to poll, or ``None``, and the error the resume raised, if any."""
         try:
-            return self.resume_failed_job(external_id, status, context), False
-        except Exception:
-            # A failed resume must never leave a retry worse off than resubmitting.
+            return self.resume_failed_job(external_id, status, context), None
+        except Exception as error:
             self.log.warning(
-                "Could not resume failed job, resubmitting fresh",
+                "Resume of failed job raised, checking whether it started anyway",
                 external_id_key=self.external_id_key,
                 external_id=external_id,
                 exc_info=True,
             )
-            return None, True
+            return None, error
+
+    def _find_job_resumed_despite_error(
+        self, external_id: JsonValue, context: Context, error: Exception, stats_tags: dict[str, str]
+    ) -> JsonValue | None:
+        """
+        Return ``external_id`` if the job is active or succeeded although its resume raised.
+
+        Return ``None`` if it still looks failed after every check, so a fresh job is safe to submit.
+        Re-raise ``error`` if the status cannot be read, because guessing could start a second job.
+        """
+        for check in range(self.resume_status_checks):
+            if check:
+                # The engine can take a few seconds to show an accepted resume as active.
+                time.sleep(self.resume_status_check_interval)
+            try:
+                status = self.get_job_status(external_id, context)
+            except Exception:
+                self.log.exception(
+                    "Could not read job status after its resume raised, failing this try",
+                    external_id_key=self.external_id_key,
+                    external_id=external_id,
+                )
+                raise error
+            if self.is_job_active(status) or self.is_job_succeeded(status):
+                stats.incr("resumable_job.resume_reply_lost", tags=stats_tags)
+                self.log.warning(
+                    "Resume raised but the job resumed anyway, watching it instead of submitting a new one",
+                    external_id_key=self.external_id_key,
+                    external_id=external_id,
+                    status=status,
+                )
+                return external_id
+        self.log.warning(
+            "Job still failed after its resume raised, resubmitting fresh",
+            external_id_key=self.external_id_key,
+            external_id=external_id,
+        )
+        return None
 
     def _call_optional_hook(self, hook: Any, external_id: JsonValue, context: Context) -> Any:
         # These hooks only feed the UI, so a failing engine call must not fail the task.
