@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 import structlog
 from jsonschema.exceptions import SchemaError
 from packaging.version import Version
-from sqlalchemy import event, inspect, select, text
+from sqlalchemy import event, inspect, select, text, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from airflow import settings
@@ -77,7 +77,7 @@ from airflow.models.taskinstance import TaskInstance, find_task_markers_to_clear
 from airflow.models.trigger import Trigger
 from airflow.models.xcom import XComModel
 from airflow.sdk import DAG
-from airflow.sdk.definitions.dag import _run_dag_run_to_completion
+from airflow.sdk.definitions.dag import _run_dag_run_to_completion, _run_task
 from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module, refuse_breakpoint
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import allow_class
@@ -186,6 +186,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     home = Path(os.environ["AIRFLOW_HOME"])
     debug = bool(request.get("debug"))
     keep_history = request.get("keep_history", True)
+    retries = request.get("retries", True)
     check_project_secrets_backend()
     if keep_history:
         ensure_database(home)
@@ -260,13 +261,21 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
                 failures[ti.task_id, ti.map_index] = failure.summary
 
         @contextmanager
-        def run_task_in_process(ti: TaskInstance) -> Iterator[None]:
+        def capture_try_in_process(ti: TaskInstance) -> Iterator[None]:
             log_path = get_task_log_path(ti, session=session)
             with capture_task_log(log_path):
                 yield
             report_attempt(ti, _state_name(ti.state), log_path)
 
+        # Given to the run loop rather than left to it, so that a failing drop_retries is handled as a failed try.
+        def run_try_in_process(ti: TaskInstance, task: Operator) -> None:
+            if not retries:
+                drop_retries(ti, session=session)
+            _run_task(ti=ti, task=task, run_triggerer=True)
+
         def run_supervised_try(ti: TaskInstance, task: Operator) -> None:
+            if not retries:
+                drop_retries(ti, session=session)
             outcome, log_path = tries.run(ti, task)
             report_attempt(ti, _state_name(outcome), log_path)
 
@@ -280,8 +289,8 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
                 dag_run,
                 session=session,
                 should_stop=interrupted.is_set,
-                task_context=run_task_in_process if debug else None,
-                execute_try=None if debug else run_supervised_try,
+                task_context=capture_try_in_process if debug else None,
+                execute_try=run_try_in_process if debug else run_supervised_try,
             )
         except KeyboardInterrupt:
             # A task interrupted in this process, in debug mode, leaves what it started running, such as a
@@ -789,6 +798,20 @@ def report_abandoned_runs(home: Path, dag_runs: list[DagRun]) -> None:
             "the run finished"
         )
         get_run_lock_path(home, dag_run.id).unlink(missing_ok=True)
+
+
+def drop_retries(ti: TaskInstance, *, session: Session) -> None:
+    """
+    Make the attempt about to start the task instance's last, whatever its ``retries`` say.
+
+    The Execution API retries an attempt while ``try_number <= max_tries``. An attempt's ``try_number`` is set when
+    its row is created, as a clear or a mapped task's expansion creates them, except a first attempt's: that is 0
+    until it starts. The attempt's start commits the change.
+    """
+    ti.max_tries = max(ti.try_number - 1, 0)
+    # A try run in this process commits and closes the thread's session, detaching the run loop's other task
+    # instances, so a change to the object alone could be lost.
+    session.execute(update(TaskInstance).where(TaskInstance.id == ti.id).values(max_tries=ti.max_tries))
 
 
 def get_task_log_path(ti: TaskInstance, *, session: Session) -> Path:

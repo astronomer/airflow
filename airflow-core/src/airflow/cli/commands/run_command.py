@@ -86,6 +86,7 @@ def run(args) -> None:
             triggered_by="cli",
             debug=args.debug,
             keep_history=args.keep_history,
+            retries=args.retries,
         )
     except DagExecutionError as e:
         print_outputs(e.result, only_ran=selected)

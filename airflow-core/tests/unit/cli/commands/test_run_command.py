@@ -64,11 +64,18 @@ class TestRunCommand:
         assert capsys.readouterr().out == "Outputs:\n  total = 12\n"
 
     @pytest.mark.parametrize(
-        ("extra_args", "debug", "keep_history"),
-        [([], False, True), (["--debug"], True, True), (["--no-history"], False, False)],
+        ("extra_args", "debug", "keep_history", "retries"),
+        [
+            ([], False, True, True),
+            (["--debug"], True, True, True),
+            (["--no-history"], False, False, True),
+            (["--no-retries"], False, True, False),
+        ],
     )
     @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_passes_arguments_to_launcher(self, mock_run_dag_file, capsys, extra_args, debug, keep_history):
+    def test_passes_arguments_to_launcher(
+        self, mock_run_dag_file, capsys, extra_args, debug, keep_history, retries
+    ):
         mock_run_dag_file.return_value = make_result()
         args = self.parser.parse_args(
             [
@@ -102,6 +109,7 @@ class TestRunCommand:
             triggered_by="cli",
             debug=debug,
             keep_history=keep_history,
+            retries=retries,
         )
         assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
 
@@ -140,6 +148,7 @@ class TestRunCommand:
             "triggered_by": "cli",
             "debug": False,
             "keep_history": True,
+            "retries": True,
         }
 
     @pytest.mark.parametrize(

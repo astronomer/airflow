@@ -506,7 +506,9 @@ class TestRunDagFile:
         mock_popen.side_effect = fake_child
 
         before = time.monotonic()
-        result = run_dag_file(source, dag_id="example", run_conf={"n": 1}, triggered_by="cli", debug=True)
+        result = run_dag_file(
+            source, dag_id="example", run_conf={"n": 1}, triggered_by="cli", debug=True, retries=False
+        )
         after = time.monotonic()
 
         assert result.output("numbers") == [1, 2]
@@ -521,6 +523,7 @@ class TestRunDagFile:
             "triggered_by": "cli",
             "debug": True,
             "keep_history": True,
+            "retries": False,
             "result_path": seen["request"]["result_path"],
             "started_at": mock.ANY,
         }
@@ -572,6 +575,10 @@ class TestRunDagFile:
     def test_rejects_non_dict_run_conf(self, source):
         with pytest.raises(TypeError, match="run_conf must be a dict, not list"):
             run_dag_file(source, run_conf=[1])
+
+    def test_rejects_a_number_of_retries(self, source):
+        with pytest.raises(TypeError, match="retries takes True, .* or False, for one attempt; not 1$"):
+            run_dag_file(source, retries=1)
 
     @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
     def test_task_selection_reaches_the_request(self, mock_popen, source):

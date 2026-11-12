@@ -1447,6 +1447,7 @@ class DAG:
         run_id: str | None = None,
         debug: bool = False,
         keep_history: bool = True,
+        retries: bool = True,
     ) -> DagRunResult:
         """
         Run this Dag once in its project's local Airflow environment and return the detached result.
@@ -1474,6 +1475,7 @@ class DAG:
             debuggers work. Module state then carries over from one try to the next.
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
             own that is deleted when it ends, and selected tasks run in a new run with the tasks they need.
+        :param retries: retry failed tasks as their ``retries`` say. Otherwise each task gets one attempt.
         :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
         :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
         :raises LocalRunDagFileError: the file failed to import, or the Dag is invalid, e.g. a param's default.
@@ -1502,6 +1504,7 @@ class DAG:
             run_id=run_id,
             debug=debug,
             keep_history=keep_history,
+            retries=retries,
         )
 
 
