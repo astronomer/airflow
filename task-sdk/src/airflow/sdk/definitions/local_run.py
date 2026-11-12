@@ -38,6 +38,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,9 @@ INTERRUPT_GRACE_SECONDS = 30.0
 
 _DROPPED_ENV_NAMES = frozenset({"AIRFLOW_HOME", "AIRFLOW_CONFIG"})
 _DROPPED_ENV_PREFIXES = ("AIRFLOW__", "_AIRFLOW", "__AIRFLOW")
+# Airflow's per-key settings for the ``[secrets] backend`` arguments, e.g. ``..._KWARG__ROLE_ID``.
+_SECRETS_BACKEND_KWARG_PREFIX = "AIRFLOW__SECRETS__BACKEND_KWARG__"
+PROJECT_SECRETS_BACKEND = "airflow.local_run.secrets_backend.LocalRunSecretsBackend"
 
 
 @dataclass(frozen=True)
@@ -153,7 +157,9 @@ def build_child_environment(
 
     Environment variables override configuration files, so an inherited ``AIRFLOW__DATABASE__*`` could
     otherwise point a local run at a deployment's database. ``AIRFLOW_CONN_*`` and ``AIRFLOW_VAR_*``
-    are kept: they are how a local run receives connections and variables.
+    are kept: they are how a local run receives connections and variables. So are the per-key arguments of
+    the secrets backend the project's ``pyproject.toml`` names, which keep its credentials out of that file;
+    a backend set in the environment is not, as it may be a deployment's.
     """
     env = {
         name: value
@@ -174,15 +180,46 @@ def build_child_environment(
             "AIRFLOW__API_AUTH__JWT_SECRET": secrets.token_urlsafe(64),
         }
     )
-    if connections_file or variables_file:
-        backend_kwargs = {}
-        if connections_file:
-            backend_kwargs["connections_file_path"] = str(connections_file)
-        if variables_file:
-            backend_kwargs["variables_file_path"] = str(variables_file)
+    backend_kwargs: dict[str, Any] = {}
+    if connections_file:
+        backend_kwargs["connections_file_path"] = str(connections_file)
+    if variables_file:
+        backend_kwargs["variables_file_path"] = str(variables_file)
+    if project_backend := read_project_secrets_backend(root):
+        env["AIRFLOW__SECRETS__BACKEND"] = PROJECT_SECRETS_BACKEND
+        env["AIRFLOW__SECRETS__BACKEND_KWARGS"] = json.dumps({**project_backend, **backend_kwargs})
+        env.update(
+            {name: value for name, value in base.items() if name.startswith(_SECRETS_BACKEND_KWARG_PREFIX)}
+        )
+    elif backend_kwargs:
         env["AIRFLOW__SECRETS__BACKEND"] = "airflow.secrets.local_filesystem.LocalFilesystemBackend"
         env["AIRFLOW__SECRETS__BACKEND_KWARGS"] = json.dumps(backend_kwargs)
     return env
+
+
+def read_project_secrets_backend(root: Path) -> dict[str, Any] | None:
+    """Return the ``[tool.airflow.secrets]`` table of the project's ``pyproject.toml``, if it has one."""
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():
+        return None
+    try:
+        with pyproject.open("rb") as file:
+            table = tomllib.load(file).get("tool", {}).get("airflow", {}).get("secrets")
+    except tomllib.TOMLDecodeError as e:
+        raise LocalRunError(f"{pyproject} is not valid TOML: {e}") from None
+    if table is None:
+        return None
+    if (
+        not isinstance(table, dict)
+        or not isinstance(table.get("backend"), str)
+        or not isinstance(table.get("backend_kwargs", {}), dict)
+        or table.keys() - {"backend", "backend_kwargs"}
+    ):
+        raise LocalRunError(
+            f'[tool.airflow.secrets] in {pyproject} takes backend = "module.Class" and, optionally, a '
+            "backend_kwargs table of the arguments to create it with"
+        )
+    return table
 
 
 def run_dag_file(

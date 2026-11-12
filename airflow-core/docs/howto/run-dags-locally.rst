@@ -93,6 +93,21 @@ your own code.
 * ``debug``: run every task in the run's own process, so that ``breakpoint()`` and your IDE's debugger stop
   in it. Otherwise each task try runs in a process of its own, as it does on a worker.
 
+To look up connections and variables in a secrets backend, such as one that holds your development
+credentials, name it in ``pyproject.toml``:
+
+.. code-block:: toml
+
+    [tool.airflow.secrets]
+    backend = "airflow.providers.amazon.aws.secrets.secrets_manager.SecretsManagerBackend"
+    backend_kwargs = { connections_prefix = "dev/airflow/connections", variables_prefix = "dev/airflow/variables" }
+
+A run then looks in its connections and variables files first, then in that backend, then in ``AIRFLOW_CONN_*``
+and ``AIRFLOW_VAR_*``; ``airflow standalone --project`` uses the backend too. Install the backend's provider in
+the project, and give the backend its credentials the way it reads them, such as ``AWS_PROFILE``, or as
+``AIRFLOW__SECRETS__BACKEND_KWARG__<NAME>`` variables. No other ``AIRFLOW__*`` setting reaches a local run, so a
+backend configured for a deployment is not used.
+
 To run a Dag from the command line instead, without a ``__main__`` block:
 
 .. code-block:: bash

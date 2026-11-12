@@ -469,6 +469,16 @@ class TestStandaloneProject:
         assert env.items() >= standalone_command.PROJECT_SERVER_ENVIRONMENT.items()
 
     @mock.patch.object(standalone_command.os, "execve", autospec=True)
+    def test_invalid_project_secrets_backend_is_refused(self, mock_execve, tmp_path, monkeypatch):
+        (tmp_path / "pyproject.toml").write_text("[tool.airflow.secrets]\nbackend = 1\n")
+        monkeypatch.chdir(tmp_path)
+        args = self.parser.parse_args(["standalone", "--project"])
+
+        with pytest.raises(SystemExit, match=r"\[tool\.airflow\.secrets\] in .* takes backend"):
+            args.func(args)
+        mock_execve.assert_not_called()
+
+    @mock.patch.object(standalone_command.os, "execve", autospec=True)
     def test_port_is_passed_to_the_server(self, mock_execve, tmp_path, monkeypatch):
         (tmp_path / "pyproject.toml").touch()
         monkeypatch.chdir(tmp_path)

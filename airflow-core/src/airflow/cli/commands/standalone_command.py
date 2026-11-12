@@ -45,6 +45,7 @@ from airflow.sdk.definitions.local_run import (
     find_project_root,
     prepare_project_home,
 )
+from airflow.sdk.exceptions import LocalRunError
 from airflow.utils import db
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
 
@@ -378,7 +379,10 @@ def serve_project_history(port: int | None) -> None:
     if (url := read_live_ui_url(home)) is not None:
         print(f"The UI for {root} is already running: {url}")
         return
-    env = build_child_environment(os.environ, home=home, root=root)
+    try:
+        env = build_child_environment(os.environ, home=home, root=root)
+    except LocalRunError as e:
+        raise SystemExit(str(e)) from None
     env.update(PROJECT_SERVER_ENVIRONMENT)
     port_args = [str(port)] if port else []
     os.execve(sys.executable, [sys.executable, "-m", PROJECT_SERVER_MODULE, *port_args], env)

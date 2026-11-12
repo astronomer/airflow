@@ -52,7 +52,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from airflow import settings
 from airflow._shared.timezones import timezone
 from airflow.api.common.mark_tasks import set_dag_run_state_to_failed
-from airflow.configuration import conf
+from airflow.configuration import conf, ensure_secrets_loaded
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
 from airflow.jobs.job import Job, JobState
@@ -66,6 +66,7 @@ from airflow.local_run.logs import (
     record_startup_events,
 )
 from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger_queue
+from airflow.local_run.secrets_backend import LocalRunSecretsBackend
 from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
 from airflow.local_run.ui import build_run_url, read_live_ui_url
 from airflow.models.dag import DagModel
@@ -160,6 +161,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     root = Path(settings.DAGS_FOLDER)
     home = Path(os.environ["AIRFLOW_HOME"])
     debug = bool(request.get("debug"))
+    check_project_secrets_backend()
     ensure_database(home)
     with record_startup_events():
         bundles = DagBundlesManager()
@@ -839,6 +841,19 @@ def project_lock(home: Path) -> Iterator[None]:
     with open(home / ".lock", "w") as lock_file:
         fcntl.flock(lock_file, fcntl.LOCK_EX)
         yield
+
+
+def check_project_secrets_backend() -> None:
+    """Create the secrets backend ``pyproject.toml`` names now, so a mistake in it stops the run before it starts."""
+    for backend in ensure_secrets_loaded():
+        if isinstance(backend, LocalRunSecretsBackend):
+            try:
+                backend.get_backends()
+            except Exception as e:
+                raise LocalRunSetupError(
+                    f"The secrets backend {backend.backend_path} that pyproject.toml names could not be set up: "
+                    f"{type(e).__name__}: {e}"
+                ) from None
 
 
 def ensure_database(home: Path) -> None:
