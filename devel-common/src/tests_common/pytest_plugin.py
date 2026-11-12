@@ -144,6 +144,24 @@ if run_db_tests_only:
     # Set it here to pass the flag to python-xdist spawned processes
     os.environ["_AIRFLOW_RUN_DB_TESTS_ONLY"] = "true"
 
+
+def _apply_per_worker_overrides(environ: dict[str, str] | os._Environ[str], *, skip_db: bool) -> None:
+    """
+    Give each pytest-xdist worker its own Airflow home and database (used by ``dev/airflow-dev``).
+
+    ``{worker}`` in the templates becomes ``PYTEST_XDIST_WORKER``, or ``main`` without xdist.
+    pytest-xdist sets that variable before a worker loads plugins, so this runs before Airflow
+    reads its configuration.
+    """
+    worker = environ.get("PYTEST_XDIST_WORKER", "main")
+    if home_template := environ.get("AIRFLOW_DEV_HOME_TEMPLATE"):
+        environ["AIRFLOW_HOME"] = home_template.format(worker=worker)
+    if not skip_db and (url_template := environ.get("AIRFLOW_DEV_DB_URL_TEMPLATE")):
+        environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"] = url_template.format(worker=worker)
+
+
+_apply_per_worker_overrides(os.environ, skip_db=skip_db_tests)
+
 os.environ["_IN_UNIT_TESTS"] = "true"
 
 _airflow_sources = os.getenv("AIRFLOW_SOURCES", None)

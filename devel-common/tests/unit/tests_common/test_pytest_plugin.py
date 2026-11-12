@@ -461,3 +461,39 @@ class TestInitializeAirflowDb:
             f"Unable to re-initialize the SQLite test DB. Remove `{sqlite_db_file}` and rerun pytest."
         )
         assert isinstance(exc_info.value.__cause__, SQLAlchemyError)
+
+
+class TestApplyPerWorkerOverrides:
+    TEMPLATES = {
+        "AIRFLOW_DEV_HOME_TEMPLATE": "/runs/abc/{worker}",
+        "AIRFLOW_DEV_DB_URL_TEMPLATE": "postgresql+psycopg://postgres@127.0.0.1:5432/abc_{worker}",
+    }
+
+    @pytest.mark.parametrize(
+        ("worker_env", "expected_worker"),
+        [({"PYTEST_XDIST_WORKER": "gw3"}, "gw3"), ({}, "main")],
+    )
+    def test_templates_resolve_per_worker(self, worker_env, expected_worker):
+        environ = {**self.TEMPLATES, **worker_env}
+
+        pytest_plugin._apply_per_worker_overrides(environ, skip_db=False)
+
+        assert environ["AIRFLOW_HOME"] == f"/runs/abc/{expected_worker}"
+        assert environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"] == (
+            f"postgresql+psycopg://postgres@127.0.0.1:5432/abc_{expected_worker}"
+        )
+
+    def test_skip_db_keeps_the_disabled_connection(self):
+        environ = {**self.TEMPLATES, "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN": "bad_schema:///"}
+
+        pytest_plugin._apply_per_worker_overrides(environ, skip_db=True)
+
+        assert environ["AIRFLOW_HOME"] == "/runs/abc/main"
+        assert environ["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"] == "bad_schema:///"
+
+    def test_without_templates_nothing_changes(self):
+        environ = {"PYTEST_XDIST_WORKER": "gw0"}
+
+        pytest_plugin._apply_per_worker_overrides(environ, skip_db=False)
+
+        assert environ == {"PYTEST_XDIST_WORKER": "gw0"}
