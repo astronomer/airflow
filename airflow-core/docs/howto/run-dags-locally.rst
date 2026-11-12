@@ -178,6 +178,13 @@ The first run creates ``.airflow/`` next to your ``pyproject.toml``. It holds th
 database with every run, each task's logs, and a ``.gitignore`` that keeps it out of version control. Delete
 it to start a new history.
 
+To run without keeping anything, for example in CI or a read-only checkout, add ``--no-history`` to
+``airflow run``, or ``keep_history=False`` to ``workflow.run()``. The run gets a database of its own, deleted
+when it ends, and leaves ``.airflow/`` alone. Its summary ends with ``No history kept``, and the task logs go
+with the database. The terminal keeps your tasks' own log lines, warnings and each failure, but not Airflow's
+informational lines, such as an agent's tool calls. With no earlier runs to take outputs from, ``--task`` runs
+the selected tasks in a new run with the tasks they need, and ``--run-id`` is refused.
+
 To look at the history in Airflow's UI:
 
 .. code-block:: bash

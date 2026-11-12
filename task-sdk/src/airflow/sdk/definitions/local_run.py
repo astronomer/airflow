@@ -47,7 +47,7 @@ from typing import Any, NoReturn
 
 from airflow.sdk.exceptions import DagExecutionError, LocalRunError
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 
@@ -69,7 +69,8 @@ class DagRunResult:
     run_id: str
     state: str
     task_states: Mapping[tuple[str, int], str]
-    project_home: Path
+    # None when the run kept no history.
+    project_home: Path | None
     outputs: Mapping[tuple[str, int, str], Any] = field(default_factory=dict, repr=False)
     output_errors: Mapping[tuple[str, int, str], str] = field(default_factory=dict, repr=False)
     # The error each failed task instance's last attempt ended with, e.g. "ValueError: boom".
@@ -236,6 +237,7 @@ def run_dag_file(
     run_id: str | None = None,
     triggered_by: str = "test",
     debug: bool = False,
+    keep_history: bool = True,
 ) -> DagRunResult:
     """
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
@@ -252,6 +254,8 @@ def run_dag_file(
     :param include_downstream: also rerun the downstream tasks of the selected ones.
     :param run_id: the run to rerun the selected tasks in.
     :param debug: run task tries inside the run's process rather than each in a process of its own.
+    :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
+        own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
     :raises DagExecutionError: the run finished in a failed state.
     :raises LocalRunError: the run could not start or did not report a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
@@ -265,6 +269,10 @@ def run_dag_file(
         raise LocalRunError(f"A local run needs a Python Dag file; {source_path} is not one")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise TypeError(f"run_conf must be a dict, not {type(run_conf).__name__}")
+    if run_id is not None and not keep_history:
+        raise ValueError(
+            "run_id names a run in the project's history, which a run without history cannot use"
+        )
     selection = build_task_selection(
         task_ids,
         task_group_ids,
@@ -279,16 +287,21 @@ def run_dag_file(
         raise LocalRunError("Running a Dag locally needs apache-airflow-core installed in this environment")
 
     root = find_project_root(source_path)
-    home = prepare_project_home(root)
-    env = build_child_environment(
-        os.environ,
-        home=home,
-        root=root,
-        connections_file=connections_path,
-        variables_file=variables_path,
-    )
 
-    with tempfile.TemporaryDirectory(prefix="airflow-run-") as tmp:
+    # A try left running by a second Ctrl-C can still write to a home in here while it is being removed.
+    with tempfile.TemporaryDirectory(prefix="airflow-run-", ignore_cleanup_errors=True) as tmp:
+        if keep_history:
+            home = prepare_project_home(root)
+        else:
+            home = Path(tmp, "home")
+            home.mkdir()
+        env = build_child_environment(
+            os.environ,
+            home=home,
+            root=root,
+            connections_file=connections_path,
+            variables_file=variables_path,
+        )
         request_path = Path(tmp, "request.json")
         result_path = Path(tmp, "result.pickle")
         request_path.write_text(
@@ -301,6 +314,7 @@ def run_dag_file(
                     **selection,
                     "triggered_by": triggered_by,
                     "debug": debug,
+                    "keep_history": keep_history,
                     "result_path": str(result_path),
                     "started_at": started_at,
                 }
@@ -309,7 +323,7 @@ def run_dag_file(
         process = subprocess.Popen([sys.executable, "-m", CHILD_MODULE, str(request_path)], env=env)
         return_code = wait_for_child(process)
         payload = pickle.loads(result_path.read_bytes()) if result_path.exists() else None
-    return build_result(payload, return_code, home, source_path)
+    return build_result(payload, return_code, home if keep_history else None, source_path)
 
 
 def build_task_selection(
@@ -381,7 +395,9 @@ def wait_for_child(process: subprocess.Popen) -> int:
     raise KeyboardInterrupt
 
 
-def build_result(payload: dict[str, Any] | None, return_code: int, home: Path, source: Path) -> DagRunResult:
+def build_result(
+    payload: dict[str, Any] | None, return_code: int, home: Path | None, source: Path
+) -> DagRunResult:
     if payload is None:
         raise LocalRunError(
             f"The local run process exited with code {return_code} without reporting a result"

@@ -572,6 +572,15 @@ ARG_RUN_IN_RUN_ID = Arg(
     ("--run-id",),
     help="Rerun the selected tasks in this run instead of the latest one that has their inputs",
 )
+ARG_RUN_NO_HISTORY = Arg(
+    ("--no-history",),
+    dest="keep_history",
+    action="store_false",
+    help=(
+        "Run against a database of the run's own, deleted when it ends, instead of the project's history; "
+        "selected tasks run in a new run with the tasks they need"
+    ),
+)
 # standalone
 ARG_STANDALONE_PROJECT = Arg(
     ("--project",),
@@ -2508,9 +2517,10 @@ core_commands: list[CLICommand] = [
         help="Run a Dag from a Python file in the project's local Airflow environment",
         description=(
             "Import the file the way Airflow discovers Dags (its __main__ block does not run), run the Dag "
-            "once, and keep the run in .airflow/ next to the project's pyproject.toml. No scheduler, "
-            "API server or database setup is needed. With --task or --group, only those tasks run again, "
-            "in an earlier run whose upstream outputs they read, or with the tasks they need in a new run."
+            "once, and keep the run in .airflow/ next to the project's pyproject.toml, or, with --no-history, "
+            "nowhere. No scheduler, API server or database setup is needed. With --task or --group, only "
+            "those tasks run again, in an earlier run whose upstream outputs they read, or with the tasks "
+            "they need in a new run."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
         args=(
@@ -2525,6 +2535,7 @@ core_commands: list[CLICommand] = [
             ARG_RUN_DOWNSTREAM,
             ARG_RUN_IN_RUN_ID,
             ARG_RUN_DEBUG,
+            ARG_RUN_NO_HISTORY,
         ),
     ),
     GroupCommand(

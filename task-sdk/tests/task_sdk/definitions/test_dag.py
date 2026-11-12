@@ -1395,13 +1395,17 @@ class TestDagGetItem:
 
 
 class TestDagRunMethod:
-    @pytest.mark.parametrize("debug", [False, True])
+    @pytest.mark.parametrize(("debug", "keep_history"), [(False, True), (True, True), (False, False)])
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
-    def test_run_hands_its_file_and_id_to_the_launcher(self, mock_run_dag_file, debug):
+    def test_run_hands_its_file_and_id_to_the_launcher(self, mock_run_dag_file, debug, keep_history):
         dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
 
         returned = dag.run(
-            run_conf={"n": 1}, conn_file_path="conns.yaml", variable_file_path="vars.json", debug=debug
+            run_conf={"n": 1},
+            conn_file_path="conns.yaml",
+            variable_file_path="vars.json",
+            debug=debug,
+            keep_history=keep_history,
         )
 
         assert returned is mock_run_dag_file.return_value
@@ -1417,6 +1421,7 @@ class TestDagRunMethod:
             include_downstream=False,
             run_id=None,
             debug=debug,
+            keep_history=keep_history,
         )
 
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
@@ -1443,6 +1448,7 @@ class TestDagRunMethod:
             include_downstream=True,
             run_id="manual__1",
             debug=False,
+            keep_history=True,
         )
 
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)

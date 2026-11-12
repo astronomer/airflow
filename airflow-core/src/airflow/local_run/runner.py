@@ -161,8 +161,13 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     root = Path(settings.DAGS_FOLDER)
     home = Path(os.environ["AIRFLOW_HOME"])
     debug = bool(request.get("debug"))
+    keep_history = request.get("keep_history", True)
     check_project_secrets_backend()
-    ensure_database(home)
+    if keep_history:
+        ensure_database(home)
+    else:
+        # The caller made this home for the run alone, so the database is always new.
+        initdb()
     with record_startup_events():
         bundles = DagBundlesManager()
         bag = import_dag_file(source, root)
@@ -222,7 +227,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             ran.add((ti.task_id, ti.map_index))
             failure = None
             if state in (TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY):
-                failure = read_attempt_failure(log_path)
+                failure = read_attempt_failure(log_path, log_kept=keep_history)
             retry_in = (
                 get_retry_delay(ti, session=session) if state == TaskInstanceState.UP_FOR_RETRY else None
             )
@@ -284,7 +289,11 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
         ui_url = read_live_ui_url(home)
         run_url = build_run_url(ui_url, dag_run.dag_id, dag_run.run_id) if ui_url else None
         total = time.monotonic() - request["started_at"]
-        report(summarize_run(payload, time.monotonic() - started, total, home, run_url=run_url))
+        report(
+            summarize_run(
+                payload, time.monotonic() - started, total, home if keep_history else None, run_url=run_url
+            )
+        )
         return payload
     finally:
         session.close()
@@ -813,12 +822,13 @@ def report_task(
 
 
 def summarize_run(
-    payload: dict[str, Any], elapsed: float, total: float, home: Path, *, run_url: str | None = None
+    payload: dict[str, Any], elapsed: float, total: float, home: Path | None, *, run_url: str | None = None
 ) -> str:
     """
     Say how the run ended, and where to look at it: its page in the project's UI while one runs.
 
     ``elapsed`` is the time its tasks took, and ``total`` that of the whole run, from the call that started it.
+    ``home`` is None for a run that kept no history.
     """
     times = f"{elapsed:.1f}s ({total:.1f}s total)"
     if payload["cancelled"]:
@@ -832,7 +842,12 @@ def summarize_run(
             if state == "failed"
         )
         outcome = f"Failed in {times}" + (f": {', '.join(failed)}" if failed else "")
-    where = f"View it at {run_url}" if run_url else f"History: {home}"
+    if run_url:
+        where = f"View it at {run_url}"
+    elif home:
+        where = f"History: {home}"
+    else:
+        where = "No history kept"
     return f"{outcome}. {where}"
 
 
