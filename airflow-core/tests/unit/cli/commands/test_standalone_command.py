@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
+import sys
 from collections import deque
 from importlib import reload
 from unittest import mock
@@ -34,6 +36,9 @@ from airflow.executors.executor_constants import (
     KUBERNETES_EXECUTOR,
     LOCAL_EXECUTOR,
 )
+from airflow.jobs.dag_processor_job_runner import DagProcessorJobRunner
+from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
+from airflow.jobs.triggerer_job_runner import TriggererJobRunner
 
 from tests_common.test_utils.config import conf_vars
 
@@ -270,6 +275,7 @@ class TestStandaloneCommand:
 
     @conf_vars({("api", "port"): "9999"})
     @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "record_previous_jobs")
     @mock.patch.object(StandaloneCommand, "initialize_database")
     @mock.patch.object(StandaloneCommand, "find_user_info")
     @mock.patch.object(StandaloneCommand, "calculate_env", return_value={})
@@ -280,6 +286,144 @@ class TestStandaloneCommand:
             cmd.run()
 
         assert cmd.api_server_port == 9999
+
+    @mock.patch("airflow.cli.commands.standalone_command.most_recent_job")
+    def test_job_running_ignores_a_job_from_before_this_start(self, mock_most_recent_job):
+        stale_job = mock.Mock(id=7)
+        stale_job.is_alive.return_value = True
+        mock_most_recent_job.return_value = stale_job
+        cmd = StandaloneCommand()
+        cmd.record_previous_jobs()
+
+        assert cmd.job_running(SchedulerJobRunner) is False
+
+        mock_most_recent_job.return_value = mock.Mock(id=8, **{"is_alive.return_value": True})
+        assert cmd.job_running(SchedulerJobRunner) is True
+
+    @mock.patch("airflow.cli.commands.standalone_command.most_recent_job", return_value=None)
+    def test_record_previous_jobs_without_earlier_jobs(self, _):
+        cmd = StandaloneCommand()
+        cmd.record_previous_jobs()
+
+        assert cmd.previous_job_ids == {
+            SchedulerJobRunner.job_type: None,
+            DagProcessorJobRunner.job_type: None,
+            TriggererJobRunner.job_type: None,
+        }
+
+    @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "record_previous_jobs")
+    @mock.patch.object(StandaloneCommand, "initialize_database")
+    @mock.patch.object(StandaloneCommand, "find_user_info")
+    @mock.patch.object(StandaloneCommand, "calculate_env", return_value={})
+    @mock.patch.object(StandaloneCommand, "print_output")
+    def test_run_shuts_down_on_sigterm_and_restores_the_handler(self, *_):
+        cmd = StandaloneCommand()
+        handlers_during_run = []
+
+        def receive_sigterm():
+            handlers_during_run.append(signal.getsignal(signal.SIGTERM))
+            cmd.handle_sigterm(signal.SIGTERM, None)
+
+        previous_handler = signal.getsignal(signal.SIGTERM)
+        with (
+            mock.patch.object(cmd, "update_output", side_effect=receive_sigterm),
+            mock.patch.object(cmd, "stop_components") as stop_components,
+        ):
+            cmd.run()
+
+        assert handlers_during_run == [StandaloneCommand.handle_sigterm]
+        assert signal.getsignal(signal.SIGTERM) == previous_handler
+        stop_components.assert_called_once()
+
+    @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "record_previous_jobs")
+    @mock.patch.object(StandaloneCommand, "initialize_database")
+    @mock.patch.object(StandaloneCommand, "find_user_info")
+    @mock.patch.object(StandaloneCommand, "calculate_env", return_value={})
+    @mock.patch.object(StandaloneCommand, "print_output")
+    def test_run_stops_and_fails_when_a_component_exits(self, *_):
+        cmd = StandaloneCommand()
+        exited = mock.Mock(spec=SubCommand)
+        exited.name = "scheduler"
+        exited.process = mock.Mock(spec=subprocess.Popen, returncode=3)
+        exited.process.poll.return_value = 3
+
+        with (
+            mock.patch.object(cmd, "update_output"),
+            mock.patch.object(cmd, "find_exited_component", return_value=exited),
+            mock.patch.object(cmd, "stop_components") as stop_components,
+            mock.patch.object(cmd, "print_error") as print_error,
+            pytest.raises(SystemExit) as exit_info,
+        ):
+            cmd.run()
+
+        assert exit_info.value.code == 1
+        stop_components.assert_called_once()
+        print_error.assert_called_once_with("standalone", "The scheduler component exited with code 3")
+
+    def test_find_exited_component(self):
+        cmd = StandaloneCommand()
+        running = SubCommand(cmd, "api-server", ["api-server"], {})
+        running.process = mock.Mock(spec=subprocess.Popen, **{"poll.return_value": None})
+        not_started = SubCommand(cmd, "triggerer", ["triggerer"], {})
+        cmd.subcommands = {"api-server": running, "triggerer": not_started}
+
+        assert cmd.find_exited_component() is None
+
+        running.process.poll.return_value = 1
+        assert cmd.find_exited_component() is running
+
+    def test_stop_components_terminates_then_waits_for_each(self):
+        cmd = StandaloneCommand()
+        commands = [mock.Mock(spec=SubCommand) for _ in range(2)]
+        cmd.subcommands = {str(index): command for index, command in enumerate(commands)}
+
+        with mock.patch.object(cmd, "print_output"):
+            cmd.stop_components()
+
+        for command in commands:
+            command.stop.assert_called_once()
+            command.wait_or_kill.assert_called_once()
+
+    def test_subcommand_wait_or_kill_kills_after_timeout(self):
+        parent = mock.Mock(spec=StandaloneCommand)
+        cmd = SubCommand(parent, "scheduler", ["scheduler"], {})
+        cmd.process = mock.Mock(spec=subprocess.Popen)
+        cmd.process.wait.side_effect = [subprocess.TimeoutExpired("scheduler", 1), 0]
+
+        with mock.patch.object(cmd, "join"):
+            cmd.wait_or_kill(1)
+
+        cmd.process.kill.assert_called_once()
+        parent.print_error.assert_called_once()
+
+    def test_subcommand_wait_or_kill_does_not_kill_a_stopped_process(self):
+        cmd = SubCommand(mock.Mock(spec=StandaloneCommand), "scheduler", ["scheduler"], {})
+        cmd.process = mock.Mock(spec=subprocess.Popen)
+
+        with mock.patch.object(cmd, "join"):
+            cmd.wait_or_kill(1)
+
+        cmd.process.kill.assert_not_called()
+
+    def test_subcommand_runs_airflow_with_the_current_interpreter(self, monkeypatch):
+        popen = mock.Mock(return_value=mock.Mock(stdout=[]))
+        monkeypatch.setattr("airflow.cli.commands.standalone_command.subprocess.Popen", popen)
+
+        SubCommand(mock.Mock(), "scheduler", ["scheduler"], {}).run()
+
+        assert popen.call_args.args[0] == [sys.executable, "-m", "airflow", "scheduler"]
+
+    def test_update_output_replaces_undecodable_bytes(self, monkeypatch):
+        cmd = StandaloneCommand()
+        printed = []
+        monkeypatch.setattr(cmd, "print_output", lambda name, msg: printed.append((name, msg)))
+        cmd.output_queue.append(("scheduler", b"bad \xff byte\n"))
+
+        cmd.update_output()
+
+        assert printed == [("scheduler", "bad \ufffd byte")]
 
     @pytest.mark.parametrize("exc", [OSError, ValueError])
     def test_port_open_returns_false_on_errors(self, monkeypatch, exc):

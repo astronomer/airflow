@@ -19,8 +19,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -46,6 +48,7 @@ FORCE_COLOR = bool(os.environ.get("FORCE_COLOR", ""))
 NO_COLOR = bool(os.environ.get("NO_COLOR", ""))
 
 REFRESH_INTERVAL_ENV_VAR = "AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL"
+COMPONENT_STOP_TIMEOUT = 30
 
 
 class StandaloneCommand:
@@ -66,6 +69,7 @@ class StandaloneCommand:
         self.ready_time = None
         self.ready_delay = 3
         self.api_server_port = None
+        self.previous_job_ids: dict[str, int | None] = {}
 
     @providers_configuration_loaded
     def run(self):
@@ -77,6 +81,7 @@ class StandaloneCommand:
         env = self.calculate_env()
         self.find_user_info()
         self.initialize_database()
+        self.record_previous_jobs()
         # Set up commands to run
         self.subcommands["scheduler"] = SubCommand(
             self,
@@ -108,10 +113,14 @@ class StandaloneCommand:
             command.start()
         # Run output loop
         shown_ready = False
+        failed_component = None
+        previous_sigterm_handler = signal.signal(signal.SIGTERM, self.handle_sigterm)
         try:
             while True:
                 # Print all the current lines onto the screen
                 self.update_output()
+                if failed_component := self.find_exited_component():
+                    break
                 # Print info banner when all components are ready and the
                 # delay has passed
                 if not self.ready_time and self.is_ready():
@@ -127,13 +136,37 @@ class StandaloneCommand:
                 time.sleep(0.1)
         except KeyboardInterrupt:
             pass
-        # Stop subcommand threads
+        finally:
+            signal.signal(signal.SIGTERM, previous_sigterm_handler)
+        if failed_component:
+            self.print_error(
+                "standalone",
+                f"The {failed_component.name} component exited with code {failed_component.process.returncode}",
+            )
+        self.stop_components()
+        self.print_output("standalone", "Complete")
+        if failed_component:
+            raise SystemExit(1)
+
+    @staticmethod
+    def handle_sigterm(signum, frame):
+        # Shut down the same way as Ctrl+C, so a supervisor's SIGTERM also stops the components.
+        raise KeyboardInterrupt
+
+    def find_exited_component(self) -> SubCommand | None:
+        for command in self.subcommands.values():
+            if command.process is not None and command.process.poll() is not None:
+                return command
+        return None
+
+    def stop_components(self):
+        """Terminate every component, then kill any that has not exited within the timeout."""
         self.print_output("standalone", "Shutting down components")
         for command in self.subcommands.values():
             command.stop()
+        deadline = time.monotonic() + COMPONENT_STOP_TIMEOUT
         for command in self.subcommands.values():
-            command.join()
-        self.print_output("standalone", "Complete")
+            command.wait_or_kill(max(0.0, deadline - time.monotonic()))
 
     def update_output(self):
         """Drains the output queue and prints its contents to the screen."""
@@ -141,7 +174,7 @@ class StandaloneCommand:
             # Extract info
             name, line = self.output_queue.popleft()
             # Make line printable
-            line_str = line.decode("utf8").strip()
+            line_str = line.decode("utf8", errors="replace").strip()
             self.print_output(name, line_str)
 
     def print_output(self, name: str, output):
@@ -292,9 +325,20 @@ class StandaloneCommand:
         Used to tell if a component is alive.
         """
         recent = most_recent_job(job_runner_class.job_type)
-        if not recent:
+        if not recent or recent.id == self.previous_job_ids.get(job_runner_class.job_type):
             return False
         return recent.is_alive()
+
+    def record_previous_jobs(self):
+        """
+        Remember the latest job of each component before starting new ones.
+
+        A job left by an earlier run keeps a recent heartbeat for a while after that run stops, so
+        it must not count as this run's component being ready.
+        """
+        for job_runner_class in (SchedulerJobRunner, DagProcessorJobRunner, TriggererJobRunner):
+            recent = most_recent_job(job_runner_class.job_type)
+            self.previous_job_ids[job_runner_class.job_type] = recent.id if recent else None
 
     def print_ready(self):
         """
@@ -321,7 +365,8 @@ class SubCommand(threading.Thread):
     """
 
     def __init__(self, parent, name: str, command: list[str], env: dict[str, str]):
-        super().__init__()
+        # A daemon thread, so a grandchild still holding the output pipe cannot block exit.
+        super().__init__(daemon=True)
         self.parent = parent
         self.name = name
         self.command = command
@@ -331,7 +376,7 @@ class SubCommand(threading.Thread):
     def run(self):
         """Run the actual process and captures it output to a queue."""
         self.process = subprocess.Popen(
-            ["airflow", *self.command],
+            [sys.executable, "-m", "airflow", *self.command],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             env=self.env,
@@ -343,6 +388,18 @@ class SubCommand(threading.Thread):
         """Call to stop this process (and thus this thread)."""
         if self.process is not None:
             self.process.terminate()
+
+    def wait_or_kill(self, timeout: float):
+        """Wait for the process to exit, killing it once ``timeout`` seconds have passed."""
+        if self.process is None:
+            return
+        try:
+            self.process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            self.parent.print_error("standalone", f"Killing {self.name}, which did not stop in time")
+            self.process.kill()
+            self.process.wait()
+        self.join(timeout=1)
 
 
 # Alias for use in the CLI parser
