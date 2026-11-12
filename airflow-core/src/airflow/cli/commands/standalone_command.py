@@ -38,6 +38,7 @@ from airflow.jobs.dag_processor_job_runner import DagProcessorJobRunner
 from airflow.jobs.job import most_recent_job
 from airflow.jobs.scheduler_job_runner import SchedulerJobRunner
 from airflow.jobs.triggerer_job_runner import TriggererJobRunner
+from airflow.local_run.exit_codes import EXIT_CONFIG, exit_with_error
 from airflow.local_run.ui import PROJECT_SERVER_ENVIRONMENT, read_live_ui_url
 from airflow.sdk.definitions.local_run import (
     PROJECT_HOME_NAME,
@@ -45,7 +46,7 @@ from airflow.sdk.definitions.local_run import (
     find_project_root,
     prepare_project_home,
 )
-from airflow.sdk.exceptions import LocalRunError
+from airflow.sdk.exceptions import LocalRunConfigError
 from airflow.utils import db
 from airflow.utils.providers_configuration_loader import providers_configuration_loaded
 
@@ -381,8 +382,8 @@ def serve_project_history(port: int | None) -> None:
         return
     try:
         env = build_child_environment(os.environ, home=home, root=root)
-    except LocalRunError as e:
-        raise SystemExit(str(e)) from None
+    except LocalRunConfigError as e:
+        exit_with_error(str(e), EXIT_CONFIG)
     env.update(PROJECT_SERVER_ENVIRONMENT)
     port_args = [str(port)] if port else []
     os.execve(sys.executable, [sys.executable, "-m", PROJECT_SERVER_MODULE, *port_args], env)

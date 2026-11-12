@@ -48,6 +48,7 @@ from sqlalchemy.orm import Session, scoped_session
 from airflow.local_run import runner
 from airflow.local_run.logs import TaskFailure
 from airflow.models.taskinstance import TaskInstance
+from airflow.sdk import DAG, Param
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
     PROTOCOL_VERSION,
@@ -55,7 +56,13 @@ from airflow.sdk.definitions.local_run import (
     prepare_project_home,
     run_dag_file,
 )
-from airflow.sdk.exceptions import DagExecutionError, LocalRunError
+from airflow.sdk.exceptions import (
+    DagExecutionError,
+    LocalRunConfigError,
+    LocalRunDagFileError,
+    LocalRunError,
+    LocalRunUsageError,
+)
 from airflow.utils.types import DagRunTriggeredByType
 
 from tests_common.test_utils.config import conf_vars
@@ -647,34 +654,52 @@ b = second()
 
 
 @pytest.mark.parametrize(
-    ("source", "dag_id", "match"),
+    ("source", "dag_id", "error", "match"),
     [
         pytest.param(
             "import not_a_real_module\n",
             None,
+            LocalRunDagFileError,
             r"(?s)Importing .*broken\.py failed:.*No module named 'not_a_real_module'",
             id="import-error",
         ),
-        pytest.param("from airflow.sdk import dag\n", None, "No Dags found in", id="no-dags"),
-        pytest.param(TWO_DAGS, None, r"defines several Dags \(first, second\); choose one", id="several"),
+        pytest.param(
+            "from airflow.sdk import dag\n", None, LocalRunDagFileError, "No Dags found in", id="no-dags"
+        ),
+        pytest.param(
+            TWO_DAGS,
+            None,
+            LocalRunUsageError,
+            r"defines several Dags \(first, second\); choose one",
+            id="several",
+        ),
         pytest.param(
             TWO_DAGS,
             "third",
+            LocalRunUsageError,
             "does not define Dag 'third' at module level. It defines: first, second",
             id="unknown",
         ),
         pytest.param(
+            "from airflow.sdk import dag\n",
+            "example",
+            LocalRunDagFileError,
+            r"does not define Dag 'example' at module level\. A local run imports",
+            id="unknown-in-a-file-without-dags",
+        ),
+        pytest.param(
             PIPELINE + "workflow.run()\n",
             None,
+            LocalRunDagFileError,
             r"Call example\.run\(\) under `if __name__ == \"__main__\":`",
             id="unguarded-run",
         ),
     ],
 )
-def test_setup_errors_raise_local_run_error(project, source, dag_id, match):
+def test_setup_errors_say_what_to_fix(project, source, dag_id, error, match):
     path = write_dag_file(project, "broken.py", source)
 
-    with pytest.raises(LocalRunError, match=match):
+    with pytest.raises(error, match=match):
         run_dag_file(path, dag_id=dag_id)
 
 
@@ -686,6 +711,30 @@ def test_import_failure_is_reported_once(project, capfd):
 
     out, err = capfd.readouterr()
     assert "not_a_real_module" not in out + err
+
+
+def test_conf_that_breaks_a_param_is_refused_before_the_run_starts(project):
+    source = write_dag_file(
+        project,
+        "params.py",
+        """
+        from airflow.sdk import Param, dag, task
+
+        @task
+        def show():
+            pass
+
+        @dag(schedule=None, params={"n": Param(1, type="integer")})
+        def with_params():
+            show()
+
+        workflow = with_params()
+        """,
+    )
+
+    with pytest.raises(LocalRunUsageError, match="The run's conf gives Dag 'with_params' an invalid 'n'"):
+        run_dag_file(source, run_conf={"n": "nope"})
+    assert query(project, "SELECT COUNT(*) FROM dag_run") == [(0,)]
 
 
 def test_dag_file_below_the_project_root_imports_from_the_root(project):
@@ -727,7 +776,7 @@ def test_dag_id_used_by_another_existing_file_is_refused(project):
     run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE))
     copy = write_dag_file(project, "copy_of_pipeline.py", PIPELINE)
 
-    with pytest.raises(LocalRunError, match="Dag ID 'example' is already used by pipeline.py"):
+    with pytest.raises(LocalRunDagFileError, match="Dag ID 'example' is already used by pipeline.py"):
         run_dag_file(copy)
 
 
@@ -749,7 +798,9 @@ def test_database_from_newer_airflow_is_refused(project):
     with sqlite3.connect(project / ".airflow" / "airflow.db") as conn:
         conn.execute("UPDATE alembic_version SET version_num = 'ffffffffffff'")
 
-    with pytest.raises(LocalRunError, match=r"created by a newer Airflow version \(schema ffffffffffff\)"):
+    with pytest.raises(
+        LocalRunConfigError, match=r"created by a newer Airflow version \(schema ffffffffffff\)"
+    ):
         run_dag_file(source)
 
 
@@ -812,7 +863,7 @@ def test_project_secrets_backend_that_cannot_be_created_stops_the_run(project):
     source = write_dag_file(project, "pipeline.py", PIPELINE)
 
     with pytest.raises(
-        LocalRunError,
+        LocalRunConfigError,
         match=r"The secrets backend missing_provider\.secrets\.Backend that pyproject\.toml names could not "
         r"be set up: ModuleNotFoundError: No module named 'missing_provider'",
     ):
@@ -981,7 +1032,7 @@ def finished_project(tmp_path_factory) -> Path:
     ],
 )
 def test_rerun_of_what_the_dag_or_run_lacks_is_refused(finished_project, selection, match):
-    with pytest.raises(LocalRunError, match=match):
+    with pytest.raises(LocalRunUsageError, match=match):
         run_dag_file(finished_project / "pipeline.py", **selection)
 
 
@@ -1531,10 +1582,52 @@ class TestEnsureDatabase:
         get_script.return_value.get_heads.return_value = ["head"]
         get_script.return_value.get_revision.side_effect = CommandError("no such revision")
 
-        with pytest.raises(runner.LocalRunSetupError, match="newer Airflow version"):
+        with pytest.raises(runner.ConfigSetupError, match="newer Airflow version"):
             runner.ensure_database(tmp_path)
 
         upgradedb.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("params", "run_conf", "error", "match"),
+    [
+        pytest.param(
+            {"n": Param(1, type="integer")},
+            {"n": "nope"},
+            runner.UsageSetupError,
+            r"^The run's conf gives Dag 'p' an invalid 'n': 'nope' is not of type 'integer'$",
+            id="conf",
+        ),
+        pytest.param(
+            {"n": Param(type="integer")},
+            None,
+            runner.UsageSetupError,
+            r"^Dag 'p' needs a value for param 'n' in the run's conf$",
+            id="missing",
+        ),
+        pytest.param(
+            {"n": Param("x", type="integer")},
+            None,
+            runner.DagFileSetupError,
+            r"^Dag 'p' gives param 'n' an invalid default: 'x' is not of type 'integer'$",
+            id="default",
+        ),
+        pytest.param(
+            {"n": Param(1, type="integr")},
+            {"n": 2},
+            runner.DagFileSetupError,
+            r"^Dag 'p' gives param 'n' an invalid schema: 'integr' is not valid under any of the given schemas$",
+            id="schema",
+        ),
+    ],
+)
+def test_params_that_do_not_validate_say_what_to_fix(params, run_conf, error, match):
+    scheduler_dag = runner.build_scheduler_dag(DAG("p", schedule=None, params=params))
+
+    with pytest.raises(error, match=match) as ctx:
+        runner.check_params(scheduler_dag, run_conf)
+
+    assert type(ctx.value) is error
 
 
 def test_newest_revision_is_the_migrations_head():
@@ -1542,16 +1635,18 @@ def test_newest_revision_is_the_migrations_head():
 
 
 @pytest.mark.parametrize(
-    ("request_overrides", "outcome", "expected_code"),
+    ("request_overrides", "outcome", "expected_code", "expected_kind"),
     [
-        pytest.param({"version": 99}, None, 2, id="bad-version"),
-        pytest.param({}, KeyboardInterrupt, 130, id="interrupted-before-run"),
-        pytest.param({}, runner.LocalRunSetupError("nope"), 2, id="setup-error"),
-        pytest.param({}, {"state": "success"}, 0, id="success"),
-        pytest.param({}, {"state": "failed"}, 1, id="failed"),
+        pytest.param({"version": 99}, None, 2, "config", id="bad-version"),
+        pytest.param({}, KeyboardInterrupt, 130, None, id="interrupted-before-run"),
+        pytest.param({}, runner.LocalRunSetupError("nope"), 2, None, id="setup-error"),
+        pytest.param({}, runner.UsageSetupError("nope"), 2, "usage", id="usage-error"),
+        pytest.param({}, runner.DagFileSetupError("nope"), 2, "dag_file", id="dag-file-error"),
+        pytest.param({}, {"state": "success"}, 0, None, id="success"),
+        pytest.param({}, {"state": "failed"}, 1, None, id="failed"),
     ],
 )
-def test_main_exit_codes(tmp_path, request_overrides, outcome, expected_code):
+def test_main_exit_codes(tmp_path, request_overrides, outcome, expected_code, expected_kind):
     request = {
         "version": PROTOCOL_VERSION,
         "result_path": str(tmp_path / "result.pickle"),
@@ -1565,7 +1660,9 @@ def test_main_exit_codes(tmp_path, request_overrides, outcome, expected_code):
     ):
         assert runner.main([str(tmp_path / "request.json")]) == expected_code
 
-    assert pickle.loads((tmp_path / "result.pickle").read_bytes())["version"] == PROTOCOL_VERSION
+    payload = pickle.loads((tmp_path / "result.pickle").read_bytes())
+    assert payload["version"] == PROTOCOL_VERSION
+    assert payload.get("error_kind") == expected_kind
 
 
 @pytest.mark.parametrize(

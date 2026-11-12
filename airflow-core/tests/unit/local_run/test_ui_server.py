@@ -42,6 +42,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from airflow.api_fastapi.auth.managers.simple.user import SimpleAuthManagerUser
 from airflow.local_run import ui_server
+from airflow.local_run.runner import ConfigSetupError
 from airflow.local_run.ui import PROJECT_SERVER_ENVIRONMENT, build_run_url, get_ui_file, read_live_ui_url
 from airflow.sdk.definitions.local_run import run_dag_file
 
@@ -347,6 +348,16 @@ def test_abandoned_runs_are_checked_until_stopped(
 
     assert mock_fail_abandoned_runs.call_args_list == [mock.call(tmp_path, session=session)] * 2
     mock_report_abandoned_runs.assert_called_once_with(tmp_path, ["run"])
+
+
+@mock.patch.object(
+    ui_server, "ensure_database", autospec=True, side_effect=ConfigSetupError("created by a newer Airflow")
+)
+def test_database_it_cannot_use_is_refused_with_the_setup_code(_, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("AIRFLOW_HOME", str(tmp_path))
+
+    assert ui_server.main([]) == 4
+    assert capsys.readouterr().err == "Error: created by a newer Airflow\n"
 
 
 @mock.patch.object(ui_server, "build_app", autospec=True)

@@ -47,7 +47,7 @@ from airflow.sdk.definitions.param import DagParam, ParamsDict
 from airflow.sdk.exceptions import (
     AirflowDagCycleException,
     DuplicateTaskIdFound,
-    LocalRunError,
+    LocalRunDagFileError,
     RemovedInAirflow4Warning,
     TaskGroupCycleDeprecationWarning,
 )
@@ -1458,7 +1458,7 @@ class TestDagRunMethod:
         with (
             mock.patch.object(DagContext, "current_autoregister_module_name", "unusual_prefix_pipeline"),
             pytest.raises(
-                LocalRunError, match=r"Call local_dag\.run\(\) under `if __name__ == \"__main__\":`"
+                LocalRunDagFileError, match=r"Call local_dag\.run\(\) under `if __name__ == \"__main__\":`"
             ),
         ):
             dag.run()
@@ -1472,7 +1472,7 @@ class TestDagRunMethod:
             "from airflow.sdk import DAG\n\nworkflow = DAG('local_dag', schedule=None)\nworkflow.run()\n"
         )
 
-        with pytest.raises(LocalRunError, match=r"Call local_dag\.run\(\) under `if __name__"):
+        with pytest.raises(LocalRunDagFileError, match=r"Call local_dag\.run\(\) under `if __name__"):
             runpy.run_path(str(path), run_name="__main__")
 
         mock_run_dag_file.assert_not_called()

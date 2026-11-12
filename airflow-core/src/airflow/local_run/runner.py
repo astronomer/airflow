@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, NoReturn, TextIO
 
 import structlog
+from jsonschema.exceptions import SchemaError
 from packaging.version import Version
 from sqlalchemy import event, inspect, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -80,6 +81,7 @@ from airflow.sdk.definitions.dag import _run_dag_run_to_completion
 from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module, refuse_breakpoint
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import allow_class
+from airflow.serialization.definitions.notset import is_arg_set
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
 from airflow.utils.db import _REVISION_HEADS_MAP, _get_script_object, initdb, upgradedb
@@ -106,16 +108,38 @@ _run_locks: list[TextIO] = []
 class LocalRunSetupError(Exception):
     """The run could not start; the message is shown to the user as is."""
 
+    # What the user has to fix, if the cause is theirs; the caller raises an exception for it, and ``airflow run``
+    # exits with a code for it.
+    kind: str | None = None
+
+
+class UsageSetupError(LocalRunSetupError):
+    """The run cannot start as asked, e.g. the Dag lacks a selected task."""
+
+    kind = "usage"
+
+
+class DagFileSetupError(LocalRunSetupError):
+    """The Dag file does not give the run a Dag it can run, e.g. it fails to import."""
+
+    kind = "dag_file"
+
+
+class ConfigSetupError(LocalRunSetupError):
+    """The project or this environment is not set up for the run, e.g. its secrets backend."""
+
+    kind = "config"
+
 
 def main(argv: list[str]) -> int:
     request = json.loads(Path(argv[0]).read_text())
     result_path = Path(request["result_path"])
     try:
         if request.get("version") != PROTOCOL_VERSION:
-            raise LocalRunSetupError(f"Unsupported local run request version {request.get('version')!r}")
+            raise ConfigSetupError(f"Unsupported local run request version {request.get('version')!r}")
         payload = execute(request)
     except LocalRunSetupError as e:
-        payload = {"version": PROTOCOL_VERSION, "error": str(e)}
+        payload = {"version": PROTOCOL_VERSION, "error": str(e), "error_kind": e.kind}
     except KeyboardInterrupt:
         payload = {"version": PROTOCOL_VERSION, "cancelled": True}
     write_result(result_path, payload)
@@ -476,7 +500,7 @@ def start_run_for_selection(
     Returns the run and the upstream tasks that run before the selected ones.
     """
     if mapped := next((marker for marker in markers if isinstance(marker, tuple)), None):
-        raise LocalRunSetupError(
+        raise UsageSetupError(
             f"{get_task_label(*mapped)} can be rerun only in a run where {mapped[0]} has expanded; select "
             f"{mapped[0]} to run all of its map indexes"
         )
@@ -513,14 +537,14 @@ def expand_task_selection(dag: SerializedDAG, selection: TaskSelection) -> list[
     for marker in selection.task_ids:
         task_id = get_task_id(marker)
         if not dag.has_task(task_id):
-            raise LocalRunSetupError(
+            raise UsageSetupError(
                 f"Dag {dag.dag_id!r} has no task {task_id!r}.{suggest_ids(task_id, dag.task_ids)}"
             )
         markers.append(marker)
     group_ids = [group_id for group_id in dag.task_group_dict if group_id]
     for group_id in selection.task_group_ids:
         if group_id not in group_ids:
-            raise LocalRunSetupError(
+            raise UsageSetupError(
                 f"Dag {dag.dag_id!r} has no task group {group_id!r}.{suggest_ids(group_id, group_ids)}"
             )
         markers.extend(task.task_id for task in dag.task_group_dict[group_id].iter_tasks())
@@ -566,18 +590,18 @@ def find_rerun_target(
             select(DagRun).where(DagRun.dag_id == dag.dag_id, DagRun.run_id == selection.run_id)
         )
         if dag_run is None:
-            raise LocalRunSetupError(f"Dag {dag.dag_id!r} has no run {selection.run_id!r} in this project")
+            raise UsageSetupError(f"Dag {dag.dag_id!r} has no run {selection.run_id!r} in this project")
         if dag_run.state not in State.finished_dr_states:
-            raise LocalRunSetupError(
+            raise UsageSetupError(
                 f"Run {dag_run.run_id} is still {dag_run.state}; rerun its tasks once it has finished"
             )
         if missing := find_missing_tasks(dag_run, selected, session=session):
-            raise LocalRunSetupError(
+            raise UsageSetupError(
                 f"Run {dag_run.run_id} has no {', '.join(missing)}: the Dag gained "
                 f"{'it' if len(missing) == 1 else 'them'} after that run. Run the whole Dag instead."
             )
         if lacking := find_missing_inputs(dag_run, reused, session=session):
-            raise LocalRunSetupError(
+            raise UsageSetupError(
                 f"Run {dag_run.run_id} lacks the outputs {describe_selection(selection)} needs: "
                 f"{', '.join(lacking)} did not succeed"
             )
@@ -650,8 +674,8 @@ def check_map_indexes(markers: list[str | tuple[str, int]], dag_run: DagRun, *, 
         if map_index in indexes:
             continue
         if indexes == [-1]:
-            raise LocalRunSetupError(f"Task {task_id!r} is not mapped; select it as {task_id}")
-        raise LocalRunSetupError(
+            raise UsageSetupError(f"Task {task_id!r} is not mapped; select it as {task_id}")
+        raise UsageSetupError(
             f"Task {task_id!r} has no map index {map_index} in run {dag_run.run_id}; "
             f"it has {', '.join(map(str, indexes))}"
         )
@@ -865,7 +889,7 @@ def check_project_secrets_backend() -> None:
             try:
                 backend.get_backends()
             except Exception as e:
-                raise LocalRunSetupError(
+                raise ConfigSetupError(
                     f"The secrets backend {backend.backend_path} that pyproject.toml names could not be set up: "
                     f"{type(e).__name__}: {e}"
                 ) from None
@@ -891,7 +915,7 @@ def ensure_database(home: Path) -> None:
         try:
             script.get_revision(current)
         except CommandError:
-            raise LocalRunSetupError(
+            raise ConfigSetupError(
                 f"The project database in {home} was created by a newer Airflow version (schema {current}). "
                 f"Upgrade Airflow, or delete {home} to start a new history."
             ) from None
@@ -924,7 +948,7 @@ def import_dag_file(source: Path, root: Path) -> BundleDagBag:
     if bag.import_errors:
         details = "\n".join(error.rstrip() for error in bag.import_errors.values())
         hint = suggest_project_root_import(details, source, root)
-        raise LocalRunSetupError(f"Importing {source} failed:\n{details}" + (f"\n{hint}" if hint else ""))
+        raise DagFileSetupError(f"Importing {source} failed:\n{details}" + (f"\n{hint}" if hint else ""))
     structlog.get_logger(logger_name="task").info(
         "Local run startup parse complete",
         bundle_name=BUNDLE_NAME,
@@ -959,15 +983,17 @@ def select_dag(bag: BundleDagBag, dag_id: str | None, source: Path) -> DAG:
         if len(dags) == 1:
             return next(iter(dags.values()))
         if not dags:
-            raise LocalRunSetupError(
+            raise DagFileSetupError(
                 f"No Dags found in {source}. Create the Dag at module level, for example `workflow = example()`."
             )
-        raise LocalRunSetupError(
+        raise UsageSetupError(
             f"{source} defines several Dags ({', '.join(sorted(dags))}); choose one with --dag-id."
         )
     if dag_id not in dags:
         defined = f" It defines: {', '.join(sorted(dags))}." if dags else ""
-        raise LocalRunSetupError(
+        # A file that defines other Dags was most likely given the wrong Dag ID.
+        error = UsageSetupError if dags else DagFileSetupError
+        raise error(
             f"{source} does not define Dag {dag_id!r} at module level.{defined} A local run imports the file "
             "the way Airflow discovers Dags, so the Dag must be created at module level."
         )
@@ -985,7 +1011,7 @@ def register_dags(
     for dag_model in session.scalars(select(DagModel).where(DagModel.dag_id.in_(list(bag.dags)))):
         other = dag_model.relative_fileloc
         if other and other != relative and (root / other).exists():
-            raise LocalRunSetupError(
+            raise DagFileSetupError(
                 f"Dag ID {dag_model.dag_id!r} is already used by {other} in this project; "
                 "rename one of the Dags so their histories stay separate."
             )
@@ -1019,6 +1045,7 @@ def create_dag_run(
     concurrent local run of the same Dag could hit; here a collision retries with a fresh timestamp.
     """
     scheduler_dag = build_scheduler_dag(dag)
+    check_params(scheduler_dag, run_conf)
     timetable = coerce_to_core_timetable(dag.timetable)
     # Committed with the run, so a scheduler never sees the run without the job driving it.
     job = start_local_run_job(session=session)
@@ -1046,6 +1073,32 @@ def create_dag_run(
             continue
         return scheduler_dag, dag_run
     raise LocalRunSetupError(f"Could not create a unique run for Dag {dag.dag_id!r}; run it again")
+
+
+def check_params(dag: SerializedDAG, run_conf: dict | None) -> None:
+    """
+    Refuse a run whose params do not validate, as creating it would, but say whether the Dag or the conf is wrong.
+
+    A Dag only validates its params' defaults when it has a schedule, so a default can be wrong until a run.
+    """
+    for name, param in dag.params.deep_merge(run_conf).items():
+        if not is_arg_set(param.value):
+            raise UsageSetupError(f"Dag {dag.dag_id!r} needs a value for param {name!r} in the run's conf")
+        try:
+            param.resolve(raises=True)
+        except SchemaError as e:
+            raise DagFileSetupError(
+                f"Dag {dag.dag_id!r} gives param {name!r} an invalid schema: {str(e).splitlines()[0]}"
+            ) from None
+        except Exception as e:
+            reason = str(e).splitlines()[0]
+            if name in (run_conf or {}):
+                raise UsageSetupError(
+                    f"The run's conf gives Dag {dag.dag_id!r} an invalid {name!r}: {reason}"
+                ) from None
+            raise DagFileSetupError(
+                f"Dag {dag.dag_id!r} gives param {name!r} an invalid default: {reason}"
+            ) from None
 
 
 def collect_result(

@@ -49,7 +49,13 @@ from airflow.sdk.definitions.local_run import (
     run_dag_file,
     wait_for_child,
 )
-from airflow.sdk.exceptions import DagExecutionError, LocalRunError
+from airflow.sdk.exceptions import (
+    DagExecutionError,
+    LocalRunConfigError,
+    LocalRunDagFileError,
+    LocalRunError,
+    LocalRunUsageError,
+)
 
 REAL_POPEN = subprocess.Popen
 
@@ -282,7 +288,7 @@ class TestBuildChildEnvironment:
     def test_invalid_project_secrets_backend_is_refused(self, tmp_path, pyproject, error):
         (tmp_path / "pyproject.toml").write_text(pyproject)
 
-        with pytest.raises(LocalRunError, match=error):
+        with pytest.raises(LocalRunConfigError, match=error):
             build_child_environment({}, home=tmp_path, root=tmp_path)
 
 
@@ -348,18 +354,45 @@ class TestBuildResult:
         assert ctx.value.result.failures == {("double", 1): "ValueError: boom"}
 
     @pytest.mark.parametrize(
-        ("payload", "match"),
+        ("payload", "error", "match"),
         [
-            pytest.param(None, "exited with code 1 without reporting a result", id="no-result"),
-            pytest.param({"version": 99}, "Unsupported local run result version 99", id="version"),
             pytest.param(
-                {"version": PROTOCOL_VERSION, "error": "No Dags found"}, "No Dags found", id="setup"
+                None, LocalRunError, "exited with code 1 without reporting a result", id="no-result"
+            ),
+            pytest.param(
+                {"version": 99}, LocalRunConfigError, "Unsupported local run result version 99", id="version"
+            ),
+            pytest.param(
+                {"version": PROTOCOL_VERSION, "error": "Dag 'x' has no task 'y'", "error_kind": "usage"},
+                LocalRunUsageError,
+                "has no task",
+                id="usage",
+            ),
+            pytest.param(
+                {"version": PROTOCOL_VERSION, "error": "No Dags found", "error_kind": "dag_file"},
+                LocalRunDagFileError,
+                "No Dags found",
+                id="dag-file",
+            ),
+            pytest.param(
+                {"version": PROTOCOL_VERSION, "error": "The secrets backend", "error_kind": "config"},
+                LocalRunConfigError,
+                "The secrets backend",
+                id="config",
+            ),
+            pytest.param(
+                {"version": PROTOCOL_VERSION, "error": "No Dags found"},
+                LocalRunError,
+                "No Dags",
+                id="no-kind",
             ),
         ],
     )
-    def test_setup_problems_raise_local_run_error(self, tmp_path, payload, match):
-        with pytest.raises(LocalRunError, match=match):
+    def test_setup_problems_raise_what_the_user_has_to_fix(self, tmp_path, payload, error, match):
+        with pytest.raises(error, match=match) as ctx:
             build_result(payload, 1, tmp_path, tmp_path / "dag.py")
+
+        assert type(ctx.value) is error
 
     def test_cancelled_run_raises_keyboard_interrupt(self, tmp_path):
         with pytest.raises(KeyboardInterrupt):
@@ -526,14 +559,14 @@ class TestRunDagFile:
     @mock.patch("airflow.sdk.definitions.local_run.sys.platform", "win32")
     def test_refuses_windows_before_anything_else(self, tmp_path):
         # Any other check would refuse this file first.
-        with pytest.raises(LocalRunError, match="needs Linux or macOS; on Windows, run it in WSL2"):
+        with pytest.raises(LocalRunConfigError, match="needs Linux or macOS; on Windows, run it in WSL2"):
             run_dag_file(tmp_path / "missing.txt")
 
     def test_rejects_non_python_file(self, tmp_path):
         source = tmp_path / "pipeline.txt"
         source.touch()
 
-        with pytest.raises(LocalRunError, match="needs a Python Dag file"):
+        with pytest.raises(LocalRunUsageError, match="needs a Python Dag file"):
             run_dag_file(source)
 
     def test_rejects_non_dict_run_conf(self, source):
@@ -608,11 +641,14 @@ class TestRunDagFile:
 
         mock_popen.assert_not_called()
 
-    def test_missing_resource_file_raises(self, source, tmp_path):
-        with pytest.raises(FileNotFoundError):
-            run_dag_file(source, connections_file=tmp_path / "missing.yaml")
+    @pytest.mark.parametrize(
+        ("argument", "resource"), [("connections_file", "connections"), ("variables_file", "variables")]
+    )
+    def test_missing_resource_file_is_refused(self, source, tmp_path, argument, resource):
+        with pytest.raises(LocalRunUsageError, match=f"The {resource} file .*missing.yaml does not exist$"):
+            run_dag_file(source, **{argument: tmp_path / "missing.yaml"})
 
     @mock.patch("airflow.sdk.definitions.local_run.importlib.util.find_spec", return_value=None)
     def test_requires_airflow_core(self, _, source):
-        with pytest.raises(LocalRunError, match="needs apache-airflow-core"):
+        with pytest.raises(LocalRunConfigError, match="needs apache-airflow-core"):
             run_dag_file(source)
