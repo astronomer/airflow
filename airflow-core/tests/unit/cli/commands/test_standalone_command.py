@@ -17,6 +17,7 @@
 # under the License.
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import signal
@@ -28,7 +29,8 @@ from unittest import mock
 
 import pytest
 
-from airflow.cli.commands.standalone_command import StandaloneCommand, SubCommand
+from airflow.api_fastapi.auth.managers.simple.simple_auth_manager import SimpleAuthManager
+from airflow.cli.commands.standalone_command import IMPORTANT_LINE, StandaloneCommand, SubCommand
 from airflow.configuration import conf
 from airflow.executors import executor_loader
 from airflow.executors.executor_constants import (
@@ -275,6 +277,7 @@ class TestStandaloneCommand:
 
     @conf_vars({("api", "port"): "9999"})
     @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "open_log_files")
     @mock.patch.object(StandaloneCommand, "record_previous_jobs")
     @mock.patch.object(StandaloneCommand, "initialize_database")
     @mock.patch.object(StandaloneCommand, "find_user_info")
@@ -282,7 +285,8 @@ class TestStandaloneCommand:
     @mock.patch.object(StandaloneCommand, "print_output")
     def test_run_resolves_the_api_server_port_from_config(self, *_):
         cmd = StandaloneCommand()
-        with mock.patch.object(cmd, "update_output", side_effect=KeyboardInterrupt):
+        # The second call drains what the components print while stopping.
+        with mock.patch.object(cmd, "update_output", side_effect=[KeyboardInterrupt, None]):
             cmd.run()
 
         assert cmd.api_server_port == 9999
@@ -312,6 +316,7 @@ class TestStandaloneCommand:
         }
 
     @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "open_log_files")
     @mock.patch.object(StandaloneCommand, "record_previous_jobs")
     @mock.patch.object(StandaloneCommand, "initialize_database")
     @mock.patch.object(StandaloneCommand, "find_user_info")
@@ -337,6 +342,7 @@ class TestStandaloneCommand:
         stop_components.assert_called_once()
 
     @mock.patch("airflow.cli.commands.standalone_command.SubCommand", autospec=True)
+    @mock.patch.object(StandaloneCommand, "open_log_files")
     @mock.patch.object(StandaloneCommand, "record_previous_jobs")
     @mock.patch.object(StandaloneCommand, "initialize_database")
     @mock.patch.object(StandaloneCommand, "find_user_info")
@@ -354,6 +360,7 @@ class TestStandaloneCommand:
             mock.patch.object(cmd, "find_exited_component", return_value=exited),
             mock.patch.object(cmd, "stop_components") as stop_components,
             mock.patch.object(cmd, "print_error") as print_error,
+            mock.patch.object(cmd, "print_recent_lines") as print_recent_lines,
             pytest.raises(SystemExit) as exit_info,
         ):
             cmd.run()
@@ -361,6 +368,7 @@ class TestStandaloneCommand:
         assert exit_info.value.code == 1
         stop_components.assert_called_once()
         print_error.assert_called_once_with("standalone", "The scheduler component exited with code 3")
+        print_recent_lines.assert_called_once_with("scheduler")
 
     def test_find_exited_component(self):
         cmd = StandaloneCommand()
@@ -379,12 +387,187 @@ class TestStandaloneCommand:
         commands = [mock.Mock(spec=SubCommand) for _ in range(2)]
         cmd.subcommands = {str(index): command for index, command in enumerate(commands)}
 
-        with mock.patch.object(cmd, "print_output"):
+        with mock.patch.object(cmd, "print_output"), mock.patch.object(cmd, "update_output") as update:
             cmd.stop_components()
 
         for command in commands:
             command.stop.assert_called_once()
             command.wait_or_kill.assert_called_once()
+        update.assert_called_once()
+
+    @pytest.mark.parametrize(
+        ("verbose", "shown"),
+        [
+            pytest.param(False, ["[error    ] Dag import failed"], id="quiet-shows-errors-only"),
+            pytest.param(True, ["GET /api/v2/version 200", "[error    ] Dag import failed"], id="verbose"),
+        ],
+    )
+    def test_update_output_logs_each_component_and_shows_what_matters(self, tmp_path, verbose, shown):
+        cmd = StandaloneCommand(verbose=verbose)
+        cmd.log_files = {name: (tmp_path / f"{name}.log").open("a") for name in ("api-server", "scheduler")}
+        printed = []
+        cmd.output_queue.extend(
+            [
+                ("api-server", b"GET /api/v2/version 200\n"),
+                ("scheduler", b"\x1b[31m[error    ] Dag import failed\n"),
+            ]
+        )
+
+        with mock.patch.object(cmd, "print_output", side_effect=lambda name, line: printed.append(line)):
+            cmd.update_output()
+        for log_file in cmd.log_files.values():
+            log_file.close()
+
+        assert printed == shown
+        assert (tmp_path / "api-server.log").read_text() == "GET /api/v2/version 200\n"
+        assert (tmp_path / "scheduler.log").read_text() == "[error    ] Dag import failed\n"
+        assert list(cmd.recent_lines["scheduler"]) == ["[error    ] Dag import failed"]
+
+    def test_update_output_shows_lines_it_has_no_file_for(self):
+        cmd = StandaloneCommand()
+        cmd.output_queue.append(("scheduler", b"started\n"))
+
+        with mock.patch.object(cmd, "print_output") as print_output:
+            cmd.update_output()
+
+        print_output.assert_called_once_with("scheduler", "started")
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "2026-11-12T09:18:27Z [critical ] scheduler crashed",
+            '{"event": "boom", "level": "error"}',
+            "ERROR:    Exception in ASGI application",
+        ],
+    )
+    def test_important_lines(self, line):
+        assert IMPORTANT_LINE.search(line)
+
+    def test_info_lines_are_not_important(self):
+        assert not IMPORTANT_LINE.search("2026-11-12T09:18:27Z [info     ] Starting the scheduler")
+
+    def test_open_log_files_creates_one_per_component_and_keeps_the_previous_run(self, tmp_path):
+        log_dir = tmp_path / "standalone"
+        log_dir.mkdir()
+        (log_dir / "scheduler.log").write_text("previous run\n")
+        cmd = StandaloneCommand()
+
+        with (
+            conf_vars({("logging", "base_log_folder"): str(tmp_path)}),
+            mock.patch.object(cmd, "print_output"),
+        ):
+            cmd.open_log_files()
+        for log_file in cmd.log_files.values():
+            log_file.close()
+
+        assert cmd.log_dir == log_dir
+        assert sorted(path.name for path in log_dir.iterdir()) == [
+            "api-server.log",
+            "dag-processor.log",
+            "scheduler.log",
+            "scheduler.log.1",
+            "standalone.log",
+            "triggerer.log",
+        ]
+        assert (log_dir / "scheduler.log.1").read_text() == "previous run\n"
+        assert (log_dir / "scheduler.log").read_text() == ""
+        assert cmd.get_log_path("triggerer") == log_dir / "triggerer.log"
+
+    def test_redirect_output_to_log_captures_file_descriptor_writes(self, tmp_path):
+        cmd = StandaloneCommand()
+        cmd.log_files = {"standalone": (tmp_path / "standalone.log").open("a")}
+
+        with cmd.redirect_output_to_log():
+            os.write(1, b"from fd 1\n")
+            os.write(2, b"from fd 2\n")
+        os.write(1, b"")  # fd 1 is usable again
+        cmd.log_files["standalone"].close()
+
+        assert (tmp_path / "standalone.log").read_text() == "from fd 1\nfrom fd 2\n"
+
+    def test_redirect_output_to_log_does_nothing_when_verbose(self, tmp_path):
+        cmd = StandaloneCommand(verbose=True)
+        cmd.log_files = {"standalone": mock.Mock()}
+
+        with mock.patch("airflow.cli.commands.standalone_command.os.dup2") as dup2:
+            with cmd.redirect_output_to_log():
+                pass
+
+        dup2.assert_not_called()
+
+    @conf_vars({("core", "simple_auth_manager_all_admins"): "True"})
+    def test_get_login_lines_without_login(self):
+        assert StandaloneCommand().get_login_lines() == [
+            "No login needed: every user is an admin ([core] simple_auth_manager_all_admins)"
+        ]
+
+    @conf_vars({("core", "simple_auth_manager_all_admins"): "False"})
+    def test_get_login_lines_shows_generated_passwords(self, tmp_path):
+        password_file = tmp_path / "passwords.json.generated"
+        password_file.write_text('{"admin": "s3cret", "viewer": "v1ew"}\n')
+
+        with mock.patch.object(
+            SimpleAuthManager, "get_generated_password_file", return_value=str(password_file)
+        ):
+            lines = StandaloneCommand().get_login_lines()
+
+        assert lines == ["Log in as admin with password s3cret", "Log in as viewer with password v1ew"]
+
+    def test_get_login_lines_only_names_a_configured_passwords_file(self, tmp_path):
+        password_file = tmp_path / "my-passwords.json"
+        password_file.write_text('{"admin": "mine"}\n')
+
+        with conf_vars(
+            {
+                ("core", "simple_auth_manager_all_admins"): "False",
+                ("core", "simple_auth_manager_passwords_file"): str(password_file),
+            }
+        ):
+            lines = StandaloneCommand().get_login_lines()
+
+        assert lines == [f"Passwords are in {password_file}"]
+
+    @conf_vars({("core", "simple_auth_manager_all_admins"): "False"})
+    def test_get_login_lines_before_passwords_exist(self, tmp_path):
+        with mock.patch.object(
+            SimpleAuthManager, "get_generated_password_file", return_value=str(tmp_path / "missing")
+        ):
+            assert StandaloneCommand().get_login_lines() == []
+
+    def test_print_ready_shows_url_login_and_log_path(self, tmp_path):
+        cmd = StandaloneCommand()
+        cmd.api_server_port = 8080
+        cmd.log_dir = tmp_path
+        printed = []
+
+        with (
+            mock.patch.object(cmd, "get_login_lines", return_value=["Log in as admin with password x"]),
+            mock.patch.object(cmd, "print_output", side_effect=lambda name, line: printed.append(line)),
+        ):
+            cmd.print_ready()
+
+        assert "Airflow is ready at http://localhost:8080" in printed
+        assert "Log in as admin with password x" in printed
+        assert f"Component logs: {tmp_path}/<component>.log" in printed
+
+    def test_print_recent_lines(self):
+        cmd = StandaloneCommand()
+        cmd.recent_lines["scheduler"] = deque(["one", "two"])
+        printed = []
+
+        with mock.patch.object(
+            cmd, "print_output", side_effect=lambda name, line: printed.append((name, line))
+        ):
+            cmd.print_recent_lines("scheduler")
+
+        assert printed[1:] == [("scheduler", "one"), ("scheduler", "two")]
+
+    @mock.patch.object(StandaloneCommand, "run")
+    def test_entrypoint_passes_verbose(self, mock_run):
+        with mock.patch.object(StandaloneCommand, "__init__", return_value=None) as init:
+            StandaloneCommand.entrypoint(argparse.Namespace(verbose=True))
+
+        init.assert_called_once_with(verbose=True)
 
     def test_subcommand_wait_or_kill_kills_after_timeout(self):
         parent = mock.Mock(spec=StandaloneCommand)
