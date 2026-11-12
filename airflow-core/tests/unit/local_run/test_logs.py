@@ -513,3 +513,20 @@ def test_attempt_failure_starts_at_the_task_code(tmp_path, frames, shown, left_o
         f"({left_out} frames of Airflow running the task are left out; the task's log has the full "
         f"traceback: {path})",
     ]
+
+
+def test_attempt_failure_of_a_run_without_history_does_not_point_to_its_log(tmp_path):
+    path = tmp_path / "attempt=1.log"
+    frames = [
+        frame(f"{airflow.__path__[0]}/runner.py", "run the task"),
+        frame("/project/pipeline.py", "code"),
+    ]
+    stack = {"exc_type": "ValueError", "exc_value": "boom", "frames": frames}
+    path.write_text(
+        json.dumps({"event": TASK_FAILED_EVENT, "level": "error", "error_detail": [stack]}) + "\n"
+    )
+
+    failure = read_attempt_failure(path, log_kept=False)
+
+    assert failure is not None
+    assert failure.details.endswith("ValueError: boom\n(1 frames of Airflow running the task are left out)")

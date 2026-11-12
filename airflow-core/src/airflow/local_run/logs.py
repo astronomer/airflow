@@ -224,11 +224,12 @@ def capture_task_log(path: Path) -> Iterator[None]:
             _task_log = None
 
 
-def read_attempt_failure(path: Path) -> TaskFailure | None:
+def read_attempt_failure(path: Path, *, log_kept: bool = True) -> TaskFailure | None:
     """
     Return why the attempt logged in ``path`` failed, if the log says.
 
-    The traceback starts where Airflow handed over to code of the task's own; the log keeps every frame.
+    The traceback starts where Airflow handed over to code of the task's own; the log keeps every frame. A run
+    without history deletes the log, so it is pointed to only when ``log_kept``.
     """
     failure = None
     with suppress(OSError), path.open() as log_file:
@@ -242,10 +243,10 @@ def read_attempt_failure(path: Path) -> TaskFailure | None:
                 stacks = event["error_detail"]
                 details, left_out = _format_stacks(stacks)
                 if left_out:
-                    details += (
-                        f"\n({left_out} frames of Airflow running the task are left out; the task's log has "
-                        f"the full traceback: {_describe_path(path)})"
+                    where = (
+                        f"; the task's log has the full traceback: {_describe_path(path)}" if log_kept else ""
                     )
+                    details += f"\n({left_out} frames of Airflow running the task are left out{where})"
                 failure = TaskFailure(summary=_format_exception_only(stacks[0]), details=details)
             elif message.startswith(PROCESS_EXIT_EVENTS):
                 detail = ", ".join(

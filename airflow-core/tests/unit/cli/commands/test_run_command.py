@@ -57,9 +57,12 @@ class TestRunCommand:
 
         assert capsys.readouterr().out == "Outputs:\n  total = 12\n"
 
-    @pytest.mark.parametrize(("extra_args", "debug"), [([], False), (["--debug"], True)])
+    @pytest.mark.parametrize(
+        ("extra_args", "debug", "keep_history"),
+        [([], False, True), (["--debug"], True, True), (["--no-history"], False, False)],
+    )
     @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_passes_arguments_to_launcher(self, mock_run_dag_file, capsys, extra_args, debug):
+    def test_passes_arguments_to_launcher(self, mock_run_dag_file, capsys, extra_args, debug, keep_history):
         mock_run_dag_file.return_value = make_result()
         args = self.parser.parse_args(
             [
@@ -92,6 +95,7 @@ class TestRunCommand:
             run_id=None,
             triggered_by="cli",
             debug=debug,
+            keep_history=keep_history,
         )
         assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
 
@@ -129,6 +133,7 @@ class TestRunCommand:
             "run_id": "manual__1",
             "triggered_by": "cli",
             "debug": False,
+            "keep_history": True,
         }
 
     @pytest.mark.parametrize("flag", [["--upstream"], ["--downstream"], ["--run-id", "manual__1"]])
@@ -137,6 +142,17 @@ class TestRunCommand:
         args = self.parser.parse_args(["run", "pipeline.py", *flag])
 
         with pytest.raises(SystemExit, match="apply to the tasks chosen with --task or --group"):
+            args.func(args)
+
+        mock_run_dag_file.assert_not_called()
+
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_run_id_needs_history(self, mock_run_dag_file):
+        args = self.parser.parse_args(
+            ["run", "pipeline.py", "--task", "total", "--run-id", "manual__1", "--no-history"]
+        )
+
+        with pytest.raises(SystemExit, match="--run-id names a run in the project's history"):
             args.func(args)
 
         mock_run_dag_file.assert_not_called()

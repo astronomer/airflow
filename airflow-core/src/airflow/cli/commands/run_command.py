@@ -54,6 +54,8 @@ def run(args) -> None:
         raise SystemExit(
             "--upstream, --downstream and --run-id apply to the tasks chosen with --task or --group"
         )
+    if args.run_id and not args.keep_history:
+        raise SystemExit("--run-id names a run in the project's history, which --no-history does not use")
     try:
         result = run_dag_file(
             args.file,
@@ -68,6 +70,7 @@ def run(args) -> None:
             run_id=args.run_id,
             triggered_by="cli",
             debug=args.debug,
+            keep_history=args.keep_history,
         )
     except DagExecutionError as e:
         print_outputs(e.result, only_ran=selected)

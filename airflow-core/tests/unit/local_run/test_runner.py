@@ -128,6 +128,44 @@ def test_runs_are_kept_with_their_outputs(project):
     assert query(project, "SELECT DISTINCT triggered_by FROM dag_run") == [("TEST",)]
 
 
+def test_run_without_history_leaves_the_project_alone(project, capfd):
+    result = run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), keep_history=False)
+
+    assert result.output("total") == 12
+    assert result.project_home is None
+    assert not (project / ".airflow").exists()
+    err = capfd.readouterr().err
+    assert "Creating the project database" not in err
+    assert re.search(r"Succeeded in \S+ \(\S+ total\)\. No history kept\n", err)
+
+
+def test_failure_without_history_does_not_point_to_the_deleted_log(project, capfd):
+    source = write_dag_file(
+        project,
+        "failing.py",
+        """
+        from airflow.sdk import dag, task
+
+        @task
+        def boom():
+            raise ValueError("boom")
+
+        @dag(schedule=None)
+        def failing():
+            boom()
+
+        workflow = failing()
+        """,
+    )
+
+    with pytest.raises(DagExecutionError):
+        run_dag_file(source, keep_history=False)
+
+    err = capfd.readouterr().err
+    assert re.search(r"\(\d+ frames of Airflow running the task are left out\)\n", err)
+    assert "the task's log has the full traceback" not in err
+
+
 RUN_JOBS = """
 SELECT dag_run.dag_id, dag_run.state, job.job_type, job.state FROM dag_run
 JOIN job ON job.id = dag_run.creating_job_id ORDER BY dag_run.run_after
@@ -997,6 +1035,17 @@ def test_selection_with_a_new_conf_runs_in_a_new_run(project):
     assert result.run_id != first.run_id
     assert ("numbers", -1) in result.ran
     assert query(project, f"SELECT conf FROM dag_run WHERE run_id = '{result.run_id}'") == [('{"n": 1}',)]
+
+
+def test_selection_without_history_runs_in_a_new_run_with_the_tasks_it_needs(project):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    first = run_dag_file(source)
+
+    result = run_dag_file(source, task_ids=["total"], keep_history=False)
+
+    assert result.run_id != first.run_id
+    assert result.ran == {("numbers", -1), ("double", 0), ("double", 1), ("double", 2), ("total", -1)}
+    assert query(project, "SELECT run_id FROM dag_run") == [(first.run_id,)]
 
 
 def test_task_a_selection_left_out_is_not_an_input_of_a_later_rerun(project):

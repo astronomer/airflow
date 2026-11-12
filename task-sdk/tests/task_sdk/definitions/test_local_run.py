@@ -23,6 +23,7 @@ import runpy
 import signal
 import subprocess
 import sys
+import tempfile
 import textwrap
 import time
 import types
@@ -486,11 +487,41 @@ class TestRunDagFile:
             "run_conf": {"n": 1},
             "triggered_by": "cli",
             "debug": True,
+            "keep_history": True,
             "result_path": seen["request"]["result_path"],
             "started_at": mock.ANY,
         }
         assert before <= seen["request"]["started_at"] <= after
         assert not Path(seen["request"]["result_path"]).parent.exists()
+
+    @mock.patch(
+        "airflow.sdk.definitions.local_run.tempfile.TemporaryDirectory",
+        autospec=True,
+        side_effect=tempfile.TemporaryDirectory,
+    )
+    @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
+    def test_run_without_history_gets_a_home_of_its_own(self, mock_popen, mock_tmp, source, tmp_path):
+        seen = {}
+
+        def fake_child(command, env):
+            request = json.loads(Path(command[-1]).read_text())
+            seen.update(env=env, request=request)
+            Path(request["result_path"]).write_bytes(pickle.dumps(make_payload()))
+            process = mock.create_autospec(REAL_POPEN, instance=True)
+            process.wait.return_value = 0
+            return process
+
+        mock_popen.side_effect = fake_child
+
+        result = run_dag_file(source, keep_history=False)
+
+        run_dir = Path(seen["request"]["result_path"]).parent
+        assert seen["env"]["AIRFLOW_HOME"] == str(run_dir / "home")
+        assert seen["request"]["keep_history"] is False
+        assert result.project_home is None
+        assert not (tmp_path / ".airflow").exists()
+        assert not run_dir.exists()
+        mock_tmp.assert_called_once_with(prefix="airflow-run-", ignore_cleanup_errors=True)
 
     @mock.patch("airflow.sdk.definitions.local_run.sys.platform", "win32")
     def test_refuses_windows_before_anything_else(self, tmp_path):
@@ -559,6 +590,12 @@ class TestRunDagFile:
                 ValueError,
                 "Run manual__1 keeps the conf it ran with",
                 id="conf-for-an-earlier-run",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "run_id": "manual__1", "keep_history": False},
+                ValueError,
+                "run_id names a run in the project's history",
+                id="run-id-without-history",
             ),
         ],
     )
