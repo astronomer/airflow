@@ -581,6 +581,12 @@ ARG_RUN_NO_HISTORY = Arg(
         "selected tasks run in a new run with the tasks they need"
     ),
 )
+ARG_RUN_NO_RETRIES = Arg(
+    ("--no-retries",),
+    dest="retries",
+    action="store_false",
+    help="Give each task one attempt, whatever its retries say",
+)
 # standalone
 ARG_STANDALONE_PROJECT = Arg(
     ("--project",),
@@ -2536,6 +2542,7 @@ core_commands: list[CLICommand] = [
             ARG_RUN_IN_RUN_ID,
             ARG_RUN_DEBUG,
             ARG_RUN_NO_HISTORY,
+            ARG_RUN_NO_RETRIES,
         ),
     ),
     GroupCommand(

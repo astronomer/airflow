@@ -426,6 +426,43 @@ def test_retried_attempt_is_reported_on_one_line(project, capfd):
         assert noise not in out + err
 
 
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_without_retries_each_task_and_rerun_gets_one_attempt(project, capfd, debug):
+    source = write_dag_file(
+        project,
+        "retried.py",
+        """
+        from datetime import timedelta
+        from airflow.sdk import dag, task
+
+        @task(retries=2, retry_delay=timedelta(0))
+        def numbers():
+            return [1, 2]
+
+        @task(retries=2, retry_delay=timedelta(0))
+        def fails(number):
+            raise ValueError("boom")
+
+        @dag(schedule=None)
+        def retried():
+            fails.expand(number=numbers())
+
+        workflow = retried()
+        """,
+    )
+
+    with pytest.raises(DagExecutionError):
+        run_dag_file(source, retries=False, debug=debug)
+    with pytest.raises(DagExecutionError):
+        run_dag_file(source, task_ids=["fails"], retries=False, debug=debug)
+
+    assert "↻" not in capfd.readouterr().err
+    # The mapped instances are created during the run, and the rerun clears them.
+    assert query(
+        project, "SELECT task_id, try_number, state FROM task_instance WHERE working_set = 1 ORDER BY task_id"
+    ) == [("fails", 2, "failed"), ("fails", 2, "failed"), ("numbers", 1, "success")]
+
+
 @pytest.mark.parametrize(
     ("debug", "expected_state"),
     [

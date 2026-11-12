@@ -251,6 +251,7 @@ def run_dag_file(
     triggered_by: str = "test",
     debug: bool = False,
     keep_history: bool = True,
+    retries: bool = True,
 ) -> DagRunResult:
     """
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
@@ -269,6 +270,7 @@ def run_dag_file(
     :param debug: run task tries inside the run's process rather than each in a process of its own.
     :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
         own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
+    :param retries: retry failed tasks as their ``retries`` say. Otherwise each task gets one attempt.
     :raises DagExecutionError: the run finished in a failed state.
     :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
     :raises LocalRunDagFileError: the file failed to import, does not define the Dag, or defines an invalid one.
@@ -285,6 +287,10 @@ def run_dag_file(
         raise LocalRunUsageError(f"A local run needs a Python Dag file; {source_path} is not one")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise TypeError(f"run_conf must be a dict, not {type(run_conf).__name__}")
+    if not isinstance(retries, bool):
+        raise TypeError(
+            f"retries takes True, to retry as each task's retries say, or False, for one attempt; not {retries!r}"
+        )
     if run_id is not None and not keep_history:
         raise ValueError(
             "run_id names a run in the project's history, which a run without history cannot use"
@@ -333,6 +339,7 @@ def run_dag_file(
                     "triggered_by": triggered_by,
                     "debug": debug,
                     "keep_history": keep_history,
+                    "retries": retries,
                     "result_path": str(result_path),
                     "started_at": started_at,
                 }

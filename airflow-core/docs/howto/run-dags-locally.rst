@@ -92,6 +92,8 @@ your own code.
   run also reads ``AIRFLOW_CONN_*`` and ``AIRFLOW_VAR_*`` environment variables.
 * ``debug``: run every task in the run's own process, so that ``breakpoint()`` and your IDE's debugger stop
   in it. Otherwise each task try runs in a process of its own, as it does on a worker.
+* ``retries``: ``False`` gives each task one attempt, whatever its ``retries`` say, so a task that fails stays
+  failed instead of waiting to retry.
 
 To look up connections and variables in a secrets backend, such as one that holds your development
 credentials, name it in ``pyproject.toml``:
@@ -115,7 +117,8 @@ To run a Dag from the command line instead, without a ``__main__`` block:
     uv run airflow run pipeline.py
 
 ``airflow run`` prints the same summary, then each task's output. It takes ``--dag-id`` for a file that
-defines several Dags, ``--conf``, ``--connections-file``, ``--variables-file`` and ``--debug``.
+defines several Dags, ``--conf``, ``--connections-file``, ``--variables-file``, ``--debug`` and
+``--no-retries``.
 
 ``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
 says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the
