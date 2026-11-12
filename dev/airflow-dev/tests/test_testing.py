@@ -16,8 +16,10 @@
 # under the License.
 from __future__ import annotations
 
+import io
 import json
 import os
+import sys
 from unittest import mock
 
 import pytest
@@ -26,7 +28,15 @@ from airflow_dev import testing
 from airflow_dev.db import Postgres
 from airflow_dev.discovery import Installation
 from airflow_dev.repo import DevError
-from airflow_dev.testing import PytestRun, prune, resolve_targets, run_tests
+from airflow_dev.testing import (
+    PytestRun,
+    format_summary,
+    prune,
+    resolve_targets,
+    run_tests,
+    stream,
+    use_color,
+)
 
 
 @pytest.fixture
@@ -167,3 +177,53 @@ def test_prune_removes_runs_whose_owner_is_gone(fake_repo, server):
     ]
     assert str(runs / "airflow_test_dead") in removed
     assert (runs / "airflow_test_live").exists()
+
+
+def test_build_command_forces_color_before_user_arguments(fake_repo):
+    run = PytestRun(fake_repo, "airflow-core", ["t.py"], "sqlite", 1, ["--color=no"], color=True)
+
+    command = run.build_command()
+
+    assert command.index("--color=yes") < command.index("--color=no")
+
+
+def test_stream_shows_colors_but_logs_plain_text(tmp_path):
+    output = io.StringIO()
+    log_path = tmp_path / "pytest.log"
+    command = [sys.executable, "-c", r"print('\x1b[32m1 passed\x1b[0m')"]
+
+    exit_code = stream(command, cwd=tmp_path, env=dict(os.environ), log_path=log_path, output=output)
+
+    assert exit_code == 0
+    assert output.getvalue() == "\x1b[32m1 passed\x1b[0m\n"
+    assert log_path.read_text() == "1 passed\n"
+
+
+SUMMARY = {"member": "airflow-core", "backend": "postgres", "db_version": "14.17", "junit": "j.xml"}
+
+
+@pytest.mark.parametrize(("exit_code", "color_code"), [(0, "\x1b[32m"), (1, "\x1b[31m")])
+def test_format_summary_colors_the_result(exit_code, color_code):
+    line = format_summary({**SUMMARY, "exit_code": exit_code}, color=True)
+
+    assert f"{color_code}exited {exit_code}\x1b[0m" in line
+    assert line.startswith("\nairflow-dev: airflow-core on postgres 14.17 ")
+
+
+def test_format_summary_without_color():
+    line = format_summary({**SUMMARY, "exit_code": 0}, color=False)
+
+    assert line == "\nairflow-dev: airflow-core on postgres 14.17 exited 0; JUnit j.xml"
+
+
+@pytest.mark.parametrize(
+    ("no_color", "isatty", "expected"), [(False, True, True), (True, True, False), (False, False, False)]
+)
+def test_use_color(monkeypatch, no_color, isatty, expected):
+    if no_color:
+        monkeypatch.setenv("NO_COLOR", "1")
+    else:
+        monkeypatch.delenv("NO_COLOR", raising=False)
+    output = mock.Mock(spec=io.StringIO, **{"isatty.return_value": isatty})
+
+    assert use_color(output) is expected

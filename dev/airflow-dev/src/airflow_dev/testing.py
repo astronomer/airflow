@@ -27,6 +27,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -44,6 +45,12 @@ CLEARED_VARIABLES = {"BACKEND", "PYTEST_ADDOPTS", "_AIRFLOW_SKIP_DB_TESTS", "_AI
 # Test dependencies a member's own dependency groups leave to the CI image. Without rfc3339-validator,
 # jsonschema skips the date-time format check that task-sdk's Param tests expect to fail.
 EXTRA_TEST_REQUIREMENTS = {"task-sdk": ["rfc3339-validator"]}
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+GREEN, RED, BOLD, RESET = "\x1b[32m", "\x1b[31m", "\x1b[1m", "\x1b[0m"
+
+
+def use_color(output) -> bool:
+    return "NO_COLOR" not in os.environ and output.isatty()
 
 
 @dataclass
@@ -55,6 +62,7 @@ class PytestRun:
     workers: int
     pytest_args: list[str]
     server: Server | None = None
+    color: bool = False
     run_id: str = field(default_factory=lambda: f"{TEST_DATABASE_PREFIX}{uuid.uuid4().hex[:10]}")
 
     @property
@@ -96,6 +104,10 @@ class PytestRun:
             pytest_args.append("--skip-db-tests")
         if self.workers > 1:
             pytest_args += ["-n", str(self.workers)]
+        if self.color:
+            # pytest writes to our pipe, not the terminal, so it would turn colors off by itself.
+            # Before the user's arguments, so a --color of theirs wins.
+            pytest_args.append("--color=yes")
         pytest_args += ["--junitxml", str(self.results_dir / "junit.xml"), *self.pytest_args]
         return ["uv", "run", "--project", self.member, *with_args, "pytest", *pytest_args]
 
@@ -140,8 +152,7 @@ def resolve_targets(repo: Path, cwd: Path, targets: list[str]) -> tuple[str, lis
     return members.pop(), resolved
 
 
-def stream(command: list[str], *, cwd: Path, env: dict[str, str], log_path: Path, to_stderr: bool) -> int:
-    output = sys.stderr if to_stderr else sys.stdout
+def stream(command: list[str], *, cwd: Path, env: dict[str, str], log_path: Path, output) -> int:
     process = subprocess.Popen(
         command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
     )
@@ -155,7 +166,7 @@ def stream(command: list[str], *, cwd: Path, env: dict[str, str], log_path: Path
             for line in process.stdout:  # type: ignore[union-attr]
                 output.write(line)
                 output.flush()
-                log.write(line)
+                log.write(ANSI_ESCAPE.sub("", line))
         return process.wait()
     except KeyboardInterrupt:
         # The terminal already sent SIGINT to pytest, which shares our process group.
@@ -181,7 +192,11 @@ def run_tests(
     if member in NO_DATABASE_MEMBERS and backend != "none":
         raise DevError(f"{member} tests never use the metadata database.", hint="Use --backend none.")
     server = get_server(repo, backend, db_version) if backend in ("postgres", "mysql") else None
-    pytest_run = PytestRun(repo, member, node_ids, backend, workers, pytest_args, server)
+    # With --json, stdout carries only the summary document, so pytest's output goes to stderr.
+    output = sys.stderr if as_json else sys.stdout
+    pytest_run = PytestRun(
+        repo, member, node_ids, backend, workers, pytest_args, server, color=use_color(output)
+    )
     exit_code = 3
     try:
         pytest_run.prepare()
@@ -191,7 +206,7 @@ def run_tests(
             cwd=repo,
             env=pytest_run.build_env(),
             log_path=log_path,
-            to_stderr=as_json,
+            output=output,
         )
     finally:
         if not keep_db:
@@ -212,13 +227,19 @@ def run_tests(
     if as_json:
         print(json.dumps(summary, indent=2))
     else:
-        print(
-            f"\nairflow-dev: {member} on {backend}"
-            f"{' ' + summary['db_version'] if summary['db_version'] else ''}"
-            f" exited {exit_code}; JUnit {summary['junit']}",
-            file=sys.stderr,
-        )
+        print(format_summary(summary, color=use_color(sys.stderr)), file=sys.stderr)
     return exit_code
+
+
+def format_summary(summary: dict, *, color: bool) -> str:
+    db_version = f" {summary['db_version']}" if summary["db_version"] else ""
+    result = f"exited {summary['exit_code']}"
+    if color:
+        result = f"{BOLD}{GREEN if summary['exit_code'] == 0 else RED}{result}{RESET}"
+    return (
+        f"\nairflow-dev: {summary['member']} on {summary['backend']}{db_version} {result};"
+        f" JUnit {summary['junit']}"
+    )
 
 
 def prune(repo: Path) -> list[str]:
