@@ -21,10 +21,22 @@ from __future__ import annotations
 import json
 import re
 import reprlib
-import sys
 
+from airflow.local_run.exit_codes import (
+    EXIT_CONFIG,
+    EXIT_DAG_FILE,
+    EXIT_FAILED,
+    EXIT_INTERRUPTED,
+    EXIT_USAGE,
+    exit_with_error,
+)
 from airflow.sdk.definitions.local_run import DagRunResult, run_dag_file
-from airflow.sdk.exceptions import DagExecutionError, LocalRunError
+from airflow.sdk.exceptions import (
+    DagExecutionError,
+    LocalRunConfigError,
+    LocalRunDagFileError,
+    LocalRunError,
+)
 
 MAX_PRINTED_OUTPUTS = 10
 # How the run labels one map index of a task, e.g. double[1].
@@ -46,16 +58,19 @@ def run(args) -> None:
     try:
         run_conf = json.loads(args.conf) if args.conf else None
     except json.JSONDecodeError as e:
-        raise SystemExit(f"--conf is not valid JSON: {e.msg}")
+        exit_with_error(f"--conf is not valid JSON: {e.msg}", EXIT_USAGE)
     if run_conf is not None and not isinstance(run_conf, dict):
-        raise SystemExit("--conf must be a JSON object")
+        exit_with_error("--conf must be a JSON object", EXIT_USAGE)
     selected = bool(args.task_ids or args.task_group_ids)
     if not selected and (args.include_upstream or args.include_downstream or args.run_id):
-        raise SystemExit(
-            "--upstream, --downstream and --run-id apply to the tasks chosen with --task or --group"
+        exit_with_error(
+            "--upstream, --downstream and --run-id apply to the tasks chosen with --task or --group",
+            EXIT_USAGE,
         )
     if args.run_id and not args.keep_history:
-        raise SystemExit("--run-id names a run in the project's history, which --no-history does not use")
+        exit_with_error(
+            "--run-id names a run in the project's history, which --no-history does not use", EXIT_USAGE
+        )
     try:
         result = run_dag_file(
             args.file,
@@ -74,12 +89,20 @@ def run(args) -> None:
         )
     except DagExecutionError as e:
         print_outputs(e.result, only_ran=selected)
-        raise SystemExit(1)
-    except (LocalRunError, OSError, ValueError) as e:
-        print(f"Error: {e}", file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(EXIT_FAILED)
     except KeyboardInterrupt:
-        raise SystemExit(130)
+        raise SystemExit(EXIT_INTERRUPTED)
+    # LocalRunUsageError is a ValueError too.
+    except ValueError as e:
+        exit_with_error(str(e), EXIT_USAGE)
+    except LocalRunDagFileError as e:
+        exit_with_error(str(e), EXIT_DAG_FILE)
+    except (LocalRunConfigError, OSError) as e:
+        exit_with_error(str(e), EXIT_CONFIG)
+    # Nothing the user can fix: the run's process ended without reporting how the run went, or could not create
+    # a unique run.
+    except LocalRunError as e:
+        exit_with_error(str(e), EXIT_FAILED)
     print_outputs(result, only_ran=selected)
 
 

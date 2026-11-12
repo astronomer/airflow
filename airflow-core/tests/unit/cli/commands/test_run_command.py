@@ -25,7 +25,13 @@ import pytest
 from airflow.cli import cli_parser
 from airflow.cli.commands import run_command
 from airflow.sdk.definitions.local_run import DagRunResult
-from airflow.sdk.exceptions import DagExecutionError, LocalRunError
+from airflow.sdk.exceptions import (
+    DagExecutionError,
+    LocalRunConfigError,
+    LocalRunDagFileError,
+    LocalRunError,
+    LocalRunUsageError,
+)
 
 
 def make_result(state: str = "success", outputs: dict | None = None, ran: set | None = None) -> DagRunResult:
@@ -136,25 +142,36 @@ class TestRunCommand:
             "keep_history": True,
         }
 
-    @pytest.mark.parametrize("flag", [["--upstream"], ["--downstream"], ["--run-id", "manual__1"]])
+    @pytest.mark.parametrize(
+        ("extra_args", "message"),
+        [
+            pytest.param(["--upstream"], "apply to the tasks chosen with --task or --group", id="upstream"),
+            pytest.param(
+                ["--downstream"], "apply to the tasks chosen with --task or --group", id="downstream"
+            ),
+            pytest.param(
+                ["--run-id", "manual__1"], "apply to the tasks chosen with --task or --group", id="run-id"
+            ),
+            pytest.param(
+                ["--task", "total", "--run-id", "manual__1", "--no-history"],
+                "--run-id names a run in the project's history",
+                id="run-id-without-history",
+            ),
+            pytest.param(["--conf", "{not json"], "--conf is not valid JSON", id="conf-not-json"),
+            pytest.param(["--conf", "[1]"], "--conf must be a JSON object", id="conf-not-object"),
+        ],
+    )
     @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_selection_options_need_a_selection(self, mock_run_dag_file, flag):
-        args = self.parser.parse_args(["run", "pipeline.py", *flag])
+    def test_wrong_arguments_are_refused_before_running(self, mock_run_dag_file, capsys, extra_args, message):
+        args = self.parser.parse_args(["run", "pipeline.py", *extra_args])
 
-        with pytest.raises(SystemExit, match="apply to the tasks chosen with --task or --group"):
+        with pytest.raises(SystemExit) as ctx:
             args.func(args)
 
-        mock_run_dag_file.assert_not_called()
-
-    @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_run_id_needs_history(self, mock_run_dag_file):
-        args = self.parser.parse_args(
-            ["run", "pipeline.py", "--task", "total", "--run-id", "manual__1", "--no-history"]
-        )
-
-        with pytest.raises(SystemExit, match="--run-id names a run in the project's history"):
-            args.func(args)
-
+        assert ctx.value.code == 2
+        err = capsys.readouterr().err
+        assert err.startswith("Error: ")
+        assert message in err
         mock_run_dag_file.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -190,12 +207,42 @@ class TestRunCommand:
                 "",
                 id="failed-run",
             ),
-            pytest.param(LocalRunError("No Dags found"), 2, "", "Error: No Dags found\n", id="setup-error"),
             pytest.param(
-                FileNotFoundError("missing.yaml"), 2, "", "Error: missing.yaml\n", id="missing-file"
+                LocalRunUsageError("has no task 'totl'"), 2, "", "Error: has no task 'totl'\n", id="usage"
+            ),
+            pytest.param(
+                FileNotFoundError("no python3.12"),
+                4,
+                "",
+                "Error: no python3.12\n",
+                id="file-missing-for-the-run",
             ),
             pytest.param(
                 ValueError("keep its conf"), 2, "", "Error: keep its conf\n", id="invalid-selection"
+            ),
+            pytest.param(
+                LocalRunDagFileError("No Dags found"), 3, "", "Error: No Dags found\n", id="dag-file"
+            ),
+            pytest.param(
+                LocalRunConfigError("needs Linux or macOS"),
+                4,
+                "",
+                "Error: needs Linux or macOS\n",
+                id="config",
+            ),
+            pytest.param(
+                PermissionError("cannot create .airflow"),
+                4,
+                "",
+                "Error: cannot create .airflow\n",
+                id="environment",
+            ),
+            pytest.param(
+                LocalRunError("exited without reporting a result"),
+                1,
+                "",
+                "Error: exited without reporting a result\n",
+                id="no-result",
             ),
             pytest.param(KeyboardInterrupt(), 130, "", "", id="interrupt"),
         ],
@@ -211,22 +258,6 @@ class TestRunCommand:
         assert ctx.value.code == expected_code
         # The run itself already reported failure or cancellation.
         assert capsys.readouterr() == (expected_out, expected_err)
-
-    @pytest.mark.parametrize(
-        ("conf", "match"),
-        [
-            pytest.param("{not json", "--conf is not valid JSON", id="not-json"),
-            pytest.param("[1]", "--conf must be a JSON object", id="not-object"),
-        ],
-    )
-    @mock.patch.object(run_command, "run_dag_file", autospec=True)
-    def test_invalid_conf_is_rejected_before_running(self, mock_run_dag_file, conf, match):
-        args = self.parser.parse_args(["run", "pipeline.py", "--conf", conf])
-
-        with pytest.raises(SystemExit, match=match):
-            args.func(args)
-
-        mock_run_dag_file.assert_not_called()
 
     def test_print_outputs_is_bounded(self, capsys):
         outputs = {(f"task_{i:02}", -1, "return_value"): "x" * 200 for i in range(12)}

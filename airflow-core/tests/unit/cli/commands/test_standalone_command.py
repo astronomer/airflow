@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from collections import deque
@@ -469,13 +470,16 @@ class TestStandaloneProject:
         assert env.items() >= standalone_command.PROJECT_SERVER_ENVIRONMENT.items()
 
     @mock.patch.object(standalone_command.os, "execve", autospec=True)
-    def test_invalid_project_secrets_backend_is_refused(self, mock_execve, tmp_path, monkeypatch):
+    def test_invalid_project_secrets_backend_is_refused(self, mock_execve, tmp_path, monkeypatch, capsys):
         (tmp_path / "pyproject.toml").write_text("[tool.airflow.secrets]\nbackend = 1\n")
         monkeypatch.chdir(tmp_path)
         args = self.parser.parse_args(["standalone", "--project"])
 
-        with pytest.raises(SystemExit, match=r"\[tool\.airflow\.secrets\] in .* takes backend"):
+        with pytest.raises(SystemExit) as ctx:
             args.func(args)
+
+        assert ctx.value.code == 4
+        assert re.match(r"Error: \[tool\.airflow\.secrets\] in .* takes backend", capsys.readouterr().err)
         mock_execve.assert_not_called()
 
     @mock.patch.object(standalone_command.os, "execve", autospec=True)

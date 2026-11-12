@@ -450,6 +450,18 @@ class LocalRunError(RuntimeError):
     """A local Dag run could not be started, or ended without reporting a result."""
 
 
+class LocalRunUsageError(LocalRunError, ValueError):
+    """A local Dag run cannot start as asked, e.g. the Dag lacks a selected task or the conf breaks a param."""
+
+
+class LocalRunDagFileError(LocalRunError):
+    """A local Dag run cannot start because of its Dag file, e.g. it fails to import or gives a param a bad default."""
+
+
+class LocalRunConfigError(LocalRunError):
+    """A local Dag run cannot start because of the project's setup, e.g. its ``[tool.airflow.secrets]`` table."""
+
+
 class DagExecutionError(RuntimeError):
     """A local Dag run finished in a failed state; ``result`` holds its task states and outputs."""
 

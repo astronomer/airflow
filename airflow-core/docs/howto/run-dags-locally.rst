@@ -117,6 +117,14 @@ To run a Dag from the command line instead, without a ``__main__`` block:
 ``airflow run`` prints the same summary, then each task's output. It takes ``--dag-id`` for a file that
 defines several Dags, ``--conf``, ``--connections-file``, ``--variables-file`` and ``--debug``.
 
+``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
+says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the
+Dag's params; 3 the Dag file, such as an import error or a param's invalid default; 4 the project's setup, such
+as a ``[tool.airflow.secrets]`` table it cannot use, for which ``airflow standalone --project`` exits with 4 too.
+Ctrl-C exits with 130. In Python, ``workflow.run()`` raises ``LocalRunDagFileError`` and ``LocalRunConfigError``
+for 3 and 4, and for 2 a ``ValueError`` or ``TypeError``: ``LocalRunUsageError`` when the run refuses what it is
+asked, such as a task the Dag lacks. The three are ``LocalRunError``.
+
 .. _run-dags-locally:run-one-task:
 
 Run one task

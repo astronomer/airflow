@@ -45,7 +45,13 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, NoReturn
 
-from airflow.sdk.exceptions import DagExecutionError, LocalRunError
+from airflow.sdk.exceptions import (
+    DagExecutionError,
+    LocalRunConfigError,
+    LocalRunDagFileError,
+    LocalRunError,
+    LocalRunUsageError,
+)
 
 PROTOCOL_VERSION = 3
 PROJECT_HOME_NAME = ".airflow"
@@ -59,6 +65,13 @@ _DROPPED_ENV_PREFIXES = ("AIRFLOW__", "_AIRFLOW", "__AIRFLOW")
 # Airflow's per-key settings for the ``[secrets] backend`` arguments, e.g. ``..._KWARG__ROLE_ID``.
 _SECRETS_BACKEND_KWARG_PREFIX = "AIRFLOW__SECRETS__BACKEND_KWARG__"
 PROJECT_SECRETS_BACKEND = "airflow.local_run.secrets_backend.LocalRunSecretsBackend"
+
+# What the run's process says the user has to fix, when the run could not start.
+_SETUP_ERRORS: dict[str, type[LocalRunError]] = {
+    "usage": LocalRunUsageError,
+    "dag_file": LocalRunDagFileError,
+    "config": LocalRunConfigError,
+}
 
 
 @dataclass(frozen=True)
@@ -207,7 +220,7 @@ def read_project_secrets_backend(root: Path) -> dict[str, Any] | None:
         with pyproject.open("rb") as file:
             table = tomllib.load(file).get("tool", {}).get("airflow", {}).get("secrets")
     except tomllib.TOMLDecodeError as e:
-        raise LocalRunError(f"{pyproject} is not valid TOML: {e}") from None
+        raise LocalRunConfigError(f"{pyproject} is not valid TOML: {e}") from None
     if table is None:
         return None
     if (
@@ -216,7 +229,7 @@ def read_project_secrets_backend(root: Path) -> dict[str, Any] | None:
         or not isinstance(table.get("backend_kwargs", {}), dict)
         or table.keys() - {"backend", "backend_kwargs"}
     ):
-        raise LocalRunError(
+        raise LocalRunConfigError(
             f'[tool.airflow.secrets] in {pyproject} takes backend = "module.Class" and, optionally, a '
             "backend_kwargs table of the arguments to create it with"
         )
@@ -257,16 +270,19 @@ def run_dag_file(
     :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
         own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
     :raises DagExecutionError: the run finished in a failed state.
-    :raises LocalRunError: the run could not start or did not report a result.
+    :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
+    :raises LocalRunDagFileError: the file failed to import, does not define the Dag, or defines an invalid one.
+    :raises LocalRunConfigError: the project is not set up for the run, e.g. its secrets backend.
+    :raises LocalRunError: the run's process ended without reporting a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
     """
     # The run locks its project with fcntl and starts task tries by fork in process groups of their own.
     if sys.platform == "win32":
-        raise LocalRunError("Running a Dag locally needs Linux or macOS; on Windows, run it in WSL2")
+        raise LocalRunConfigError("Running a Dag locally needs Linux or macOS; on Windows, run it in WSL2")
     started_at = time.monotonic()
     source_path = Path(source).resolve()
     if source_path.suffix != ".py" or not source_path.is_file():
-        raise LocalRunError(f"A local run needs a Python Dag file; {source_path} is not one")
+        raise LocalRunUsageError(f"A local run needs a Python Dag file; {source_path} is not one")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise TypeError(f"run_conf must be a dict, not {type(run_conf).__name__}")
     if run_id is not None and not keep_history:
@@ -281,10 +297,12 @@ def run_dag_file(
         run_id=run_id,
         run_conf=run_conf,
     )
-    connections_path = Path(connections_file).resolve(strict=True) if connections_file else None
-    variables_path = Path(variables_file).resolve(strict=True) if variables_file else None
+    connections_path = resolve_resource_file(connections_file, "connections")
+    variables_path = resolve_resource_file(variables_file, "variables")
     if importlib.util.find_spec(CHILD_MODULE) is None:
-        raise LocalRunError("Running a Dag locally needs apache-airflow-core installed in this environment")
+        raise LocalRunConfigError(
+            "Running a Dag locally needs apache-airflow-core installed in this environment"
+        )
 
     root = find_project_root(source_path)
 
@@ -324,6 +342,16 @@ def run_dag_file(
         return_code = wait_for_child(process)
         payload = pickle.loads(result_path.read_bytes()) if result_path.exists() else None
     return build_result(payload, return_code, home if keep_history else None, source_path)
+
+
+def resolve_resource_file(path: str | os.PathLike[str] | None, resource: str) -> Path | None:
+    """Return the absolute path of a connections or variables file given for the run; a missing one is refused."""
+    if not path:
+        return None
+    try:
+        return Path(path).resolve(strict=True)
+    except FileNotFoundError:
+        raise LocalRunUsageError(f"The {resource} file {path} does not exist") from None
 
 
 def build_task_selection(
@@ -403,9 +431,10 @@ def build_result(
             f"The local run process exited with code {return_code} without reporting a result"
         )
     if payload.get("version") != PROTOCOL_VERSION:
-        raise LocalRunError(f"Unsupported local run result version {payload.get('version')!r}")
+        raise LocalRunConfigError(f"Unsupported local run result version {payload.get('version')!r}")
     if payload.get("error"):
-        raise LocalRunError(payload["error"])
+        error = _SETUP_ERRORS.get(payload.get("error_kind", ""), LocalRunError)
+        raise error(payload["error"])
     if payload.get("cancelled"):
         raise KeyboardInterrupt
     outputs: dict[tuple[str, int, str], Any] = {}

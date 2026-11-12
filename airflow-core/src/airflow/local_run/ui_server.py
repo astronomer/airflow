@@ -50,8 +50,9 @@ from airflow import settings
 from airflow.api_fastapi.app import create_app, get_auth_manager
 from airflow.api_fastapi.auth.managers.simple.user import SimpleAuthManagerUser
 from airflow.configuration import conf
+from airflow.local_run.exit_codes import EXIT_CONFIG, EXIT_USAGE
 from airflow.local_run.runner import (
-    LocalRunSetupError,
+    ConfigSetupError,
     ensure_database,
     fail_abandoned_runs,
     project_lock,
@@ -342,9 +343,9 @@ def main(argv: list[str]) -> int:
     port = int(argv[0]) if argv else 0
     try:
         ensure_database(home)
-    except LocalRunSetupError as e:
+    except ConfigSetupError as e:
         report(f"Error: {e}")
-        return 2
+        return EXIT_CONFIG
     sock = socket.socket()
     # As uvicorn does when it binds: a stopped server's closed connections hold its port for up to a minute,
     # and without this the same --port is refused as in use until then.
@@ -357,7 +358,7 @@ def main(argv: list[str]) -> int:
             f"Error: cannot serve on {LOOPBACK_HOST}:{port} ({e}); choose another port, or leave out --port "
             "to use a free one."
         )
-        return 2
+        return EXIT_USAGE
     url = f"http://{LOOPBACK_HOST}:{sock.getsockname()[1]}/"
     write_ignore_files(Path(settings.DAGS_FOLDER), home)
     config = uvicorn.Config(

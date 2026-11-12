@@ -62,7 +62,7 @@ from airflow.sdk.exceptions import (
     AirflowDagCycleException,
     DuplicateTaskIdFound,
     FailFastDagInvalidTriggerRule,
-    LocalRunError,
+    LocalRunDagFileError,
     NodeNotFound,
     ParamValidationError,
     RemovedInAirflow4Warning,
@@ -1475,14 +1475,17 @@ class DAG:
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
             own that is deleted when it ends, and selected tasks run in a new run with the tasks they need.
         :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
-        :raises LocalRunError: the run could not start, e.g. the file failed to import.
+        :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
+        :raises LocalRunDagFileError: the file failed to import, or the Dag is invalid, e.g. a param's default.
+        :raises LocalRunConfigError: the project is not set up for the run, e.g. its secrets backend.
+        :raises LocalRunError: the run's process ended without reporting a result.
         """
         from airflow.sdk.definitions._internal.contextmanager import DagContext
 
         if DagContext.current_autoregister_module_name is not None or is_unguarded_module_level_call(
             self.fileloc, sys._getframe(1)
         ):
-            raise LocalRunError(
+            raise LocalRunDagFileError(
                 f'Call {self.dag_id}.run() under `if __name__ == "__main__":`. The run imports this file '
                 "the way Airflow discovers Dags, and that import must not start another run."
             )
