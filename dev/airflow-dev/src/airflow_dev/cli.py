@@ -93,10 +93,14 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--examples", action="store_true", help="Load the example Dags.")
     start.add_argument("--background", action="store_true", help="Return once every component is healthy.")
     start.add_argument("--timeout", type=int, default=240, help="Seconds to wait for health in background.")
+    start.add_argument("--verbose", action="store_true", help="Show every component's output on screen.")
     for name, help_text in (("stop", "Stop an instance."), ("status", "Show an instance's health.")):
         sub = commands.add_parser(name, parents=[common], help=help_text)
         add_db_selection(sub, ("sqlite", "postgres", "mysql"))
-    logs = commands.add_parser("logs", parents=[common], help="Show an instance's log.")
+    logs = commands.add_parser("logs", parents=[common], help="Show an instance's component logs.")
+    logs.add_argument(
+        "component", nargs="?", choices=instances.LOG_NAMES, help="One component. Default: all of them."
+    )
     add_db_selection(logs, ("sqlite", "postgres", "mysql"))
     logs.add_argument("--lines", type=int, default=100)
     logs.add_argument("--follow", "-f", action="store_true")
@@ -190,6 +194,7 @@ def dispatch(args: argparse.Namespace, pytest_args: list[str], repo: Path) -> in
             examples=args.examples,
             background=args.background,
             timeout=args.timeout,
+            verbose=args.verbose,
         )
         if args.background:
             emit(result, args.json)
@@ -203,11 +208,10 @@ def dispatch(args: argparse.Namespace, pytest_args: list[str], repo: Path) -> in
         status = instance.status()
         emit(status, args.json)
         return 0 if status["healthy"] else 1
+    paths = instance.get_log_paths(args.component)
+    print(instances.tail(paths, args.lines), end="")
     if args.follow:
-        print(instances.tail(instance.log_file, args.lines), end="")
-        instances.follow(instance.log_file)
-    else:
-        print(instances.tail(instance.log_file, args.lines), end="")
+        instances.follow(paths)
     return 0
 
 

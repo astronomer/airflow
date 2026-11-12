@@ -44,6 +44,9 @@ INSTANCE_DATABASE = "airflow_instance"
 # The standard provider's workspace sources pull in core and the Task SDK, so examples can run.
 RUNTIME_MEMBER = "providers/standard"
 HEALTH_COMPONENTS = ("metadatabase", "scheduler", "triggerer", "dag_processor")
+# Log files standalone writes, one per component; "standalone" is its own database setup output.
+COMPONENTS = ("scheduler", "dag-processor", "api-server", "triggerer")
+LOG_NAMES = (*COMPONENTS, "standalone")
 STOP_TIMEOUT = 45
 
 
@@ -66,8 +69,18 @@ class Instance:
         return self.home / "instance.json"
 
     @property
-    def log_file(self) -> Path:
-        return self.home / "standalone.log"
+    def console_file(self) -> Path:
+        """What standalone prints, plus the UI build output."""
+        return self.home / "console.log"
+
+    @property
+    def log_dir(self) -> Path:
+        """Where standalone writes each component's output: ``[logging] base_log_folder``/standalone."""
+        return self.home / "logs" / "standalone"
+
+    def get_log_paths(self, name: str | None) -> dict[str, Path]:
+        """Return one component's log file, or every component's when ``name`` is None."""
+        return {log: self.log_dir / f"{log}.log" for log in ([name] if name else COMPONENTS)}
 
     def read_state(self) -> dict:
         try:
@@ -79,7 +92,12 @@ class Instance:
         return is_pid_alive(self.read_state().get("pid"))
 
     def build_env(self, *, port: int, dags_folder: Path, examples: bool) -> dict[str, str]:
-        env = {name: value for name, value in os.environ.items() if not name.startswith("AIRFLOW")}
+        env = {
+            name: value
+            for name, value in os.environ.items()
+            # VIRTUAL_ENV points at airflow-dev's own environment; uv warns about it in the runtime one.
+            if not name.startswith("AIRFLOW") and name != "VIRTUAL_ENV"
+        }
         env.update(
             AIRFLOW_HOME=str(self.home),
             AIRFLOW__API__PORT=str(port),
@@ -89,19 +107,20 @@ class Instance:
             # Fixed defaults (8793, 8794) would stop two instances from running side by side.
             AIRFLOW__LOGGING__WORKER_LOG_SERVER_PORT=str(get_free_port()),
             AIRFLOW__LOGGING__TRIGGER_LOG_SERVER_PORT=str(get_free_port()),
-            # standalone's output goes to a log file; keep it current for `airflow-dev logs`.
+            # In the background standalone's output goes to a file; keep it current.
             PYTHONUNBUFFERED="1",
         )
         if self.server:
             env["AIRFLOW__DATABASE__SQL_ALCHEMY_CONN"] = self.server.get_url(INSTANCE_DATABASE)
         return env
 
-    def build_command(self) -> list[str]:
+    def build_command(self, *, verbose: bool = False) -> list[str]:
         with_args = []
         if self.server:
             for requirement in self.server.get_driver_requirements():
                 with_args += ["--with", requirement]
-        return ["uv", "run", "--project", RUNTIME_MEMBER, *with_args, "airflow", "standalone"]
+        command = ["uv", "run", "--project", RUNTIME_MEMBER, *with_args, "airflow", "standalone"]
+        return [*command, "--verbose"] if verbose else command
 
     def get_health(self) -> dict | None:
         port = self.read_state().get("port")
@@ -123,7 +142,8 @@ class Instance:
             "url": f"http://127.0.0.1:{state['port']}" if state.get("port") else None,
             "pid": state.get("pid"),
             "home": str(self.home),
-            "log": str(self.log_file),
+            "logs": str(self.log_dir),
+            "console": str(self.console_file),
             "dags_folder": state.get("dags_folder"),
             "database": self.server.get_url(INSTANCE_DATABASE) if self.server else "sqlite (in home)",
             "health": health,
@@ -164,7 +184,7 @@ def build_ui(repo: Path, *, log) -> None:
         )
         bin_dirs.insert(0, str(shim_dir))
     env = {
-        **os.environ,
+        **{name: value for name, value in os.environ.items() if name != "VIRTUAL_ENV"},
         "PATH": os.pathsep.join([*bin_dirs, os.environ["PATH"]]),
         "COREPACK_ENABLE_DOWNLOAD_PROMPT": "0",
     }
@@ -194,6 +214,7 @@ def start(
     examples: bool,
     background: bool,
     timeout: int,
+    verbose: bool = False,
 ) -> dict:
     if instance.is_running():
         raise DevError(f"Instance {instance.name} is already running.", hint="airflow-dev status")
@@ -202,8 +223,8 @@ def start(
     instance.home.mkdir(parents=True, exist_ok=True)
     dags = (dags_folder or instance.home / "dags").resolve()
     dags.mkdir(parents=True, exist_ok=True)
-    with instance.log_file.open("a") as log:
-        build_ui(instance.repo, log=log if background else sys.stderr)
+    with instance.console_file.open("a") as log:
+        build_ui(instance.repo, log=log)
     if instance.server:
         instance.server.ensure_running()
         if INSTANCE_DATABASE not in instance.server.list_databases(INSTANCE_DATABASE):
@@ -211,7 +232,7 @@ def start(
     env = instance.build_env(port=port, dags_folder=dags, examples=examples)
     state = {"port": port, "dags_folder": str(dags), "backend": instance.backend}
     if not background:
-        process = subprocess.Popen(instance.build_command(), cwd=instance.repo, env=env)
+        process = subprocess.Popen(instance.build_command(verbose=verbose), cwd=instance.repo, env=env)
         # Foreground: the terminal's job group, so `stop` from another shell ends this job too.
         state["pgid"] = os.getpgid(0)
         instance.state_file.write_text(json.dumps({**state, "pid": process.pid}))
@@ -222,9 +243,9 @@ def start(
             return {"exit_code": process.wait()}
         finally:
             instance.state_file.unlink(missing_ok=True)
-    with instance.log_file.open("a") as log:
+    with instance.console_file.open("a") as log:
         process = subprocess.Popen(
-            instance.build_command(),
+            instance.build_command(verbose=verbose),
             cwd=instance.repo,
             env=env,
             stdin=subprocess.DEVNULL,
@@ -238,7 +259,7 @@ def start(
         if process.poll() is not None:
             raise DevError(
                 f"airflow standalone exited with code {process.returncode}.",
-                hint=f"See {instance.log_file}.",
+                hint=f"See {instance.console_file} and the logs in {instance.log_dir}.",
                 exit_code=3,
             )
         if is_healthy(instance.get_health()):
@@ -249,7 +270,7 @@ def start(
     instance.state_file.unlink(missing_ok=True)
     raise DevError(
         f"Instance {instance.name} was not healthy within {timeout}s and was stopped.",
-        hint=f"See {instance.log_file}.",
+        hint=f"See {instance.console_file} and the logs in {instance.log_dir}.",
         exit_code=3,
     )
 
@@ -294,23 +315,38 @@ def stop(instance: Instance) -> bool:
     return True
 
 
-def tail(path: Path, lines: int) -> str:
-    try:
-        return "".join(path.read_text(errors="replace").splitlines(keepends=True)[-lines:])
-    except OSError:
-        return ""
-
-
-def follow(path: Path) -> None:
-    with path.open(errors="replace") as file:
-        file.seek(0, os.SEEK_END)
+def tail(paths: dict[str, Path], lines: int) -> str:
+    """Return the last ``lines`` of each file, under a header when there is more than one."""
+    parts = []
+    for name, path in paths.items():
         try:
-            while True:
-                line = file.readline()
-                if line:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
-                else:
-                    time.sleep(0.5)
-        except KeyboardInterrupt:
-            return
+            text = "".join(path.read_text(errors="replace").splitlines(keepends=True)[-lines:])
+        except OSError:
+            text = ""
+        parts.append(f"==> {name} <==\n{text}" if len(paths) > 1 else text)
+    return "\n".join(parts)
+
+
+def follow(paths: dict[str, Path]) -> None:
+    """Print lines as they are added, prefixed with the component when following several."""
+    files = {}
+    for name, path in paths.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch(exist_ok=True)
+        files[name] = path.open(errors="replace")
+        files[name].seek(0, os.SEEK_END)
+    try:
+        while True:
+            wrote = False
+            for name, file in files.items():
+                while line := file.readline():
+                    sys.stdout.write(f"{name:13} | {line}" if len(files) > 1 else line)
+                    wrote = True
+            sys.stdout.flush()
+            if not wrote:
+                time.sleep(0.5)
+    except KeyboardInterrupt:
+        return
+    finally:
+        for file in files.values():
+            file.close()

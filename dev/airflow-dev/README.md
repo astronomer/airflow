@@ -55,7 +55,7 @@ airflow-dev test providers/standard/tests/unit/standard/operators/test_branch.py
 airflow-dev start --backend postgres --examples      # foreground; Ctrl+C stops it
 airflow-dev start --backend postgres --background    # returns once every component is healthy
 airflow-dev status --backend postgres
-airflow-dev logs --backend postgres --follow
+airflow-dev logs scheduler --backend postgres --follow
 airflow-dev stop --backend postgres
 
 airflow-dev db status                               # servers, ports, leftover test databases
@@ -91,6 +91,14 @@ the selected server (or uses SQLite in the instance home), and runs
 `uv run --project providers/standard airflow standalone` with LocalExecutor and no login. Each
 backend and version has its own home under `.build/airflow-dev/instances/` and keeps its data across
 stops. `--dags-folder` points it at your Dags; otherwise it uses an empty folder in its home.
+
+The screen shows only standalone's own messages, component errors, and a ready banner with the URL
+and login. Each component's output goes to its own file in `logs/standalone/` in the instance home
+(`scheduler.log`, `dag-processor.log`, `api-server.log`, `triggerer.log`, and `standalone.log` for
+database setup); the previous run's files are kept with a `.1` suffix. `airflow-dev logs` shows them
+all, `airflow-dev logs scheduler --follow` one of them, and `start --verbose` streams everything to the
+screen instead. The UI build output and, in the background, standalone's own output go to
+`console.log` in the instance home.
 
 ## Differences from CI
 

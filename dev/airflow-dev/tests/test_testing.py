@@ -68,14 +68,19 @@ def test_resolve_targets_rejects_missing_paths(fake_repo):
 
 @mock.patch.dict(
     os.environ,
-    {"AIRFLOW_HOME": "/elsewhere", "AIRFLOW__CORE__EXECUTOR": "CeleryExecutor", "PYTEST_ADDOPTS": "-x"},
+    {
+        "AIRFLOW_HOME": "/elsewhere",
+        "AIRFLOW__CORE__EXECUTOR": "CeleryExecutor",
+        "PYTEST_ADDOPTS": "-x",
+        "VIRTUAL_ENV": "dev/airflow-dev/.venv",
+    },
 )
 def test_build_env_clears_inherited_airflow_settings(fake_repo, server):
     run = PytestRun(fake_repo, "airflow-core", ["t.py"], "postgres", 2, [], server)
 
     env = run.build_env()
 
-    assert not {"AIRFLOW_HOME", "AIRFLOW__CORE__EXECUTOR", "PYTEST_ADDOPTS"} & env.keys()
+    assert not {"AIRFLOW_HOME", "AIRFLOW__CORE__EXECUTOR", "PYTEST_ADDOPTS", "VIRTUAL_ENV"} & env.keys()
     assert env["BACKEND"] == "postgres"
     assert env["AIRFLOW_DEV_HOME_TEMPLATE"] == str(run.home_root / "{worker}")
     assert env["AIRFLOW_DEV_DB_URL_TEMPLATE"] == (

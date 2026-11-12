@@ -26,7 +26,7 @@ import pytest
 from airflow_dev import instance as instances
 from airflow_dev.db import MySQL
 from airflow_dev.discovery import Installation
-from airflow_dev.instance import Instance, is_healthy, is_port_free, stop
+from airflow_dev.instance import Instance, is_healthy, is_port_free, stop, tail
 from airflow_dev.repo import DevError
 
 HEALTHY = {name: {"status": "healthy"} for name in instances.HEALTH_COMPONENTS}
@@ -53,11 +53,12 @@ def test_is_healthy(health, expected):
     assert is_healthy(health) is expected
 
 
-@mock.patch.dict(os.environ, {"AIRFLOW__CORE__EXECUTOR": "CeleryExecutor"})
+@mock.patch.dict(os.environ, {"AIRFLOW__CORE__EXECUTOR": "CeleryExecutor", "VIRTUAL_ENV": "x/.venv"})
 def test_build_env_points_at_the_instance_database(mysql_instance, tmp_path):
     env = mysql_instance.build_env(port=8081, dags_folder=tmp_path, examples=False)
 
     assert "AIRFLOW__CORE__EXECUTOR" not in env
+    assert "VIRTUAL_ENV" not in env
     assert env["AIRFLOW_HOME"] == str(mysql_instance.home)
     assert env["AIRFLOW__API__PORT"] == "8081"
     assert env["AIRFLOW__CORE__LOAD_EXAMPLES"] == "False"
@@ -80,6 +81,34 @@ def test_build_command_runs_standalone_with_drivers(mysql_instance):
         "airflow",
         "standalone",
     ]
+
+
+def test_build_command_passes_verbose(mysql_instance):
+    assert mysql_instance.build_command(verbose=True)[-3:] == ["airflow", "standalone", "--verbose"]
+
+
+def test_logs_live_in_the_instance_home(mysql_instance):
+    log_dir = mysql_instance.home / "logs" / "standalone"
+
+    assert mysql_instance.get_log_paths("scheduler") == {"scheduler": log_dir / "scheduler.log"}
+    assert list(mysql_instance.get_log_paths(None)) == [
+        "scheduler",
+        "dag-processor",
+        "api-server",
+        "triggerer",
+    ]
+    assert mysql_instance.console_file == mysql_instance.home / "console.log"
+    assert mysql_instance.status()["logs"] == str(log_dir)
+
+
+def test_tail_labels_each_file_only_when_showing_several(tmp_path):
+    (tmp_path / "a.log").write_text("1\n2\n3\n")
+    (tmp_path / "b.log").write_text("x\n")
+
+    assert tail({"a": tmp_path / "a.log"}, 2) == "2\n3\n"
+    assert tail({"a": tmp_path / "a.log", "b": tmp_path / "b.log", "c": tmp_path / "c.log"}, 1) == (
+        "==> a <==\n3\n\n==> b <==\nx\n\n==> c <==\n"
+    )
 
 
 def test_sqlite_instance_keeps_the_default_database(fake_repo, tmp_path):
@@ -111,3 +140,19 @@ def test_start_refuses_a_busy_port(mysql_instance):
             instances.start(
                 mysql_instance, port=port, dags_folder=None, examples=False, background=True, timeout=1
             )
+
+
+def test_follow_prefixes_new_lines_when_following_several(tmp_path, capsys):
+    paths = {"scheduler": tmp_path / "scheduler.log", "triggerer": tmp_path / "triggerer.log"}
+    paths["scheduler"].write_text("old line\n")
+    sleeps = iter(
+        [
+            lambda: paths["triggerer"].write_text("new line\n"),
+            lambda: (_ for _ in ()).throw(KeyboardInterrupt),
+        ]
+    )
+
+    with mock.patch.object(instances.time, "sleep", side_effect=lambda _: next(sleeps)()):
+        instances.follow(paths)
+
+    assert capsys.readouterr().out == "triggerer     | new line\n"

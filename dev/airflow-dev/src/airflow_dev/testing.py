@@ -41,7 +41,14 @@ from airflow_dev.repo import DevError, find_member, get_pinned_requirements
 
 BACKENDS = ("none", "sqlite", "postgres", "mysql")
 NO_DATABASE_MEMBERS = {"task-sdk"}
-CLEARED_VARIABLES = {"BACKEND", "PYTEST_ADDOPTS", "_AIRFLOW_SKIP_DB_TESTS", "_AIRFLOW_RUN_DB_TESTS_ONLY"}
+# VIRTUAL_ENV points at airflow-dev's own environment; uv warns about it when running the member's.
+CLEARED_VARIABLES = {
+    "BACKEND",
+    "PYTEST_ADDOPTS",
+    "VIRTUAL_ENV",
+    "_AIRFLOW_SKIP_DB_TESTS",
+    "_AIRFLOW_RUN_DB_TESTS_ONLY",
+}
 # Test dependencies a member's own dependency groups leave to the CI image. Without rfc3339-validator,
 # jsonschema skips the date-time format check that task-sdk's Param tests expect to fail.
 EXTRA_TEST_REQUIREMENTS = {"task-sdk": ["rfc3339-validator"]}
