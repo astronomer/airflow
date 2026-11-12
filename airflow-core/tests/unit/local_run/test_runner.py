@@ -715,6 +715,73 @@ def test_database_from_newer_airflow_is_refused(project):
         run_dag_file(source)
 
 
+def write_project_secrets_backend(project: Path, backend: str, **backend_kwargs: str) -> None:
+    # A JSON string is a TOML string too, but a JSON object is not a TOML table.
+    kwargs = ", ".join(f"{key} = {json.dumps(value)}" for key, value in backend_kwargs.items())
+    with (project / "pyproject.toml").open("a") as pyproject:
+        pyproject.write(f"\n[tool.airflow.secrets]\nbackend = {json.dumps(backend)}\n")
+        pyproject.write(f"backend_kwargs = {{ {kwargs} }}\n")
+
+
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_project_secrets_backend_is_looked_in_after_the_run_files(project, tmp_path, debug):
+    backend_connections = tmp_path / "backend-connections.json"
+    backend_connections.write_text(json.dumps({"warehouse": "sqlite://backend", "api": "http://backend"}))
+    backend_variables = tmp_path / "backend-variables.json"
+    backend_variables.write_text(json.dumps({"region": "eu", "tier": "dev"}))
+    write_project_secrets_backend(
+        project,
+        "airflow.secrets.local_filesystem.LocalFilesystemBackend",
+        connections_file_path=str(backend_connections),
+        variables_file_path=str(backend_variables),
+    )
+    run_connections = tmp_path / "run-connections.json"
+    run_connections.write_text(json.dumps({"api": "http://run"}))
+    run_variables = tmp_path / "run-variables.json"
+    run_variables.write_text(json.dumps({"tier": "local"}))
+    source = write_dag_file(
+        project,
+        "secrets.py",
+        """
+        from airflow.sdk import Connection, Variable, dag, task
+
+        REGION = Variable.get("region")
+
+        @task
+        def read():
+            return [
+                REGION,
+                Variable.get("tier"),
+                Connection.get("warehouse").host,
+                Connection.get("api").host,
+            ]
+
+        @dag(schedule=None)
+        def secrets():
+            read()
+
+        workflow = secrets()
+        """,
+    )
+
+    result = run_dag_file(source, connections_file=run_connections, variables_file=run_variables, debug=debug)
+
+    assert result.output("read") == ["eu", "local", "backend", "run"]
+
+
+def test_project_secrets_backend_that_cannot_be_created_stops_the_run(project):
+    write_project_secrets_backend(project, "missing_provider.secrets.Backend")
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+
+    with pytest.raises(
+        LocalRunError,
+        match=r"The secrets backend missing_provider\.secrets\.Backend that pyproject\.toml names could not "
+        r"be set up: ModuleNotFoundError: No module named 'missing_provider'",
+    ):
+        run_dag_file(source)
+    assert not (project / ".airflow" / "airflow.db").exists()
+
+
 GROUPED = """
 from airflow.sdk import dag, task, task_group
 

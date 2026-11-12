@@ -36,6 +36,7 @@ import time_machine
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
     INTERRUPT_GRACE_SECONDS,
+    PROJECT_SECRETS_BACKEND,
     PROTOCOL_VERSION,
     DagRunResult,
     build_child_environment,
@@ -224,6 +225,64 @@ class TestBuildChildEnvironment:
 
         assert env["AIRFLOW__SECRETS__BACKEND"] == "airflow.secrets.local_filesystem.LocalFilesystemBackend"
         assert json.loads(env["AIRFLOW__SECRETS__BACKEND_KWARGS"]) == expected_kwargs
+
+    @pytest.mark.parametrize(
+        ("files", "file_kwargs"),
+        [
+            pytest.param({}, {}, id="no-files"),
+            pytest.param(
+                {"connections_file": Path("/c.yaml"), "variables_file": Path("/v.json")},
+                {"connections_file_path": "/c.yaml", "variables_file_path": "/v.json"},
+                id="files",
+            ),
+        ],
+    )
+    def test_project_secrets_backend_is_looked_in_after_the_resource_files(
+        self, tmp_path, files, file_kwargs
+    ):
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.airflow.secrets]\nbackend = "vault.Backend"\nbackend_kwargs = { url = "https://dev" }\n'
+        )
+        base = {
+            "AIRFLOW__SECRETS__BACKEND": "deployment.Backend",
+            "AIRFLOW__SECRETS__BACKEND_KWARGS": '{"url": "https://prod"}',
+            "AIRFLOW__SECRETS__BACKEND_KWARG__ROLE_ID": "developer",
+        }
+
+        env = build_child_environment(base, home=tmp_path, root=tmp_path, **files)
+
+        assert env["AIRFLOW__SECRETS__BACKEND"] == PROJECT_SECRETS_BACKEND
+        assert json.loads(env["AIRFLOW__SECRETS__BACKEND_KWARGS"]) == {
+            "backend": "vault.Backend",
+            "backend_kwargs": {"url": "https://dev"},
+            **file_kwargs,
+        }
+        assert env["AIRFLOW__SECRETS__BACKEND_KWARG__ROLE_ID"] == "developer"
+
+    @pytest.mark.parametrize(
+        ("pyproject", "error"),
+        [
+            pytest.param("[tool.airflow.secrets\n", "is not valid TOML", id="invalid-toml"),
+            pytest.param('[tool.airflow]\nsecrets = "vault.Backend"\n', "takes backend", id="not-a-table"),
+            pytest.param("[tool.airflow.secrets]\nbackend_kwargs = {}\n", "takes backend", id="no-backend"),
+            pytest.param("[tool.airflow.secrets]\nbackend = 1\n", "takes backend", id="backend-not-a-string"),
+            pytest.param(
+                '[tool.airflow.secrets]\nbackend = "vault.Backend"\nbackend_kwargs = "url"\n',
+                "takes backend",
+                id="kwargs-not-a-table",
+            ),
+            pytest.param(
+                '[tool.airflow.secrets]\nbackend = "vault.Backend"\nbackend_kwarg = {}\n',
+                "takes backend",
+                id="unknown-key",
+            ),
+        ],
+    )
+    def test_invalid_project_secrets_backend_is_refused(self, tmp_path, pyproject, error):
+        (tmp_path / "pyproject.toml").write_text(pyproject)
+
+        with pytest.raises(LocalRunError, match=error):
+            build_child_environment({}, home=tmp_path, root=tmp_path)
 
 
 class TestWaitForChild:
