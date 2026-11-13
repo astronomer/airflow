@@ -78,8 +78,8 @@ class StandaloneCommand:
         StandaloneCommand(verbose=args.verbose).run()
 
     def __init__(self, verbose: bool = False):
-        self.subcommands = {}
-        self.output_queue = deque()
+        self.subcommands: dict[str, SubCommand] = {}
+        self.output_queue: deque[tuple[str, bytes]] = deque()
         self.ready_time = None
         self.ready_delay = 3
         self.api_server_port = None
