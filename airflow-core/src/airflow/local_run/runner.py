@@ -33,6 +33,7 @@ import math
 import os
 import pickle
 import re
+import reprlib
 import signal
 import sys
 import threading
@@ -106,6 +107,14 @@ RUN_CREATION_ATTEMPTS = 5
 
 # The locks this process holds on the runs it executes; the operating system releases them however it ends.
 _run_locks: list[TextIO] = []
+
+# How ``airflow run`` shows each output; it cannot load the classes the Dag file defines, which it never imports.
+# Python 3.11's constructor takes no arguments.
+_output_repr = reprlib.Repr()
+_output_repr.maxstring = 80
+_output_repr.maxother = 80
+_output_repr.maxlist = 10
+_output_repr.maxdict = 10
 
 
 class LocalRunSetupError(Exception):
@@ -1357,7 +1366,8 @@ def collect_result(
     """
     Read the run's outcome; each output is pickled on its own, so one the caller cannot load spares the rest.
 
-    Outputs are read the way a downstream task reads them. ``ran`` holds the task instances this process ran.
+    Outputs are read the way a downstream task reads them, and each comes with a short repr made here, where
+    the Dag file is imported. ``ran`` holds the task instances this process ran.
     """
     session.expire_all()
     dag_run = session.scalars(select(DagRun).where(DagRun.dag_id == dag_id, DagRun.run_id == run_id)).one()
@@ -1369,11 +1379,14 @@ def collect_result(
     if dag_module is not None:
         allow_classes_defined_in(dag_module)
     outputs: dict[tuple[str, int, str], bytes] = {}
+    output_reprs: dict[tuple[str, int, str], str] = {}
     output_errors: dict[tuple[str, int, str], str] = {}
     for row in session.scalars(XComModel.get_many(run_id=run_id, dag_ids=dag_id)):
         key = (row.task_id, row.map_index, row.key)
         try:
-            outputs[key] = pickle.dumps(XCom.deserialize_value(row))
+            value = XCom.deserialize_value(row)
+            output_reprs[key] = _output_repr.repr(value)
+            outputs[key] = pickle.dumps(value)
         except Exception as e:
             output_errors[key] = f"{type(e).__name__}: {e}"
     return {
@@ -1383,6 +1396,7 @@ def collect_result(
         "state": _state_name(dag_run.state),
         "task_states": task_states,
         "outputs": outputs,
+        "output_reprs": output_reprs,
         "output_errors": output_errors,
         "dag_module": dag_module,
         "failures": failures,

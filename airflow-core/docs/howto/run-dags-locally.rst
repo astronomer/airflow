@@ -123,9 +123,10 @@ To run a Dag from the command line instead, without a ``__main__`` block:
 
     uv run airflow run pipeline.py
 
-``airflow run`` prints the same summary, then each task's output. It takes ``--dag-id`` for a file that
-defines several Dags, ``--conf``, ``--connections-file``, ``--variables-file``, ``--debug`` and
-``--no-retries``.
+``airflow run`` prints the same summary, then what each task returned. It leaves out the other
+XComs tasks push, such as an agent's token usage: ``result.output(task_id, key=...)`` returns them in Python,
+and the UI's **XCom** tab shows them. ``airflow run`` takes ``--dag-id`` for a file that defines several Dags,
+``--conf``, ``--connections-file``, ``--variables-file``, ``--debug`` and ``--no-retries``.
 
 ``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
 says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the
@@ -157,7 +158,7 @@ gets the outputs they returned in the earlier run.
 
 The task runs as a new try in the latest run that has the outputs it needs, the way **Clear** reruns a task
 in the UI. The new try runs the file as it is now, and the earlier try and its log stay in the history.
-``airflow run`` prints the outputs of the tasks it ran. When one of them fails, the run is recorded as failed
+``airflow run`` prints what the tasks it ran returned. When one of them fails, the run is recorded as failed
 and ``airflow run`` exits with 1, whatever the states of the tasks it left alone.
 
 ``--task`` takes a task ID, or one mapped try as the run prints it: ``--task 'double[1]'``. Repeat it to

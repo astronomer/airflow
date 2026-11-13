@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import re
-import reprlib
 from typing import Any
 
 from airflow.local_run.exit_codes import (
@@ -42,12 +41,6 @@ from airflow.sdk.exceptions import (
 MAX_PRINTED_OUTPUTS = 10
 # How the run labels one map index of a task, e.g. double[1].
 TASK_MARKER = re.compile(r"(?P<task_id>.+)\[(?P<map_index>\d+)\]")
-
-_output_repr = reprlib.Repr()
-_output_repr.maxstring = 80
-_output_repr.maxother = 80
-_output_repr.maxlist = 10
-_output_repr.maxdict = 10
 
 
 def run(args) -> None:
@@ -147,21 +140,25 @@ def parse_inputs(values: list[str] | None) -> dict[str, Any] | None:
 
 
 def print_outputs(result: DagRunResult, *, only_ran: bool = False) -> None:
-    """Print the run's outputs; with ``only_ran``, those of the task instances this command ran."""
+    """
+    Print what the run's tasks returned; with ``only_ran``, what the task instances this command ran returned.
+
+    The other XComs that tasks push, such as an agent's usage, stay in the result. Each output is shown as the
+    run's process showed it: this process has not imported the Dag file, so it cannot load the file's classes.
+    """
     keys = sorted(
-        key
-        for key in {*result.outputs, *result.output_errors}
-        if not only_ran or (key[0], key[1]) in result.ran
+        (task_id, map_index)
+        for task_id, map_index, key in {*result.output_reprs, *result.output_errors}
+        if key == "return_value" and (not only_ran or (task_id, map_index) in result.ran)
     )
     if keys:
         print("Outputs:")
-    for task_id, map_index, key in keys[:MAX_PRINTED_OUTPUTS]:
+    for task_id, map_index in keys[:MAX_PRINTED_OUTPUTS]:
         label = task_id if map_index < 0 else f"{task_id}[{map_index}]"
-        if key != "return_value":
-            label += f" {key}"
-        if (error := result.output_errors.get((task_id, map_index, key))) is not None:
-            print(f"  {label}: not loaded ({error})")
+        output = (task_id, map_index, "return_value")
+        if output in result.output_reprs:
+            print(f"  {label} = {result.output_reprs[output]}")
         else:
-            print(f"  {label} = {_output_repr.repr(result.outputs[task_id, map_index, key])}")
+            print(f"  {label}: not loaded ({result.output_errors[output]})")
     if len(keys) > MAX_PRINTED_OUTPUTS:
         print(f"  ... {len(keys) - MAX_PRINTED_OUTPUTS} more outputs")
