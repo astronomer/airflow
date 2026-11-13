@@ -154,30 +154,35 @@ Run the Dag:
 
     uv run triage.py
 
-The terminal shows a line for each task, the statements the database hook runs, and
-then the agent's answer. This output is from a stand-in model, with the seed's rows
+The terminal shows a line for each task, the statements the database hook runs, each
+tool call the agent makes, a summary of the model's run with its token counts, and then
+the agent's answer. This output is from a stand-in model, with the seed's rows
 shortened; your model writes its own query and answer:
 
 .. code-block:: text
 
-    Running Dag 'example_agent_local_run' from triage.py (run manual__2026-11-13T07:20:33.488058+00:00)
+    Running Dag 'example_agent_local_run' from triage.py (run manual__2026-11-13T14:38:27.132303+00:00)
       seed_tickets | SqliteHook: Running statement: CREATE TABLE IF NOT EXISTS tickets (id INTEGER PRIMARY KEY, subject TEXT, status TEXT, customer_reply TEXT), parameters: None
       seed_tickets | SqliteHook: Running statement: INSERT OR IGNORE INTO tickets VALUES (1, ...), (2, ...), (3, ...), parameters: None
       seed_tickets | SqliteHook: Rows affected: 3
       ✓ seed_tickets
+      triage_tickets | Tool call: query
       triage_tickets | SqliteHook: Running statement: SELECT id, status, customer_reply FROM tickets WHERE status = 'open', parameters: None
+      triage_tickets | Tool call: query
+      triage_tickets | Tool call: close_ticket
       triage_tickets | SqliteHook: Running statement: UPDATE tickets SET status = 'closed' WHERE id = ? AND status = 'open', parameters: (1,)
       triage_tickets | SqliteHook: Rows affected: 1
+      triage_tickets | LLM run complete: model=function:triage:, requests=4, tool_calls=2, input_tokens=415, output_tokens=103, total_tokens=518
       ✓ triage_tickets
-    Succeeded in 4.9s (12.2s total). History: /path/to/tickets/.airflow
+    Succeeded in 9.0s (17.7s total). History: /path/to/tickets/.airflow
     Closed ticket 1; ticket 2 is still open.
 
 ``uv run airflow run triage.py`` runs it too, and takes ``--no-history``, ``--debug``
 and ``--connections-file`` like any local run.
 
-The terminal does not show the agent's tool calls: a local run keeps Airflow's
-informational lines for the task's log. To see them, start the UI on the project's
-history:
+The terminal names each tool call as it starts, but not how long the call took or how
+it ended: the second ``query`` call above is a write the toolset refused. To see what
+happened in each call, start the UI on the project's history:
 
 .. code-block:: bash
 
@@ -194,8 +199,8 @@ long the call took, the statement the hook ran, or why the call was refused:
 The last group, ``LLM run complete``, holds the token counts and the order of the calls,
 such as ``Tool call sequence: query -> query -> close_ticket``. The arguments the model
 passed are logged at DEBUG, so the log does not show them. A run with ``--no-history``
-deletes the task log with the rest of its history, so its tool calls are not kept
-anywhere.
+deletes the task log with the rest of its history, so the terminal is the only place
+its tool calls show.
 
 Test an agent task without calling a model
 ------------------------------------------

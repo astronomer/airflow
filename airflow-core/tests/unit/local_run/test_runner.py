@@ -266,6 +266,59 @@ def test_first_run_reports_progress_without_airflow_internals(project, capfd):
         assert noise not in err
 
 
+# Appended to the Dag file, which each try imports, so that the agent runs on these steps without a model.
+SCRIPTED_AGENT_MODEL = """
+from unittest import mock
+
+from pydantic_ai.messages import ModelResponse, RetryPromptPart, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai.models.function import FunctionModel
+
+from airflow.providers.common.ai.hooks.pydantic_ai import PydanticAIHook
+
+STEPS = [
+    ToolCallPart("query", {"sql": "SELECT id, status, customer_reply FROM tickets WHERE status = 'open'"}),
+    ToolCallPart("query", {"sql": "UPDATE tickets SET status = 'closed'"}),
+    ToolCallPart("close_ticket", {"ticket_id": 1}),
+]
+
+
+def triage(messages, info):
+    answered = [p for m in messages for p in m.parts if isinstance(p, (ToolReturnPart, RetryPromptPart))]
+    if len(answered) < len(STEPS):
+        return ModelResponse(parts=[STEPS[len(answered)]])
+    return ModelResponse(parts=[TextPart("Closed ticket 1.")])
+
+
+mock.patch.object(PydanticAIHook, "get_conn", autospec=True, return_value=FunctionModel(triage)).start()
+"""
+
+
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_agent_tool_calls_are_shown_on_the_terminal(project, monkeypatch, capfd, debug):
+    pytest.importorskip("airflow.providers.sqlite")
+    example = pytest.importorskip("airflow.providers.common.ai.example_dags.example_agent_local_run")
+    monkeypatch.setenv(
+        "AIRFLOW_CONN_TICKETS_DB", json.dumps({"conn_type": "sqlite", "host": str(project / "tickets.db")})
+    )
+    monkeypatch.setenv(
+        "AIRFLOW_CONN_PYDANTICAI_DEFAULT",
+        json.dumps({"conn_type": "pydanticai", "extra": {"model": "openai:gpt-5"}}),
+    )
+    source = project / "triage.py"
+    source.write_text(Path(example.__file__).read_text() + SCRIPTED_AGENT_MODEL)
+
+    result = run_dag_file(source, keep_history=False, debug=debug)
+
+    assert result.output("triage_tickets") == "Closed ticket 1."
+    err = capfd.readouterr().err
+    for line in (
+        "  triage_tickets | Tool call: query\n",
+        "  triage_tickets | Tool call: close_ticket\n",
+        "  triage_tickets | LLM run complete: model=function:triage:, requests=4, tool_calls=2, ",
+    ):
+        assert line in err
+
+
 @pytest.mark.parametrize(
     ("debug", "parse_event"),
     [

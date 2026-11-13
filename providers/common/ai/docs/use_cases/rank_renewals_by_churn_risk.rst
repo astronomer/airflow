@@ -154,7 +154,7 @@ Run it:
     uv run airflow run churn.py --connections-file connections.yaml
 
 The terminal shows each evaluation's checks as they run. This output is from a scripted model,
-with the hook's statements left out:
+with the hook's statements, the agents' tool calls and the model-run summaries left out:
 
 .. code-block:: text
 

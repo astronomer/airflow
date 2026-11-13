@@ -302,8 +302,9 @@ it to start a new history.
 To run without keeping anything, for example in CI or a read-only checkout, add ``--no-history`` to
 ``airflow run``, or ``keep_history=False`` to ``workflow.run()``. The run gets a database of its own, deleted
 when it ends, and leaves ``.airflow/`` alone. Its summary ends with ``No history kept``, and the task logs go
-with the database. The terminal keeps your tasks' own log lines, warnings and each failure, but not Airflow's
-informational lines, such as an agent's tool calls. With no earlier runs to take outputs from, ``--task`` runs
+with the database. The terminal keeps your tasks' own log lines, warnings and each failure, and the heading of
+each group of lines in a task's log, such as an agent's ``Tool call: query``, but not Airflow's other
+informational lines. With no earlier runs to take outputs from, ``--task`` runs
 the selected tasks in a new run with the tasks they need, or alone with the outputs you give with ``--input``,
 and ``--run-id`` is refused.
 
@@ -370,9 +371,10 @@ Run an agent
 An agent task from the Common AI provider runs locally like any other task.
 :doc:`Develop and test AI tasks locally <apache-airflow-providers-common-ai:local_development>` has a Dag
 whose agent reads a SQLite database in the project and may close a ticket in it, and change nothing else,
-with the connections it needs and how to run it. Each tool call the agent makes is in the task's log, which
-``airflow standalone --project`` shows. The terminal shows the statements the agent's database hook runs, but
-not the tool calls.
+with the connections it needs and how to run it. The terminal names each tool call the agent makes as it starts,
+such as ``triage_tickets | Tool call: query``, and shows the statements its database hook runs and the model's
+token counts. The task's log, which ``airflow standalone --project`` shows, also has how long each call took
+and how it ended.
 :doc:`apache-airflow-providers-common-ai:use_cases/rank_renewals_by_churn_risk` checks each step of an agent Dag
 with its own task, and reruns one step or one check with ``--task`` and ``--input``.
 
