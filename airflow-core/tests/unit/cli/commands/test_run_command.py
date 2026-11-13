@@ -16,7 +16,6 @@
 # under the License.
 from __future__ import annotations
 
-import runpy
 from pathlib import Path
 from unittest import mock
 
@@ -44,6 +43,7 @@ def make_result(state: str = "success", outputs: dict | None = None, ran: set | 
         task_states={("total", -1): state},
         project_home=Path("/project/.airflow"),
         outputs=outputs,
+        output_reprs={key: repr(value) for key, value in outputs.items()},
         ran=frozenset(ran) if ran is not None else frozenset((t, m) for t, m, _ in outputs),
     )
 
@@ -52,16 +52,6 @@ class TestRunCommand:
     @classmethod
     def setup_class(cls):
         cls.parser = cli_parser.get_parser()
-
-    @mock.patch.object(run_command.reprlib, "Repr", autospec=True)
-    def test_import_supports_python_311_repr_constructor(self, mock_repr, capsys):
-        # Python 3.11's Repr constructor accepts no arguments.
-        mock_repr.side_effect = lambda: run_command._output_repr
-
-        namespace = runpy.run_path(run_command.__file__)
-        namespace["print_outputs"](make_result())
-
-        assert capsys.readouterr().out == "Outputs:\n  total = 12\n"
 
     @pytest.mark.parametrize(
         ("extra_args", "debug", "keep_history", "retries"),
@@ -322,33 +312,45 @@ class TestRunCommand:
         # The run itself already reported failure or cancellation.
         assert capsys.readouterr() == (expected_out, expected_err)
 
-    def test_print_outputs_is_bounded(self, capsys):
-        outputs = {(f"task_{i:02}", -1, "return_value"): "x" * 200 for i in range(12)}
+    def test_print_outputs_prints_return_values_only_and_is_bounded(self, capsys):
+        outputs: dict[tuple[str, int, str], object] = {
+            (f"task_{i:02}", -1, "return_value"): i for i in range(12)
+        }
+        outputs[("agent", -1, "usage")] = {"requests": 1}
+        outputs[("mapped", 3, "return_value")] = 3
         outputs[("mapped", 3, "custom")] = 1
 
         run_command.print_outputs(make_result(outputs=outputs))
 
         lines = capsys.readouterr().out.splitlines()
-        assert lines[:2] == ["Outputs:", "  mapped[3] custom = 1"]
-        assert len(lines[2]) < 100
+        assert lines[:3] == ["Outputs:", "  mapped[3] = 3", "  task_00 = 0"]
         assert lines[-1] == "  ... 3 more outputs"
+        assert len(lines) == 12
 
-    def test_print_outputs_lists_outputs_it_could_not_load(self, capsys):
+    def test_print_outputs_shows_outputs_this_process_cannot_load_as_the_run_showed_them(self, capsys):
         result = DagRunResult(
             dag_id="example",
             run_id="manual__1",
             state="success",
-            task_states={("summary", -1): "success", ("total", -1): "success"},
+            task_states={("report", -1): "success", ("summary", -1): "success", ("total", -1): "success"},
             project_home=Path("/project/.airflow"),
             outputs={("total", -1, "return_value"): 12},
-            output_errors={("summary", -1, "return_value"): "LocalRunError: Summary is defined in dag.py"},
+            output_reprs={
+                ("summary", -1, "return_value"): "Summary(rows=3)",
+                ("total", -1, "return_value"): "12",
+            },
+            output_errors={
+                ("report", -1, "return_value"): "ModuleNotFoundError: No module named 'reports'",
+                ("summary", -1, "return_value"): "LocalRunError: Summary is defined in dag.py",
+            },
         )
 
         run_command.print_outputs(result)
 
         assert capsys.readouterr().out.splitlines() == [
             "Outputs:",
-            "  summary: not loaded (LocalRunError: Summary is defined in dag.py)",
+            "  report: not loaded (ModuleNotFoundError: No module named 'reports')",
+            "  summary = Summary(rows=3)",
             "  total = 12",
         ]
 

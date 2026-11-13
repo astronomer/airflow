@@ -81,6 +81,7 @@ def make_payload(**kwargs) -> dict[str, Any]:
         "state": "success",
         "task_states": {("numbers", -1): "success"},
         "outputs": {("numbers", -1, "return_value"): pickle.dumps([1, 2])},
+        "output_reprs": {("numbers", -1, "return_value"): "[1, 2]"},
         "output_errors": {},
         "dag_module": None,
         "ran": frozenset({("numbers", -1)}),
@@ -417,17 +418,22 @@ class TestBuildResult:
         assert type(summary) is callers.Summary
         assert summary.rows == 3
 
-    def test_output_that_cannot_load_here_spares_the_others(self, tmp_path, monkeypatch):
+    def test_output_that_cannot_load_here_spares_the_others_and_keeps_its_repr(self, tmp_path, monkeypatch):
         imported_by_run = define_summary_class("unusual_prefix_0_dag")
         with monkeypatch.context() as m:
             m.setitem(sys.modules, "unusual_prefix_0_dag", imported_by_run)
             data = pickle.dumps(imported_by_run.Summary(3))
+        reprs = {
+            ("numbers", -1, "return_value"): "[1, 2]",
+            ("summary", -1, "return_value"): "Summary(rows=3)",
+        }
         payload = make_payload(
             task_states={("numbers", -1): "success", ("summary", -1): "success"},
             outputs={
                 ("numbers", -1, "return_value"): pickle.dumps([1, 2]),
                 ("summary", -1, "return_value"): data,
             },
+            output_reprs=reprs,
             dag_module="unusual_prefix_0_dag",
         )
 
@@ -438,6 +444,7 @@ class TestBuildResult:
             ValueError, match="Summary is defined in dag.py, which this process has not imported"
         ):
             result.output("summary")
+        assert result.output_reprs == reprs
 
 
 class TestIsUnguardedModuleLevelCall:

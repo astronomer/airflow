@@ -53,7 +53,7 @@ from airflow.sdk.exceptions import (
     LocalRunUsageError,
 )
 
-PROTOCOL_VERSION = 4
+PROTOCOL_VERSION = 5
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 
@@ -85,6 +85,9 @@ class DagRunResult:
     # None when the run kept no history.
     project_home: Path | None
     outputs: Mapping[tuple[str, int, str], Any] = field(default_factory=dict, repr=False)
+    # A short repr of each output, made by the run's process, so it also shows the outputs that this process
+    # cannot load, e.g. of a class the Dag file defines when this process has not imported the file.
+    output_reprs: Mapping[tuple[str, int, str], str] = field(default_factory=dict, repr=False)
     output_errors: Mapping[tuple[str, int, str], str] = field(default_factory=dict, repr=False)
     # The error each failed task instance's last attempt ended with, e.g. "ValueError: boom".
     failures: Mapping[tuple[str, int], str] = field(default_factory=dict, repr=False)
@@ -489,6 +492,7 @@ def build_result(
         task_states=payload["task_states"],
         project_home=home,
         outputs=outputs,
+        output_reprs=payload["output_reprs"],
         output_errors=output_errors,
         failures=payload.get("failures", {}),
         ran=payload["ran"],
