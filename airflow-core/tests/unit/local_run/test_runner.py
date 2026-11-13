@@ -364,9 +364,13 @@ def test_failed_run_raises_with_result(project, capfd, debug):
         def after():
             return 1
 
+        @task
+        def last():
+            return 2
+
         @dag(schedule=None)
         def failing():
-            boom() >> after()
+            boom() >> after() >> last()
 
         workflow = failing()
         """,
@@ -375,7 +379,11 @@ def test_failed_run_raises_with_result(project, capfd, debug):
     with pytest.raises(DagExecutionError, match=r"failed tasks: boom \(ValueError: boom\)$") as ctx:
         run_dag_file(source, debug=debug)
 
-    assert ctx.value.result.task_states == {("boom", -1): "failed", ("after", -1): "upstream_failed"}
+    assert ctx.value.result.task_states == {
+        ("boom", -1): "failed",
+        ("after", -1): "upstream_failed",
+        ("last", -1): "upstream_failed",
+    }
     assert ctx.value.result.failures == {("boom", -1): "ValueError: boom"}
     with pytest.raises(KeyError, match="task state: upstream_failed"):
         ctx.value.result.output("after")
@@ -386,7 +394,8 @@ def test_failed_run_raises_with_result(project, capfd, debug):
         r"\(\d+ frames of Airflow running the task are left out; the task's log has the full", err
     )
     assert (out + err).count("ValueError: boom") == 1
-    assert "Task failed with exception" not in out + err
+    for noise in ("Task failed with exception", "No tasks to run"):
+        assert noise not in out + err
     assert ": boom. History: " in err
 
 
