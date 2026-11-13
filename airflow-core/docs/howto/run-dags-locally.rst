@@ -77,7 +77,8 @@ The first time is how long the tasks took; the total also counts starting the ru
 
 Log lines and warnings go to stderr too, one line each, and a task's lines start with its name:
 ``total | pipeline: summing 3 values``. What a task prints goes to stdout, as it would in a plain script.
-Each task's log in the history keeps every line in full.
+Each task's log in the history keeps every line in full. The terminal's log lines mask the secrets your tasks look
+up, such as connection passwords, as the task's log does; what a task prints is shown as printed.
 
 ``workflow.run()`` returns the run's result. ``result.output("total")`` is what the ``total`` task
 returned, as the object it returned; ``result.output("double", 1)`` is the second mapped ``double``.

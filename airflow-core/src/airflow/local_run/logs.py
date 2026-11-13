@@ -44,7 +44,7 @@ import structlog
 
 import airflow
 from airflow._shared.module_loading import UNUSUAL_MODULE_PREFIX
-from airflow.sdk.log import logging_processors
+from airflow.sdk.log import logging_processors, mask_logs
 
 if TYPE_CHECKING:
     from structlog.typing import EventDict, WrappedLogger
@@ -133,8 +133,10 @@ def configure_local_run_logging() -> None:
     if getattr(factory, "io", sys.stderr) is None:
         factory.io = sys.stderr
     # Cached loggers hold this very list, so the router and renderer replace Airflow's renderer in place.
+    # Core's console logging masks nothing. The Task SDK's masker holds the secrets tasks look up, so the
+    # terminal masks with it, after _route_event has shown printed output as printed.
     processors = structlog.get_config()["processors"]
-    processors[-1:] = [_route_event, render_for_terminal]
+    processors[-1:] = [_route_event, mask_logs, render_for_terminal]
     root = logging.getLogger()
     for handler in root.handlers:
         handler.addFilter(_is_shown_on_console)
@@ -143,7 +145,7 @@ def configure_local_run_logging() -> None:
             formatter := handler.formatter, structlog.stdlib.ProcessorFormatter
         ):
             handler.setStream(sys.stderr)
-            formatter.processors = [*formatter.processors[:-1], render_for_terminal]
+            formatter.processors = [*formatter.processors[:-1], mask_logs, render_for_terminal]
     root.addHandler(_CopyRecordsToTaskLog())
 
 
