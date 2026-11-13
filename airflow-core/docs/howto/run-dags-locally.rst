@@ -110,6 +110,12 @@ the project, and give the backend its credentials the way it reads them, such as
 ``AIRFLOW__SECRETS__BACKEND_KWARG__<NAME>`` variables. No other ``AIRFLOW__*`` setting reaches a local run, so a
 backend configured for a deployment is not used.
 
+When you run the file as a script, Python runs the top of the file in your own process before ``workflow.run()``
+sets anything up. A lookup there, such as ``Variable.get`` at module level, sees neither this backend nor the files
+you pass to ``workflow.run()``, and fails unless an ``AIRFLOW_VAR_*`` or ``AIRFLOW_CONN_*`` variable holds the
+value. Make the lookup in a task, or run the file with ``airflow run``, which sets up the lookups before it imports
+the file.
+
 To run a Dag from the command line instead, without a ``__main__`` block:
 
 .. code-block:: bash
