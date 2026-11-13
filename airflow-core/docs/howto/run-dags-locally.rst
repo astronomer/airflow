@@ -152,7 +152,7 @@ for 3 and 4, and for 2 a ``ValueError`` or ``TypeError``: ``LocalRunUsageError``
 asked, such as a task the Dag lacks. The three are ``LocalRunError``.
 
 Run one task without a metadata database
----------------------------------------
+----------------------------------------
 
 Add ``--no-db`` to execute exactly one Python task, once, with local task services:
 
