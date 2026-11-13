@@ -43,6 +43,7 @@ from airflow.local_run.logs import (
     read_attempt_failure,
     record_startup_events,
 )
+from airflow.sdk._shared.secrets_masker import mask_secret, reset_secrets_masker
 from airflow.sdk.execution_time.supervisor import forward_to_log, process_log_messages_from_subprocess
 
 
@@ -261,6 +262,48 @@ def test_records_and_warnings_of_the_run_process_go_to_stderr(console, capsys):
         "KeyError: 'missing'",
     )
     assert warning == "/elsewhere/app.py:329: DeprecationWarning: changelog_url does nothing"
+
+
+@pytest.fixture
+def secret():
+    """A value the Task SDK masks, as one a task looked up; the supervisor registers those the same way."""
+    mask_secret("Pa55w0rd-xyz")
+    yield "Pa55w0rd-xyz"
+    reset_secrets_masker()
+
+
+def log_from_supervised_task(secret: str) -> None:
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps(
+            {**TASK_CONTEXT, "event": f"logged {secret}", "level": "warning", "logger": "etl"}
+        ).encode(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("log", "shown"),
+    [
+        pytest.param(log_from_supervised_task, "  load | etl: warning: logged ***", id="supervised-task"),
+        pytest.param(
+            lambda secret: structlog.get_logger("etl").warning(f"logged {secret}"),
+            "etl: warning: logged ***",
+            id="event",
+        ),
+        pytest.param(
+            lambda secret: logging.getLogger("etl").warning("logged %s", secret),
+            "etl: warning: logged ***",
+            id="record",
+        ),
+    ],
+)
+@pytest.mark.enable_redact
+def test_terminal_masks_secrets(console, capsys, secret, log, shown):
+    configure_local_run_logging()
+
+    log(secret)
+
+    assert capsys.readouterr().err == f"{shown}\n"
 
 
 def test_task_log_gets_what_a_deployed_task_log_has(console, tmp_path):
