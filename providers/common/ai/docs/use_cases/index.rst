@@ -73,6 +73,9 @@ exception: it reads a decision-model connection, ``decision_default``, instead.
    * - :doc:`refine_a_draft_within_a_budget`
      - Writes a status page update, then scores it and gives feedback
      - Repeats both in a task loop until the score passes or a dollar or token budget is spent
+   * - :doc:`rank_renewals_by_churn_risk`
+     - Gathers renewals, incidents and SLA commitments from three systems, then ranks the customers
+     - Checks each step's output before the next step runs, stops the run on a failed check, runs locally
 
 More ideas
 ----------
@@ -126,3 +129,4 @@ can be built from the patterns shown on the pages above.
     Classify reviews in bulk <classify_reviews_in_bulk>
     Research agent with review <research_agent_with_review>
     Refine a draft within a budget <refine_a_draft_within_a_budget>
+    Rank renewals by churn risk <rank_renewals_by_churn_risk>

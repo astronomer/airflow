@@ -99,6 +99,10 @@ Agents & tools
    * - :doc:`local_development`
      - Running an agent Dag on your machine against a SQLite database in the project, where
        the agent may read the tickets and close one, and change nothing else.
+   * - :doc:`use_cases/rank_renewals_by_churn_risk`
+     - Agents gathering evidence from three systems, each step followed by an evaluation task
+       that stops the run when a check fails, with an LLM judge on the final ranking
+       (`example_agent_churn_analysis.py <https://github.com/apache/airflow/blob/providers-common-ai/|version|/providers/common/ai/src/airflow/providers/common/ai/example_dags/example_agent_churn_analysis.py>`__).
    * - :doc:`use_cases/research_agent_with_review`
      - A LangChain ReAct agent that decides its own tool calls, composed with ``LLMOperator`` for
        report formatting and AIP-90 HITL review

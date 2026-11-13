@@ -329,6 +329,8 @@ whose agent reads a SQLite database in the project and may close a ticket in it,
 with the connections it needs and how to run it. Each tool call the agent makes is in the task's log, which
 ``airflow standalone --project`` shows. The terminal shows the statements the agent's database hook runs, but
 not the tool calls.
+:doc:`apache-airflow-providers-common-ai:use_cases/rank_renewals_by_churn_risk` checks each step of an agent Dag
+with its own task, and reruns one step or one check with ``--task`` and ``--input``.
 
 Limits
 ------
