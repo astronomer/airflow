@@ -17,6 +17,19 @@
  under the License.
  -->
 
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**  *generated with [DocToc](https://github.com/thlorenz/doctoc)*
+
+- [airflow-dev (proof of concept)](#airflow-dev-proof-of-concept)
+  - [Use](#use)
+  - [How it works](#how-it-works)
+  - [Differences from CI](#differences-from-ci)
+  - [Not included](#not-included)
+  - [Develop](#develop)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # airflow-dev (proof of concept)
 
 Run Airflow's source tests on SQLite, Postgres or MySQL, and start a source instance on any of them,
