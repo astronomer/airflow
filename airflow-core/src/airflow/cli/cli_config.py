@@ -572,6 +572,17 @@ ARG_RUN_IN_RUN_ID = Arg(
     ("--run-id",),
     help="Rerun the selected tasks in this run instead of the latest one that has their inputs",
 )
+ARG_RUN_INPUT = Arg(
+    ("--input",),
+    dest="inputs",
+    action="append",
+    metavar="TASK_ID=JSON",
+    help=(
+        "Run the selected tasks alone in a new run, with JSON as what TASK_ID returned, a task directly "
+        "upstream of them that then does not run; for a mapped task, the list of what each map index "
+        "returned. Needed for each task whose output they read. Repeatable"
+    ),
+)
 ARG_RUN_NO_HISTORY = Arg(
     ("--no-history",),
     dest="keep_history",
@@ -2526,7 +2537,7 @@ core_commands: list[CLICommand] = [
             "once, and keep the run in .airflow/ next to the project's pyproject.toml, or, with --no-history, "
             "nowhere. No scheduler, API server or database setup is needed. With --task or --group, only "
             "those tasks run again, in an earlier run whose upstream outputs they read, or with the tasks "
-            "they need in a new run."
+            "they need in a new run; with --input, alone in a new run, with the upstream outputs given."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
         args=(
@@ -2540,6 +2551,7 @@ core_commands: list[CLICommand] = [
             ARG_RUN_UPSTREAM,
             ARG_RUN_DOWNSTREAM,
             ARG_RUN_IN_RUN_ID,
+            ARG_RUN_INPUT,
             ARG_RUN_DEBUG,
             ARG_RUN_NO_HISTORY,
             ARG_RUN_NO_RETRIES,

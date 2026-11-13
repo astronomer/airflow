@@ -1424,6 +1424,7 @@ class TestDagRunMethod:
             include_upstream=False,
             include_downstream=False,
             run_id=None,
+            inputs=None,
             debug=debug,
             keep_history=keep_history,
             retries=retries,
@@ -1452,8 +1453,32 @@ class TestDagRunMethod:
             include_upstream=True,
             include_downstream=True,
             run_id="manual__1",
+            inputs=None,
             debug=False,
             keep_history=True,
+            retries=True,
+        )
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_hands_its_inputs_to_the_launcher(self, mock_run_dag_file):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+
+        dag.run(task_ids=["total"], inputs={"double": [2, 4]}, keep_history=False)
+
+        mock_run_dag_file.assert_called_once_with(
+            dag.fileloc,
+            dag_id="local_dag",
+            run_conf=None,
+            connections_file=None,
+            variables_file=None,
+            task_ids=["total"],
+            task_group_ids=None,
+            include_upstream=False,
+            include_downstream=False,
+            run_id=None,
+            inputs={"double": [2, 4]},
+            debug=False,
+            keep_history=False,
             retries=True,
         )
 

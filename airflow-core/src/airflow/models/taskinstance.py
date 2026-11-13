@@ -3255,7 +3255,9 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
         for table in tables_by_id:
             session.execute(delete(table).where(table.ti_id == self.id))
 
-    def expand_mapped_task(self, *, session: Session) -> tuple[Sequence[TaskInstance], int]:
+    def expand_mapped_task(
+        self, *, session: Session, length: int | None = None
+    ) -> tuple[Sequence[TaskInstance], int]:
         """
         Create the mapped task instances for mapped task.
 
@@ -3263,6 +3265,8 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
         placeholder of a pre-region expansion lives in the sentinel region; it moves, with its
         identity, into a newly minted region.
 
+        :param length: The number of instances to expand to, instead of the number the upstream
+            values give, e.g. when a local run is given the task's outputs instead of running it.
         :raise NotMapped: If this task does not need expansion.
         :return: The newly created mapped task instances (if any) in ascending
             order by map index, and the maximum map index value.
@@ -3283,22 +3287,26 @@ class TaskInstance(Base, LoggingMixin, BaseWorkload):
                 f"cannot expand unrecognized operator type {type(task).__module__}.{type(task).__name__}"
             )
 
-        try:
-            total_length: int | None = get_mapped_ti_count(
-                task,
-                run_id,
-                session=session,
-                producer_contexts=TaskCoordinateResolver.for_dag(task.dag, session).producer_contexts(self),
-            )
-        except NotFullyPopulated as e:
-            if not task.dag or not task.dag.partial:
-                task.log.error(
-                    "Cannot expand %r for run %s; missing upstream values: %s",
+        total_length = length
+        if total_length is None:
+            try:
+                total_length = get_mapped_ti_count(
                     task,
                     run_id,
-                    sorted(e.missing),
+                    session=session,
+                    producer_contexts=TaskCoordinateResolver.for_dag(task.dag, session).producer_contexts(
+                        self
+                    ),
                 )
-            total_length = None
+            except NotFullyPopulated as e:
+                if not task.dag or not task.dag.partial:
+                    task.log.error(
+                        "Cannot expand %r for run %s; missing upstream values: %s",
+                        task,
+                        run_id,
+                        sorted(e.missing),
+                    )
+                total_length = None
 
         region_id = self.region_id
         unmapped_region_id = region_id

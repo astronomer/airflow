@@ -37,7 +37,7 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import timedelta
@@ -75,12 +75,15 @@ from airflow.models.dagbag import DBDagBag
 from airflow.models.dagrun import DagRun
 from airflow.models.taskinstance import TaskInstance, find_task_markers_to_clear
 from airflow.models.trigger import Trigger
-from airflow.models.xcom import XComModel
+from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
 from airflow.sdk import DAG
+from airflow.sdk.definitions._internal.loop import get_enclosing_loop
 from airflow.sdk.definitions.dag import _run_dag_run_to_completion, _run_task
 from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module, refuse_breakpoint
+from airflow.sdk.definitions.mappedoperator import MappedOperator
+from airflow.sdk.definitions.xcom_arg import XComArg
 from airflow.sdk.execution_time.xcom import XCom
-from airflow.sdk.serde import allow_class
+from airflow.sdk.serde import CLASSNAME, allow_class
 from airflow.serialization.definitions.notset import is_arg_set
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
@@ -379,6 +382,8 @@ class TaskSelection:
     include_upstream: bool
     include_downstream: bool
     run_id: str | None
+    # Serialized as XCom values are, by task ID; the selected tasks then run alone in a new run.
+    inputs: Mapping[str, Any] | None = None
 
 
 def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
@@ -394,6 +399,7 @@ def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
         include_upstream=bool(request.get("include_upstream")),
         include_downstream=bool(request.get("include_downstream")),
         run_id=request.get("run_id"),
+        inputs=request.get("inputs"),
     )
 
 
@@ -413,8 +419,9 @@ def start_selected_run(
     Set up the run of the selected tasks, committed in the thread's session; return it and how it was chosen.
 
     The selected tasks rerun in the run that has their inputs, as Clear does, unless a new conf is given or
-    no earlier run has those inputs: a new run then runs them and the tasks they need. Takes turns with other
-    starts in the project, as :func:`start_run` does.
+    no earlier run has those inputs: a new run then runs them and the tasks they need. Inputs given with the
+    request run them alone in a new run. Takes turns with other starts in the project, as :func:`start_run`
+    does.
     """
     if TYPE_CHECKING:
         assert settings.Session is not None
@@ -434,13 +441,21 @@ def start_selected_run(
                 # A rerun keeps its run's conf, and a new conf can change what the upstream tasks produce.
                 earlier = (
                     find_rerun_target(scheduler_dag, selection, selected, reused, session=session)
-                    if run_conf is None
+                    if run_conf is None and selection.inputs is None
                     else None
                 )
                 if earlier is not None:
                     dag_run = earlier
                     rerun_selection(scheduler_dag, dag_run, markers, selection, session=session)
                     heading = describe_rerun(selection, dag_run.run_id, sorted(reused))
+                elif selection.inputs is not None:
+                    scheduler_dag, dag_run = start_run_with_inputs(
+                        dag, markers, selected, selection, run_conf, triggered_by, session=session
+                    )
+                    heading = (
+                        f"Running {describe_selection(selection)} in run {dag_run.run_id}, "
+                        f"{describe_inputs(selection)}"
+                    )
                 else:
                     scheduler_dag, dag_run, first = start_run_for_selection(
                         dag, markers, selected, selection, run_conf, triggered_by, session=session
@@ -508,19 +523,9 @@ def start_run_for_selection(
 
     Returns the run and the upstream tasks that run before the selected ones.
     """
-    if mapped := next((marker for marker in markers if isinstance(marker, tuple)), None):
-        raise UsageSetupError(
-            f"{get_task_label(*mapped)} can be rerun only in a run where {mapped[0]} has expanded; select "
-            f"{mapped[0]} to run all of its map indexes"
-        )
+    refuse_map_index_in_new_run(markers)
     scheduler_dag, dag_run = create_dag_run(dag, run_conf, triggered_by, session=session)
-    wanted = set(selected)
-    if selection.include_downstream:
-        wanted.update(
-            scheduler_dag.partial_subset(
-                task_ids=selected, include_upstream=False, include_downstream=True
-            ).task_dict
-        )
+    wanted = find_tasks_to_run(scheduler_dag, selected, selection)
     # The upstream tasks come with the teardowns of their setups.
     needed = set(
         scheduler_dag.partial_subset(
@@ -538,6 +543,194 @@ def start_run_for_selection(
     session.flush()
     first = (task_id for task_id in needed - wanted if not scheduler_dag.task_dict[task_id].is_teardown)
     return scheduler_dag, dag_run, sorted(first)
+
+
+def start_run_with_inputs(
+    dag: DAG,
+    markers: list[str | tuple[str, int]],
+    selected: set[str],
+    selection: TaskSelection,
+    run_conf: dict | None,
+    triggered_by: DagRunTriggeredByType,
+    *,
+    session: Session,
+) -> tuple[SerializedDAG, DagRun]:
+    """
+    Create a run of the selected tasks alone, in which the inputs are the outputs of the tasks they read.
+
+    The tasks directly upstream of them do not run. They are recorded as succeeded, so that the trigger rules
+    let the selected tasks run, but without a start date, like the tasks a selection leaves out, so that a
+    later rerun never takes their outputs. The other tasks are skipped, as in :func:`start_run_for_selection`.
+    """
+    if TYPE_CHECKING:
+        assert selection.inputs is not None
+    refuse_map_index_in_new_run(markers)
+    scheduler_dag, dag_run = create_dag_run(dag, run_conf, triggered_by, session=session)
+    wanted = find_tasks_to_run(scheduler_dag, selected, selection)
+    before = check_inputs(dag, wanted, selection)
+    labels = describe_selection(selection)
+    dag_run.note = f"Selected: {labels}, {describe_inputs(selection)}"
+    for ti in dag_run.get_task_instances(session=session):
+        if ti.task_id in wanted:
+            continue
+        if ti.task_id in selection.inputs:
+            ti.task = scheduler_dag.get_task(ti.task_id)
+            give_output(
+                ti,
+                dag.task_dict[ti.task_id],
+                selection.inputs[ti.task_id],
+                note=f"Not run: its output was given as an input of {labels}",
+                session=session,
+            )
+        elif ti.task_id in before:
+            ti.state = TaskInstanceState.SUCCESS
+            ti.note = f"Not run: {labels} ran with inputs instead"
+        else:
+            ti.state = TaskInstanceState.SKIPPED
+            ti.note = f"Not selected: {labels} did not need it"
+    session.flush()
+    return scheduler_dag, dag_run
+
+
+def refuse_map_index_in_new_run(markers: list[str | tuple[str, int]]) -> None:
+    if mapped := next((marker for marker in markers if isinstance(marker, tuple)), None):
+        raise UsageSetupError(
+            f"{get_task_label(*mapped)} can be rerun only in a run where {mapped[0]} has expanded; select "
+            f"{mapped[0]} to run all of its map indexes"
+        )
+
+
+def find_tasks_to_run(dag: SerializedDAG, selected: set[str], selection: TaskSelection) -> set[str]:
+    """Return the selected tasks, and the tasks downstream of them when the selection includes those."""
+    wanted = set(selected)
+    if selection.include_downstream:
+        wanted.update(
+            dag.partial_subset(task_ids=selected, include_upstream=False, include_downstream=True).task_dict
+        )
+    return wanted
+
+
+def check_inputs(dag: DAG, wanted: set[str], selection: TaskSelection) -> set[str]:
+    """
+    Refuse inputs the tasks in ``wanted`` cannot run alone with; return the tasks directly upstream of them.
+
+    The outputs those tasks read through their arguments must each be given. A task's own code can also pull
+    an output, with ``xcom_pull``, so an input for any task directly upstream of them is taken.
+    """
+    if TYPE_CHECKING:
+        assert selection.inputs is not None
+    labels = describe_selection(selection)
+    before = {
+        upstream for task_id in wanted for upstream in dag.task_dict[task_id].upstream_task_ids
+    } - wanted
+    for task_id, value in selection.inputs.items():
+        if not dag.has_task(task_id):
+            raise UsageSetupError(
+                f"Dag {dag.dag_id!r} has no task {task_id!r}.{suggest_ids(task_id, dag.task_ids)}"
+            )
+        if task_id not in before:
+            allowed = (
+                f"Inputs are for {', '.join(sorted(before))}" if before else f"{labels} has no upstream tasks"
+            )
+            raise UsageSetupError(f"{task_id} is not directly upstream of {labels}. {allowed}.")
+        check_input(dag.task_dict[task_id], value)
+    readers: dict[str, set[str]] = {}
+    for task_id in wanted:
+        for upstream, key in iter_read_outputs(dag.task_dict[task_id]):
+            if upstream.task_id in wanted:
+                continue
+            if key != XCOM_RETURN_KEY and not has_multiple_outputs(upstream):
+                raise UsageSetupError(
+                    f"{task_id} reads the XCom {key!r} of {upstream.task_id}, which no input can give: an input "
+                    "is a task's return value"
+                )
+            readers.setdefault(upstream.task_id, set()).add(task_id)
+    if missing := sorted(readers.keys() - selection.inputs.keys()):
+        read_by = sorted({reader for task_id in missing for reader in readers[task_id]})
+        raise UsageSetupError(f"No input given for {', '.join(missing)}, read by {', '.join(read_by)}")
+    return before
+
+
+def check_input(task: Operator, value: Any) -> None:
+    """Refuse a serialized input that ``task`` could not have returned, or that cannot stand in for its output."""
+    if task.get_closest_mapped_task_group() is not None or get_enclosing_loop(task) is not None:
+        raise UsageSetupError(
+            f"{task.task_id} is in a mapped task group or a loop, where no input can stand in for its output"
+        )
+    if isinstance(task, MappedOperator):
+        if not isinstance(value, list):
+            raise UsageSetupError(
+                f"{task.task_id} is mapped, so its input is a list of the outputs of its map indexes"
+            )
+        outputs = value
+    else:
+        outputs = [value]
+        if has_mapped_dependants(task) and not (isinstance(value, list) or is_plain_dict(value)):
+            raise UsageSetupError(
+                f"{task.task_id} feeds a mapped task, so its input must be a list or a dict"
+            )
+    if has_multiple_outputs(task) and not all(output is None or is_plain_dict(output) for output in outputs):
+        raise UsageSetupError(f"{task.task_id} has multiple_outputs, so its input must be a dict")
+
+
+def iter_read_outputs(task: Operator) -> Iterator[tuple[Operator, str]]:
+    """Yield each task whose XCom ``task``'s arguments read, with the XCom's key."""
+    if isinstance(task, MappedOperator):
+        yield from XComArg.iter_xcom_references(task.partial_kwargs)
+        yield from XComArg.iter_xcom_references(task._get_specified_expand_input())
+    else:
+        yield from XComArg.iter_xcom_references(task)
+
+
+def has_mapped_dependants(task: Operator) -> bool:
+    return next(task.iter_mapped_dependants(), None) is not None
+
+
+def has_multiple_outputs(task: Operator) -> bool:
+    if isinstance(task, MappedOperator):
+        # A decorated task has the attribute; another operator keeps it with the arguments of its partial().
+        return bool(getattr(task, "multiple_outputs", task.partial_kwargs.get("multiple_outputs")))
+    return task.multiple_outputs
+
+
+def is_plain_dict(value: Any) -> bool:
+    """Whether ``value`` is a serialized dict, rather than an object serialized as one."""
+    return isinstance(value, dict) and CLASSNAME not in value
+
+
+def give_output(ti: TaskInstance, task: Operator, value: Any, *, note: str, session: Session) -> None:
+    """
+    Record ``ti`` as succeeded with ``value``, a serialized input, as its output, pushed as a try pushes it.
+
+    A mapped task's input holds the output of each map index, so ``ti`` is first expanded to one instance each.
+    """
+    tis: Sequence[TaskInstance]
+    if isinstance(task, MappedOperator):
+        tis, _ = ti.expand_mapped_task(session=session, length=len(value))
+        outputs, mapped_length = value, None
+    else:
+        tis, outputs = [ti], [value]
+        mapped_length = len(value) if has_mapped_dependants(task) else None
+    for each in tis:
+        each.note = note
+    # An empty expansion leaves the task skipped, as it would in any run.
+    for each, output in zip(tis, outputs):
+        each.state = TaskInstanceState.SUCCESS
+        if output is None:
+            continue
+        if has_multiple_outputs(task):
+            for key, item in output.items():
+                XComModel.set_for_attempt(
+                    task_instance_id=each.id, key=key, value=item, serialize=False, session=session
+                )
+        XComModel.set_for_attempt(
+            task_instance_id=each.id,
+            key=XCOM_RETURN_KEY,
+            value=output,
+            serialize=False,
+            mapped_length=mapped_length,
+            session=session,
+        )
 
 
 def expand_task_selection(dag: SerializedDAG, selection: TaskSelection) -> list[str | tuple[str, int]]:
@@ -612,7 +805,7 @@ def find_rerun_target(
         if lacking := find_missing_inputs(dag_run, reused, session=session):
             raise UsageSetupError(
                 f"Run {dag_run.run_id} lacks the outputs {describe_selection(selection)} needs: "
-                f"{', '.join(lacking)} did not succeed"
+                f"{', '.join(lacking)} did not run successfully"
             )
         return dag_run
     finished = session.scalars(
@@ -649,7 +842,8 @@ def find_missing_inputs(dag_run: DagRun, task_ids: set[str], *, session: Session
 
     Tasks the Dag skips get a start date: trigger-rule skips through ``TaskInstance.set_state``, and branch
     and short-circuit skips through the Execution API's skip route. A run of selected tasks skips the ones
-    they do not need without one, and those have no outputs to reuse.
+    they do not need without one, and records the ones that inputs stood in for as succeeded without one;
+    neither have outputs to reuse.
     """
     done: dict[str, bool] = {}
     for task_id, state, start_date in session.execute(
@@ -661,9 +855,10 @@ def find_missing_inputs(dag_run: DagRun, task_ids: set[str], *, session: Session
         )
     ):
         # Every map index of a mapped task has to have finished.
-        done[task_id] = done.get(task_id, True) and (
-            state == TaskInstanceState.SUCCESS
-            or (state == TaskInstanceState.SKIPPED and start_date is not None)
+        done[task_id] = (
+            done.get(task_id, True)
+            and start_date is not None
+            and state in (TaskInstanceState.SUCCESS, TaskInstanceState.SKIPPED)
         )
     return sorted(task_id for task_id in task_ids if not done.get(task_id, False))
 
@@ -714,6 +909,10 @@ def describe_new_run(selection: TaskSelection, run_id: str, first: list[str], *,
     if first:
         return f"{reason}; running {', '.join(first)} first, in run {run_id}"
     return f"{reason}; running {labels} in run {run_id}"
+
+
+def describe_inputs(selection: TaskSelection) -> str:
+    return f"with inputs for {', '.join(sorted(selection.inputs or ()))}"
 
 
 def get_run_lock_path(home: Path, dag_run_id: int) -> Path:

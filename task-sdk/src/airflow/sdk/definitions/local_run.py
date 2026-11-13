@@ -53,7 +53,7 @@ from airflow.sdk.exceptions import (
     LocalRunUsageError,
 )
 
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 
@@ -248,6 +248,7 @@ def run_dag_file(
     include_upstream: bool = False,
     include_downstream: bool = False,
     run_id: str | None = None,
+    inputs: Mapping[str, Any] | None = None,
     triggered_by: str = "test",
     debug: bool = False,
     keep_history: bool = True,
@@ -259,7 +260,7 @@ def run_dag_file(
     With ``task_ids`` or ``task_group_ids``, rerun only those tasks, as Clear does in the UI, in the latest
     finished run that has the outputs of their upstream tasks, or in ``run_id``. With ``run_conf``, or when no
     earlier run has those outputs, a new run runs them and the tasks they need, and records the others as
-    skipped.
+    skipped. With ``inputs``, a new run runs them alone, and the inputs are the outputs of the tasks they read.
 
     :param dag_id: required when the file defines more than one Dag.
     :param task_ids: task IDs, or ``(task_id, map_index)`` tuples for one mapped task instance.
@@ -267,6 +268,8 @@ def run_dag_file(
     :param include_upstream: also rerun the upstream tasks of the selected ones.
     :param include_downstream: also rerun the downstream tasks of the selected ones.
     :param run_id: the run to rerun the selected tasks in.
+    :param inputs: the return value of each task directly upstream of the selected ones that they read, by
+        task ID; a mapped task's is the list of its map indexes' return values. Those tasks do not run.
     :param debug: run task tries inside the run's process rather than each in a process of its own.
     :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
         own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
@@ -302,6 +305,7 @@ def run_dag_file(
         include_downstream=include_downstream,
         run_id=run_id,
         run_conf=run_conf,
+        inputs=inputs,
     )
     connections_path = resolve_resource_file(connections_file, "connections")
     variables_path = resolve_resource_file(variables_file, "variables")
@@ -369,8 +373,13 @@ def build_task_selection(
     include_downstream: bool,
     run_id: str | None,
     run_conf: dict[str, Any] | None,
+    inputs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Check a selection of tasks to rerun, and return it as the run's request carries it."""
+    if inputs is not None and (
+        not isinstance(inputs, Mapping) or not all(isinstance(task_id, str) for task_id in inputs)
+    ):
+        raise TypeError("inputs takes a dict of task IDs to their outputs, e.g. inputs={'double': [2, 4]}")
     if isinstance(task_ids, str) or isinstance(task_group_ids, str):
         raise TypeError("task_ids and task_group_ids take a list, e.g. task_ids=['total']")
     markers: list[str | list[str | int]] = []
@@ -389,9 +398,9 @@ def build_task_selection(
             raise TypeError(f"A task ID or a (task_id, map_index) tuple is expected, not {marker!r}")
     group_ids = list(task_group_ids or ())
     if not markers and not group_ids:
-        if include_upstream or include_downstream or run_id is not None:
+        if include_upstream or include_downstream or run_id is not None or inputs:
             raise ValueError(
-                "include_upstream, include_downstream and run_id apply to selected tasks; "
+                "include_upstream, include_downstream, run_id and inputs apply to selected tasks; "
                 "pass task_ids or task_group_ids"
             )
         return {}
@@ -400,13 +409,35 @@ def build_task_selection(
             f"Run {run_id} keeps the conf it ran with; leave out run_id to run the tasks in a new run "
             "with this conf"
         )
+    if inputs and run_id is not None:
+        raise ValueError("inputs run the selected tasks in a new run; leave out run_id")
+    if inputs and include_upstream:
+        raise ValueError(
+            "inputs stand in for the upstream tasks' outputs, so those tasks do not run; "
+            "leave out include_upstream"
+        )
     return {
         "task_ids": markers,
         "task_group_ids": group_ids,
         "include_upstream": include_upstream,
         "include_downstream": include_downstream,
         "run_id": run_id,
+        "inputs": serialize_inputs(inputs) if inputs else None,
     }
+
+
+def serialize_inputs(inputs: Mapping[str, Any]) -> dict[str, Any]:
+    """Serialize each input as a task's return value is for XCom, so the run stores it as such."""
+    # Imported only for inputs: every Dag file imports this module.
+    from airflow.sdk.serde import serialize
+
+    serialized = {}
+    for task_id, value in inputs.items():
+        try:
+            serialized[task_id] = serialize(value)
+        except (AttributeError, RecursionError, TypeError) as e:
+            raise TypeError(f"The input for {task_id} cannot be stored as an XCom: {e}") from None
+    return serialized
 
 
 def wait_for_child(process: subprocess.Popen) -> int:
