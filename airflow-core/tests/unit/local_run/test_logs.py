@@ -114,6 +114,37 @@ def test_terminal_hides_airflow_progress_but_not_task_output(console, capsys):
         assert line not in shown
 
 
+# What an agent task logs its tool calls with.
+AGENT_LOGGER = "airflow.task.operators.airflow.providers.common.ai.decorators.agent._AgentDecoratedOperator"
+
+
+def test_terminal_shows_the_name_of_each_section_of_a_task_log(console, capsys, tmp_path):
+    configure_local_run_logging()
+    path = tmp_path / "attempt=1.log"
+    agent_log = structlog.get_logger(AGENT_LOGGER)
+    tool_log = logging.getLogger("airflow.providers.common.ai.tools")
+
+    with capture_task_log(path):
+        agent_log.info("::group::Tool call: query")
+        agent_log.info("Tool query returned in 0.01s")
+        agent_log.info("::endgroup::")
+        tool_log.info("::group::Tool call: %s", "list_tables")
+        tool_log.info("::endgroup::")
+        structlog.get_logger("task").info("::group::Post Execute")
+        structlog.get_logger("etl").info("::endgroup::")
+
+    assert capsys.readouterr() == ("", "Tool call: query\nTool call: list_tables\n")
+    assert read_events(path) == [
+        ("::group::Tool call: query", "info", AGENT_LOGGER),
+        ("Tool query returned in 0.01s", "info", AGENT_LOGGER),
+        ("::endgroup::", "info", AGENT_LOGGER),
+        ("::group::Tool call: list_tables", "info", "airflow.providers.common.ai.tools"),
+        ("::endgroup::", "info", "airflow.providers.common.ai.tools"),
+        ("::group::Post Execute", "info", "task"),
+        ("::endgroup::", "info", "etl"),
+    ]
+
+
 def send_lines(reader, *lines: bytes) -> None:
     next(reader)
     for line in lines:
@@ -190,6 +221,16 @@ TASK_CONTEXT = {
             {"event": "slow to start", "level": "warning", "logger": "task"},
             "  load | warning: slow to start",
             id="task-runner",
+        ),
+        pytest.param(
+            {"event": "::group::Tool call: query", "level": "info", "logger": AGENT_LOGGER},
+            "  load | Tool call: query",
+            id="log-section-of-an-operator",
+        ),
+        pytest.param(
+            {"event": "::group::Fetching rows", "level": "info", "logger": "etl"},
+            "  load | Fetching rows",
+            id="log-section-of-task-code",
         ),
         pytest.param(
             {
@@ -281,10 +322,34 @@ def log_from_supervised_task(secret: str) -> None:
     )
 
 
+def log_section_from_supervised_task(secret: str) -> None:
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps(
+            {
+                **TASK_CONTEXT,
+                "event": f"::group::Tool call: {secret}",
+                "level": "info",
+                "logger": AGENT_LOGGER,
+            }
+        ).encode(),
+    )
+
+
 @pytest.mark.parametrize(
     ("log", "shown"),
     [
         pytest.param(log_from_supervised_task, "  load | etl: warning: logged ***", id="supervised-task"),
+        pytest.param(
+            log_section_from_supervised_task, "  load | Tool call: ***", id="supervised-log-section"
+        ),
+        pytest.param(
+            lambda secret: logging.getLogger("airflow.providers.common.ai.tools").info(
+                "::group::Tool call: %s", secret
+            ),
+            "Tool call: ***",
+            id="log-section-record",
+        ),
         pytest.param(
             lambda secret: structlog.get_logger("etl").warning(f"logged {secret}"),
             "etl: warning: logged ***",

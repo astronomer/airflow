@@ -20,8 +20,9 @@ Logging for a local run: a quiet terminal, and a full log file per task attempt.
 A deployed task's supervisor writes the task log from the task process's output, and so does a local run's,
 which forwards that output here as well. In debug mode tasks run in the run's own process, so while a task
 runs its log events, log records and printed output are also written to its log file, the same as a
-deployed task's log. Either way the terminal shows the task's own output, hook output, warnings and
-errors, but not Airflow's progress lines; the runner prints a summary instead.
+deployed task's log. Either way the terminal shows the task's own output, hook output, the name of each
+section of its log, such as each tool call an agent makes, warnings and errors, but not Airflow's progress
+lines; the runner prints a summary instead.
 
 What a task prints goes to stdout and stderr as printed. Log events go to stderr, as Python's own logging
 does, one short line each that names the task, so that stdout stays the script's.
@@ -66,7 +67,13 @@ NOT_TASK_LOGGERS = ("airflow.api_fastapi", "airflow.sdk.definitions.dag")
 # Their errors are about importing the Dag file, which the run reports once, from the DagBag's import errors.
 IMPORT_ERROR_LOGGERS = ("airflow.dag_processing.dagbag", "airflow.sdk.importers")
 
-PRE_EXECUTE_GROUP = "::group::Pre Execute"
+# A task's code divides its log into sections, such as one per tool call an agent makes, each opened by a line
+# that starts with GROUP_START and names it, and closed by GROUP_END. The UI folds each section under its
+# name; the terminal shows the name alone, at INFO even from Airflow's own loggers.
+GROUP_START = "::group::"
+GROUP_END = "::endgroup::"
+
+PRE_EXECUTE_GROUP = f"{GROUP_START}Pre Execute"
 
 # What the task runner logs, with the exception, when a task attempt fails.
 TASK_FAILED_EVENT = "Task failed with exception"
@@ -100,8 +107,9 @@ _DAG_MODULE_PREFIX = re.compile(rf"{UNUSUAL_MODULE_PREFIX}[0-9a-f]{{40}}_")
 # Hooks and operators log as ``airflow.task.hooks.<module>.<class>``; the class names them well enough.
 _TASK_LOGGER_PREFIXES = ("airflow.task.hooks.", "airflow.task.operators.")
 
-# Airflow's task runner and the task supervisor: the task's name already says where their events came from.
-_UNNAMED_LOGGERS = ("task", "supervisor")
+# Airflow's task runner and the task supervisor: the task's name already says where their events came from,
+# and their log sections, such as Pre Execute, are about running the task rather than what it does.
+_TASK_RUNNER_LOGGERS = ("task", "supervisor")
 
 _LEVELS = logging.getLevelNamesMapping()
 
@@ -136,7 +144,7 @@ def configure_local_run_logging() -> None:
     # Core's console logging masks nothing. The Task SDK's masker holds the secrets tasks look up, so the
     # terminal masks with it, after _route_event has shown printed output as printed.
     processors = structlog.get_config()["processors"]
-    processors[-1:] = [_route_event, mask_logs, render_for_terminal]
+    processors[-1:] = [_route_event, _strip_group_marker, mask_logs, render_for_terminal]
     root = logging.getLogger()
     for handler in root.handlers:
         handler.addFilter(_is_shown_on_console)
@@ -145,7 +153,12 @@ def configure_local_run_logging() -> None:
             formatter := handler.formatter, structlog.stdlib.ProcessorFormatter
         ):
             handler.setStream(sys.stderr)
-            formatter.processors = [*formatter.processors[:-1], mask_logs, render_for_terminal]
+            formatter.processors = [
+                *formatter.processors[:-1],
+                _strip_group_marker,
+                mask_logs,
+                render_for_terminal,
+            ]
     root.addHandler(_CopyRecordsToTaskLog())
 
 
@@ -184,7 +197,7 @@ def get_task_label(task_id: str, map_index: int) -> str:
 
 
 def _get_display_name(logger_name: str) -> str:
-    if logger_name in _UNNAMED_LOGGERS:
+    if logger_name in _TASK_RUNNER_LOGGERS:
         return ""
     if logger_name.startswith(_TASK_LOGGER_PREFIXES):
         return logger_name.rpartition(".")[2]
@@ -337,9 +350,13 @@ def _console_level(logger_name: str) -> int:
     return CONSOLE_LEVELS[max(matches, key=len)] if matches else logging.NOTSET
 
 
-def _is_on_console(logger_name: str, level: int) -> bool:
+def _is_on_console(logger_name: str, level: int, message: str) -> bool:
     if level >= logging.ERROR and any(_is_within(logger_name, prefix) for prefix in IMPORT_ERROR_LOGGERS):
         return False
+    if message == GROUP_END:
+        return False
+    if message.startswith(GROUP_START) and logger_name not in _TASK_RUNNER_LOGGERS:
+        return level >= min(logging.INFO, _console_level(logger_name))
     return level >= _console_level(logger_name)
 
 
@@ -357,8 +374,17 @@ def _route_event(logger: WrappedLogger, method_name: str, event_dict: EventDict)
     if name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
         # The runner reports the failure from the task's log, once it knows whether the task will retry.
         raise structlog.DropEvent
-    if not _is_on_console(name, _LEVELS[str(event_dict.get("level", method_name)).upper()]):
+    level = _LEVELS[str(event_dict.get("level", method_name)).upper()]
+    if not _is_on_console(name, level, str(event_dict.get("event", ""))):
         raise structlog.DropEvent
+    return event_dict
+
+
+def _strip_group_marker(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
+    """Show a log section's opening line as its name alone, as the UI names the section."""
+    if (message := str(event_dict.get("event", ""))).startswith(GROUP_START):
+        event_dict["event"] = message.removeprefix(GROUP_START)
+        event_dict.pop("logger", None)
     return event_dict
 
 
@@ -382,7 +408,7 @@ def _write_to_task_log(method_name: str, event_dict: Mapping[str, Any]) -> None:
 
 
 def _is_shown_on_console(record: logging.LogRecord) -> bool:
-    return _is_on_console(record.name, record.levelno)
+    return _is_on_console(record.name, record.levelno, record.getMessage())
 
 
 def _rename_exception_for_ui(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
