@@ -170,6 +170,44 @@ When no earlier run has the outputs the selected tasks need, for example after y
 they run in a new run too. The tasks they need run first, and the run records the tasks it leaves out as
 skipped.
 
+To run a task with inputs you choose instead, give what each task before it returned with ``--input``, as
+JSON:
+
+.. code-block:: bash
+
+    uv run airflow run pipeline.py --task total --input double='[2, 4]'
+
+.. code-block:: text
+
+    Running total in run manual__2026-11-06T10:05:00.000000+00:00, with inputs for double
+      ✓ total
+    Succeeded in 0.4s (2.0s total). History: /path/to/demo/.airflow
+    Outputs:
+      total = 6
+
+The selected tasks then run alone, in a new run: no task before them runs, and no earlier run's outputs are
+used. Repeat ``--input`` for each task directly upstream of them whose output they take as an argument. A
+missing one is refused before the run starts, naming the task, and so is an input for a task that is not
+directly upstream of them; both exit with 2. Also:
+
+* A mapped task's input is the list of what each map index returned, so ``double='[2, 4]'`` stands for two
+  ``double`` tries. A selected mapped task expands over its input, as it would over the task's output:
+  ``--task double --input numbers='[1, 2, 3]'`` runs three ``double`` tries.
+* The input of a task with ``multiple_outputs`` is the dict it returns, and each of its keys is an output too.
+  An input cannot give any other XCom key, so a task that reads one from the task before it cannot run with
+  inputs. Nor can an input stand in for a task in a mapped task group or a loop.
+* A task's own code can also pull an output, with ``xcom_pull``. Those pulls are not checked: give an input for
+  that task too, or the pull returns ``None``.
+* ``--downstream`` also runs the tasks after the selected ones, which then need inputs for what they read from
+  other tasks too, and ``--conf`` sets the new run's conf. ``--upstream`` and ``--run-id`` are refused: the
+  tasks before the selected ones do not run, and the run is always new.
+
+The run records the tasks directly upstream of the selected ones as succeeded, with no start time and a note
+that they did not run, so that the selected tasks' trigger rules let them run; a selected task whose trigger
+rule waits for a failure, such as ``one_failed``, is skipped. The tasks you gave inputs for hold those as their
+outputs. The other tasks are skipped. A later ``--task`` without inputs never takes the outputs you gave: it
+reruns in a run where the tasks before it ran.
+
 In Python, ``workflow.run()`` takes the same selection as keyword arguments:
 
 .. code-block:: python
@@ -179,7 +217,8 @@ In Python, ``workflow.run()`` takes the same selection as keyword arguments:
         print("total:", result.output("total"))
 
 ``task_ids`` takes task IDs and ``(task_id, map_index)`` tuples. The other arguments are
-``task_group_ids``, ``include_upstream``, ``include_downstream`` and ``run_id``.
+``task_group_ids``, ``include_upstream``, ``include_downstream``, ``run_id`` and ``inputs``, which takes the
+objects the tasks returned, by task ID: ``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})``.
 
 To stop in one task with your IDE's debugger, add ``debug=True`` to that call and use the IDE's Debug
 button. Or leave the file as it is, and add a run configuration for the module ``airflow`` with the
@@ -201,7 +240,8 @@ To run without keeping anything, for example in CI or a read-only checkout, add 
 when it ends, and leaves ``.airflow/`` alone. Its summary ends with ``No history kept``, and the task logs go
 with the database. The terminal keeps your tasks' own log lines, warnings and each failure, but not Airflow's
 informational lines, such as an agent's tool calls. With no earlier runs to take outputs from, ``--task`` runs
-the selected tasks in a new run with the tasks they need, and ``--run-id`` is refused.
+the selected tasks in a new run with the tasks they need, or alone with the outputs you give with ``--input``,
+and ``--run-id`` is refused.
 
 To look at the history in Airflow's UI:
 

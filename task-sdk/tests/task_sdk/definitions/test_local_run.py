@@ -479,7 +479,7 @@ class TestIsUnguardedModuleLevelCall:
         assert namespace["found"] == [expected]
 
 
-SELECTION_KEYS = ("task_ids", "task_group_ids", "include_upstream", "include_downstream", "run_id")
+SELECTION_KEYS = ("task_ids", "task_group_ids", "include_upstream", "include_downstream", "run_id", "inputs")
 
 
 class TestRunDagFile:
@@ -608,6 +608,28 @@ class TestRunDagFile:
             "include_upstream": False,
             "include_downstream": True,
             "run_id": "manual__1",
+            "inputs": None,
+        }
+
+    @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
+    def test_inputs_reach_the_request_serialized_as_xcom_values(self, mock_popen, source):
+        seen = {}
+
+        def fake_child(command, env):
+            seen.update(json.loads(Path(command[-1]).read_text()))
+            Path(seen["result_path"]).write_bytes(pickle.dumps(make_payload()))
+            process = mock.create_autospec(REAL_POPEN, instance=True)
+            process.wait.return_value = 0
+            return process
+
+        mock_popen.side_effect = fake_child
+
+        run_dag_file(source, task_ids=["total"], inputs={"double": [2, 4], "pair": (1, 2)})
+
+        # A tuple is serialized with its class, as a task's return value is for XCom.
+        assert seen["inputs"] == {
+            "double": [2, 4],
+            "pair": {"__classname__": "builtins.tuple", "__version__": 1, "__data__": [1, 2]},
         }
 
     @pytest.mark.parametrize(
@@ -636,6 +658,33 @@ class TestRunDagFile:
                 ValueError,
                 "run_id names a run in the project's history",
                 id="run-id-without-history",
+            ),
+            pytest.param(
+                {"inputs": {"double": [2]}}, ValueError, "apply to selected tasks", id="inputs-alone"
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "inputs": [("double", [2])]},
+                TypeError,
+                "inputs takes a dict of task IDs to their outputs",
+                id="inputs-not-a-dict",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "inputs": {"double": [2]}, "run_id": "manual__1"},
+                ValueError,
+                "inputs run the selected tasks in a new run; leave out run_id",
+                id="inputs-for-an-earlier-run",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "inputs": {"double": [2]}, "include_upstream": True},
+                ValueError,
+                "so those tasks do not run; leave out include_upstream",
+                id="inputs-with-upstream",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "inputs": {"double": object()}},
+                TypeError,
+                "The input for double cannot be stored as an XCom: ",
+                id="input-not-serializable",
             ),
         ],
     )

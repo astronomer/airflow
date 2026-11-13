@@ -106,6 +106,7 @@ class TestRunCommand:
             include_upstream=False,
             include_downstream=False,
             run_id=None,
+            inputs=None,
             triggered_by="cli",
             debug=debug,
             keep_history=keep_history,
@@ -145,11 +146,36 @@ class TestRunCommand:
             "include_upstream": True,
             "include_downstream": True,
             "run_id": "manual__1",
+            "inputs": None,
             "triggered_by": "cli",
             "debug": False,
             "keep_history": True,
             "retries": True,
         }
+
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_passes_inputs_to_launcher(self, mock_run_dag_file):
+        mock_run_dag_file.return_value = make_result()
+        args = self.parser.parse_args(
+            [
+                "run",
+                "pipeline.py",
+                "--task",
+                "total",
+                "--input",
+                "double=[2, 4]",
+                "--input",
+                'label={"text": "a=b"}',
+                "--downstream",
+                "--no-history",
+            ]
+        )
+
+        args.func(args)
+
+        kwargs = mock_run_dag_file.call_args.kwargs
+        assert kwargs["inputs"] == {"double": [2, 4], "label": {"text": "a=b"}}
+        assert (kwargs["include_downstream"], kwargs["keep_history"]) == (True, False)
 
     @pytest.mark.parametrize(
         ("extra_args", "message"),
@@ -165,6 +191,34 @@ class TestRunCommand:
                 ["--task", "total", "--run-id", "manual__1", "--no-history"],
                 "--run-id names a run in the project's history",
                 id="run-id-without-history",
+            ),
+            pytest.param(
+                ["--input", "double=[2]"], "apply to the tasks chosen with --task or --group", id="input"
+            ),
+            pytest.param(
+                ["--task", "total", "--input", "double=[2"],
+                "--input double is not valid JSON: ",
+                id="input-not-json",
+            ),
+            pytest.param(
+                ["--task", "total", "--input", "[2, 4]"],
+                "--input takes TASK_ID=JSON, not '[2, 4]'",
+                id="input-no-id",
+            ),
+            pytest.param(
+                ["--task", "total", "--input", "double=[2]", "--input", "double=[4]"],
+                "--input gives double more than once",
+                id="input-twice",
+            ),
+            pytest.param(
+                ["--task", "total", "--input", "double=[2]", "--run-id", "manual__1"],
+                "--input runs the selected tasks in a new run, so it does not take --run-id",
+                id="input-with-run-id",
+            ),
+            pytest.param(
+                ["--task", "total", "--input", "double=[2]", "--upstream"],
+                "so it does not take --upstream",
+                id="input-with-upstream",
             ),
             pytest.param(["--conf", "{not json"], "--conf is not valid JSON", id="conf-not-json"),
             pytest.param(["--conf", "[1]"], "--conf must be a JSON object", id="conf-not-object"),

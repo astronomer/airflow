@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import re
 import reprlib
+from typing import Any
 
 from airflow.local_run.exit_codes import (
     EXIT_CONFIG,
@@ -62,15 +63,24 @@ def run(args) -> None:
     if run_conf is not None and not isinstance(run_conf, dict):
         exit_with_error("--conf must be a JSON object", EXIT_USAGE)
     selected = bool(args.task_ids or args.task_group_ids)
-    if not selected and (args.include_upstream or args.include_downstream or args.run_id):
+    if not selected and (args.include_upstream or args.include_downstream or args.run_id or args.inputs):
         exit_with_error(
-            "--upstream, --downstream and --run-id apply to the tasks chosen with --task or --group",
+            "--upstream, --downstream, --run-id and --input apply to the tasks chosen with --task or --group",
             EXIT_USAGE,
         )
     if args.run_id and not args.keep_history:
         exit_with_error(
             "--run-id names a run in the project's history, which --no-history does not use", EXIT_USAGE
         )
+    if args.inputs and args.run_id:
+        exit_with_error(
+            "--input runs the selected tasks in a new run, so it does not take --run-id", EXIT_USAGE
+        )
+    if args.inputs and args.include_upstream:
+        exit_with_error(
+            "--input stands in for the upstream tasks' outputs, so it does not take --upstream", EXIT_USAGE
+        )
+    inputs = parse_inputs(args.inputs)
     try:
         result = run_dag_file(
             args.file,
@@ -83,6 +93,7 @@ def run(args) -> None:
             include_upstream=args.include_upstream,
             include_downstream=args.include_downstream,
             run_id=args.run_id,
+            inputs=inputs,
             triggered_by="cli",
             debug=args.debug,
             keep_history=args.keep_history,
@@ -115,6 +126,24 @@ def parse_task_ids(values: list[str] | None) -> list[str | tuple[str, int]] | No
         (match["task_id"], int(match["map_index"])) if (match := TASK_MARKER.fullmatch(value)) else value
         for value in values
     ]
+
+
+def parse_inputs(values: list[str] | None) -> dict[str, Any] | None:
+    """Read ``--input`` values, each ``TASK_ID=JSON``."""
+    if not values:
+        return None
+    inputs: dict[str, Any] = {}
+    for value in values:
+        task_id, separator, data = value.partition("=")
+        if not separator or not task_id:
+            exit_with_error(f"--input takes TASK_ID=JSON, not {value!r}", EXIT_USAGE)
+        if task_id in inputs:
+            exit_with_error(f"--input gives {task_id} more than once", EXIT_USAGE)
+        try:
+            inputs[task_id] = json.loads(data)
+        except json.JSONDecodeError as e:
+            exit_with_error(f"--input {task_id} is not valid JSON: {e.msg}", EXIT_USAGE)
+    return inputs
 
 
 def print_outputs(result: DagRunResult, *, only_ran: bool = False) -> None:

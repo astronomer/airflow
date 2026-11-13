@@ -1039,7 +1039,7 @@ def test_rerun_uses_the_latest_run_that_has_the_inputs(project):
         run_dag_file(source)
 
     assert run_dag_file(source, task_ids=["total"]).run_id == first.run_id
-    with pytest.raises(LocalRunError, match="lacks the outputs total needs: double did not succeed"):
+    with pytest.raises(LocalRunError, match="lacks the outputs total needs: double did not run successfully"):
         run_dag_file(source, task_ids=["total"], run_id=failed.value.result.run_id)
 
 
@@ -1265,6 +1265,252 @@ def extra():
 
 
 """
+
+INPUT_TRIES = """
+SELECT task_instance.task_id, task_instance.region_index, task_instance.state, task_instance.start_date IS NULL,
+task_instance_note.content FROM task_instance
+LEFT JOIN task_instance_note ON task_instance_note.ti_id = task_instance.id
+WHERE task_instance.run_id = '{run_id}' AND task_instance.working_set = 1
+ORDER BY task_instance.task_id, task_instance.region_index
+"""
+
+
+@pytest.mark.parametrize(
+    ("selection", "inputs", "expected_ran", "expected_states", "expected_outputs"),
+    [
+        pytest.param(
+            {"task_ids": ["total"]},
+            {"double": [2, 4]},
+            {("total", -1)},
+            {("numbers", -1): "skipped", ("double", 0): "success", ("double", 1): "success"},
+            {"double": [2, 4], "total": 6},
+            id="mapped-upstream",
+        ),
+        pytest.param(
+            {"task_ids": ["total"], "keep_history": False},
+            {"double": [2, 4]},
+            {("total", -1)},
+            {("numbers", -1): "skipped", ("double", 0): "success", ("double", 1): "success"},
+            {"double": [2, 4], "total": 6},
+            id="without-history",
+        ),
+        pytest.param(
+            {"task_ids": ["double"], "include_downstream": True},
+            {"numbers": [5, 6]},
+            {("double", 0), ("double", 1), ("total", -1)},
+            {("numbers", -1): "success", ("nothing", -1): "skipped"},
+            {"numbers": [5, 6], "double": [10, 12], "total": 22},
+            id="expanded-from-an-input",
+        ),
+        pytest.param(
+            {"task_ids": ["total"]},
+            {"double": []},
+            set(),
+            {("double", -1): "skipped", ("total", -1): "skipped"},
+            {},
+            id="empty-expansion",
+        ),
+    ],
+)
+def test_inputs_run_the_selected_tasks_alone(
+    project, capfd, selection, inputs, expected_ran, expected_states, expected_outputs
+):
+    result = run_dag_file(write_dag_file(project, "pipeline.py", PIPELINE), **selection, inputs=inputs)
+
+    heading = (
+        f"Running {selection['task_ids'][0]} in run {result.run_id}, with inputs for {', '.join(inputs)}\n"
+    )
+    assert heading in capfd.readouterr().err
+    assert result.ran == expected_ran
+    assert {key: result.task_states[key] for key in expected_states} == expected_states
+    assert {task_id: result.output(task_id) for task_id in expected_outputs} == expected_outputs
+
+
+def test_tasks_given_inputs_are_recorded_as_not_run(project):
+    result = run_dag_file(
+        write_dag_file(project, "pipeline.py", PIPELINE), task_ids=["total"], inputs={"double": [2, 4]}
+    )
+
+    assert query(project, INPUT_TRIES.format(run_id=result.run_id)) == [
+        ("double", 0, "success", 1, "Not run: its output was given as an input of total"),
+        ("double", 1, "success", 1, "Not run: its output was given as an input of total"),
+        ("nothing", -1, "skipped", 1, "Not selected: total did not need it"),
+        ("numbers", -1, "skipped", 1, "Not selected: total did not need it"),
+        ("total", -1, "success", 0, None),
+    ]
+    assert query(project, "SELECT content FROM dag_run_note") == [
+        ("Selected: total, with inputs for double",)
+    ]
+
+
+def test_rerun_never_takes_the_outputs_inputs_stood_in_for(project, capfd):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    given = run_dag_file(source, task_ids=["double"], inputs={"numbers": [5]})
+
+    rerun = run_dag_file(source, task_ids=["total"])
+
+    assert rerun.run_id != given.run_id
+    assert rerun.output("total") == 12
+    assert "No earlier run has the outputs total needs" in capfd.readouterr().err
+    with pytest.raises(
+        LocalRunUsageError, match="lacks the outputs total needs: numbers did not run successfully"
+    ):
+        run_dag_file(source, task_ids=["total"], run_id=given.run_id)
+
+
+@pytest.mark.parametrize(
+    ("selection", "match"),
+    [
+        pytest.param(
+            {"task_ids": ["total"], "inputs": {"dubble": [2]}},
+            "Dag 'example' has no task 'dubble'. Did you mean 'double'?",
+            id="unknown-task",
+        ),
+        pytest.param(
+            {"task_ids": ["total"], "inputs": {"numbers": [1]}},
+            "numbers is not directly upstream of total. Inputs are for double.",
+            id="not-directly-upstream",
+        ),
+        pytest.param(
+            {"task_ids": ["numbers"], "inputs": {"double": [1]}},
+            "double is not directly upstream of numbers. numbers has no upstream tasks.",
+            id="no-upstream",
+        ),
+        pytest.param(
+            {"task_ids": ["total"], "inputs": {"double": 3}},
+            "double is mapped, so its input is a list of the outputs of its map indexes",
+            id="mapped-not-a-list",
+        ),
+        pytest.param(
+            {"task_ids": ["double"], "inputs": {"numbers": 3}},
+            "numbers feeds a mapped task, so its input must be a list or a dict",
+            id="feeds-a-mapped-task",
+        ),
+        pytest.param(
+            {"task_ids": [("double", 1)], "inputs": {"numbers": [1, 2]}},
+            "double\\[1\\] can be rerun only in a run where double has expanded",
+            id="one-map-index",
+        ),
+    ],
+)
+def test_inputs_the_selection_cannot_run_with_are_refused(finished_project, selection, match):
+    with pytest.raises(LocalRunUsageError, match=match):
+        run_dag_file(finished_project / "pipeline.py", **selection)
+
+    assert query(finished_project, "SELECT COUNT(*) FROM dag_run") == [(1,)]
+
+
+GIVEN = """
+from airflow.sdk import dag, task, task_group
+
+
+@task
+def extract():
+    return 1
+
+
+@task(multiple_outputs=True)
+def split():
+    return {"a": 1, "b": 2}
+
+
+@task
+def wait():
+    pass
+
+
+@task
+def combine(value, a):
+    return value + a
+
+
+@task
+def push(ti=None):
+    ti.xcom_push("custom", 1)
+
+
+@task
+def read(value):
+    return value
+
+
+@task_group
+def each(value):
+    @task
+    def inner(number):
+        return number
+
+    @task
+    def after(number):
+        return number
+
+    return after(inner(value))
+
+
+@dag(schedule=None)
+def given():
+    wait() >> combine(extract(), split()["a"])
+    read(push()["custom"])
+    each.expand(value=[1, 2])
+
+
+workflow = given()
+"""
+
+
+@pytest.mark.parametrize(
+    ("inputs", "wait_output"),
+    [
+        pytest.param({"extract": 10, "split": {"a": 5, "b": 0}}, None, id="upstream-it-does-not-read"),
+        pytest.param({"extract": 10, "split": {"a": 5, "b": 0}, "wait": "w"}, "w", id="input-for-xcom-pull"),
+    ],
+)
+def test_inputs_give_each_key_of_multiple_outputs_and_upstream_tasks_without_one_succeed(
+    project, inputs, wait_output
+):
+    result = run_dag_file(write_dag_file(project, "given.py", GIVEN), task_ids=["combine"], inputs=inputs)
+
+    assert result.output("combine") == 15
+    assert (result.output("split", key="a"), result.output("split", key="b")) == (5, 0)
+    assert result.output("wait") == wait_output
+    note = (
+        "Not run: combine ran with inputs instead"
+        if wait_output is None
+        else "Not run: its output was given as an input of combine"
+    )
+    assert [row for row in query(project, INPUT_TRIES.format(run_id=result.run_id)) if row[0] == "wait"] == [
+        ("wait", -1, "success", 1, note)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("selection", "match"),
+    [
+        pytest.param(
+            {"task_ids": ["combine"], "inputs": {"extract": 10}},
+            "No input given for split, read by combine",
+            id="missing",
+        ),
+        pytest.param(
+            {"task_ids": ["combine"], "inputs": {"extract": 10, "split": [5]}},
+            "split has multiple_outputs, so its input must be a dict",
+            id="multiple-outputs-not-a-dict",
+        ),
+        pytest.param(
+            {"task_ids": ["read"], "inputs": {"push": 1}},
+            "read reads the XCom 'custom' of push, which no input can give: an input is a task's return value",
+            id="xcom-key",
+        ),
+        pytest.param(
+            {"task_ids": ["each.after"], "inputs": {"each.inner": [1, 2]}},
+            "each.inner is in a mapped task group or a loop, where no input can stand in for its output",
+            id="mapped-task-group",
+        ),
+    ],
+)
+def test_inputs_for_outputs_no_input_can_give_are_refused(project, selection, match):
+    with pytest.raises(LocalRunUsageError, match=match):
+        run_dag_file(write_dag_file(project, "given.py", GIVEN), **selection)
 
 
 def write_run_request(tmp_path: Path, source: Path, *, debug: bool) -> tuple[Path, Path]:

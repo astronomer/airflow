@@ -28,7 +28,7 @@ import sys
 import warnings
 import weakref
 from collections import abc
-from collections.abc import Callable, Collection, Iterable, MutableSet, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, MutableSet, Sequence
 from contextlib import AbstractContextManager, nullcontext
 from datetime import datetime, timedelta
 from inspect import signature
@@ -1445,6 +1445,7 @@ class DAG:
         include_upstream: bool = False,
         include_downstream: bool = False,
         run_id: str | None = None,
+        inputs: Mapping[str, Any] | None = None,
         debug: bool = False,
         keep_history: bool = True,
         retries: bool = True,
@@ -1461,7 +1462,8 @@ class DAG:
         With ``task_ids`` or ``task_group_ids``, only those tasks run again, as Clear does in the UI:
         in the latest finished run that has the outputs of their upstream tasks, or in ``run_id``.
         With ``run_conf``, or when no earlier run has those outputs, a new run runs them and the tasks
-        they need, and records the others as skipped. The result describes the whole run.
+        they need, and records the others as skipped. With ``inputs``, a new run runs them alone, and
+        the inputs stand in for the outputs they read. The result describes the whole run.
 
         :param run_conf: configuration for the Dag run
         :param conn_file_path: connections file (JSON, YAML or env) available to the run
@@ -1471,6 +1473,9 @@ class DAG:
         :param include_upstream: also rerun the upstream tasks of the selected ones
         :param include_downstream: also rerun the downstream tasks of the selected ones
         :param run_id: the run to rerun the selected tasks in, instead of the latest one with their inputs
+        :param inputs: what each task directly upstream of the selected ones returned, by task ID, e.g.
+            ``{"double": [2, 4]}``; for a mapped task, the list of its map indexes' return values. Those
+            tasks do not run, and every one whose output the selected tasks read must be given.
         :param debug: run every task try inside the run's process instead, so ``breakpoint()`` and
             debuggers work. Module state then carries over from one try to the next.
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
@@ -1502,6 +1507,7 @@ class DAG:
             include_upstream=include_upstream,
             include_downstream=include_downstream,
             run_id=run_id,
+            inputs=inputs,
             debug=debug,
             keep_history=keep_history,
             retries=retries,
