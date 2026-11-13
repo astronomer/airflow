@@ -127,13 +127,13 @@ def run_doctor(repo: Path) -> dict:
     supported = get_supported_db_versions(repo)
     report: dict = {"repo": str(repo), "uv": shutil.which("uv"), "databases": {}}
     for engine in ("postgres", "mysql"):
+        installations = find_installations(engine)
         found = [
             {**installation.to_dict(), "supported": installation.major in supported[engine]}
-            for installation in find_installations(engine)
+            for installation in installations
         ]
-        missing = [
-            v for v in supported[engine] if v not in {item["version"].rsplit(".", 1)[0] for item in found}
-        ]
+        found_majors = {installation.major for installation in installations}
+        missing = [version for version in supported[engine] if version not in found_majors]
         report["databases"][engine] = {
             "supported_versions": supported[engine],
             "found": found,
