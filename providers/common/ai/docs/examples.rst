@@ -96,6 +96,9 @@ Agents & tools
    * - :doc:`tool_approval`
      - Pausing an agent before a tool call a person must approve
        (`example_agent_tool_approval.py <https://github.com/apache/airflow/blob/providers-common-ai/|version|/providers/common/ai/src/airflow/providers/common/ai/example_dags/example_agent_tool_approval.py>`__).
+   * - :doc:`local_development`
+     - Running an agent Dag on your machine against a SQLite database in the project, where
+       the agent may read the tickets and close one, and change nothing else.
    * - :doc:`use_cases/research_agent_with_review`
      - A LangChain ReAct agent that decides its own tool calls, composed with ``LLMOperator`` for
        report formatting and AIP-90 HITL review
