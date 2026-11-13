@@ -719,6 +719,42 @@ def test_outputs_come_with_short_reprs_made_where_the_dag_file_is_imported(proje
     assert len(result.output_reprs[("text", -1, "return_value")]) < 100
 
 
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_tasks_pass_the_classes_the_project_allows(project, debug):
+    with (project / "pyproject.toml").open("a") as pyproject:
+        pyproject.write(
+            '[tool.airflow]\nallowed_deserialization_classes = ["unusual_prefix_*_scores.Score"]\n'
+        )
+    source = write_dag_file(
+        project,
+        "scores.py",
+        """
+        from dataclasses import dataclass
+        from airflow.sdk import dag, task
+
+        @dataclass
+        class Score:
+            value: int
+
+        @task
+        def score():
+            return Score(value=3)
+
+        @task
+        def report(score):
+            return f"score {score.value}"
+
+        @dag(schedule=None)
+        def scores():
+            report(score())
+
+        workflow = scores()
+        """,
+    )
+
+    assert run_dag_file(source, debug=debug).output("report") == "score 3"
+
+
 @mock.patch.object(runner.reprlib, "Repr", autospec=True)
 def test_output_repr_supports_python_311_repr_constructor(mock_repr):
     # Python 3.11's Repr constructor accepts no arguments.
@@ -2174,6 +2210,28 @@ def test_report_task_shows_the_failure_that_ended_the_task(capsys):
     assert (
         capsys.readouterr().err
         == "  ✗ load[3] failed\nTraceback (most recent call last):\nValueError: boom\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("classname", "pattern"),
+    [
+        pytest.param("unusual_prefix_9770ab_scores.Score", "unusual_prefix_*_scores.Score", id="dag-file"),
+        pytest.param("my_project.models.Score", "my_project.models.Score", id="module"),
+    ],
+)
+def test_report_task_says_how_to_allow_a_class_a_task_could_not_deserialize(capsys, classname, pattern):
+    ti = mock.Mock(spec=TaskInstance, task_id="report", map_index=-1, try_number=1)
+    error = (
+        f"ImportError: {classname} was not found in allow list for deserialization imports. To allow it, "
+        "add it to allowed_deserialization_classes in the configuration"
+    )
+
+    runner.report_task(ti, "failed", TaskFailure(summary=error, details=error), cancelled=False)
+
+    assert capsys.readouterr().err.splitlines()[-1] == (
+        "To allow it, add it to pyproject.toml: [tool.airflow] allowed_deserialization_classes = "
+        f'["{pattern}"]'
     )
 
 

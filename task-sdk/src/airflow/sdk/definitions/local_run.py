@@ -65,6 +65,8 @@ _DROPPED_ENV_PREFIXES = ("AIRFLOW__", "_AIRFLOW", "__AIRFLOW")
 # Airflow's per-key settings for the ``[secrets] backend`` arguments, e.g. ``..._KWARG__ROLE_ID``.
 _SECRETS_BACKEND_KWARG_PREFIX = "AIRFLOW__SECRETS__BACKEND_KWARG__"
 PROJECT_SECRETS_BACKEND = "airflow.local_run.secrets_backend.LocalRunSecretsBackend"
+# The default of ``[core] allowed_deserialization_classes``, which a project's classes are added to.
+_AIRFLOW_DESERIALIZATION_CLASSES = "airflow.*"
 
 # What the run's process says the user has to fix, when the run could not start.
 _SETUP_ERRORS: dict[str, type[LocalRunError]] = {
@@ -176,7 +178,8 @@ def build_child_environment(
     otherwise point a local run at a deployment's database. ``AIRFLOW_CONN_*`` and ``AIRFLOW_VAR_*``
     are kept: they are how a local run receives connections and variables. So are the per-key arguments of
     the secrets backend the project's ``pyproject.toml`` names, which keep its credentials out of that file;
-    a backend set in the environment is not, as it may be a deployment's.
+    a backend set in the environment is not, as it may be a deployment's. The classes that file allows tasks
+    to deserialize are allowed on top of Airflow's own, as a deployment's ``[core]`` setting would allow them.
     """
     env = {
         name: value
@@ -211,19 +214,40 @@ def build_child_environment(
     elif backend_kwargs:
         env["AIRFLOW__SECRETS__BACKEND"] = "airflow.secrets.local_filesystem.LocalFilesystemBackend"
         env["AIRFLOW__SECRETS__BACKEND_KWARGS"] = json.dumps(backend_kwargs)
+    if classes := read_project_deserialization_classes(root):
+        env["AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES"] = " ".join(
+            [_AIRFLOW_DESERIALIZATION_CLASSES, *classes]
+        )
     return env
+
+
+def read_project_settings(root: Path) -> dict[str, Any]:
+    """Return the ``[tool.airflow]`` table of the project's ``pyproject.toml``, empty when there is none."""
+    pyproject = root / "pyproject.toml"
+    if not pyproject.is_file():
+        return {}
+    try:
+        with pyproject.open("rb") as file:
+            return tomllib.load(file).get("tool", {}).get("airflow", {})
+    except tomllib.TOMLDecodeError as e:
+        raise LocalRunConfigError(f"{pyproject} is not valid TOML: {e}") from None
+
+
+def read_project_deserialization_classes(root: Path) -> list[str]:
+    """Return the class name patterns that ``allowed_deserialization_classes`` in ``[tool.airflow]`` adds."""
+    classes = read_project_settings(root).get("allowed_deserialization_classes", [])
+    if not isinstance(classes, list) or not all(isinstance(pattern, str) for pattern in classes):
+        raise LocalRunConfigError(
+            f"allowed_deserialization_classes in [tool.airflow] of {root / 'pyproject.toml'} takes a list of "
+            'class names, which can be glob patterns, e.g. ["my_project.models.*"]'
+        )
+    return classes
 
 
 def read_project_secrets_backend(root: Path) -> dict[str, Any] | None:
     """Return the ``[tool.airflow.secrets]`` table of the project's ``pyproject.toml``, if it has one."""
     pyproject = root / "pyproject.toml"
-    if not pyproject.is_file():
-        return None
-    try:
-        with pyproject.open("rb") as file:
-            table = tomllib.load(file).get("tool", {}).get("airflow", {}).get("secrets")
-    except tomllib.TOMLDecodeError as e:
-        raise LocalRunConfigError(f"{pyproject} is not valid TOML: {e}") from None
+    table = read_project_settings(root).get("secrets")
     if table is None:
         return None
     if (

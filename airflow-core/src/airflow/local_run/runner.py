@@ -1093,8 +1093,20 @@ def report_task(
         report(f"  ✗ {label} failed")
         if failure is not None:
             report(failure.details)
+            if hint := suggest_allowed_class(failure.summary):
+                report(hint)
     else:
         report(f"  · {label} {state}")
+
+
+def suggest_allowed_class(failure: str) -> str | None:
+    """Say how the project allows a class that a task failed to deserialize, given the task's error."""
+    match = re.match(r"ImportError: (\S+) was not found in allow list for deserialization imports", failure)
+    if match is None:
+        return None
+    # Airflow imports a Dag file under a name made from the file's path, which differs from one machine to another.
+    pattern = re.sub(r"^unusual_prefix_[0-9a-f]+_", "unusual_prefix_*_", match[1])
+    return f'To allow it, add it to pyproject.toml: [tool.airflow] allowed_deserialization_classes = ["{pattern}"]'
 
 
 def summarize_run(
