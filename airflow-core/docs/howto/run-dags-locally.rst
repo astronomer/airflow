@@ -267,6 +267,16 @@ A run you start or rerun with ``workflow.run()`` or ``airflow run`` while the se
 process that started it: the scheduler leaves it alone, so no task runs twice. The components log to
 ``.airflow/logs/scheduler.log``, ``dag-processor.log`` and ``triggerer.log``.
 
+Run an agent
+------------
+
+An agent task from the Common AI provider runs locally like any other task.
+:doc:`Develop and test AI tasks locally <apache-airflow-providers-common-ai:local_development>` has a Dag
+whose agent reads a SQLite database in the project and may close a ticket in it, and change nothing else,
+with the connections it needs and how to run it. Each tool call the agent makes is in the task's log, which
+``airflow standalone --project`` shows. The terminal shows the statements the agent's database hook runs, but
+not the tool calls.
+
 Limits
 ------
 
