@@ -39,7 +39,7 @@ import sys
 import threading
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
@@ -80,11 +80,16 @@ from airflow.models.xcom import XCOM_RETURN_KEY, XComModel
 from airflow.sdk import DAG
 from airflow.sdk.definitions._internal.loop import get_enclosing_loop
 from airflow.sdk.definitions.dag import _run_dag_run_to_completion, _run_task
-from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, find_loaded_module, refuse_breakpoint
+from airflow.sdk.definitions.local_run import (
+    PROTOCOL_VERSION,
+    allow_classes_defined_in,
+    find_loaded_module,
+    refuse_breakpoint,
+)
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.xcom_arg import XComArg
 from airflow.sdk.execution_time.xcom import XCom
-from airflow.sdk.serde import CLASSNAME, allow_class
+from airflow.sdk.serde import CLASSNAME
 from airflow.serialization.definitions.notset import is_arg_set
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
@@ -1451,19 +1456,6 @@ def collect_result(
         "ran": frozenset(ran),
         "cancelled": cancelled,
     }
-
-
-def allow_classes_defined_in(module_name: str) -> None:
-    """
-    Let outputs load as instances of the classes the Dag file defines.
-
-    A deployed task reads such an output only if ``allowed_deserialization_classes`` lists its class. The
-    run is over, so this changes only what the caller gets back, not how the tasks ran.
-    """
-    for value in vars(sys.modules[module_name]).values():
-        if isinstance(value, type) and value.__module__ == module_name:
-            with suppress(ValueError):
-                allow_class(value)
 
 
 def exit_without_teardown(code: int) -> NoReturn:

@@ -151,6 +151,50 @@ Ctrl-C exits with 130. In Python, ``workflow.run()`` raises ``LocalRunDagFileErr
 for 3 and 4, and for 2 a ``ValueError`` or ``TypeError``: ``LocalRunUsageError`` when the run refuses what it is
 asked, such as a task the Dag lacks. The three are ``LocalRunError``.
 
+Run one task without a metadata database
+---------------------------------------
+
+Add ``--no-db`` to execute exactly one Python task, once, with local task services:
+
+.. code-block:: bash
+
+    uv run airflow run pipeline.py --no-db --task numbers
+
+This mode does not initialize a metadata database, create Dag run or task-instance records, or use an
+Execution API client. It does not create project history in ``.airflow/``. The default ``airflow run``
+behavior is unchanged; ``--no-history`` still uses a temporary metadata database.
+
+Supply every upstream result the task needs using the existing ``--input TASK_ID=JSON`` syntax.
+Upstream tasks never execute and earlier runs' outputs are not consulted. Missing argument inputs are
+reported before execution; a missing dynamic ``xcom_pull`` fails when it is used. JSON ``null`` is an
+explicitly supplied value. A task with ``multiple_outputs`` takes a JSON object as its supplied input.
+
+Connections and variables use the project's configured files, environment variables and secrets backend.
+Provider hooks can still access the systems those connections name, including databases. The task gets
+its usual SDK context and template rendering, with a new ``local__`` execution identity. The logical date
+is the invocation's time, and both data-interval endpoints equal that time; this does not infer a scheduled
+interval. ``--conf`` supplies parameters as usual. Task logs, provider tool-call logs and return values are
+shown in the terminal. Exit codes have the meanings described above.
+
+Task state starts empty and lives in memory by default. To save it to a JSON checkpoint, choose a file:
+
+.. code-block:: bash
+
+    uv run airflow run agent.py --no-db --task triage --state-file triage-state.json
+    uv run airflow run agent.py --no-db --task triage --state-file triage-state.json --keep-task-state
+
+The first command starts fresh, replacing the selected task's checkpoint if one exists. The second
+explicitly reuses that checkpoint in a new execution. Omitting ``--keep-task-state`` resets it for the next
+run. The file is checked against the source path, Dag ID and task ID, locked for the execution, and written
+atomically after each state update. The normal task-state get/set/delete/clear operations, their async
+equivalents and expiration are supported. An absent checkpoint cannot be resumed.
+
+``--no-db`` requires one unmapped ``--task``. Groups, upstream/downstream execution, ``--run-id``,
+``--debug``, mapped tasks, loops, asset services and user impersonation are unsupported. Historical context,
+variable writes, approval waits, deferred execution and rescheduling fail explicitly when requested.
+Task retries are disabled in this mode. The implementation uses installed Airflow parsing and Task SDK
+code; it does not remove the Task SDK's existing installation dependency on ``apache-airflow-core``.
+
 .. _run-dags-locally:run-one-task:
 
 Run one task

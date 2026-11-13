@@ -209,7 +209,7 @@ dependencies = [
 ]
 
 [project.scripts]
-airflow = "airflow.__main__:main"
+airflow = "airflow_cli:main"
 
 [project.urls]
 "Bug Tracker" = "https://github.com/apache/airflow/issues"
@@ -230,6 +230,7 @@ path = "src/airflow/__init__.py"
 [tool.hatch.build.targets.sdist]
 include = [
     "src/airflow",
+    "src/airflow_cli",
     "LICENSE",
     "NOTICE"
 ]
@@ -268,7 +269,7 @@ artifacts = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ['src/airflow']
+packages = ['src/airflow', 'src/airflow_cli']
 artifacts = [
     "src/airflow/ui/dist/",
     "src/airflow/api_fastapi/auth/managers/simple/ui/dist/",

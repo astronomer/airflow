@@ -81,13 +81,16 @@ def run(args) -> None:
         ("--conf", args.conf),
         ("--input", args.inputs),
     ):
-        if args.keep_task_state and new_run:
+        if args.keep_task_state and new_run and not args.no_db:
             exit_with_error(
                 f"{flag} runs the selected tasks in a new run, which has no task state to keep, so it does not "
                 "take --keep-task-state",
                 EXIT_USAGE,
             )
     inputs = parse_inputs(args.inputs)
+    local_options = {}
+    if args.no_db or args.state_file:
+        local_options = {"no_db": args.no_db, "state_file": args.state_file}
     try:
         result = run_dag_file(
             args.file,
@@ -106,6 +109,7 @@ def run(args) -> None:
             debug=args.debug,
             keep_history=args.keep_history,
             retries=args.retries,
+            **local_options,
         )
     except DagExecutionError as e:
         print_outputs(e.result, only_ran=selected)
