@@ -33,6 +33,12 @@ import sys
 import warnings
 from typing import TYPE_CHECKING
 
+if sys.argv[:1] == ["-m"]:
+    # Python imports the package before __main__, so CLI isolation must precede configuration imports.
+    from airflow_cli import prepare_module_execution
+
+    prepare_module_execution()
+
 from airflow.utils.deprecation_tools import DeprecatedImportWarning
 
 if os.environ.get("_AIRFLOW_PATCH_GEVENT"):

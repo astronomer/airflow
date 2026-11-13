@@ -53,6 +53,32 @@ class TestRunCommand:
     def setup_class(cls):
         cls.parser = cli_parser.get_parser()
 
+    @mock.patch.object(run_command, "run_dag_file", autospec=True)
+    def test_passes_no_db_checkpoint_options(self, mock_run_dag_file):
+        mock_run_dag_file.return_value = make_result()
+        args = self.parser.parse_args(
+            [
+                "run",
+                "agent.py",
+                "--no-db",
+                "--task",
+                "agent",
+                "--state-file",
+                "state.json",
+                "--keep-task-state",
+                "--input",
+                "upstream=3",
+                "--conf",
+                '{"limit": 4}',
+            ]
+        )
+        args.func(args)
+        options = mock_run_dag_file.call_args.kwargs
+        assert options["no_db"] is True
+        assert options["state_file"] == "state.json"
+        assert options["keep_task_state"] is True
+        assert options["inputs"] == {"upstream": 3}
+
     @pytest.mark.parametrize(
         ("extra_args", "debug", "keep_history", "retries"),
         [

@@ -606,6 +606,15 @@ ARG_RUN_NO_RETRIES = Arg(
     action="store_false",
     help="Give each task one attempt, whatever its retries say",
 )
+ARG_RUN_NO_DB = Arg(
+    ("--no-db",),
+    action="store_true",
+    help="Run exactly one --task once without a metadata database; supply upstream outputs with --input",
+)
+ARG_RUN_STATE_FILE = Arg(
+    ("--state-file",),
+    help="With --no-db, save task state to this JSON file; --keep-task-state explicitly reuses it",
+)
 # standalone
 ARG_STANDALONE_PROJECT = Arg(
     ("--project",),
@@ -2564,6 +2573,8 @@ core_commands: list[CLICommand] = [
             ARG_RUN_DEBUG,
             ARG_RUN_NO_HISTORY,
             ARG_RUN_NO_RETRIES,
+            ARG_RUN_NO_DB,
+            ARG_RUN_STATE_FILE,
         ),
     ),
     GroupCommand(

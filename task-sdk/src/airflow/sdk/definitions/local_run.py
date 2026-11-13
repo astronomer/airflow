@@ -170,6 +170,7 @@ def build_child_environment(
     root: Path,
     connections_file: Path | None = None,
     variables_file: Path | None = None,
+    no_db: bool = False,
 ) -> dict[str, str]:
     """
     Build the child's environment: the caller's environment without Airflow configuration, plus the project's.
@@ -196,10 +197,14 @@ def build_child_environment(
             "AIRFLOW__CORE__HOSTNAME_CALLABLE": "socket.gethostname",
             # Otherwise a structural edit rerun within the default 30 seconds keeps the previous Dag version.
             "AIRFLOW__CORE__MIN_SERIALIZED_DAG_UPDATE_INTERVAL": "0",
-            "AIRFLOW__CORE__FERNET_KEY": read_or_create_fernet_key(home),
-            "AIRFLOW__API_AUTH__JWT_SECRET": secrets.token_urlsafe(64),
         }
     )
+    if no_db:
+        env["_AIRFLOW__LOCAL_NO_DB"] = "1"
+        env.pop("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN")
+    else:
+        env["AIRFLOW__CORE__FERNET_KEY"] = read_or_create_fernet_key(home)
+        env["AIRFLOW__API_AUTH__JWT_SECRET"] = secrets.token_urlsafe(64)
     backend_kwargs: dict[str, Any] = {}
     if connections_file:
         backend_kwargs["connections_file_path"] = str(connections_file)
@@ -281,6 +286,8 @@ def run_dag_file(
     debug: bool = False,
     keep_history: bool = True,
     retries: bool = True,
+    no_db: bool = False,
+    state_file: str | os.PathLike[str] | None = None,
 ) -> DagRunResult:
     """
     Run one Dag defined in ``source`` in its project's environment and wait for it to finish.
@@ -305,6 +312,8 @@ def run_dag_file(
     :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
         own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
     :param retries: retry failed tasks as their ``retries`` say. Otherwise each task gets one attempt.
+    :param no_db: run one selected task once, with explicit inputs and local services, without a database.
+    :param state_file: with ``no_db``, save task state here; reuse it only with ``keep_task_state``.
     :raises DagExecutionError: the run finished in a failed state.
     :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
     :raises LocalRunDagFileError: the file failed to import, does not define the Dag, or defines an invalid one.
@@ -312,6 +321,27 @@ def run_dag_file(
     :raises LocalRunError: the run's process ended without reporting a result.
     :raises KeyboardInterrupt: the run was interrupted; it is recorded as failed.
     """
+    if no_db:
+        from airflow.sdk.local_runtime.launcher import run_task_file
+
+        return run_task_file(
+            source,
+            dag_id=dag_id,
+            run_conf=run_conf,
+            connections_file=connections_file,
+            variables_file=variables_file,
+            task_ids=task_ids,
+            task_group_ids=task_group_ids,
+            include_upstream=include_upstream,
+            include_downstream=include_downstream,
+            run_id=run_id,
+            inputs=inputs,
+            keep_task_state=keep_task_state,
+            state_file=state_file,
+            debug=debug,
+        )
+    if state_file is not None:
+        raise LocalRunUsageError("--state-file requires --no-db")
     # The run locks its project with fcntl and starts task tries by fork in process groups of their own.
     if sys.platform == "win32":
         raise LocalRunConfigError("Running a Dag locally needs Linux or macOS; on Windows, run it in WSL2")
@@ -575,6 +605,21 @@ class _OutputUnpickler(pickle.Unpickler):
                 )
             module = local
         return super().find_class(module, name)
+
+
+def allow_classes_defined_in(module_name: str) -> None:
+    """
+    Let outputs load as instances of the classes the Dag file defines.
+
+    A deployed task reads such an output only if ``allowed_deserialization_classes`` lists its class. The
+    run is over, so this changes only what the caller gets back, not how the tasks ran.
+    """
+    from airflow.sdk.serde import allow_class
+
+    for value in vars(sys.modules[module_name]).values():
+        if isinstance(value, type) and value.__module__ == module_name:
+            with contextlib.suppress(ValueError):
+                allow_class(value)
 
 
 def find_loaded_module(source: Path) -> str | None:
