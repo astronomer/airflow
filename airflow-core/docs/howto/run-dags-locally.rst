@@ -111,6 +111,21 @@ the project, and give the backend its credentials the way it reads them, such as
 ``AIRFLOW__SECRETS__BACKEND_KWARG__<NAME>`` variables. No other ``AIRFLOW__*`` setting reaches a local run, so a
 backend configured for a deployment is not used.
 
+A task can take an object of a class of your own, such as a Pydantic model or a dataclass that the task before it
+returned, only when Airflow allows the class, as ``[core] allowed_deserialization_classes`` does in a deployment.
+Otherwise the task fails with an ``ImportError`` that names the class, and the run says what to add. List the
+classes, or glob patterns for them, in ``pyproject.toml``:
+
+.. code-block:: toml
+
+    [tool.airflow]
+    allowed_deserialization_classes = ["unusual_prefix_*_pipeline.Summary", "my_project.models.*"]
+
+Local runs and ``airflow standalone --project`` allow them on top of Airflow's own classes. Airflow imports a Dag
+file under a name made from its path, ``unusual_prefix_<hash>_pipeline`` for ``pipeline.py``, so a class defined
+in the file needs the ``unusual_prefix_*_`` pattern. A deployment needs the same classes in its
+``[core] allowed_deserialization_classes``, after ``airflow.*``.
+
 When you run the file as a script, Python runs the top of the file in your own process before ``workflow.run()``
 sets anything up. A lookup there, such as ``Variable.get`` at module level, sees neither this backend nor the files
 you pass to ``workflow.run()``, and fails unless an ``AIRFLOW_VAR_*`` or ``AIRFLOW_CONN_*`` variable holds the

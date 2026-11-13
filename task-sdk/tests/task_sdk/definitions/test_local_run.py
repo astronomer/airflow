@@ -292,6 +292,32 @@ class TestBuildChildEnvironment:
         with pytest.raises(LocalRunConfigError, match=error):
             build_child_environment({}, home=tmp_path, root=tmp_path)
 
+    def test_project_classes_are_allowed_on_top_of_airflows_own(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            '[tool.airflow]\nallowed_deserialization_classes = ["unusual_prefix_*_pipeline.Summary", "models.*"]\n'
+        )
+
+        env = build_child_environment(
+            {"AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES": "deployment.*"}, home=tmp_path, root=tmp_path
+        )
+
+        assert (
+            env["AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES"]
+            == "airflow.* unusual_prefix_*_pipeline.Summary models.*"
+        )
+
+    @pytest.mark.parametrize(
+        "value",
+        [pytest.param('"models.*"', id="not-a-list"), pytest.param("[1]", id="not-names")],
+    )
+    def test_invalid_project_classes_are_refused(self, tmp_path, value):
+        (tmp_path / "pyproject.toml").write_text(
+            f"[tool.airflow]\nallowed_deserialization_classes = {value}\n"
+        )
+
+        with pytest.raises(LocalRunConfigError, match="takes a list of class names"):
+            build_child_environment({}, home=tmp_path, root=tmp_path)
+
 
 class TestWaitForChild:
     def test_returns_exit_code(self):
