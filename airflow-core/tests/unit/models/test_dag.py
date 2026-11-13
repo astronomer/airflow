@@ -82,6 +82,7 @@ from airflow.sdk import (
     task_group,
     teardown,
 )
+from airflow.sdk.definitions import dag as sdk_dag_module
 from airflow.sdk.definitions._internal.contextmanager import TaskGroupContext
 from airflow.sdk.definitions._internal.loop import create_loop
 from airflow.sdk.definitions._internal.templater import NativeEnvironment, SandboxedEnvironment
@@ -1945,6 +1946,39 @@ class TestDag:
 
         dag.test()
         mock_object.assert_called_with("output of first task")
+
+    @mock.patch.object(sdk_dag_module.log, "warning", autospec=True)
+    def test_dag_test_marks_the_tasks_after_a_failure_without_waiting(
+        self, mock_warning, testing_dag_bundle, monkeypatch
+    ):
+        sleeps: list[float] = []
+        monkeypatch.setattr(time, "sleep", sleeps.append)
+        with DAG(dag_id="test_dag_test_failure_chain", schedule=None, start_date=DEFAULT_DATE) as dag:
+
+            @task_decorator
+            def fail():
+                raise RuntimeError("boom")
+
+            @task_decorator
+            def after(value):
+                return value
+
+            after(after(after(fail())))
+        sync_dag_to_db(dag)
+
+        dr = dag.test()
+
+        assert dr.state == DagRunState.FAILED
+        assert {ti.task_id: ti.state for ti in dr.get_task_instances()} == {
+            "fail": TaskInstanceState.FAILED,
+            "after": TaskInstanceState.UPSTREAM_FAILED,
+            "after__1": TaskInstanceState.UPSTREAM_FAILED,
+            "after__2": TaskInstanceState.UPSTREAM_FAILED,
+        }
+        # Each pass marks the next task upstream_failed, so the run goes on at once rather than stopping to
+        # report the rest as unrunnable.
+        assert sleeps == []
+        assert not any(call.args[0].startswith("No tasks to run") for call in mock_warning.call_args_list)
 
     @pytest.mark.parametrize("callback_error", [None, RuntimeError])
     def test_dag_test_retry_callback_keeps_attempt_live(self, testing_dag_bundle, callback_error):

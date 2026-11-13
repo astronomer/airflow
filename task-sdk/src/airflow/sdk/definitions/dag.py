@@ -1556,6 +1556,7 @@ def _run_dag_run_to_completion(
         executor = ExecutorLoader.get_default_executor()
         executor.start()
 
+    previous_unrunnable: set[tuple[UUID, TaskInstanceState | None]] = set()
     while dr.state == DagRunState.RUNNING:
         if should_stop is not None and should_stop():
             raise KeyboardInterrupt
@@ -1574,6 +1575,7 @@ def _run_dag_run_to_completion(
         ids_unrunnable = (
             {x for x in all_tis if x.state not in FINISHED_STATES} - scheduled_tis - awaiting_input_tis
         )
+        unrunnable = {(x.id, x.state) for x in ids_unrunnable}
         if not scheduled_tis and awaiting_input_tis:
             # Human-in-the-loop tasks stay parked in AWAITING_INPUT: dag.test() never
             # resolves them itself. Keep the run alive until a response recorded from
@@ -1587,9 +1589,14 @@ def _run_dag_run_to_completion(
         elif not scheduled_tis and ids_unrunnable:
             if any(x.state in _WAITING_TO_RERUN for x in ids_unrunnable):
                 log.debug("Waiting for tasks to retry or reschedule: %s", ids_unrunnable)
-            else:
+                time.sleep(1)
+            # A pass decides only the tasks whose upstream tasks were done when it started: after a failure, it
+            # marks the next tasks upstream_failed, and the pass after marks theirs. Only a pass that changed
+            # nothing is stuck.
+            elif unrunnable == previous_unrunnable:
                 log.warning("No tasks to run. unrunnable tasks: %s", ids_unrunnable)
-            time.sleep(1)
+                time.sleep(1)
+        previous_unrunnable = unrunnable
 
         for ti in scheduled_tis:
             if should_stop is not None and should_stop():
