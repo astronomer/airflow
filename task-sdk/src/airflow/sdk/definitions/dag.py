@@ -1446,6 +1446,7 @@ class DAG:
         include_downstream: bool = False,
         run_id: str | None = None,
         inputs: Mapping[str, Any] | None = None,
+        keep_task_state: bool = False,
         debug: bool = False,
         keep_history: bool = True,
         retries: bool = True,
@@ -1463,7 +1464,8 @@ class DAG:
         in the latest finished run that has the outputs of their upstream tasks, or in ``run_id``.
         With ``run_conf``, or when no earlier run has those outputs, a new run runs them and the tasks
         they need, and records the others as skipped. With ``inputs``, a new run runs them alone, and
-        the inputs stand in for the outputs they read. The result describes the whole run.
+        the inputs stand in for the outputs they read. The result describes the whole run. The rerun
+        tasks start with no task state, as they do after Clear in the UI, unless ``keep_task_state``.
 
         :param run_conf: configuration for the Dag run
         :param conn_file_path: connections file (JSON, YAML or env) available to the run
@@ -1476,6 +1478,9 @@ class DAG:
         :param inputs: what each task directly upstream of the selected ones returned, by task ID, e.g.
             ``{"double": [2, 4]}``; for a mapped task, the list of its map indexes' return values. Those
             tasks do not run, and every one whose output the selected tasks read must be given.
+        :param keep_task_state: keep what the rerun tasks stored in ``task_state_store`` in their earlier
+            run, so that they resume from it, as Clear's "Keep task state and resume" does. Needs an earlier
+            run to rerun them in, so it is refused with ``run_conf``, ``inputs`` or ``keep_history=False``.
         :param debug: run every task try inside the run's process instead, so ``breakpoint()`` and
             debuggers work. Module state then carries over from one try to the next.
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
@@ -1508,6 +1513,7 @@ class DAG:
             include_downstream=include_downstream,
             run_id=run_id,
             inputs=inputs,
+            keep_task_state=keep_task_state,
             debug=debug,
             keep_history=keep_history,
             retries=retries,

@@ -56,9 +56,12 @@ def run(args) -> None:
     if run_conf is not None and not isinstance(run_conf, dict):
         exit_with_error("--conf must be a JSON object", EXIT_USAGE)
     selected = bool(args.task_ids or args.task_group_ids)
-    if not selected and (args.include_upstream or args.include_downstream or args.run_id or args.inputs):
+    if not selected and (
+        args.include_upstream or args.include_downstream or args.run_id or args.inputs or args.keep_task_state
+    ):
         exit_with_error(
-            "--upstream, --downstream, --run-id and --input apply to the tasks chosen with --task or --group",
+            "--upstream, --downstream, --run-id, --input and --keep-task-state apply to the tasks chosen with "
+            "--task or --group",
             EXIT_USAGE,
         )
     if args.run_id and not args.keep_history:
@@ -73,6 +76,17 @@ def run(args) -> None:
         exit_with_error(
             "--input stands in for the upstream tasks' outputs, so it does not take --upstream", EXIT_USAGE
         )
+    for flag, new_run in (
+        ("--no-history", not args.keep_history),
+        ("--conf", args.conf),
+        ("--input", args.inputs),
+    ):
+        if args.keep_task_state and new_run:
+            exit_with_error(
+                f"{flag} runs the selected tasks in a new run, which has no task state to keep, so it does not "
+                "take --keep-task-state",
+                EXIT_USAGE,
+            )
     inputs = parse_inputs(args.inputs)
     try:
         result = run_dag_file(
@@ -87,6 +101,7 @@ def run(args) -> None:
             include_downstream=args.include_downstream,
             run_id=args.run_id,
             inputs=inputs,
+            keep_task_state=args.keep_task_state,
             triggered_by="cli",
             debug=args.debug,
             keep_history=args.keep_history,
