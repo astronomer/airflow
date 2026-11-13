@@ -266,3 +266,7 @@ prompt still gives good answers. For that, run a set of cases with expected
 outcomes against the notebook agent from the first section, using a real model and
 a library such as `pydantic-evals <https://pydantic.dev/docs/ai/evals/evals/>`__,
 before you ship the change.
+
+To check the answers in every run instead, follow each step with a task that checks its
+output and fails when a check does, as
+:doc:`use_cases/rank_renewals_by_churn_risk` does for an agent that works in four steps.
