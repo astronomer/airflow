@@ -512,7 +512,15 @@ class TestIsUnguardedModuleLevelCall:
         assert namespace["found"] == [expected]
 
 
-SELECTION_KEYS = ("task_ids", "task_group_ids", "include_upstream", "include_downstream", "run_id", "inputs")
+SELECTION_KEYS = (
+    "task_ids",
+    "task_group_ids",
+    "include_upstream",
+    "include_downstream",
+    "run_id",
+    "inputs",
+    "keep_task_state",
+)
 
 
 class TestRunDagFile:
@@ -632,6 +640,7 @@ class TestRunDagFile:
             task_group_ids=["transform"],
             include_downstream=True,
             run_id="manual__1",
+            keep_task_state=True,
         )
 
         # JSON carries the (task_id, map_index) tuple as a list.
@@ -642,6 +651,7 @@ class TestRunDagFile:
             "include_downstream": True,
             "run_id": "manual__1",
             "inputs": None,
+            "keep_task_state": True,
         }
 
     @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
@@ -712,6 +722,30 @@ class TestRunDagFile:
                 ValueError,
                 "so those tasks do not run; leave out include_upstream",
                 id="inputs-with-upstream",
+            ),
+            pytest.param(
+                {"keep_task_state": True},
+                LocalRunUsageError,
+                "a run of the whole Dag is a new run, which has none; pass task_ids or task_group_ids",
+                id="keep-task-state-alone",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "keep_task_state": True, "keep_history": False},
+                LocalRunUsageError,
+                "keep_task_state keeps task state from a run in the project's history",
+                id="keep-task-state-without-history",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "keep_task_state": True, "run_conf": {"n": 1}},
+                LocalRunUsageError,
+                "run_conf runs the selected tasks in a new run, which has no task state to keep",
+                id="keep-task-state-with-conf",
+            ),
+            pytest.param(
+                {"task_ids": ["total"], "keep_task_state": True, "inputs": {"double": [2]}},
+                LocalRunUsageError,
+                "inputs run the selected tasks in a new run, which has no task state to keep",
+                id="keep-task-state-with-inputs",
             ),
             pytest.param(
                 {"task_ids": ["total"], "inputs": {"double": object()}},

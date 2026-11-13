@@ -1138,6 +1138,103 @@ def test_rerun_uses_the_latest_run_that_has_the_inputs(project):
         run_dag_file(source, task_ids=["total"], run_id=failed.value.result.run_id)
 
 
+STATEFUL = """
+from datetime import timedelta
+
+from airflow.sdk import dag, get_current_context, task
+
+
+def count_tries():
+    store = get_current_context()["task_state_store"]
+    tries = store.get("tries", 0) + 1
+    store.set("tries", tries)
+    return tries
+
+
+@task(retries=1, retry_delay=timedelta(0))
+def first():
+    tries = count_tries()
+    if tries == 1:
+        raise RuntimeError("its first try fails")
+    return tries
+
+
+@task
+def second(value):
+    return count_tries()
+
+
+@task
+def each(number):
+    return count_tries()
+
+
+@dag(schedule=None)
+def stateful():
+    second(first())
+    each.expand(number=[1, 2])
+
+
+workflow = stateful()
+"""
+
+
+def test_rerun_starts_over_unless_it_keeps_task_state(project, capfd):
+    source = write_dag_file(project, "stateful.py", STATEFUL)
+    first = run_dag_file(source)
+    assert (first.output("first"), first.output("second")) == (2, 1)
+    capfd.readouterr()
+
+    rerun = run_dag_file(source, task_ids=["first"], include_downstream=True)
+
+    # The rerun's first try starts over, so it fails; its retry resumes from what that try stored.
+    assert (rerun.output("first"), rerun.output("second")) == (2, 1)
+    err = capfd.readouterr().err
+    assert f"Rerunning first in run {first.run_id}\n" in err
+    assert "retrying: RuntimeError: its first try fails\n" in err
+
+    kept = run_dag_file(source, task_ids=["first"], include_downstream=True, keep_task_state=True)
+
+    assert (kept.output("first"), kept.output("second")) == (3, 2)
+    assert f"Rerunning first in run {first.run_id}, keeping task state\n" in capfd.readouterr().err
+
+
+def test_rerun_of_one_map_index_discards_only_its_task_state(project):
+    source = write_dag_file(project, "stateful.py", STATEFUL)
+    run_dag_file(source)
+    run_dag_file(source, task_ids=["each"], keep_task_state=True)
+
+    rerun = run_dag_file(source, task_ids=[("each", 1)])
+
+    assert rerun.output("each") == [2, 1]
+    assert query(
+        project,
+        "SELECT region_index, value FROM task_state_store WHERE task_id = 'each' ORDER BY region_index",
+    ) == [(0, "2"), (1, "1")]
+
+
+@pytest.mark.parametrize(
+    ("task_id", "match"),
+    [
+        pytest.param(
+            "first", "No earlier run to rerun first in, so there is no task state to keep", id="no-run"
+        ),
+        pytest.param(
+            "second",
+            "No earlier run has the outputs second needs, so there is no task state to keep",
+            id="no-outputs",
+        ),
+    ],
+)
+def test_keeping_task_state_needs_an_earlier_run_to_rerun_in(project, task_id, match):
+    source = write_dag_file(project, "stateful.py", STATEFUL)
+
+    with pytest.raises(LocalRunUsageError, match=match):
+        run_dag_file(source, task_ids=[task_id], keep_task_state=True)
+
+    assert query(project, "SELECT COUNT(*) FROM dag_run") == [(0,)]
+
+
 @pytest.fixture(scope="module")
 def finished_project(tmp_path_factory) -> Path:
     """A project with one finished run of PIPELINE, for reruns refused before they change anything."""

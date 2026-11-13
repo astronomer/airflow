@@ -53,7 +53,7 @@ from airflow.sdk.exceptions import (
     LocalRunUsageError,
 )
 
-PROTOCOL_VERSION = 5
+PROTOCOL_VERSION = 6
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 
@@ -276,6 +276,7 @@ def run_dag_file(
     include_downstream: bool = False,
     run_id: str | None = None,
     inputs: Mapping[str, Any] | None = None,
+    keep_task_state: bool = False,
     triggered_by: str = "test",
     debug: bool = False,
     keep_history: bool = True,
@@ -288,6 +289,7 @@ def run_dag_file(
     finished run that has the outputs of their upstream tasks, or in ``run_id``. With ``run_conf``, or when no
     earlier run has those outputs, a new run runs them and the tasks they need, and records the others as
     skipped. With ``inputs``, a new run runs them alone, and the inputs are the outputs of the tasks they read.
+    The rerun tasks start with no task state, as Clear's default does, unless ``keep_task_state``.
 
     :param dag_id: required when the file defines more than one Dag.
     :param task_ids: task IDs, or ``(task_id, map_index)`` tuples for one mapped task instance.
@@ -297,6 +299,8 @@ def run_dag_file(
     :param run_id: the run to rerun the selected tasks in.
     :param inputs: the return value of each task directly upstream of the selected ones that they read, by
         task ID; a mapped task's is the list of its map indexes' return values. Those tasks do not run.
+    :param keep_task_state: keep the task state of the rerun tasks in their earlier run, so that they resume
+        from it. Needs an earlier run to rerun them in.
     :param debug: run task tries inside the run's process rather than each in a process of its own.
     :param keep_history: record the run in the project's history. Otherwise it runs against a database of its
         own, deleted when it ends; selected tasks then always run in a new run, with the tasks they need.
@@ -325,6 +329,11 @@ def run_dag_file(
         raise ValueError(
             "run_id names a run in the project's history, which a run without history cannot use"
         )
+    if keep_task_state and not keep_history:
+        raise LocalRunUsageError(
+            "keep_task_state keeps task state from a run in the project's history, which a run without "
+            "history does not use"
+        )
     selection = build_task_selection(
         task_ids,
         task_group_ids,
@@ -333,6 +342,7 @@ def run_dag_file(
         run_id=run_id,
         run_conf=run_conf,
         inputs=inputs,
+        keep_task_state=keep_task_state,
     )
     connections_path = resolve_resource_file(connections_file, "connections")
     variables_path = resolve_resource_file(variables_file, "variables")
@@ -401,6 +411,7 @@ def build_task_selection(
     run_id: str | None,
     run_conf: dict[str, Any] | None,
     inputs: Mapping[str, Any] | None = None,
+    keep_task_state: bool = False,
 ) -> dict[str, Any]:
     """Check a selection of tasks to rerun, and return it as the run's request carries it."""
     if inputs is not None and (
@@ -430,6 +441,11 @@ def build_task_selection(
                 "include_upstream, include_downstream, run_id and inputs apply to selected tasks; "
                 "pass task_ids or task_group_ids"
             )
+        if keep_task_state:
+            raise LocalRunUsageError(
+                "keep_task_state keeps the task state of rerun tasks, and a run of the whole Dag is a new run, "
+                "which has none; pass task_ids or task_group_ids"
+            )
         return {}
     if run_conf is not None and run_id is not None:
         raise ValueError(
@@ -443,6 +459,16 @@ def build_task_selection(
             "inputs stand in for the upstream tasks' outputs, so those tasks do not run; "
             "leave out include_upstream"
         )
+    if keep_task_state and run_conf is not None:
+        raise LocalRunUsageError(
+            "run_conf runs the selected tasks in a new run, which has no task state to keep; "
+            "leave out keep_task_state"
+        )
+    if keep_task_state and inputs:
+        raise LocalRunUsageError(
+            "inputs run the selected tasks in a new run, which has no task state to keep; "
+            "leave out keep_task_state"
+        )
     return {
         "task_ids": markers,
         "task_group_ids": group_ids,
@@ -450,6 +476,7 @@ def build_task_selection(
         "include_downstream": include_downstream,
         "run_id": run_id,
         "inputs": serialize_inputs(inputs) if inputs else None,
+        "keep_task_state": keep_task_state,
     }
 
 

@@ -583,6 +583,14 @@ ARG_RUN_INPUT = Arg(
         "returned. Needed for each task whose output they read. Repeatable"
     ),
 )
+ARG_RUN_KEEP_TASK_STATE = Arg(
+    ("--keep-task-state",),
+    action="store_true",
+    help=(
+        "Keep what the rerun tasks stored in their task state in the earlier run, so they resume from it, as "
+        "Clear's 'Keep task state and resume' does; otherwise they start with none"
+    ),
+)
 ARG_RUN_NO_HISTORY = Arg(
     ("--no-history",),
     dest="keep_history",
@@ -2552,6 +2560,7 @@ core_commands: list[CLICommand] = [
             ARG_RUN_DOWNSTREAM,
             ARG_RUN_IN_RUN_ID,
             ARG_RUN_INPUT,
+            ARG_RUN_KEEP_TASK_STATE,
             ARG_RUN_DEBUG,
             ARG_RUN_NO_HISTORY,
             ARG_RUN_NO_RETRIES,

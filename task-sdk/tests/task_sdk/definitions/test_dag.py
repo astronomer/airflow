@@ -1425,6 +1425,7 @@ class TestDagRunMethod:
             include_downstream=False,
             run_id=None,
             inputs=None,
+            keep_task_state=False,
             debug=debug,
             keep_history=keep_history,
             retries=retries,
@@ -1440,6 +1441,7 @@ class TestDagRunMethod:
             include_upstream=True,
             include_downstream=True,
             run_id="manual__1",
+            keep_task_state=True,
         )
 
         mock_run_dag_file.assert_called_once_with(
@@ -1454,6 +1456,7 @@ class TestDagRunMethod:
             include_downstream=True,
             run_id="manual__1",
             inputs=None,
+            keep_task_state=True,
             debug=False,
             keep_history=True,
             retries=True,
@@ -1477,6 +1480,7 @@ class TestDagRunMethod:
             include_downstream=False,
             run_id=None,
             inputs={"double": [2, 4]},
+            keep_task_state=False,
             debug=False,
             keep_history=False,
             retries=True,

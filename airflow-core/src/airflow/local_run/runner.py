@@ -88,6 +88,7 @@ from airflow.sdk.serde import CLASSNAME, allow_class
 from airflow.serialization.definitions.notset import is_arg_set
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
+from airflow.state import TaskScope, get_state_backend
 from airflow.utils.db import _REVISION_HEADS_MAP, _get_script_object, initdb, upgradedb
 from airflow.utils.log.task_log_address import prepare_task_log_contexts, render_task_log_filename
 from airflow.utils.retries import run_with_db_retries
@@ -396,6 +397,7 @@ class TaskSelection:
     run_id: str | None
     # Serialized as XCom values are, by task ID; the selected tasks then run alone in a new run.
     inputs: Mapping[str, Any] | None = None
+    keep_task_state: bool = False
 
 
 def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
@@ -412,6 +414,7 @@ def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
         include_downstream=bool(request.get("include_downstream")),
         run_id=request.get("run_id"),
         inputs=request.get("inputs"),
+        keep_task_state=bool(request.get("keep_task_state")),
     )
 
 
@@ -460,6 +463,8 @@ def start_selected_run(
                     dag_run = earlier
                     rerun_selection(scheduler_dag, dag_run, markers, selection, session=session)
                     heading = describe_rerun(selection, dag_run.run_id, sorted(reused))
+                elif selection.keep_task_state:
+                    raise UsageSetupError(describe_missing_task_state(selection, reused))
                 elif selection.inputs is not None:
                     scheduler_dag, dag_run = start_run_with_inputs(
                         dag, markers, selected, selection, run_conf, triggered_by, session=session
@@ -501,23 +506,42 @@ def rerun_selection(
     over by pointing its ``creating_job_id`` at this process's job in the transaction that clears the tasks:
     the history server's scheduler leaves alone the runs whose creating job is a running local run's, so it
     never runs the cleared tries itself.
+
+    The cleared task instances start with no task state unless the selection keeps it, as the UI's Clear
+    does: their retries then resume from what their new tries store.
     """
     check_map_indexes(markers, dag_run, session=session)
     dag_run.creating_job_id = start_local_run_job(session=session).id
+    task_ids = find_task_markers_to_clear(
+        markers,
+        dag=dag,
+        run_id=dag_run.run_id,
+        include_upstream=selection.include_upstream,
+        include_downstream=selection.include_downstream,
+        session=session,
+    )
+    # Found before the clear, which can archive these rows, and discarded after it, so a failed clear keeps it.
+    discarded: list[TaskScope] = []
+    if not selection.keep_task_state:
+        for ti in dag.clear(task_ids=task_ids, run_id=dag_run.run_id, dry_run=True, session=session):
+            discarded.append(
+                TaskScope(
+                    dag_id=ti.dag_id,
+                    run_id=ti.run_id,
+                    task_id=ti.task_id,
+                    region_id=ti.region_id,
+                    region_index=ti.region_index,
+                )
+            )
     dag.clear(
-        task_ids=find_task_markers_to_clear(
-            markers,
-            dag=dag,
-            run_id=dag_run.run_id,
-            include_upstream=selection.include_upstream,
-            include_downstream=selection.include_downstream,
-            session=session,
-        ),
+        task_ids=task_ids,
         run_id=dag_run.run_id,
         dag_run_state=DagRunState.RUNNING,
         run_on_latest_version=True,
         session=session,
     )
+    for scope in discarded:
+        get_state_backend().clear(scope, session=session)
 
 
 def start_run_for_selection(
@@ -925,7 +949,19 @@ def describe_selection(selection: TaskSelection) -> str:
 
 def describe_rerun(selection: TaskSelection, run_id: str, reused: list[str]) -> str:
     message = f"Rerunning {describe_selection(selection)} in run {run_id}"
-    return message + (f", with the outputs of {', '.join(reused)}" if reused else "")
+    message += f", with the outputs of {', '.join(reused)}" if reused else ""
+    return message + (", keeping task state" if selection.keep_task_state else "")
+
+
+def describe_missing_task_state(selection: TaskSelection, reused: set[str]) -> str:
+    labels = describe_selection(selection)
+    reason = (
+        f"No earlier run has the outputs {labels} needs" if reused else f"No earlier run to rerun {labels} in"
+    )
+    return (
+        f"{reason}, so there is no task state to keep. Without keeping task state, {labels} runs in a new "
+        "run, which starts with none."
+    )
 
 
 def describe_new_run(selection: TaskSelection, run_id: str, first: list[str], *, new_conf: bool) -> str:

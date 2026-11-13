@@ -97,6 +97,7 @@ class TestRunCommand:
             include_downstream=False,
             run_id=None,
             inputs=None,
+            keep_task_state=False,
             triggered_by="cli",
             debug=debug,
             keep_history=keep_history,
@@ -121,6 +122,7 @@ class TestRunCommand:
                 "--downstream",
                 "--run-id",
                 "manual__1",
+                "--keep-task-state",
             ]
         )
 
@@ -137,6 +139,7 @@ class TestRunCommand:
             "include_downstream": True,
             "run_id": "manual__1",
             "inputs": None,
+            "keep_task_state": True,
             "triggered_by": "cli",
             "debug": False,
             "keep_history": True,
@@ -209,6 +212,27 @@ class TestRunCommand:
                 ["--task", "total", "--input", "double=[2]", "--upstream"],
                 "so it does not take --upstream",
                 id="input-with-upstream",
+            ),
+            pytest.param(
+                ["--keep-task-state"],
+                "apply to the tasks chosen with --task or --group",
+                id="keep-task-state",
+            ),
+            pytest.param(
+                ["--task", "total", "--keep-task-state", "--no-history"],
+                "--no-history runs the selected tasks in a new run, which has no task state to keep, so it "
+                "does not take --keep-task-state",
+                id="keep-task-state-without-history",
+            ),
+            pytest.param(
+                ["--task", "total", "--keep-task-state", "--conf", "{}"],
+                "--conf runs the selected tasks in a new run, which has no task state to keep",
+                id="keep-task-state-with-conf",
+            ),
+            pytest.param(
+                ["--task", "total", "--keep-task-state", "--input", "double=[2]"],
+                "--input runs the selected tasks in a new run, which has no task state to keep",
+                id="keep-task-state-with-input",
             ),
             pytest.param(["--conf", "{not json"], "--conf is not valid JSON", id="conf-not-json"),
             pytest.param(["--conf", "[1]"], "--conf must be a JSON object", id="conf-not-object"),

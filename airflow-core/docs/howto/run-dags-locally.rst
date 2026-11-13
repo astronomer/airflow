@@ -182,6 +182,8 @@ select more tasks, and use ``--group`` to select every task in a task group. Wit
 * ``--downstream`` also runs the tasks after the selected ones, and ``--upstream`` the tasks before them.
 * ``--run-id`` reruns the tasks in that run instead of the latest one.
 * ``--conf`` starts a new run with that conf, in which the selected tasks and the tasks before them run.
+* ``--keep-task-state`` lets the tasks resume from what their earlier tries stored in their task state, instead
+  of starting over; see :ref:`run-dags-locally:task-state`.
 
 When no earlier run has the outputs the selected tasks need, for example after you add a task before them,
 they run in a new run too. The tasks they need run first, and the run records the tasks it leaves out as
@@ -234,8 +236,9 @@ In Python, ``workflow.run()`` takes the same selection as keyword arguments:
         print("total:", result.output("total"))
 
 ``task_ids`` takes task IDs and ``(task_id, map_index)`` tuples. The other arguments are
-``task_group_ids``, ``include_upstream``, ``include_downstream``, ``run_id`` and ``inputs``, which takes the
-objects the tasks returned, by task ID: ``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})``.
+``task_group_ids``, ``include_upstream``, ``include_downstream``, ``run_id``, ``keep_task_state`` and
+``inputs``, which takes the objects the tasks returned, by task ID:
+``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})``.
 
 To stop in one task with your IDE's debugger, add ``debug=True`` to that call and use the IDE's Debug
 button. Or leave the file as it is, and add a run configuration for the module ``airflow`` with the
@@ -283,6 +286,39 @@ on its schedule. **Trigger** and **Clear** work as in any Airflow deployment.
 A run you start or rerun with ``workflow.run()`` or ``airflow run`` while the server runs stays with the
 process that started it: the scheduler leaves it alone, so no task runs twice. The components log to
 ``.airflow/logs/scheduler.log``, ``dag-processor.log`` and ``triggerer.log``.
+
+.. _run-dags-locally:task-state:
+
+Task state
+----------
+
+What tasks store with ``task_state_store``, such as a checkpoint or the ID of a job they submitted, and with
+``asset_state_store``, such as an asset's watermark, is kept in the project's history and read as in a
+deployment. For task state, retries resume and clearing starts over (see
+:ref:`concepts-resumable-tasks-resumable`):
+
+* A task's retries read what its earlier tries in the run stored, and so does a deferred task when it resumes.
+  That is how a task carries on from a checkpoint.
+* A new run starts with no task state: a run of the whole Dag, a run with ``--conf``, ``--input`` or
+  ``--no-history``, and a selection that no earlier run has the outputs for.
+* A rerun with ``--task`` or ``--group`` discards the task state of each task instance it runs, the ones
+  ``--upstream`` and ``--downstream`` add included, as **Clear** does in the UI. The tasks start over with the
+  code as it is now: an operator that resumes an external job submits a new one, rather than returning the result
+  of the job its earlier try submitted before you changed it. ``--task 'double[1]'`` discards that map index's
+  task state alone.
+* ``--keep-task-state``, or ``keep_task_state=True`` in ``workflow.run()``, keeps it, as **Keep task state and
+  resume** does in the Clear dialog: the tasks resume from what their earlier tries stored. Use it when neither
+  the code nor the inputs changed and a task should carry on where it stopped. The run's first line then ends
+  with ``keeping task state``. It needs an earlier run to rerun the tasks in, so it is refused, with exit code 2,
+  together with ``--conf``, ``--input`` or ``--no-history``, and when no earlier run has the outputs the tasks
+  need.
+* Asset state belongs to the asset, not to a run: each run reads what the last one stored, and a rerun keeps
+  it. To start an asset over, clear it on the asset's **Asset State Store** tab in
+  ``airflow standalone --project``, or delete ``.airflow/``. A run with ``--no-history`` starts with none.
+
+In ``airflow standalone --project``, **Clear** discards the task state of the task instances it clears unless
+you tick **Keep task state and resume**; clearing a whole run with **Clear Dag Run** keeps it, and **Trigger**
+starts a new run, with none.
 
 Run an agent
 ------------
