@@ -1562,7 +1562,7 @@ def _run_dag_run_to_completion(
         executor = ExecutorLoader.get_default_executor()
         executor.start()
 
-    previous_unrunnable: set[tuple[UUID, TaskInstanceState | None]] = set()
+    previous_unrunnable: set[tuple[UUID, str | None]] = set()
     while dr.state == DagRunState.RUNNING:
         if should_stop is not None and should_stop():
             raise KeyboardInterrupt
