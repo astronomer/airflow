@@ -305,7 +305,10 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             )
             session.commit()
             cancelled = True
+        if selection is not None and not cancelled:
+            fail_selection_run(dag_run, ran, session=session)
         # Once the job has ended, the scheduler treats the run as any other, e.g. runs tries cleared in the UI.
+        # Ending it commits the run's outcome too.
         job = session.get_one(Job, dag_run.creating_job_id)
         job.state = JobState.SUCCESS
         job.complete_execution(session=session)
@@ -590,6 +593,24 @@ def start_run_with_inputs(
             ti.note = f"Not selected: {labels} did not need it"
     session.flush()
     return scheduler_dag, dag_run
+
+
+def fail_selection_run(dag_run: DagRun, ran: set[tuple[str, int]], *, session: Session) -> None:
+    """
+    Record a finished run of selected tasks as failed when a task instance in ``ran`` ended failed.
+
+    Airflow judges a run by its leaf tasks, which a selection mostly leaves out: they keep the states of the
+    earlier run the selection reruns in, or a new run records them as skipped, so the run would succeed
+    whatever the selected tasks did. A run of the whole Dag keeps Airflow's verdict, under which a failure
+    that an ``all_done`` leaf follows still succeeds.
+    """
+    # A try run in this process, in debug mode, commits and closes the thread's session, detaching ``dag_run``.
+    dag_run = session.get_one(DagRun, dag_run.id)
+    if dag_run.state != DagRunState.SUCCESS:
+        return
+    failed = dag_run.get_task_instances(state=[TaskInstanceState.FAILED], session=session)
+    if any((ti.task_id, ti.map_index) in ran for ti in failed):
+        dag_run.set_state(DagRunState.FAILED)
 
 
 def refuse_map_index_in_new_run(markers: list[str | tuple[str, int]]) -> None:

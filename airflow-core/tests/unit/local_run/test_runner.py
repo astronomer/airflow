@@ -1146,6 +1146,65 @@ def test_task_a_selection_left_out_is_not_an_input_of_a_later_rerun(project):
     assert run_dag_file(source, task_ids=["total"]).run_id != first.run_id
 
 
+@pytest.mark.parametrize(
+    ("earlier_run", "selection", "expected_ran", "expected_total"),
+    [
+        pytest.param(True, {}, {("double", 0), ("double", 1), ("double", 2)}, "success", id="rerun"),
+        pytest.param(
+            True,
+            {"task_ids": ["numbers", "double"]},
+            {("numbers", -1), ("double", 0), ("double", 1), ("double", 2)},
+            "success",
+            id="rerun-with-its-upstream",
+        ),
+        pytest.param(
+            False,
+            {},
+            {("numbers", -1), ("double", 0), ("double", 1), ("double", 2)},
+            "skipped",
+            id="new-run",
+        ),
+        pytest.param(
+            True,
+            {"keep_history": False},
+            {("numbers", -1), ("double", 0), ("double", 1), ("double", 2)},
+            "skipped",
+            id="without-history",
+        ),
+        pytest.param(
+            False,
+            {"inputs": {"numbers": [1, 2]}},
+            {("double", 0), ("double", 1)},
+            "skipped",
+            id="inputs",
+        ),
+    ],
+)
+@pytest.mark.parametrize("debug", [False, True], ids=["supervised", "debug"])
+def test_selection_whose_task_failed_fails(
+    project, capfd, earlier_run, selection, expected_ran, expected_total, debug
+):
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+    if earlier_run:
+        first = run_dag_file(source)
+    source.write_text(textwrap.dedent(PIPELINE).replace("return number * 2", "raise ValueError('boom')"))
+    capfd.readouterr()
+
+    with pytest.raises(DagExecutionError) as failed:
+        run_dag_file(source, **{"task_ids": ["double"], "debug": debug, **selection})
+
+    result = failed.value.result
+    assert result.state == "failed"
+    assert result.ran == expected_ran
+    # The leaf the selection left alone does not decide the run.
+    assert result.task_states[("total", -1)] == expected_total
+    assert re.search(r"Failed in \S+ \(\S+ total\): double\[0\], double\[1\]", capfd.readouterr().err)
+    if selection.get("keep_history", True):
+        assert query(project, f"SELECT state FROM dag_run WHERE run_id = '{result.run_id}'") == [("failed",)]
+        if earlier_run:
+            assert result.run_id == first.run_id
+
+
 BRANCHING = """
 from airflow.sdk import dag, task
 

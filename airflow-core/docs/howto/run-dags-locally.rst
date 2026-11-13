@@ -157,7 +157,8 @@ gets the outputs they returned in the earlier run.
 
 The task runs as a new try in the latest run that has the outputs it needs, the way **Clear** reruns a task
 in the UI. The new try runs the file as it is now, and the earlier try and its log stay in the history.
-``airflow run`` prints the outputs of the tasks it ran.
+``airflow run`` prints the outputs of the tasks it ran. When one of them fails, the run is recorded as failed
+and ``airflow run`` exits with 1, whatever the states of the tasks it left alone.
 
 ``--task`` takes a task ID, or one mapped try as the run prints it: ``--task 'double[1]'``. Repeat it to
 select more tasks, and use ``--group`` to select every task in a task group. With a selection:
