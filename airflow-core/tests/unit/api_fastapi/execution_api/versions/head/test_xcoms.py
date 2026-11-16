@@ -1253,6 +1253,47 @@ class TestXComsGetEndpoint:
 
         assert set(response.json()) == set(expected_xcoms)
 
+    @pytest.mark.parametrize(
+        ("include_prior_dates", "expected_xcoms"),
+        [
+            pytest.param(
+                True,
+                ["earlier 0", "earlier 1", "earlier 2", "later 0", "later 1", "later 2"],
+                id="prior-dates",
+            ),
+            pytest.param(False, ["later 0", "later 1", "later 2"], id="this-run"),
+        ],
+    )
+    def test_xcom_get_slice_include_prior_dates_for_mapped_task(
+        self, client, dag_maker, session, include_prior_dates, expected_xcoms
+    ):
+        with dag_maker(dag_id="dag", serialized=True):
+            PythonOperator.partial(task_id="mapped", python_callable=str).expand(op_args=[[1], [2], [3]])
+        runs = {
+            "earlier": dag_maker.create_dagrun(run_id="earlier", logical_date=timezone.datetime(2024, 1, 1)),
+            "later": dag_maker.create_dagrun(run_id="later", logical_date=timezone.datetime(2024, 1, 2)),
+        }
+        for name, dag_run in runs.items():
+            tis = [ti for ti in dag_run.get_task_instances(session=session) if ti.task_id == "mapped"]
+            # A run before the task's start_date has no task instances, which would hide a failure here.
+            assert sorted(ti.region_index for ti in tis) == [0, 1, 2]
+            for ti in tis:
+                session.add(
+                    XComModelV2(
+                        key=XCOM_RETURN_KEY, value=f"{name} {ti.region_index}", task_instance_id=ti.id
+                    )
+                )
+        session.commit()
+
+        response = client.get(
+            f"/execution/xcoms/dag/later/mapped/{XCOM_RETURN_KEY}/slice",
+            params={"include_prior_dates": include_prior_dates},
+        )
+
+        assert response.status_code == 200
+        # Ordered by map index only, so values from different runs interleave.
+        assert sorted(response.json()) == expected_xcoms
+
     @pytest.mark.parametrize("offset", [0, 2, -1])
     def test_xcom_get_by_index_query_is_bounded(self, client, dag_maker, session, offset):
         """Reading one item of a mapped XCom must ask the database for one row, not every row after ``offset``."""
