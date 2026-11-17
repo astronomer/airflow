@@ -173,8 +173,10 @@ Connections and variables use the project's configured files, environment variab
 Provider hooks can still access the systems those connections name, including databases. The task gets
 its usual SDK context and template rendering, with a new ``local__`` execution identity. The logical date
 is the invocation's time, and both data-interval endpoints equal that time; this does not infer a scheduled
-interval. ``--conf`` supplies parameters as usual. Task logs, provider tool-call logs and return values are
-shown in the terminal. Exit codes have the meanings described above.
+interval. ``--conf`` supplies parameters as usual. The terminal shows the task's log as it does for a run
+without history: the task's own log lines, warnings and errors, and the name of each tool call an agent makes,
+then what the task returned. There is no task log, so Airflow's other informational lines are not kept.
+Exit codes have the meanings described above.
 
 Task state starts empty and lives in memory by default. To save it to a JSON checkpoint, choose a file:
 

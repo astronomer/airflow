@@ -252,7 +252,7 @@ def test_connections_variables_templates_and_masked_tool_logs(project):
         import structlog
         connection = Connection.get("warehouse")
         print(connection.password)
-        structlog.get_logger("airflow.providers.common.ai.tools").info("Tool call: inspect", result="ok")
+        structlog.get_logger("airflow.providers.common.ai.tools").info("::group::Tool call: inspect", result="ok")
         return {"host": connection.host, "region": Variable.get("region"), "rendered": rendered}
         """,
         arguments="rendered",
@@ -273,6 +273,36 @@ def test_connections_variables_templates_and_masked_tool_logs(project):
     assert "eu-ready" in result.stdout
     assert "Tool call: inspect" in result.stdout + result.stderr
     assert "local-test-secret-987" not in result.stdout + result.stderr
+
+
+def test_terminal_shows_what_a_local_run_shows(project):
+    write_task(
+        project,
+        """
+        import structlog
+        operator_log = structlog.get_logger("airflow.task.operators.example.ExampleOperator")
+        operator_log.info("::group::Tool call: inspect")
+        structlog.get_logger("airflow.task.hooks.example.ExampleHook").info("Running statement: SELECT 1")
+        operator_log.info("Tool inspect returned in 0.01s")
+        operator_log.info("::endgroup::")
+        print("printed by the task")
+        return 7
+        """,
+    )
+    result = run_cli(project, "--task", "check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "check | Tool call: inspect\n" in result.stderr
+    assert "check | ExampleHook: Running statement: SELECT 1" in result.stderr
+    assert "printed by the task" in result.stdout + result.stderr
+    for hidden in (
+        "::group::",
+        "::endgroup::",
+        "Pre Execute",
+        "Pushing xcom",
+        "Filling up the DagBag",
+        "returned in",
+    ):
+        assert hidden not in result.stdout + result.stderr
 
 
 def test_async_state_operations_and_clear(project):
@@ -548,7 +578,8 @@ def test_agent_tools_use_development_database_without_metadata_database(project,
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Closed ticket 1." in result.stdout
-    assert "Tool call:" in result.stdout + result.stderr
+    assert "triage_tickets | Tool call: close_ticket\n" in result.stderr
+    assert "::group::" not in result.stdout + result.stderr
     with closing(sqlite3.connect(database)) as conn:
         assert dict(conn.execute("SELECT id, status FROM tickets")) == {1: "closed", 2: "open", 3: "closed"}
     assert not list(project.rglob("airflow.db"))

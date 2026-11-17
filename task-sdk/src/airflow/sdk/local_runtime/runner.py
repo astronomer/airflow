@@ -33,7 +33,7 @@ from uuid import uuid4
 
 import structlog
 
-from airflow.local_run.logs import render_for_terminal  # noqa: SDK002
+from airflow.local_run.logs import configure_terminal_logging  # noqa: SDK002
 from airflow.sdk._shared.secrets_masker import redact
 from airflow.sdk.api.datamodels._generated import (
     BundleInfo,
@@ -168,7 +168,7 @@ def build_startup(dag, task, source: Path, root: Path, run_conf: dict | None) ->
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
     configure_logging(output=sys.stderr)
-    structlog.get_config()["processors"][-1] = render_for_terminal
+    configure_terminal_logging()
     block_orm_access()
     source, root = Path(request["source"]), Path(request["root"])
     dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])

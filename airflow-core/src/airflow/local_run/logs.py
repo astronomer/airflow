@@ -162,6 +162,15 @@ def configure_local_run_logging() -> None:
     root.addHandler(_CopyRecordsToTaskLog())
 
 
+def configure_terminal_logging() -> None:
+    """
+    Show a task's log on the terminal as a local run does, for a run that writes no task log.
+
+    What the task prints stays a log line, so that the terminal masks it.
+    """
+    structlog.get_config()["processors"][-1:] = [_drop_off_console, _strip_group_marker, render_for_terminal]
+
+
 def render_for_terminal(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> str:
     """
     Render a log event as the terminal shows it: the task, where the event came from, and the message.
@@ -374,8 +383,13 @@ def _route_event(logger: WrappedLogger, method_name: str, event_dict: EventDict)
     if name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
         # The runner reports the failure from the task's log, once it knows whether the task will retry.
         raise structlog.DropEvent
+    return _drop_off_console(logger, method_name, event_dict)
+
+
+def _drop_off_console(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
+    name = event_dict.get("logger") or ""
     level = _LEVELS[str(event_dict.get("level", method_name)).upper()]
-    if not _is_on_console(name, level, str(event_dict.get("event", ""))):
+    if name not in OUTPUT_LOGGERS and not _is_on_console(name, level, str(event_dict.get("event", ""))):
         raise structlog.DropEvent
     return event_dict
 
