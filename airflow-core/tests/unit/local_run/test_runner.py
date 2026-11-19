@@ -2295,6 +2295,31 @@ def test_summarize_run(payload, expected):
     assert summary == f"{expected}. History: /p/.airflow"
 
 
+@mock.patch.object(runner, "is_ide_debugger_attached", autospec=True)
+@pytest.mark.parametrize(
+    ("task_state", "debugger", "hints"),
+    [
+        pytest.param("failed", True, True, id="failed-under-debugger"),
+        pytest.param("failed", False, False, id="failed"),
+        pytest.param("success", True, False, id="succeeded-under-debugger"),
+    ],
+)
+def test_summarize_run_says_how_to_stop_where_a_task_fails(is_attached, task_state, debugger, hints):
+    is_attached.return_value = debugger
+    payload = {"cancelled": False, "state": task_state, "task_states": {("b", -1): task_state}}
+
+    summary = runner.summarize_run(payload, 1.49, 4.16, Path("/p/.airflow"))
+
+    assert summary.endswith("History: /p/.airflow") is not hints
+    assert (
+        summary.endswith(
+            "\nTo stop the debugger where a task fails, turn on User Uncaught Exceptions in VS Code's "
+            "Breakpoints view, or a Python exception breakpoint in PyCharm."
+        )
+        is hints
+    )
+
+
 def test_summarize_run_links_to_the_run_while_the_ui_runs():
     payload = {"cancelled": False, "state": "success", "task_states": {}}
     run_url = "http://127.0.0.1:8080/dags/example/runs/manual__1"

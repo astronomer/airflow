@@ -1173,9 +1173,11 @@ def summarize_run(
     Say how the run ended, and where to look at it: its page in the project's UI while one runs.
 
     ``elapsed`` is the time its tasks took, and ``total`` that of the whole run, from the call that started it.
-    ``home`` is None for a run that kept no history.
+    ``home`` is None for a run that kept no history. Under an IDE's debugger, a run whose tasks failed also says
+    how to have the debugger stop where they failed.
     """
     times = f"{elapsed:.1f}s ({total:.1f}s total)"
+    hint = ""
     if payload["cancelled"]:
         outcome = f"Cancelled after {times}"
     elif payload["state"] == DagRunState.SUCCESS:
@@ -1187,13 +1189,19 @@ def summarize_run(
             if state == "failed"
         )
         outcome = f"Failed in {times}" + (f": {', '.join(failed)}" if failed else "")
+        # The task's error is handled, and recorded, so a debugger stops on it only when told to.
+        if failed and is_ide_debugger_attached():
+            hint = (
+                "\nTo stop the debugger where a task fails, turn on User Uncaught Exceptions in VS Code's "
+                "Breakpoints view, or a Python exception breakpoint in PyCharm."
+            )
     if run_url:
         where = f"View it at {run_url}"
     elif home:
         where = f"History: {home}"
     else:
         where = "No history kept"
-    return f"{outcome}. {where}"
+    return f"{outcome}. {where}{hint}"
 
 
 @contextmanager
