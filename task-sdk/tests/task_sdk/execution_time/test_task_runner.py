@@ -7147,22 +7147,23 @@ class TestRunExecuteCallable:
         mock_supervisor_comms.send.assert_called_once_with(SetExecutionTimeout(timeout_seconds=0.01))
 
     @pytest.mark.parametrize(
-        ("local_run", "debugger", "armed"),
+        ("marker", "debugger", "armed"),
         [
-            pytest.param(True, True, False, id="debugged-local-try"),
-            pytest.param(True, False, True, id="local-try"),
-            pytest.param(False, True, True, id="debugged-try"),
+            pytest.param("_AIRFLOW__LOCAL_RUN", True, False, id="debugged-local-try"),
+            pytest.param("_AIRFLOW__LOCAL_NO_DB", True, False, id="debugged-no-db-try"),
+            pytest.param("_AIRFLOW__LOCAL_RUN", False, True, id="local-try"),
+            pytest.param(None, True, True, id="debugged-try"),
         ],
     )
     @mock.patch("airflow.sdk.definitions.local_run.is_ide_debugger_attached", autospec=True)
     def test_execution_timeout_is_not_armed_for_a_debugged_local_try(
-        self, is_attached, mock_supervisor_comms, monkeypatch, cap_structlog, local_run, debugger, armed
+        self, is_attached, mock_supervisor_comms, monkeypatch, cap_structlog, marker, debugger, armed
     ):
         is_attached.return_value = debugger
-        if local_run:
-            monkeypatch.setenv("_AIRFLOW__LOCAL_RUN", "1")
-        else:
-            monkeypatch.delenv("_AIRFLOW__LOCAL_RUN", raising=False)
+        monkeypatch.delenv("_AIRFLOW__LOCAL_RUN", raising=False)
+        monkeypatch.delenv("_AIRFLOW__LOCAL_NO_DB", raising=False)
+        if marker is not None:
+            monkeypatch.setenv(marker, "1")
         task = self._make_task(execution_timeout=timedelta(seconds=30))
 
         assert _run_execute_callable(context={}, execute=lambda context: 42, task=task) == 42

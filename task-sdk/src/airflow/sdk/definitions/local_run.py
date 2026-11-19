@@ -58,6 +58,8 @@ PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
 # Set to "1" in the environment of a local run's process, which its task tries inherit.
 LOCAL_RUN_ENV = "_AIRFLOW__LOCAL_RUN"
+# Set to "1" for the database-free runner (``--no-db``), which its task's process inherits.
+LOCAL_NO_DB_ENV = "_AIRFLOW__LOCAL_NO_DB"
 
 # How long a child gets to record a cancelled run after Ctrl-C before it is killed.
 INTERRUPT_GRACE_SECONDS = 30.0
@@ -202,7 +204,7 @@ def build_child_environment(
         }
     )
     if no_db:
-        env["_AIRFLOW__LOCAL_NO_DB"] = "1"
+        env[LOCAL_NO_DB_ENV] = "1"
         env.pop("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN")
     else:
         env["AIRFLOW__CORE__FERNET_KEY"] = read_or_create_fernet_key(home)
@@ -718,7 +720,8 @@ def is_ide_debugger_attached() -> bool:
 
 def is_debugged_local_try() -> bool:
     """Whether this process runs a local run's task try under an IDE's debugger, which can pause it for any time."""
-    return os.environ.get(LOCAL_RUN_ENV) == "1" and is_ide_debugger_attached()
+    is_local = os.environ.get(LOCAL_RUN_ENV) == "1" or os.environ.get(LOCAL_NO_DB_ENV) == "1"
+    return is_local and is_ide_debugger_attached()
 
 
 def refuse_breakpoint(*args: Any, **kwargs: Any) -> NoReturn:
