@@ -538,8 +538,8 @@ ARG_RUN_VARIABLES_FILE = Arg(
 ARG_RUN_DEBUG = Arg(
     ("--debug",),
     help=(
-        "Run every task try inside the run's process instead of a process of its own, so breakpoint() "
-        "and debuggers work"
+        "Run every task try inside the run's process instead of a process of its own, so that a terminal "
+        "debugger such as pdb reads the terminal at breakpoint(); an IDE's debugger needs no flag"
     ),
     action="store_true",
 )

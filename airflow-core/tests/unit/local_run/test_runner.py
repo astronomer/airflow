@@ -2005,8 +2005,8 @@ def test_breakpoint_in_a_supervised_try_says_how_to_debug(project, monkeypatch):
 
     with pytest.raises(
         DagExecutionError,
-        match=r"stop_here \(RuntimeError: breakpoint\(\) needs the task to run in the run's own process.*"
-        r"\.run\(debug=True\) or airflow run --debug\.\)$",
+        match=r"stop_here \(RuntimeError: breakpoint\(\) in a task needs a debugger that can reach it: .*"
+        r"\.run\(debug=True\) or airflow run --debug to use pdb in the terminal\.\)$",
     ):
         run_dag_file(source)
 

@@ -37,7 +37,8 @@ Create a project with `uv <https://docs.astral.sh/uv/>`__:
     cd demo
 
 ``airflow bootstrap`` writes a ``pyproject.toml`` that depends on Airflow, on a Python version Airflow
-supports, and an example Dag in ``pipeline.py``. The first ``uv run`` installs Airflow into the project from
+supports, an example Dag in ``pipeline.py``, and run configurations for VS Code and PyCharm (see
+:ref:`run-dags-locally:debug-in-your-ide`). The first ``uv run`` installs Airflow into the project from
 what ``uvx`` already downloaded. In a project that already has a ``pyproject.toml``, run
 ``uv add apache-airflow`` instead.
 
@@ -91,8 +92,9 @@ your own code.
 * ``run_conf``: the run's ``conf``.
 * ``conn_file_path`` and ``variable_file_path``: connections and variables files (JSON, YAML or env). The
   run also reads ``AIRFLOW_CONN_*`` and ``AIRFLOW_VAR_*`` environment variables.
-* ``debug``: run every task in the run's own process, so that ``breakpoint()`` and your IDE's debugger stop
-  in it. Otherwise each task try runs in a process of its own, as it does on a worker.
+* ``debug``: run every task in the run's own process, so that ``pdb`` reads the terminal at a ``breakpoint()``.
+  Otherwise each task try runs in a process of its own, as it does on a worker. Your IDE's debugger needs
+  neither: see :ref:`run-dags-locally:debug-in-your-ide`.
 * ``retries``: ``False`` gives each task one attempt, whatever its ``retries`` say, so a task that fails stays
   failed instead of waiting to retry.
 
@@ -286,13 +288,100 @@ In Python, ``workflow.run()`` takes the same selection as keyword arguments:
 ``inputs``, which takes the objects the tasks returned, by task ID:
 ``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})``.
 
-To stop in one task with your IDE's debugger, add ``debug=True`` to that call and use the IDE's Debug
-button. Or leave the file as it is, and add a run configuration for the module ``airflow`` with the
-arguments ``run pipeline.py --task total --debug``: ``"module": "airflow"`` in VS Code's ``launch.json``,
-or **Module name** in PyCharm.
+To stop in one task with your IDE's debugger, start the file under the debugger, or select the task's ID in
+the editor and start the **Airflow: run the selected task** configuration: see
+:ref:`run-dags-locally:debug-in-your-ide`.
 
 To test a task's code without Airflow, call its function with the arguments you choose:
 ``total.function([2, 4, 6])`` returns ``12``.
+
+.. _run-dags-locally:debug-in-your-ide:
+
+Debug in your IDE
+-----------------
+
+Set a breakpoint in a task and start the file under your IDE's debugger: **Run and Debug** in VS Code, or the
+**Debug** button beside the ``__main__`` block in PyCharm. The debugger stops in the task, and its variables
+and Debug Console show the task's values: ``get_current_context()["ti"].xcom_pull(task_ids="numbers")``
+returns what ``numbers`` returned. A ``breakpoint()`` in a task stops there too.
+
+The debugger needs no flag and no change to the file. The run is the one you get without it, each task try in
+a process of its own, and the debugger follows the run into those processes. While it is attached, a task's
+``execution_timeout`` does not apply, so a pause does not fail the task. A try takes longer to start under the
+debugger, about a second more on macOS.
+
+The debugger has to follow subprocesses. VS Code's does unless the configuration says
+``"subProcess": false``; in PyCharm, turn on **Attach to subprocess automatically while debugging** in the
+Python Debugger settings. When the debugger does not follow the run, the run says so before its first task,
+and the debugger does not stop in tasks.
+
+Run configurations
+^^^^^^^^^^^^^^^^^^
+
+``airflow bootstrap`` gives a new project two run configurations, in ``.vscode/launch.json`` for VS Code and
+in ``.run/`` for PyCharm. Both run the file open in the editor with ``airflow run``, so it needs no
+``__main__`` block, and the IDE's Run and Debug buttons both use them:
+
+* **Airflow: run this Dag file** runs the Dag.
+* **Airflow: run the selected task** runs the task whose ID is selected in the editor, the function's name for
+  a ``@task``, as ``--task`` does: one try, with what the tasks before it returned in the latest run.
+
+In another project, add them to ``.vscode/launch.json``:
+
+.. code-block:: json
+
+    {
+      "version": "0.2.0",
+      "configurations": [
+        {
+          "name": "Airflow: run this Dag file",
+          "type": "debugpy",
+          "request": "launch",
+          "module": "airflow",
+          "args": ["run", "${file}"],
+          "console": "integratedTerminal",
+          "subProcess": true,
+          "justMyCode": true
+        },
+        {
+          "name": "Airflow: run the selected task",
+          "type": "debugpy",
+          "request": "launch",
+          "module": "airflow",
+          "args": ["run", "${file}", "--task", "${selectedText}"],
+          "console": "integratedTerminal",
+          "subProcess": true,
+          "justMyCode": true
+        }
+      ]
+    }
+
+In PyCharm, add a Python run configuration with **Module name** ``airflow`` and the parameters
+``run $FilePath$``, or ``run $FilePath$ --task $SelectedText$``.
+
+A pytest test that calls ``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})`` is debugged the same
+way, from the IDE's **Debug Test** button.
+
+Stop where a task fails
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Airflow catches a task's error to record the task's failure, so with its default settings the debugger stops
+only on the ``DagExecutionError`` that the run raises at the end. To stop on the line that failed, with its
+local variables, turn on **User Uncaught Exceptions** in VS Code's **Breakpoints** view, or, in PyCharm, add a
+Python exception breakpoint with **Ignore library files**. A run under the debugger whose tasks fail ends with
+this reminder.
+
+When Airflow is installed from its sources in editable mode, as when you develop Airflow itself, the debugger
+treats Airflow as your own code and stops inside it too. To leave it out, add
+``"rules": [{"module": "airflow", "include": false}]`` to the configuration in ``launch.json``.
+
+Debug mode
+^^^^^^^^^^
+
+``debug=True`` in ``workflow.run()``, or ``airflow run --debug``, runs every task try in the run's own
+process instead, so that a terminal debugger such as ``pdb`` reads the terminal at a ``breakpoint()``. An
+IDE's debugger does not need it. In this mode, module state carries over from one try to the next, and a task
+that ends its process ends the run.
 
 Look at the runs
 ----------------

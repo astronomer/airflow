@@ -723,11 +723,11 @@ def is_debugged_local_try() -> bool:
 
 def refuse_breakpoint(*args: Any, **kwargs: Any) -> NoReturn:
     """
-    Stand in for ``breakpoint()`` in a task try that runs in a process of its own.
+    Stand in for ``breakpoint()`` in a task try that runs in a process of its own, without an IDE's debugger.
 
-    That process does not read the terminal, so a debugger started in it could never take input.
+    That process does not read the terminal, so a terminal debugger such as ``pdb`` could never take input.
     """
     raise RuntimeError(
-        "breakpoint() needs the task to run in the run's own process, where the debugger can read the "
-        "terminal: run the Dag with .run(debug=True) or airflow run --debug."
+        "breakpoint() in a task needs a debugger that can reach it: run the Dag under your IDE's debugger, "
+        "or with .run(debug=True) or airflow run --debug to use pdb in the terminal."
     )

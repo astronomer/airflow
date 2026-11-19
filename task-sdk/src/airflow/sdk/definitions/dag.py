@@ -1481,8 +1481,9 @@ class DAG:
         :param keep_task_state: keep what the rerun tasks stored in ``task_state_store`` in their earlier
             run, so that they resume from it, as Clear's "Keep task state and resume" does. Needs an earlier
             run to rerun them in, so it is refused with ``run_conf``, ``inputs`` or ``keep_history=False``.
-        :param debug: run every task try inside the run's process instead, so ``breakpoint()`` and
-            debuggers work. Module state then carries over from one try to the next.
+        :param debug: run every task try inside the run's process instead, so that a terminal debugger such
+            as ``pdb`` reads the terminal at ``breakpoint()``. Module state then carries over from one try to
+            the next. An IDE's debugger needs no change: it follows each try into its own process.
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
             own that is deleted when it ends, and selected tasks run in a new run with the tasks they need.
         :param retries: retry failed tasks as their ``retries`` say. Otherwise each task gets one attempt.
