@@ -2432,6 +2432,21 @@ def test_execute_says_when_the_debugger_does_not_follow_the_run(
     assert ("so it will not stop in tasks" in capsys.readouterr().err) is warns
 
 
+@mock.patch.dict(os.environ)
+@mock.patch.object(runner.settings, "dispose_async_engine", autospec=True)
+@mock.patch.object(runner, "configure_local_run_logging", autospec=True)
+@mock.patch.object(runner, "run_requested_dag", autospec=True)
+@mock.patch.object(runner, "prepare_supervised_tries", autospec=True)
+def test_execute_marks_its_tries_as_local_before_forking_them(prepare, _run, _logging, _dispose):
+    os.environ.pop("_AIRFLOW__LOCAL_RUN", None)
+    seen = []
+    prepare.side_effect = lambda: seen.append(os.environ.get("_AIRFLOW__LOCAL_RUN"))
+
+    runner.execute({})
+
+    assert seen == ["1"]
+
+
 @mock.patch.object(runner.os, "_exit", autospec=True)
 @mock.patch.object(runner.logging, "shutdown", autospec=True)
 @mock.patch.object(runner.settings, "dispose_orm", autospec=True)

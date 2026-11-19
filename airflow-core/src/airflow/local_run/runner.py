@@ -81,6 +81,7 @@ from airflow.sdk import DAG
 from airflow.sdk.definitions._internal.loop import get_enclosing_loop
 from airflow.sdk.definitions.dag import _run_dag_run_to_completion, _run_task
 from airflow.sdk.definitions.local_run import (
+    LOCAL_RUN_ENV,
     PROTOCOL_VERSION,
     allow_classes_defined_in,
     find_loaded_module,
@@ -171,6 +172,7 @@ def main(argv: list[str]) -> int:
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
     warn_if_debugger_not_followed(request)
+    os.environ[LOCAL_RUN_ENV] = "1"
     # Debug runs each task try in this process, so that a terminal debugger such as pdb reads the terminal.
     fork_server = None if request.get("debug") else prepare_supervised_tries()
     configure_local_run_logging()

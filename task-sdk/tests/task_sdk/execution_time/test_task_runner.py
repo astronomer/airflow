@@ -7146,6 +7146,31 @@ class TestRunExecuteCallable:
         task.on_kill.assert_called_once()
         mock_supervisor_comms.send.assert_called_once_with(SetExecutionTimeout(timeout_seconds=0.01))
 
+    @pytest.mark.parametrize(
+        ("local_run", "debugger", "armed"),
+        [
+            pytest.param(True, True, False, id="debugged-local-try"),
+            pytest.param(True, False, True, id="local-try"),
+            pytest.param(False, True, True, id="debugged-try"),
+        ],
+    )
+    @mock.patch("airflow.sdk.definitions.local_run.is_ide_debugger_attached", autospec=True)
+    def test_execution_timeout_is_not_armed_for_a_debugged_local_try(
+        self, is_attached, mock_supervisor_comms, monkeypatch, cap_structlog, local_run, debugger, armed
+    ):
+        is_attached.return_value = debugger
+        if local_run:
+            monkeypatch.setenv("_AIRFLOW__LOCAL_RUN", "1")
+        else:
+            monkeypatch.delenv("_AIRFLOW__LOCAL_RUN", raising=False)
+        task = self._make_task(execution_timeout=timedelta(seconds=30))
+
+        assert _run_execute_callable(context={}, execute=lambda context: 42, task=task) == 42
+
+        assert mock_supervisor_comms.send.called is armed
+        message = "Not applying execution_timeout: an IDE debugger is attached to this local run"
+        assert (message in cap_structlog) is not armed
+
     def test_fast_fails_when_timeout_already_elapsed(self, mock_supervisor_comms):
         """A non-positive timeout fast-fails before running the callable and still calls on_kill."""
         task = self._make_task(execution_timeout=timedelta(seconds=-1))

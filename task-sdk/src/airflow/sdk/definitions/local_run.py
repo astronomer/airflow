@@ -56,6 +56,8 @@ from airflow.sdk.exceptions import (
 PROTOCOL_VERSION = 6
 PROJECT_HOME_NAME = ".airflow"
 CHILD_MODULE = "airflow.local_run"
+# Set to "1" in the environment of a local run's process, which its task tries inherit.
+LOCAL_RUN_ENV = "_AIRFLOW__LOCAL_RUN"
 
 # How long a child gets to record a cancelled run after Ctrl-C before it is killed.
 INTERRUPT_GRACE_SECONDS = 30.0
@@ -712,6 +714,11 @@ def is_ide_debugger_attached() -> bool:
         return False
     module = getattr(tracer, "__module__", None) or type(tracer).__module__
     return "pydevd" in module
+
+
+def is_debugged_local_try() -> bool:
+    """Whether this process runs a local run's task try under an IDE's debugger, which can pause it for any time."""
+    return os.environ.get(LOCAL_RUN_ENV) == "1" and is_ide_debugger_attached()
 
 
 def refuse_breakpoint(*args: Any, **kwargs: Any) -> NoReturn:

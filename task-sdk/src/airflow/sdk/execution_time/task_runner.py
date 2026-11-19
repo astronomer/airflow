@@ -80,6 +80,7 @@ from airflow.sdk.definitions.asset import (
 )
 from airflow.sdk.definitions.context import render_template_to_string
 from airflow.sdk.definitions.external_clear import SupportsExternalClearTarget
+from airflow.sdk.definitions.local_run import is_debugged_local_try
 from airflow.sdk.definitions.loop import LoopDecision
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
@@ -2410,6 +2411,8 @@ def _run_execute_callable(
     """
     Run the task's execute callable, applying the execution timeout if one is set.
 
+    A local run's try under an IDE's debugger runs without it, as the debugger can pause it for any time.
+
     The contextvars snapshot is taken here, after the ``task.execute`` span is
     current, so spans the operator emits during ``execute`` nest under it rather
     than under the caller. ``ExecutorSafeguard``'s tracker is set into that copy
@@ -2418,7 +2421,14 @@ def _run_execute_callable(
     """
     ctx = contextvars.copy_context()
     ctx.run(ExecutorSafeguard.tracker.set, task)
-    if task.execution_timeout:
+    if task.execution_timeout and is_debugged_local_try():
+        # A pause at a breakpoint would otherwise time the task out, from inside the debugger's own wait.
+        log.info(
+            "Not applying execution_timeout: an IDE debugger is attached to this local run",
+            execution_timeout=task.execution_timeout,
+        )
+        result = ctx.run(execute, context=context)
+    elif task.execution_timeout:
         from airflow.sdk.execution_time.timeout import timeout
 
         # TODO: handle timeout in case of deferral
