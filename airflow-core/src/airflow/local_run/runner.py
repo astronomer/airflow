@@ -84,6 +84,7 @@ from airflow.sdk.definitions.local_run import (
     PROTOCOL_VERSION,
     allow_classes_defined_in,
     find_loaded_module,
+    is_ide_debugger_attached,
     refuse_breakpoint,
 )
 from airflow.sdk.definitions.mappedoperator import MappedOperator
@@ -169,7 +170,8 @@ def main(argv: list[str]) -> int:
 
 
 def execute(request: dict[str, Any]) -> dict[str, Any]:
-    # Debug runs each task try in this process, so breakpoint() and debuggers work.
+    warn_if_debugger_not_followed(request)
+    # Debug runs each task try in this process, so that a terminal debugger such as pdb reads the terminal.
     fork_server = None if request.get("debug") else prepare_supervised_tries()
     configure_local_run_logging()
     try:
@@ -189,13 +191,25 @@ def prepare_supervised_tries() -> ForkServer | None:
     Called first: a try's process gets this process's state as of now, before logging is routed, the database
     opened or the Dag file imported. A deployment that asked for a new interpreter for each task gets that.
     """
-    # The hook explains the debug mode instead of failing to read input.
-    os.environ.setdefault(
-        "PYTHONBREAKPOINT", f"{refuse_breakpoint.__module__}.{refuse_breakpoint.__qualname__}"
-    )
+    # The hook explains the debug mode instead of failing to read input. An IDE's debugger follows this
+    # process's children, so it takes breakpoint() in a try's own process.
+    if not is_ide_debugger_attached():
+        os.environ.setdefault(
+            "PYTHONBREAKPOINT", f"{refuse_breakpoint.__module__}.{refuse_breakpoint.__qualname__}"
+        )
     if conf.getboolean("core", "execute_tasks_new_python_interpreter", fallback=False):
         return None
     return ForkServer.start()
+
+
+def warn_if_debugger_not_followed(request: dict[str, Any]) -> None:
+    """Say why tasks will not stop when the caller runs under an IDE's debugger that did not follow it here."""
+    if request.get("ide_debugger") and not is_ide_debugger_attached():
+        report(
+            "The debugger is attached to this script but not to the run's processes, so it will not stop in "
+            'tasks.\nLet it follow subprocesses: "subProcess": true in VS Code\'s launch.json; in PyCharm, '
+            '"Attach to subprocess automatically while debugging".'
+        )
 
 
 def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None = None) -> dict[str, Any]:

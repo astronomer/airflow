@@ -43,6 +43,7 @@ from airflow.sdk.definitions.local_run import (
     build_child_environment,
     build_result,
     find_project_root,
+    is_ide_debugger_attached,
     is_unguarded_module_level_call,
     prepare_project_home,
     read_or_create_fernet_key,
@@ -473,6 +474,44 @@ class TestBuildResult:
         assert result.output_reprs == reprs
 
 
+class TestIsIdeDebuggerAttached:
+    @pytest.fixture
+    def debugger_tool_id(self):
+        if sys.monitoring.get_tool(sys.monitoring.DEBUGGER_ID) is not None:
+            pytest.skip("A debugger already holds the sys.monitoring debugger ID")
+        yield sys.monitoring.DEBUGGER_ID
+        if sys.monitoring.get_tool(sys.monitoring.DEBUGGER_ID) is not None:
+            sys.monitoring.free_tool_id(sys.monitoring.DEBUGGER_ID)
+
+    @pytest.mark.skipif(sys.version_info < (3, 12), reason="sys.monitoring is new in Python 3.12")
+    @pytest.mark.parametrize(("tool", "attached"), [("pydevd", True), ("other", False), (None, False)])
+    def test_monitoring_tool(self, debugger_tool_id, tool, attached):
+        if tool is not None:
+            sys.monitoring.use_tool_id(debugger_tool_id, tool)
+
+        assert is_ide_debugger_attached() is attached
+
+    @pytest.mark.parametrize(
+        ("tracer_module", "attached"),
+        [
+            ("_pydevd_bundle.pydevd_trace_dispatch_regular", True),
+            ("coverage.pytracer", False),
+            (None, False),
+        ],
+    )
+    def test_trace_function(self, tracer_module, attached):
+        tracer = None
+        if tracer_module is not None:
+
+            def tracer(frame, event, arg):
+                return None
+
+            tracer.__module__ = tracer_module
+
+        with mock.patch.object(sys, "gettrace", return_value=tracer):
+            assert is_ide_debugger_attached() is attached
+
+
 class TestIsUnguardedModuleLevelCall:
     @pytest.mark.parametrize(
         ("statement", "expected"),
@@ -532,8 +571,11 @@ class TestRunDagFile:
         return source
 
     @time_machine.travel("2026-11-09T10:00:00Z", tick=False)
+    @mock.patch(
+        "airflow.sdk.definitions.local_run.is_ide_debugger_attached", autospec=True, return_value=True
+    )
     @mock.patch("airflow.sdk.definitions.local_run.subprocess.Popen", autospec=True)
-    def test_runs_child_with_request_and_project_environment(self, mock_popen, source, tmp_path):
+    def test_runs_child_with_request_and_project_environment(self, mock_popen, _, source, tmp_path):
         seen = {}
 
         def fake_child(command, env):
@@ -567,6 +609,7 @@ class TestRunDagFile:
             "retries": False,
             "result_path": seen["request"]["result_path"],
             "started_at": mock.ANY,
+            "ide_debugger": True,
         }
         assert before <= seen["request"]["started_at"] <= after
         assert not Path(seen["request"]["result_path"]).parent.exists()

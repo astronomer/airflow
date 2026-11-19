@@ -413,6 +413,8 @@ def run_dag_file(
                     "retries": retries,
                     "result_path": str(result_path),
                     "started_at": started_at,
+                    # So that the run's process can say when the debugger does not follow it.
+                    "ide_debugger": is_ide_debugger_attached(),
                 }
             )
         )
@@ -692,6 +694,24 @@ def _is_main_guard(test: ast.expr) -> bool:
     return any(isinstance(side, ast.Name) and side.id == "__name__" for side in sides) and any(
         isinstance(side, ast.Constant) and side.value == "__main__" for side in sides
     )
+
+
+def is_ide_debugger_attached() -> bool:
+    """
+    Whether a pydevd-based debugger, such as VS Code's debugpy or PyCharm's debugger, is attached to this process.
+
+    Such a debugger talks to the IDE over a socket and follows subprocesses, so it can stop in a task try that
+    runs in a process of its own. ``pdb`` and coverage tools are not one.
+    """
+    monitoring = getattr(sys, "monitoring", None)
+    # pydevd registers itself as a sys.monitoring tool on Python 3.12+, and traces with sys.settrace before.
+    if monitoring is not None and monitoring.get_tool(monitoring.DEBUGGER_ID) == "pydevd":
+        return True
+    tracer = sys.gettrace()
+    if tracer is None:
+        return False
+    module = getattr(tracer, "__module__", None) or type(tracer).__module__
+    return "pydevd" in module
 
 
 def refuse_breakpoint(*args: Any, **kwargs: Any) -> NoReturn:

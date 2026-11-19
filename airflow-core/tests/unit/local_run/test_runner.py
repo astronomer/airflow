@@ -605,6 +605,19 @@ def test_tries_are_forked_unless_a_new_interpreter_is_configured(start, new_inte
     assert (fork_server is start.return_value) is forks_tries
 
 
+@mock.patch.dict(os.environ)
+@mock.patch.object(runner.ForkServer, "start", autospec=True)
+@mock.patch.object(runner, "is_ide_debugger_attached", autospec=True)
+@pytest.mark.parametrize("debugger", [True, False])
+def test_breakpoint_is_left_to_an_ide_debugger(is_attached, _, debugger):
+    os.environ.pop("PYTHONBREAKPOINT", None)
+    is_attached.return_value = debugger
+
+    runner.prepare_supervised_tries()
+
+    assert ("PYTHONBREAKPOINT" in os.environ) is not debugger
+
+
 def test_task_that_ends_its_process_fails_only_its_own_try(project, capfd):
     source = write_dag_file(
         project,
@@ -2399,6 +2412,24 @@ def test_execute_ends_fork_server_and_disposes_async_engine_even_when_setup_fail
     assert prepare.called is forks_tries
     assert prepare.return_value.close.called is forks_tries
     mock_dispose.assert_awaited_once_with()
+
+
+@mock.patch.object(runner.settings, "dispose_async_engine", autospec=True)
+@mock.patch.object(runner, "configure_local_run_logging", autospec=True)
+@mock.patch.object(runner, "run_requested_dag", autospec=True)
+@mock.patch.object(runner, "is_ide_debugger_attached", autospec=True)
+@pytest.mark.parametrize(
+    ("launcher_debugger", "run_debugger", "warns"),
+    [(True, False, True), (True, True, False), (False, False, False)],
+)
+def test_execute_says_when_the_debugger_does_not_follow_the_run(
+    is_attached, _run, _logging, _dispose, launcher_debugger, run_debugger, warns, capsys
+):
+    is_attached.return_value = run_debugger
+
+    runner.execute({"debug": True, "ide_debugger": launcher_debugger})
+
+    assert ("so it will not stop in tasks" in capsys.readouterr().err) is warns
 
 
 @mock.patch.object(runner.os, "_exit", autospec=True)
