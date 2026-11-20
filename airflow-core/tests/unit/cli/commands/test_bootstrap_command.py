@@ -16,11 +16,9 @@
 # under the License.
 from __future__ import annotations
 
-import json
 import sys
 import tomllib
 from importlib import metadata
-from xml.etree import ElementTree
 
 import pytest
 
@@ -57,62 +55,15 @@ def test_new_folder_gets_a_project_with_the_example_dag(parser, tmp_path, monkey
     assert capsys.readouterr().out.splitlines()[1:] == ["  cd demo", "  uv run pipeline.py"]
 
 
-def test_new_folder_gets_run_configurations_for_ides(parser, tmp_path):
-    project = tmp_path / "demo"
-
-    bootstrap_command.bootstrap(parser.parse_args(["bootstrap", str(project)]))
-
-    launch = json.loads((project / ".vscode" / "launch.json").read_text())
-    assert [
-        (c["name"], c["module"], c["args"], c["subProcess"], c["console"]) for c in launch["configurations"]
-    ] == [
-        ("Airflow: run this Dag file", "airflow", ["run", "${file}"], True, "integratedTerminal"),
-        (
-            "Airflow: run the selected task",
-            "airflow",
-            ["run", "${file}", "--task", "${selectedText}"],
-            True,
-            "integratedTerminal",
-        ),
-    ]
-    run_configurations = {}
-    for path in sorted((project / ".run").iterdir()):
-        configuration = ElementTree.parse(path).getroot().find("configuration")
-        options = {option.get("name"): option.get("value") for option in configuration.iter("option")}
-        run_configurations[path.name] = (
-            configuration.get("name"),
-            options["SCRIPT_NAME"],
-            options["MODULE_MODE"],
-            options["PARAMETERS"],
-        )
-    assert run_configurations == {
-        "airflow-run-dag-file.run.xml": ("Airflow: run this Dag file", "airflow", "true", "run $FilePath$"),
-        "airflow-run-selected-task.run.xml": (
-            "Airflow: run the selected task",
-            "airflow",
-            "true",
-            "run $FilePath$ --task $SelectedText$",
-        ),
-    }
-
-
 def test_folder_with_files_keeps_them_and_gets_no_example(parser, tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "etl.py").write_text("")
     (tmp_path / ".python-version").write_text("3.11\n")
-    (tmp_path / ".vscode").mkdir()
-    (tmp_path / ".vscode" / "launch.json").write_text("{}\n")
 
     bootstrap_command.bootstrap(parser.parse_args(["bootstrap"]))
 
-    assert sorted(path.name for path in tmp_path.iterdir()) == [
-        ".python-version",
-        ".vscode",
-        "etl.py",
-        "pyproject.toml",
-    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == [".python-version", "etl.py", "pyproject.toml"]
     assert (tmp_path / ".python-version").read_text() == "3.11\n"
-    assert (tmp_path / ".vscode" / "launch.json").read_text() == "{}\n"
     assert capsys.readouterr().out.splitlines()[1:] == ["  uv run airflow run your_dag.py"]
 
 

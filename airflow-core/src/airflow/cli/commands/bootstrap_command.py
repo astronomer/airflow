@@ -18,28 +18,15 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shlex
 import sys
 from importlib import metadata, resources
 from pathlib import Path
-from xml.sax.saxutils import quoteattr
 
 from airflow import __version__ as airflow_version
 
 EXAMPLE_DAG_FILE = "pipeline.py"
-
-# The IDE run configurations: their names, and what each passes to ``airflow run`` in VS Code and in PyCharm.
-RUN_CONFIGURATIONS = (
-    ("Airflow: run this Dag file", ["run", "${file}"], "run $FilePath$", "airflow-run-dag-file"),
-    (
-        "Airflow: run the selected task",
-        ["run", "${file}", "--task", "${selectedText}"],
-        "run $FilePath$ --task $SelectedText$",
-        "airflow-run-selected-task",
-    ),
-)
 
 
 def bootstrap(args) -> None:
@@ -62,14 +49,10 @@ def bootstrap(args) -> None:
             python_version.write_text(f"{sys.version_info.major}.{sys.version_info.minor}\n")
         if is_new:
             (project / EXAMPLE_DAG_FILE).write_text(read_example_dag())
-            write_run_configurations(project)
     except OSError as e:
         raise SystemExit(f"Error: {e}")
     if is_new:
-        print(
-            f"Created a project for Airflow {airflow_version}, with an example Dag and run configurations "
-            "for VS Code and PyCharm. Run it:"
-        )
+        print(f"Created a project for Airflow {airflow_version}, with an example Dag. Run it:")
     else:
         print(f"Created a project for Airflow {airflow_version}. Run a Dag:")
     if project != Path.cwd():
@@ -100,60 +83,3 @@ def read_example_dag() -> str:
     _, _, after_start = source.partition("# [START run_dags_locally_pipeline]\n")
     dag_source, _, _ = after_start.partition("# [END run_dags_locally_pipeline]\n")
     return dag_source
-
-
-def write_run_configurations(project: Path) -> None:
-    """Write VS Code's and PyCharm's run configurations for ``airflow run`` into a new project."""
-    vscode = project / ".vscode"
-    vscode.mkdir()
-    (vscode / "launch.json").write_text(build_vscode_launch_configurations())
-    pycharm = project / ".run"
-    pycharm.mkdir()
-    for name, _, parameters, file_name in RUN_CONFIGURATIONS:
-        (pycharm / f"{file_name}.run.xml").write_text(build_pycharm_run_configuration(name, parameters))
-
-
-def build_vscode_launch_configurations() -> str:
-    configurations = [
-        {
-            "name": name,
-            "type": "debugpy",
-            "request": "launch",
-            "module": "airflow",
-            "args": args,
-            # In the Debug Console ("internalConsole"), each line of the run shows twice.
-            "console": "integratedTerminal",
-            # debugpy's default, written out: tasks run in subprocesses, which the debugger must follow.
-            "subProcess": True,
-            "justMyCode": True,
-        }
-        for name, args, _, _ in RUN_CONFIGURATIONS
-    ]
-    return json.dumps({"version": "0.2.0", "configurations": configurations}, indent=2) + "\n"
-
-
-def build_pycharm_run_configuration(name: str, parameters: str) -> str:
-    return (
-        '<component name="ProjectRunConfigurationManager">\n'
-        f'  <configuration default="false" name={quoteattr(name)} type="PythonConfigurationType" '
-        'factoryName="Python">\n'
-        '    <option name="PARENT_ENVS" value="true" />\n'
-        "    <envs>\n"
-        '      <env name="PYTHONUNBUFFERED" value="1" />\n'
-        "    </envs>\n"
-        '    <option name="SDK_HOME" value="" />\n'
-        '    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />\n'
-        '    <option name="IS_MODULE_SDK" value="false" />\n'
-        '    <option name="ADD_CONTENT_ROOTS" value="true" />\n'
-        '    <option name="ADD_SOURCE_ROOTS" value="true" />\n'
-        '    <option name="SCRIPT_NAME" value="airflow" />\n'
-        f'    <option name="PARAMETERS" value={quoteattr(parameters)} />\n'
-        '    <option name="SHOW_COMMAND_LINE" value="false" />\n'
-        '    <option name="EMULATE_TERMINAL" value="false" />\n'
-        '    <option name="MODULE_MODE" value="true" />\n'
-        '    <option name="REDIRECT_INPUT" value="false" />\n'
-        '    <option name="INPUT_FILE" value="" />\n'
-        '    <method v="2" />\n'
-        "  </configuration>\n"
-        "</component>\n"
-    )

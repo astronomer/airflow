@@ -37,8 +37,7 @@ Create a project with `uv <https://docs.astral.sh/uv/>`__:
     cd demo
 
 ``airflow bootstrap`` writes a ``pyproject.toml`` that depends on Airflow, on a Python version Airflow
-supports, an example Dag in ``pipeline.py``, and run configurations for VS Code and PyCharm (see
-:ref:`run-dags-locally:debug-in-your-ide`). The first ``uv run`` installs Airflow into the project from
+supports, and an example Dag in ``pipeline.py``. The first ``uv run`` installs Airflow into the project from
 what ``uvx`` already downloaded. In a project that already has a ``pyproject.toml``, run
 ``uv add apache-airflow`` instead.
 
@@ -288,8 +287,7 @@ In Python, ``workflow.run()`` takes the same selection as keyword arguments:
 ``inputs``, which takes the objects the tasks returned, by task ID:
 ``workflow.run(task_ids=["total"], inputs={"double": [2, 4]})``.
 
-To stop in one task with your IDE's debugger, start the file under the debugger, or select the task's ID in
-the editor and start the **Airflow: run the selected task** configuration: see
+To stop in one task with your IDE's debugger, start the file with that call under the debugger: see
 :ref:`run-dags-locally:debug-in-your-ide`.
 
 To test a task's code without Airflow, call its function with the arguments you choose:
@@ -303,7 +301,9 @@ Debug in your IDE
 Set a breakpoint in a task and start the file under your IDE's debugger: **Run and Debug** in VS Code, or the
 **Debug** button beside the ``__main__`` block in PyCharm. The debugger stops in the task, and its variables
 and Debug Console show the task's values: ``get_current_context()["ti"].xcom_pull(task_ids="numbers")``
-returns what ``numbers`` returned. A ``breakpoint()`` in a task stops there too.
+returns what ``numbers`` returned. A ``breakpoint()`` in a task stops there too. To debug one task, give the
+call in the ``__main__`` block its ID, ``workflow.run(task_ids=["total"])``: only that task runs, with what the
+tasks before it returned.
 
 The debugger needs no flag and no change to the file. The run is the one you get without it, each task try in
 a process of its own, and the debugger follows the run into those processes. While it is attached, a task's
@@ -315,18 +315,13 @@ The debugger has to follow subprocesses. VS Code's does unless the configuration
 Python Debugger settings. When the debugger does not follow the run, the run says so before its first task,
 and the debugger does not stop in tasks.
 
-Run configurations
-^^^^^^^^^^^^^^^^^^
+A Dag file without a ``__main__`` block
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``airflow bootstrap`` gives a new project two run configurations, in ``.vscode/launch.json`` for VS Code and
-in ``.run/`` for PyCharm. Both run the file open in the editor with ``airflow run``, so it needs no
-``__main__`` block, and the IDE's Run and Debug buttons both use them:
-
-* **Airflow: run this Dag file** runs the Dag.
-* **Airflow: run the selected task** runs the task whose ID is selected in the editor, the function's name for
-  a ``@task``, as ``--task`` does: one try, with what the tasks before it returned in the latest run.
-
-In another project, add them to ``.vscode/launch.json``:
+To debug a Dag file that has no ``__main__`` block, run it with ``airflow run`` under the debugger. In VS
+Code, add these configurations to ``.vscode/launch.json``. The first runs the file open in the editor; the
+second runs only the task whose ID is selected in the editor, the function's name for a ``@task``, as
+``--task`` does:
 
 .. code-block:: json
 
