@@ -559,6 +559,7 @@ def rerun_selection(
         run_id=dag_run.run_id,
         dag_run_state=DagRunState.RUNNING,
         run_on_latest_version=True,
+        keep_task_state=selection.keep_task_state,
         session=session,
     )
     for scope in discarded:
