@@ -2313,8 +2313,8 @@ def test_summarize_run_says_how_to_stop_where_a_task_fails(is_attached, task_sta
     assert summary.endswith("History: /p/.airflow") is not hints
     assert (
         summary.endswith(
-            "\nTo stop the debugger where a task fails, turn on User Uncaught Exceptions in VS Code's "
-            "Breakpoints view, or a Python exception breakpoint in PyCharm."
+            "\nTo stop where a task fails, turn on User Uncaught Exceptions in VS Code's Breakpoints view, "
+            "or On raise and Ignore library files on PyCharm's Python exception breakpoint."
         )
         is hints
     )

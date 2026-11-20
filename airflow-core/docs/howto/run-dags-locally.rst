@@ -366,10 +366,11 @@ Stop where a task fails
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 Airflow catches a task's error to record the task's failure, so with its default settings the debugger stops
-only on the ``DagExecutionError`` that the run raises at the end. To stop on the line that failed, with its
-local variables, turn on **User Uncaught Exceptions** in VS Code's **Breakpoints** view, or, in PyCharm, add a
-Python exception breakpoint with **Ignore library files**. A run under the debugger whose tasks fail ends with
-this reminder.
+only at the end, on the ``DagExecutionError`` that the run raises. PyCharm's default Python exception
+breakpoint stops there too, as it is set to stop on termination. To stop on the line that failed, with its
+local variables, turn on **User Uncaught Exceptions** in VS Code's **Breakpoints** view. In PyCharm, open
+**Run** > **View Breakpoints** and turn on **On raise** and **Ignore library files** for the Python exception
+breakpoint. A run under the debugger whose tasks fail ends with this reminder.
 
 When Airflow is installed from its sources in editable mode, as when you develop Airflow itself, the debugger
 treats Airflow as your own code and stops inside it too. To leave it out, add

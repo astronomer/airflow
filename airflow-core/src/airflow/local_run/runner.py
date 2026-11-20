@@ -1192,8 +1192,8 @@ def summarize_run(
         # The task's error is handled, and recorded, so a debugger stops on it only when told to.
         if failed and is_ide_debugger_attached():
             hint = (
-                "\nTo stop the debugger where a task fails, turn on User Uncaught Exceptions in VS Code's "
-                "Breakpoints view, or a Python exception breakpoint in PyCharm."
+                "\nTo stop where a task fails, turn on User Uncaught Exceptions in VS Code's Breakpoints view, "
+                "or On raise and Ignore library files on PyCharm's Python exception breakpoint."
             )
     if run_url:
         where = f"View it at {run_url}"
