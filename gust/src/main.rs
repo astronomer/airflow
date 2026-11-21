@@ -20,6 +20,7 @@
 mod bundle;
 mod cli;
 mod dag;
+mod expand;
 mod frame;
 mod input;
 #[rustfmt::skip]
@@ -39,11 +40,12 @@ use uuid::Uuid;
 use crate::{
     cli::Cli,
     dag::{Lookup, TaskSpec},
+    expand::{Expansion, XComValues},
     frame::Reply,
     input::Input,
     runtime::{LogSink, Runtime},
     services::Services,
-    summary::{ParseReport, Summary},
+    summary::{Instance, ParseReport, Summary},
 };
 
 const BUNDLE_NAME: &str = "gust";
@@ -57,7 +59,7 @@ fn main() -> ExitCode {
             } else {
                 summary.print();
             }
-            if summary.state == "success" {
+            if summary.instances.iter().all(|i| i.state == "success") {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
@@ -160,25 +162,148 @@ fn run(cli: &Cli) -> Result<Summary> {
         }
     }
     parse.spec = (parse.native_dag).then(|| serde_json::to_value(&spec).unwrap());
+    parse.requests = std::mem::take(&mut services.record.requests);
+    let parse_logs = sink.take();
+    services.set_mapped_tasks(&cli.dag_id, &spec.mapped_tasks);
+    if spec.in_mapped_group {
+        bail!(
+            "{}.{} is in a mapped task group, which gust does not expand yet",
+            cli.dag_id,
+            cli.task_id
+        );
+    }
 
-    sink.set_phase("run");
-    services.phase = "run";
+    // Every instance's bindings are worked out before any runs, so a bad expansion runs nothing.
+    let xcom_values: XComValues = input
+        .xcoms
+        .iter()
+        .filter(|x| x.dag_id == cli.dag_id)
+        .map(|x| ((x.task_id.clone(), x.key.clone()), x.value.clone()))
+        .collect();
+    let mut plan: Vec<Planned> = Vec::new();
+    let map_length = match &spec.mapped {
+        None => {
+            plan.push(Planned {
+                map_index: -1,
+                bindings: spec.arg_bindings.clone(),
+                resolved: false,
+            });
+            None
+        }
+        Some(mapped) => {
+            let expansion = Expansion::new(mapped, &xcom_values, &spec.mapped_tasks)
+                .with_context(|| format!("cannot expand {}.{}", cli.dag_id, cli.task_id))?;
+            for index in 0..expansion.length {
+                let bindings = spec
+                    .arg_bindings
+                    .as_deref()
+                    .map(|entries| expansion.build_bindings(entries, index))
+                    .transpose()
+                    .with_context(|| format!("cannot bind the arguments of map index {index}"))?;
+                plan.push(Planned {
+                    map_index: index as i64,
+                    bindings,
+                    resolved: true,
+                });
+            }
+            Some(expansion.length)
+        }
+    };
+
+    let run_id = input.dag_run.run_id.clone();
+    match map_length {
+        None => eprintln!(
+            "gust: running {}.{} (run {run_id})",
+            cli.dag_id, cli.task_id
+        ),
+        Some(n) => eprintln!(
+            "gust: running {}.{} (run {run_id}), mapped to {n} instance{}",
+            cli.dag_id,
+            cli.task_id,
+            if n == 1 { "" } else { "s" },
+        ),
+    }
+    let mut instances = Vec::new();
+    for planned in plan {
+        let phase = match map_length {
+            None => "run".to_owned(),
+            Some(_) => format!("[{}]", planned.map_index),
+        };
+        sink.set_phase(phase);
+        services.phase = "run";
+        services.begin_instance(planned.map_index);
+        let startup = build_startup(
+            cli,
+            &input,
+            &bundle_path,
+            &spec,
+            &planned,
+            map_length.map(|n| n as i64),
+        )?;
+        instances.push(run_instance(
+            cli,
+            &command,
+            &spec,
+            startup,
+            planned,
+            &mut services,
+            &sink,
+        )?);
+    }
+
+    if map_length == Some(0) {
+        notes.push(
+            "The task expanded to no instances, so nothing ran; Airflow marks it skipped.".into(),
+        );
+    }
+
+    Ok(Summary {
+        bundle: bundle_path,
+        runtime: runtime_command,
+        sdk: manifest.map(|m| m.sdk),
+        dag_id: cli.dag_id.clone(),
+        task_id: cli.task_id.clone(),
+        run_id,
+        logical_date: input.dag_run.logical_date,
+        try_number: input.try_number,
+        parse,
+        map_length,
+        instances,
+        logs: parse_logs,
+        notes,
+    })
+}
+
+/// One task instance to run.
+struct Planned {
+    map_index: i64,
+    bindings: Option<Vec<Json>>,
+    /// The bindings are worked out by gust, in the wire form the supervisor sends, rather than
+    /// taken from the Dag as they are.
+    resolved: bool,
+}
+
+/// Run one task instance to the end, serving its requests.
+fn run_instance(
+    cli: &Cli,
+    command: &[OsString],
+    spec: &TaskSpec,
+    startup: models::StartupDetails,
+    planned: Planned,
+    services: &mut Services,
+    sink: &LogSink,
+) -> Result<Instance> {
+    let mut notes = Vec::new();
     let started = Instant::now();
-    let startup = build_startup(cli, &input, &bundle_path, &spec)?;
-    let (run_id, logical_date) = (
-        startup.ti.run_id.clone(),
-        startup.ti_context.dag_run.logical_date,
-    );
-    eprintln!(
-        "gust: running {}.{} (run {run_id})",
-        cli.dag_id, cli.task_id
-    );
-
-    let mut runtime = Runtime::launch(&command, cli.startup_timeout, &sink)?;
+    let mut runtime = Runtime::launch(command, cli.startup_timeout, sink)?;
     if let Some(timeout) = spec.execution_timeout {
         runtime.arm_timeout(timeout);
     }
-    runtime.send(0, &Reply::body(&startup)?)?;
+    let startup = match (&planned.bindings, planned.resolved) {
+        (Some(bindings), true) => frame::encode_with_bindings(&startup, bindings)?,
+        _ => Reply::body(&startup)?,
+    };
+    runtime.send(0, &startup)?;
     loop {
         let frame = match runtime.read() {
             Ok(Some(frame)) => frame,
@@ -229,20 +354,13 @@ fn run(cli: &Cli) -> Result<Summary> {
         "failed".to_owned()
     };
 
-    Ok(Summary {
-        bundle: bundle_path,
-        runtime: runtime_command,
-        sdk: manifest.map(|m| m.sdk),
-        dag_id: cli.dag_id.clone(),
-        task_id: cli.task_id.clone(),
-        run_id,
-        logical_date,
-        try_number: input.try_number,
-        parse,
+    Ok(Instance {
+        map_index: planned.map_index,
         state,
         exit_code: exit.status.code(),
         duration_secs: duration.as_secs_f64(),
-        record: services.record,
+        arg_bindings: planned.bindings,
+        record: std::mem::take(&mut services.record),
         logs: sink.take(),
         notes,
     })
@@ -292,14 +410,19 @@ fn build_startup(
     input: &Input,
     bundle: &Path,
     spec: &TaskSpec,
+    planned: &Planned,
+    expanded_ti_count: Option<i64>,
 ) -> Result<models::StartupDetails> {
     let run = &input.dag_run;
-    let arg_bindings = spec
-        .arg_bindings
-        .as_ref()
-        .map(|b| serde_json::from_value(Json::Array(b.clone())))
-        .transpose()
-        .context("the bundle's argument bindings do not match the supervisor schema")?;
+    // Resolved bindings use ADR-0016 fields the supervisor schema does not have yet, so they are
+    // written into the encoded message instead.
+    let arg_bindings = match (&planned.bindings, planned.resolved) {
+        (Some(b), false) => Some(
+            serde_json::from_value(Json::Array(b.clone()))
+                .context("the bundle's argument bindings do not match the supervisor schema")?,
+        ),
+        _ => None,
+    };
     let consumed_asset_events = input
         .asset_events
         .iter()
@@ -342,7 +465,7 @@ fn build_startup(
             dag_version_id: Uuid::new_v4(),
             hostname: None,
             id: Uuid::new_v4(),
-            map_index: -1,
+            map_index: planned.map_index,
             queue: spec.queue.clone().unwrap_or_else(|| "default".into()),
             region_id: None,
             region_index: None,
@@ -374,7 +497,7 @@ fn build_startup(
                 triggering_user_name: run.triggering_user.clone(),
             },
             execution_timeout: spec.execution_timeout,
-            expanded_ti_count: None,
+            expanded_ti_count,
             first_task_reschedule_start_date: None,
             loop_: None,
             max_tries: input.max_tries.or(spec.retries).unwrap_or(0),

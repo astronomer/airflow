@@ -105,6 +105,51 @@ impl Reply {
     }
 }
 
+/// Encode `msg` with `ti_context.arg_bindings` set to `bindings`, for fields the generated models
+/// do not have.
+pub fn encode_with_bindings(msg: &impl Serialize, bindings: &[serde_json::Value]) -> Result<Reply> {
+    let encoded = rmp_serde::to_vec_named(msg)?;
+    let mut value = rmpv::decode::read_value(&mut encoded.as_slice())?;
+    let context = match &mut value {
+        Value::Map(entries) => entries
+            .iter_mut()
+            .find(|(k, _)| k.as_str() == Some("ti_context"))
+            .map(|(_, v)| v),
+        _ => None,
+    };
+    let Some(Value::Map(context)) = context else {
+        bail!("the message has no ti_context");
+    };
+    context.retain(|(k, _)| k.as_str() != Some("arg_bindings"));
+    context.push((
+        Value::from("arg_bindings"),
+        from_json(&serde_json::Value::Array(bindings.to_vec())),
+    ));
+    let mut buf = Vec::new();
+    rmpv::encode::write_value(&mut buf, &value)?;
+    Ok(Reply::Body(buf))
+}
+
+fn from_json(value: &serde_json::Value) -> Value {
+    use serde_json::Value as J;
+    match value {
+        J::Null => Value::Nil,
+        J::Bool(b) => Value::Boolean(*b),
+        J::Number(n) => match (n.as_i64(), n.as_u64()) {
+            (Some(i), _) => Value::from(i),
+            (_, Some(u)) => Value::from(u),
+            _ => Value::F64(n.as_f64().unwrap_or_default()),
+        },
+        J::String(s) => Value::from(s.as_str()),
+        J::Array(items) => Value::Array(items.iter().map(from_json).collect()),
+        J::Object(map) => Value::Map(
+            map.iter()
+                .map(|(k, v)| (Value::from(k.as_str()), from_json(v)))
+                .collect(),
+        ),
+    }
+}
+
 pub fn write_frame(writer: &mut impl Write, id: i64, reply: &Reply) -> Result<()> {
     let mut payload = Vec::new();
     rmp::encode::write_array_len(&mut payload, 3)?;
@@ -194,6 +239,22 @@ mod tests {
         buf.extend(payload);
         let frame = read_frame(&mut buf.as_slice()).unwrap().unwrap();
         assert_eq!(frame.body_type(), Some("GetVariable"));
+    }
+
+    #[test]
+    fn replaces_arg_bindings() {
+        let msg = serde_json::json!({"type": "StartupDetails", "ti_context": {"arg_bindings": null, "x": 1}});
+        let binding = serde_json::json!({"kind": "literal", "name": "n", "value": [1, 2.5], "apply_map": true});
+        let Reply::Body(bytes) =
+            encode_with_bindings(&msg, std::slice::from_ref(&binding)).unwrap()
+        else {
+            panic!()
+        };
+        let value = rmpv::decode::read_value(&mut bytes.as_slice()).unwrap();
+        assert_eq!(
+            to_json(&value)["ti_context"],
+            serde_json::json!({"x": 1, "arg_bindings": [binding]})
+        );
     }
 
     #[test]

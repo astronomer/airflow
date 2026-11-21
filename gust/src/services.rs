@@ -18,7 +18,7 @@
 //! The mock supervisor services: answers the runtime's requests from the command-line inputs and
 //! records everything the runtime sends.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use anyhow::{Result, bail};
 use rmpv::Value;
@@ -64,6 +64,7 @@ pub struct PushedXCom {
     pub dag_id: String,
     pub task_id: String,
     pub key: String,
+    pub map_index: i64,
     pub value: Json,
 }
 
@@ -162,10 +163,18 @@ struct EventFilter {
     limit: Option<i64>,
 }
 
+/// An XCom row: Dag, task, key and map index. Values from `--input` are at map index -1.
+type XComKey = (String, String, String, i64);
+
 pub struct Services {
     variables: BTreeMap<String, String>,
     connections: BTreeMap<String, ConnInput>,
-    xcoms: BTreeMap<(String, String, String), Json>,
+    xcoms: BTreeMap<XComKey, Json>,
+    /// `(dag_id, task_id)` of the tasks the parsed Dag maps.
+    mapped_tasks: BTreeSet<(String, String)>,
+    /// The map index of the task instance being run.
+    map_index: i64,
+    initial_task_state: BTreeMap<String, Json>,
     task_state: BTreeMap<String, Json>,
     asset_state: BTreeMap<String, BTreeMap<String, Json>>,
     assets: Vec<Asset>,
@@ -223,6 +232,9 @@ impl Services {
                 .iter()
                 .map(|c| (c.conn_id.clone(), c.clone()))
                 .collect(),
+            mapped_tasks: BTreeSet::new(),
+            map_index: -1,
+            initial_task_state: input.task_state.clone(),
             task_state: input.task_state.clone(),
             asset_state: input
                 .asset_state
@@ -236,7 +248,7 @@ impl Services {
                 .iter()
                 .map(|x| {
                     (
-                        (x.dag_id.clone(), x.task_id.clone(), x.key.clone()),
+                        (x.dag_id.clone(), x.task_id.clone(), x.key.clone(), -1),
                         x.value.clone(),
                     )
                 })
@@ -244,6 +256,45 @@ impl Services {
             phase: "run",
             record: Record::default(),
         }
+    }
+
+    pub fn set_mapped_tasks(&mut self, dag_id: &str, task_ids: &BTreeSet<String>) {
+        self.mapped_tasks = task_ids
+            .iter()
+            .map(|t| (dag_id.to_owned(), t.clone()))
+            .collect();
+    }
+
+    /// Start serving task instance `map_index`, with a fresh record and the task state store
+    /// from `--input`.
+    pub fn begin_instance(&mut self, map_index: i64) {
+        self.map_index = map_index;
+        self.task_state = self.initial_task_state.clone();
+        self.record = Record::default();
+    }
+
+    /// Read an XCom row. A mapped task's value from `--input` is an array of its instances'
+    /// values, so a map index picks an element of it. Inputs are not tied to a run or a map
+    /// index otherwise, so an unmapped task's value answers any map index.
+    fn find_xcom(&self, dag_id: &str, task_id: &str, key: &str, map_index: i64) -> Option<Json> {
+        let row = |index: i64| {
+            self.xcoms
+                .get(&(dag_id.to_owned(), task_id.to_owned(), key.to_owned(), index))
+        };
+        if let Some(value) = row(map_index) {
+            return Some(value.clone());
+        }
+        let whole = row(-1)?;
+        if map_index < 0 {
+            return None;
+        }
+        if !self
+            .mapped_tasks
+            .contains(&(dag_id.to_owned(), task_id.to_owned()))
+        {
+            return Some(whole.clone());
+        }
+        whole.as_array()?.get(map_index as usize).cloned()
     }
 
     fn log(&mut self, type_: &str, target: impl Into<String>, outcome: Outcome) {
@@ -504,10 +555,12 @@ impl Services {
             }
             "GetXCom" => {
                 let msg: models::GetXCom = frame::decode(body)?;
-                let target = format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key);
-                // Inputs are not tied to a run, so any run_id and map_index matches.
-                let key = (msg.dag_id.clone(), msg.task_id.clone(), msg.key.clone());
-                match self.xcoms.get(&key).cloned() {
+                let map_index = msg.map_index.unwrap_or(-1);
+                let mut target = format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key);
+                if map_index >= 0 {
+                    target.push_str(&format!("[{map_index}]"));
+                }
+                match self.find_xcom(&msg.dag_id, &msg.task_id, &msg.key, map_index) {
                     Some(value) => {
                         self.log(type_, target, Outcome::Ok);
                         Reply::body(&models::XComResult {
@@ -520,7 +573,7 @@ impl Services {
                         self.log(type_, target, Outcome::NotFound);
                         not_found(
                             XcomNotFound,
-                            json!({"dag_id": msg.dag_id, "task_id": msg.task_id, "key": msg.key}),
+                            json!({"dag_id": msg.dag_id, "task_id": msg.task_id, "key": msg.key, "map_index": map_index}),
                         )
                     }
                 }
@@ -528,7 +581,7 @@ impl Services {
             "GetXComCount" | "GetXComSequenceItem" | "GetXComSequenceSlice" => {
                 let msg: SequenceRequest = frame::decode(body)?;
                 let target = format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key);
-                let key = (msg.dag_id.clone(), msg.task_id.clone(), msg.key.clone());
+                let key = (msg.dag_id.clone(), msg.task_id.clone(), msg.key.clone(), -1);
                 let items = match self.xcoms.get(&key) {
                     None => None,
                     Some(Json::Array(items)) => Some(items.clone()),
@@ -598,19 +651,26 @@ impl Services {
             }
             "SetXCom" => {
                 let msg: models::SetXCom = frame::decode(body)?;
+                let map_index = msg.map_index.unwrap_or(self.map_index);
                 self.log(
                     type_,
                     format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key),
                     Outcome::Ok,
                 );
                 self.xcoms.insert(
-                    (msg.dag_id.clone(), msg.task_id.clone(), msg.key.clone()),
+                    (
+                        msg.dag_id.clone(),
+                        msg.task_id.clone(),
+                        msg.key.clone(),
+                        map_index,
+                    ),
                     msg.value.clone(),
                 );
                 self.record.xcoms_pushed.push(PushedXCom {
                     dag_id: msg.dag_id,
                     task_id: msg.task_id,
                     key: msg.key,
+                    map_index,
                     value: msg.value,
                 });
                 Ok(Reply::Ack)
@@ -622,7 +682,9 @@ impl Services {
                     format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key),
                     Outcome::Ok,
                 );
-                self.xcoms.remove(&(msg.dag_id, msg.task_id, msg.key));
+                let map_index = msg.map_index.unwrap_or(self.map_index);
+                self.xcoms
+                    .remove(&(msg.dag_id, msg.task_id, msg.key, map_index));
                 Ok(Reply::Ack)
             }
             "GetTaskStateStore"
@@ -1068,6 +1130,40 @@ mod tests {
         let (kind, body) = reply_json(s.handle(&request(req)).unwrap());
         assert_eq!(kind, "body");
         assert_eq!(body.unwrap()["value"], json!(42));
+    }
+
+    #[test]
+    fn reads_one_instance_of_a_mapped_upstream() {
+        let mut s = Services::new(
+            &input::parse_input(r#"{"xcoms": {"d/m": {"": [10, 20]}, "d/u": {"": [1, 2]}}}"#)
+                .unwrap(),
+        );
+        s.set_mapped_tasks("d", &BTreeSet::from(["m".to_owned()]));
+        let mut get = |task: &str, map_index: i64| {
+            let req = json!({"type": "GetXCom", "dag_id": "d", "task_id": task, "key": "return_value", "run_id": "r", "map_index": map_index});
+            reply_json(s.handle(&request(req)).unwrap()).1.unwrap()
+        };
+        assert_eq!(get("m", 1)["value"], 20);
+        assert_eq!(get("m", -1)["value"], json!([10, 20]));
+        assert_eq!(get("m", 2)["error"], "XCOM_NOT_FOUND");
+        assert_eq!(get("u", 1)["value"], json!([1, 2]));
+    }
+
+    #[test]
+    fn keeps_each_instance_s_pushes_apart() {
+        let mut s = services();
+        for map_index in [0, 1] {
+            s.begin_instance(map_index);
+            let push = json!({"type": "SetXCom", "dag_id": "d", "task_id": "t", "run_id": "r", "key": "k", "value": map_index});
+            s.handle(&request(push)).unwrap();
+            assert_eq!(s.record.xcoms_pushed.len(), 1);
+            assert_eq!(s.record.xcoms_pushed[0].map_index, map_index);
+        }
+        let get = json!({"type": "GetXCom", "dag_id": "d", "task_id": "t", "key": "k", "run_id": "r", "map_index": 0});
+        assert_eq!(
+            reply_json(s.handle(&request(get)).unwrap()).1.unwrap()["value"],
+            0
+        );
     }
 
     #[test]

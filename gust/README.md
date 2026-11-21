@@ -76,10 +76,12 @@ where they are, such as ``dag_run.consumed_asset_events[0]: unknown field `extra
 
 Each fact has one key. The Dag and task ids come only from `--dag` and `--task`, and the run id only
 from `dag_run.run_id`, so there are no `dag_id`, `task_id` or `run_id` keys elsewhere; gust copies
-them to wherever the task needs them. The map index is always -1, since mapping is not supported.
+them to wherever the task needs them. There is no map index either: gust works out a mapped task's
+instances itself (see [Mapped tasks](#mapped-tasks)).
 
-Anything the task writes (XComs, Variables, state store values) is kept for the rest of the run, so
-a task that writes a value and reads it back sees its own value. Nothing is written back to the
+Anything the task writes (XComs, Variables, asset state store values) is kept for the rest of the
+run, so a task that writes a value and reads it back sees its own value. Each instance of a mapped
+task starts with the `task_state` given here, and its XComs are kept under its own map index. Nothing is written back to the
 input, and the summary lists every write.
 
 ### `dag_run`
@@ -148,11 +150,13 @@ URI, such as `"postgres://user:pass@host:5432/db?sslmode=require"` (including
 ### `xcoms`
 
 `{"dag_id/task_id": {"key": value}}`. Answers `GetXCom` for that Dag, task and key, whatever run
-and map index the task asks for. The key `""` is short for `return_value`; giving both for one
-task is an error. Default: no XComs.
+the task asks for. The key `""` is short for `return_value`; giving both for one task is an error.
+Default: no XComs.
 
 A mapped upstream task's XComs are given as one JSON array, holding the value of each map index
-in order: `{"my_dag/mapped": {"": [10, 20, 30]}}`. The requests that read them as a sequence
+in order: `{"my_dag/mapped": {"": [10, 20, 30]}}`. When the bundle's Dag marks the task as mapped,
+`GetXCom` with a map index answers with that element, and without one (or with -1) with the whole
+array. An unmapped task's value answers any map index. The requests that read XComs as a sequence
 answer from that array: `GetXComCount` with its length, `GetXComSequenceItem` with one item
 (negative offsets count from the end), and `GetXComSequenceSlice` with `[start:stop:step]` as
 Python slices it. A missing XCom counts as empty; a value that is not an array is an error for
@@ -198,6 +202,37 @@ its name or its URI; any other asset only by the string given. Default: all empt
 }
 ```
 
+## Mapped tasks
+
+When the task is mapped in the bundle's Dag, gust runs every instance, one after another in map
+index order, following [ADR-0016](../airflow-core/adr/lang-sdk/0016-mapped-tasks-across-lang-sdks.md).
+Nothing extra goes in `--input`: what the task expands over is in the serialized Dag, and an
+upstream output it expands over is an XCom from [`xcoms`](#xcoms).
+
+- **How many.** A literal list or dict expands over its items (a dict's as `[key, value]` pairs),
+  and an upstream XCom over its value the same way, so a mapped upstream's array gives one
+  instance per element. `expand()` takes the cross product of its arguments; `expand_kwargs()` one
+  instance per dict. `zip()` stops at the shortest argument, or runs to the longest with a
+  `fillvalue`; `concat()` adds the lengths; `map()` keeps the length it wraps. An XCom missing from
+  the input, or one that is not a list or an object, is an error before anything runs.
+- **What each instance gets.** `ti.map_index` and `ti_context.expanded_ti_count` are set, and each
+  `param` argument binding is resolved, as the API server and supervisor would, into a `literal`:
+  from the expand input first, then `partial()`, then the parameter's default. A `partial()`
+  argument from a mapped upstream is a `sequence`. A `kwargs` binding becomes this instance's dict
+  with `spread` set. A `map()` argument keeps `apply_map` set, so the runtime applies its own
+  callables; for `expand_kwargs()` with `map()`, `kwarg` and `fallback` are left to the runtime too.
+  Other bindings are passed as they are. These fields are newer than the supervisor schema gust
+  was generated from, so they are written into the encoded message directly.
+- **Results.** Every instance runs, whatever the others' states. There is no overall state: the
+  summary has a section per instance with its own state, as does each entry of `instances` in the
+  `--json` output. A task that expands to nothing runs nothing, and the summary notes that Airflow
+  marks it skipped.
+
+gust only knows a task is mapped from the parse step, so with `--no-parse` it runs the task once,
+unmapped. No SDK emits a mapped task in its own Dags yet, so this follows the ADR rather than a
+working SDK.
+A task inside a mapped task group, and a `param` binding naming a group argument, are errors.
+
 ## What happens
 
 1. **Parse.** gust starts the bundle and sends it a `DagFileParseRequest`, as the Dag processor
@@ -207,16 +242,17 @@ its name or its URI; any other asset only by the string given. Default: all empt
    Python Dag file. `--no-parse` skips this step.
 2. **Run.** gust starts the bundle again with `--comm` and `--logs`, sends `StartupDetails`, and
    answers the task's requests until it disconnects. The execution timeout is enforced.
+   A mapped task runs once per instance; see [Mapped tasks](#mapped-tasks).
 3. **Summary.** gust prints the final state, the XComs pushed, the Variables and state store values
    written, the rendered fields, every request the task made and whether it was answered, and the
    error log lines.
 
-The exit status is 0 when the task succeeded, 1 when it did not, and 2 when gust could not run it.
+The exit status is 0 when every instance succeeded (including when a mapped task expanded to
+none), 1 when one did not, and 2 when gust could not run the task.
 
 ## Not supported
 
-Running a mapped task (a downstream task can still read a mapped upstream's XComs; see
-[`xcoms`](#xcoms)), resuming a deferred or
+Tasks in a mapped task group, a Python Dag's `map()` callables (`ApplyMap`), resuming a deferred or
 rescheduled task, human-in-the-loop answers, callbacks, stub tasks, and the requests that read other
 task instances or Dag runs. The task gets an
 `API_SERVER_ERROR` for a request gust does not support, and the summary lists it as unsupported.

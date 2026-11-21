@@ -64,7 +64,7 @@ pub struct LogLine {
 pub struct LogSink {
     lines: Arc<Mutex<Vec<LogLine>>>,
     echo: bool,
-    phase: Arc<Mutex<&'static str>>,
+    phase: Arc<Mutex<String>>,
 }
 
 impl LogSink {
@@ -72,12 +72,12 @@ impl LogSink {
         Self {
             lines: Arc::default(),
             echo,
-            phase: Arc::new(Mutex::new("run")),
+            phase: Arc::new(Mutex::new("run".into())),
         }
     }
 
-    pub fn set_phase(&self, phase: &'static str) {
-        *self.phase.lock().unwrap() = phase;
+    pub fn set_phase(&self, phase: impl Into<String>) {
+        *self.phase.lock().unwrap() = phase.into();
     }
 
     pub fn take(&self) -> Vec<LogLine> {
@@ -115,8 +115,8 @@ impl LogSink {
             },
         };
         if self.echo {
-            let phase = *self.phase.lock().unwrap();
-            eprintln!("{}", format_line(phase, &line));
+            let phase = self.phase.lock().unwrap().clone();
+            eprintln!("{}", format_line(&phase, &line));
         }
         self.lines.lock().unwrap().push(line);
     }
