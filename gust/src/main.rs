@@ -54,6 +54,10 @@ use crate::{
 const BUNDLE_NAME: &str = "gust";
 
 fn main() -> ExitCode {
+    if cli::is_input_help_request(std::env::args_os()) {
+        println!("{}", cli::find_input_help());
+        return ExitCode::SUCCESS;
+    }
     let cli = Cli::parse();
     match run(&cli) {
         Ok(summary) => {

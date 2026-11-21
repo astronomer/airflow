@@ -26,7 +26,7 @@ use crate::input::{Input, parse_input};
 /// Run a Dag, or one task of it, from an Airflow executable Dag bundle against a mock supervisor.
 ///
 /// gust starts the bundle the way an Airflow worker does (with `--comm` and `--logs`), answers its
-/// requests from `--input`, and prints what the task did.
+/// requests from `--input`, and prints what the tasks did.
 #[derive(Debug, Parser)]
 #[command(version, max_term_width = 100)]
 pub struct Cli {
@@ -39,7 +39,7 @@ pub struct Cli {
     #[arg(long, value_name = "COMMAND", value_parser = parse_runtime)]
     pub runtime: Option<RuntimeCommand>,
 
-    /// The Dag the task belongs to.
+    /// The Dag to run.
     #[arg(long = "dag", value_name = "DAG_ID")]
     pub dag_id: String,
 
@@ -47,11 +47,17 @@ pub struct Cli {
     #[arg(long = "task", value_name = "TASK_ID")]
     pub task_id: Option<String>,
 
-    /// Everything the task can see beyond the bundle itself, as one JSON object: the Dag run,
+    /// Everything the tasks can see beyond the bundle itself, as one JSON object: the Dag run,
     /// the task instance's try, Variables, Connections, XComs, asset events and state stores.
-    /// The format is described in the README.
+    /// Run `gust --help:input` for the format.
     #[arg(long, value_name = "JSON", value_parser = parse_input)]
     pub input: Option<Input>,
+
+    /// Print the format of `--input`.
+    // `main` answers this before parsing, since it takes no bundle or `--dag`; declaring it here
+    // lists it in `--help` and rejects it alongside other arguments.
+    #[arg(long = "help:input", exclusive = true)]
+    pub help_input: bool,
 
     /// Do not ask the bundle for its Dags before running the task. The task then gets no
     /// TaskFlow argument bindings, retries, or execution timeout from its Dag.
@@ -69,6 +75,23 @@ pub struct Cli {
     /// Print the summary as JSON on stdout.
     #[arg(long)]
     pub json: bool,
+}
+
+/// The `--input` reference: the README section between the `input-help` markers.
+pub fn find_input_help() -> &'static str {
+    const README: &str = include_str!("../README.md");
+    const START: &str = "<!-- input-help:start -->";
+    let start = README.find(START).map_or(0, |i| i + START.len());
+    let end = README[start..]
+        .find("<!-- input-help:end -->")
+        .map_or(README.len(), |i| start + i);
+    README[start..end].trim()
+}
+
+/// Whether the command line is exactly `gust --help:input`.
+pub fn is_input_help_request(args: impl IntoIterator<Item = std::ffi::OsString>) -> bool {
+    let args: Vec<_> = args.into_iter().skip(1).collect();
+    args.len() == 1 && args[0] == "--help:input"
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +115,28 @@ fn parse_seconds(s: &str) -> Result<Duration, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_input_help_section() {
+        let help = find_input_help();
+        assert!(
+            help.starts_with("`--input` takes one JSON object"),
+            "{help}"
+        );
+        assert!(help.ends_with("```"), "{help}");
+        assert!(!help.contains("<!--"));
+        assert!(help.lines().all(|l| l.chars().count() <= 80));
+    }
+
+    #[test]
+    fn answers_only_a_lone_input_help_flag() {
+        let args = |a: &[&str]| a.iter().map(std::ffi::OsString::from).collect::<Vec<_>>();
+        assert!(is_input_help_request(args(&["gust", "--help:input"])));
+        assert!(!is_input_help_request(args(&["gust", "--help:input", "b"])));
+        assert!(!is_input_help_request(args(&["gust", "b", "--dag", "d"])));
+        let err = Cli::try_parse_from(["gust", "b", "--dag", "d", "--help:input"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
 
     #[test]
     fn runtime_splits_like_a_shell() {
