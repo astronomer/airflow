@@ -24,9 +24,9 @@ use serde_json::Value as Json;
 
 use crate::{
     bundle::Sdk,
+    models::DagRun,
     runtime::LogLine,
     services::{Outcome, Record, RequestLog},
-    timestamp::Timestamp,
 };
 
 #[derive(Debug, Default, Serialize)]
@@ -44,31 +44,55 @@ pub struct Summary {
     pub runtime: Option<Vec<String>>,
     pub sdk: Option<Sdk>,
     pub dag_id: String,
-    pub task_id: String,
-    pub run_id: String,
-    pub logical_date: Option<Timestamp>,
-    pub try_number: i64,
+    /// The task run alone, or `None` when the whole Dag ran.
+    pub task_id: Option<String>,
     pub parse: ParseReport,
-    /// How many instances a mapped task expanded to; `None` for an unmapped task.
-    pub map_length: Option<usize>,
+    /// The Dag run as the tasks saw it, with its final state. When one task runs alone, the
+    /// state is the one a Dag of only that task would end in.
+    pub dag_run: DagRun,
+    /// Every task instance of the run, in the order gust ran or decided it.
     pub instances: Vec<Instance>,
     /// Log lines from parsing the bundle.
     pub logs: Vec<LogLine>,
     pub notes: Vec<String>,
 }
 
-/// One task instance run: the only one of an unmapped task, or one map index of a mapped task.
-#[derive(Serialize)]
+/// One task instance try, or a task instance its trigger rule or a branch decided without
+/// running it.
+#[derive(Debug, Serialize)]
 pub struct Instance {
+    pub task_id: String,
     pub map_index: i64,
+    /// `None` when the instance did not run.
+    pub try_number: Option<i64>,
     pub state: String,
     pub exit_code: Option<i32>,
-    pub duration_secs: f64,
+    /// `None` when the instance did not run.
+    pub duration_secs: Option<f64>,
     /// The bindings sent to the runtime.
     pub arg_bindings: Option<Vec<Json>>,
-    pub record: Record,
+    /// `None` when the instance did not run.
+    pub record: Option<Record>,
     pub logs: Vec<LogLine>,
     pub notes: Vec<String>,
+}
+
+impl Instance {
+    /// An instance decided without running.
+    pub fn decided(task_id: &str, map_index: i64, state: &str, note: String) -> Self {
+        Self {
+            task_id: task_id.to_owned(),
+            map_index,
+            try_number: None,
+            state: state.to_owned(),
+            exit_code: None,
+            duration_secs: None,
+            arg_bindings: None,
+            record: None,
+            logs: vec![],
+            notes: vec![note],
+        }
+    }
 }
 
 fn compact(value: &Json) -> String {
@@ -154,13 +178,27 @@ fn print_binding(b: &Json) {
 
 impl Instance {
     fn print(&self) {
+        let mut title = self.task_id.clone();
+        if self.map_index >= 0 {
+            title.push_str(&format!("[{}]", self.map_index));
+        }
+        if let Some(try_number) = self.try_number {
+            title.push_str(&format!(", try {try_number}"));
+        }
+        println!(
+            "\n── {title} {}",
+            "─".repeat(50usize.saturating_sub(title.chars().count()))
+        );
         println!("  state       {}", self.state.to_uppercase());
+        let (Some(duration), Some(record)) = (self.duration_secs, &self.record) else {
+            print_notes(&self.notes);
+            return;
+        };
         match self.exit_code {
             Some(code) => println!("  exit code   {code}"),
             None => println!("  exit code   (killed by signal)"),
         }
-        println!("  duration    {:.2}s", self.duration_secs);
-        let record = &self.record;
+        println!("  duration    {duration:.2}s");
 
         if let Some(terminal) = &record.terminal {
             heading("Final message from the task");
@@ -257,30 +295,32 @@ impl Summary {
     pub fn print(&self) {
         let rule = "─".repeat(60);
         println!("\n{rule}");
-        println!("gust summary: {}.{}", self.dag_id, self.task_id);
-        println!("{rule}");
-        if let Some(n) = self.map_length {
-            let failed: Vec<String> = self
-                .instances
-                .iter()
-                .filter(|i| i.state != "success")
-                .map(|i| format!("{} {}", i.map_index, i.state))
-                .collect();
-            print!(
-                "  mapped      {n} instance{}",
-                if n == 1 { "" } else { "s" }
-            );
-            if failed.is_empty() {
-                println!();
-            } else {
-                println!(" (not successful: {})", failed.join(", "));
-            }
+        match &self.task_id {
+            Some(task_id) => println!("gust summary: {}.{task_id}", self.dag_id),
+            None => println!("gust summary: Dag {}", self.dag_id),
         }
-        println!("  run id      {}", self.run_id);
-        if let Some(date) = &self.logical_date {
+        println!("{rule}");
+        println!(
+            "  Dag run     {}",
+            self.dag_run.state.to_string().to_uppercase()
+        );
+        let mut states: BTreeMap<&str, usize> = BTreeMap::new();
+        for instance in &self.instances {
+            *states.entry(instance.state.as_str()).or_default() += 1;
+        }
+        let counts: Vec<String> = states.iter().map(|(s, n)| format!("{n} {s}")).collect();
+        println!(
+            "  instances   {}",
+            if counts.is_empty() {
+                "none".into()
+            } else {
+                counts.join(", ")
+            }
+        );
+        println!("  run id      {}", self.dag_run.run_id);
+        if let Some(date) = &self.dag_run.logical_date {
             println!("  logical     {date}");
         }
-        println!("  try         {}", self.try_number);
         print!("  bundle      {}", self.bundle.display());
         match &self.sdk {
             Some(sdk) => println!(
@@ -300,9 +340,6 @@ impl Summary {
         print_logs(&self.logs);
 
         for instance in &self.instances {
-            if self.map_length.is_some() {
-                println!("\n── map index {} {}", instance.map_index, "─".repeat(40));
-            }
             instance.print();
         }
 

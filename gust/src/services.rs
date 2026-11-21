@@ -172,10 +172,18 @@ pub struct Services {
     xcoms: BTreeMap<XComKey, Json>,
     /// `(dag_id, task_id)` of the tasks the parsed Dag maps.
     mapped_tasks: BTreeSet<(String, String)>,
-    /// The map index of the task instance being run.
+    /// How many instances each mapped task of this run expanded to, by `(dag_id, task_id)`.
+    map_lengths: BTreeMap<(String, String), usize>,
+    /// The task instance being run: task id and map index.
+    current: (String, i64),
     map_index: i64,
+    /// The try each task instance last ran, to clear its XComs when it runs again.
+    tries: BTreeMap<(String, i64), i64>,
+    /// The store every task instance starts with.
     initial_task_state: BTreeMap<String, Json>,
+    /// The current task instance's store; the others' are in `task_states`.
     task_state: BTreeMap<String, Json>,
+    task_states: BTreeMap<(String, i64), BTreeMap<String, Json>>,
     asset_state: BTreeMap<String, BTreeMap<String, Json>>,
     assets: Vec<Asset>,
     asset_events: Vec<AssetEvent>,
@@ -233,9 +241,13 @@ impl Services {
                 .map(|c| (c.conn_id.clone(), c.clone()))
                 .collect(),
             mapped_tasks: BTreeSet::new(),
+            map_lengths: BTreeMap::new(),
+            current: (String::new(), -1),
             map_index: -1,
+            tries: BTreeMap::new(),
             initial_task_state: input.task_state.clone(),
             task_state: input.task_state.clone(),
+            task_states: BTreeMap::new(),
             asset_state: input
                 .asset_state
                 .iter()
@@ -265,12 +277,73 @@ impl Services {
             .collect();
     }
 
-    /// Start serving task instance `map_index`, with a fresh record and the task state store
-    /// from `--input`.
-    pub fn begin_instance(&mut self, map_index: i64) {
+    pub fn set_map_length(&mut self, dag_id: &str, task_id: &str, length: usize) {
+        self.map_lengths
+            .insert((dag_id.to_owned(), task_id.to_owned()), length);
+    }
+
+    /// Start serving a try of a task instance of `dag_id`, with a fresh record. Each task
+    /// instance keeps its own task state store across tries, starting from `--input`'s; a try
+    /// after the first starts without the XComs the earlier one pushed.
+    pub fn begin_instance(&mut self, dag_id: &str, task_id: &str, map_index: i64, try_number: i64) {
+        let key = (task_id.to_owned(), map_index);
+        let store = std::mem::take(&mut self.task_state);
+        self.task_states
+            .insert(std::mem::replace(&mut self.current, key.clone()), store);
+        self.task_state = self
+            .task_states
+            .remove(&key)
+            .unwrap_or_else(|| self.initial_task_state.clone());
+        if self
+            .tries
+            .insert(key, try_number)
+            .is_some_and(|previous| previous != try_number)
+        {
+            self.xcoms
+                .retain(|(d, t, _, i), _| !(d == dag_id && t == task_id && *i == map_index));
+        }
         self.map_index = map_index;
-        self.task_state = self.initial_task_state.clone();
         self.record = Record::default();
+    }
+
+    /// A task's whole output for `key`: the value at map index -1, or for a mapped task that ran
+    /// in this run, every instance's value in map index order (`null` for one that pushed none).
+    fn find_whole(&self, dag_id: &str, task_id: &str, key: &str) -> Option<Json> {
+        let row = |index: i64| {
+            self.xcoms
+                .get(&(dag_id.to_owned(), task_id.to_owned(), key.to_owned(), index))
+        };
+        if let Some(value) = row(-1) {
+            return Some(value.clone());
+        }
+        let length = *self
+            .map_lengths
+            .get(&(dag_id.to_owned(), task_id.to_owned()))?;
+        let values: Vec<Option<&Json>> = (0..length as i64).map(row).collect();
+        values.iter().any(Option::is_some).then(|| {
+            Json::Array(
+                values
+                    .into_iter()
+                    .map(|v| v.cloned().unwrap_or(Json::Null))
+                    .collect(),
+            )
+        })
+    }
+
+    /// Every XCom of `dag_id`, whole, by `(task_id, key)`.
+    pub fn find_xcom_values(&self, dag_id: &str) -> crate::expand::XComValues {
+        let keys: BTreeSet<(String, String)> = self
+            .xcoms
+            .keys()
+            .filter(|(d, ..)| d == dag_id)
+            .map(|(_, t, k, _)| (t.clone(), k.clone()))
+            .collect();
+        keys.into_iter()
+            .filter_map(|(t, k)| {
+                let value = self.find_whole(dag_id, &t, &k)?;
+                Some(((t, k), value))
+            })
+            .collect()
     }
 
     /// Read an XCom row. A mapped task's value from `--input` is an array of its instances'
@@ -284,10 +357,10 @@ impl Services {
         if let Some(value) = row(map_index) {
             return Some(value.clone());
         }
-        let whole = row(-1)?;
         if map_index < 0 {
-            return None;
+            return self.find_whole(dag_id, task_id, key);
         }
+        let whole = row(-1)?;
         if !self
             .mapped_tasks
             .contains(&(dag_id.to_owned(), task_id.to_owned()))
@@ -581,10 +654,9 @@ impl Services {
             "GetXComCount" | "GetXComSequenceItem" | "GetXComSequenceSlice" => {
                 let msg: SequenceRequest = frame::decode(body)?;
                 let target = format!("{}/{}/{}", msg.dag_id, msg.task_id, msg.key);
-                let key = (msg.dag_id.clone(), msg.task_id.clone(), msg.key.clone(), -1);
-                let items = match self.xcoms.get(&key) {
+                let items = match self.find_whole(&msg.dag_id, &msg.task_id, &msg.key) {
                     None => None,
-                    Some(Json::Array(items)) => Some(items.clone()),
+                    Some(Json::Array(items)) => Some(items),
                     Some(_) => {
                         self.log(type_, target.clone(), Outcome::Invalid);
                         return Reply::error(&models::ErrorResponse {
@@ -1153,16 +1225,36 @@ mod tests {
     fn keeps_each_instance_s_pushes_apart() {
         let mut s = services();
         for map_index in [0, 1] {
-            s.begin_instance(map_index);
+            s.begin_instance("d", "t", map_index, 1);
             let push = json!({"type": "SetXCom", "dag_id": "d", "task_id": "t", "run_id": "r", "key": "k", "value": map_index});
             s.handle(&request(push)).unwrap();
             assert_eq!(s.record.xcoms_pushed.len(), 1);
             assert_eq!(s.record.xcoms_pushed[0].map_index, map_index);
         }
-        let get = json!({"type": "GetXCom", "dag_id": "d", "task_id": "t", "key": "k", "run_id": "r", "map_index": 0});
+        let get = |s: &mut Services, map_index: i64| {
+            let req = json!({"type": "GetXCom", "dag_id": "d", "task_id": "t", "key": "k", "run_id": "r", "map_index": map_index});
+            reply_json(s.handle(&request(req)).unwrap()).1.unwrap()
+        };
+        assert_eq!(get(&mut s, 0)["value"], 0);
+        assert_eq!(get(&mut s, -1)["error"], "XCOM_NOT_FOUND");
+        s.set_map_length("d", "t", 3);
+        assert_eq!(get(&mut s, -1)["value"], json!([0, 1, null]));
         assert_eq!(
-            reply_json(s.handle(&request(get)).unwrap()).1.unwrap()["value"],
-            0
+            s.find_xcom_values("d")[&("t".to_owned(), "k".to_owned())],
+            json!([0, 1, null])
+        );
+
+        // A second try of instance 1 starts without its earlier push, and keeps its state store.
+        let set = json!({"type": "SetTaskStateStore", "key": "c", "value": 5});
+        s.handle(&request(set)).unwrap();
+        s.begin_instance("d", "t", 0, 1);
+        s.begin_instance("d", "t", 1, 2);
+        assert_eq!(get(&mut s, 1)["error"], "XCOM_NOT_FOUND");
+        assert_eq!(get(&mut s, 0)["value"], 0);
+        let read = json!({"type": "GetTaskStateStore", "key": "c"});
+        assert_eq!(
+            reply_json(s.handle(&request(read)).unwrap()).1.unwrap()["value"],
+            5
         );
     }
 

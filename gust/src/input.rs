@@ -33,6 +33,8 @@ use crate::{models::DagRunType, timestamp::Timestamp};
 pub struct Input {
     pub dag_run: DagRunInput,
     pub try_number: i64,
+    /// `ti` was given at all, which only makes sense for a single task.
+    pub ti_given: bool,
     /// `None` takes the task's `retries` from its Dag, or 0.
     pub max_tries: Option<i64>,
     pub variables: Vec<(String, String)>,
@@ -302,6 +304,7 @@ fn resolve(raw: RawInput, now: Timestamp) -> Result<Input, String> {
 
     let mut input = Input {
         dag_run,
+        ti_given: raw.ti.try_number.is_some() || raw.ti.max_tries.is_some(),
         try_number: raw.ti.try_number.unwrap_or(1),
         max_tries: raw.ti.max_tries,
         variables: resolve_variables(raw.variables)?,

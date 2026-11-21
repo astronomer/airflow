@@ -26,6 +26,7 @@ mod input;
 #[rustfmt::skip]
 mod models;
 mod runtime;
+mod scheduler;
 mod services;
 mod summary;
 mod timestamp;
@@ -39,13 +40,15 @@ use uuid::Uuid;
 
 use crate::{
     cli::Cli,
-    dag::{Lookup, TaskSpec},
-    expand::{Expansion, XComValues},
+    dag::{DagSpec, Lookup, TaskSpec},
+    expand::XComValues,
     frame::Reply,
     input::Input,
     runtime::{LogSink, Runtime},
+    scheduler::{Executor, Settings, TiRun},
     services::Services,
     summary::{Instance, ParseReport, Summary},
+    timestamp::Timestamp,
 };
 
 const BUNDLE_NAME: &str = "gust";
@@ -59,7 +62,7 @@ fn main() -> ExitCode {
             } else {
                 summary.print();
             }
-            if summary.instances.iter().all(|i| i.state == "success") {
+            if summary.dag_run.state == models::DagRunState::Success {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::from(1)
@@ -105,7 +108,8 @@ fn run(cli: &Cli) -> Result<Summary> {
     let mut services = Services::new(&input);
 
     let mut parse = ParseReport::default();
-    let mut spec = TaskSpec::default();
+    let mut dag_spec: Option<DagSpec> = None;
+    let mut known_dags: Vec<String> = Vec::new();
     if !cli.no_parse {
         parse.performed = true;
         sink.set_phase("parse");
@@ -121,31 +125,29 @@ fn run(cli: &Cli) -> Result<Summary> {
                         notes.push(format!("Import error in {file}: {}", error.as_str().unwrap_or_default()));
                     }
                 }
-                match dag::find_task(&result, &cli.dag_id, &cli.task_id) {
+                match dag::find_dag(&result, &cli.dag_id) {
                     Lookup::Found(found) => {
                         parse.native_dag = true;
-                        spec = found;
+                        dag_spec = Some(found);
                     }
-                    Lookup::NoTask { available } => bail!(
-                        "Dag {:?} has no task {:?}; its tasks are: {}",
-                        cli.dag_id,
-                        cli.task_id,
-                        available.join(", "),
-                    ),
                     Lookup::NoDag { available } => {
+                        known_dags.clone_from(&available);
                         let handler = manifest.as_ref().and_then(|m| m.dags.get(&cli.dag_id));
-                        match handler {
-                            Some(entry) if !entry.tasks.contains(&cli.task_id) => bail!(
-                                "the bundle has no task handler for {}.{}; it handles: {}",
+                        match (handler, &cli.task_id) {
+                            (Some(entry), Some(task_id)) if !entry.tasks.contains(task_id) => bail!(
+                                "the bundle has no task handler for {}.{task_id}; it handles: {}",
                                 cli.dag_id,
-                                cli.task_id,
                                 entry.tasks.join(", "),
                             ),
-                            Some(_) => notes.push(format!(
+                            (Some(_), Some(_)) => notes.push(format!(
                                 "{:?} is a Python Dag this bundle has task handlers for; its argument bindings live in the Python Dag file, so the task gets none.",
                                 cli.dag_id,
                             )),
-                            None if manifest.is_some() => {
+                            (Some(_), None) => bail!(
+                                "{:?} is a Python Dag this bundle has task handlers for; its tasks and edges live in the Python Dag file, so gust can only run one task of it at a time (give --task)",
+                                cli.dag_id,
+                            ),
+                            (None, _) if manifest.is_some() => {
                                 let mut known = available;
                                 known.extend(manifest.iter().flat_map(|m| m.dags.keys().cloned()));
                                 bail!(
@@ -154,108 +156,107 @@ fn run(cli: &Cli) -> Result<Summary> {
                                     if known.is_empty() { "nothing".into() } else { known.join(", ") },
                                 )
                             }
-                            None => notes.push(format!("The bundle's parse result has no Dag {:?}.", cli.dag_id)),
+                            (None, _) => notes.push(format!("The bundle's parse result has no Dag {:?}.", cli.dag_id)),
                         }
                     }
                 }
             }
         }
     }
-    parse.spec = (parse.native_dag).then(|| serde_json::to_value(&spec).unwrap());
     parse.requests = std::mem::take(&mut services.record.requests);
     let parse_logs = sink.take();
-    services.set_mapped_tasks(&cli.dag_id, &spec.mapped_tasks);
-    if spec.in_mapped_group {
+
+    let scope = match &cli.task_id {
+        Some(task_id) => {
+            let spec = match &dag_spec {
+                Some(dag) => dag.get(task_id).cloned().with_context(|| {
+                    format!(
+                        "Dag {:?} has no task {task_id:?}; its tasks are: {}",
+                        cli.dag_id,
+                        dag.tasks
+                            .iter()
+                            .map(|t| t.task_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    )
+                })?,
+                None => TaskSpec::bare(task_id),
+            };
+            parse.spec = dag_spec
+                .is_some()
+                .then(|| serde_json::to_value(&spec).unwrap());
+            spec.isolate()
+        }
+        None => {
+            let Some(dag) = dag_spec.clone() else {
+                if cli.no_parse {
+                    bail!("--no-parse needs --task: gust learns a Dag's tasks by parsing it");
+                }
+                bail!(
+                    "the bundle's parse result has no Dag {:?}, so gust does not know its tasks; it has: {}",
+                    cli.dag_id,
+                    if known_dags.is_empty() {
+                        "nothing".into()
+                    } else {
+                        known_dags.join(", ")
+                    },
+                );
+            };
+            check_whole_dag_input(&input, &cli.dag_id)?;
+            dag
+        }
+    };
+    if let Some(task) = scope.tasks.iter().find(|t| t.in_mapped_group) {
         bail!(
             "{}.{} is in a mapped task group, which gust does not expand yet",
             cli.dag_id,
-            cli.task_id
+            task.task_id
         );
     }
+    let mapped_task_ids = dag_spec
+        .as_ref()
+        .map(DagSpec::find_mapped_task_ids)
+        .unwrap_or_default();
+    services.set_mapped_tasks(&cli.dag_id, &mapped_task_ids);
 
-    // Every instance's bindings are worked out before any runs, so a bad expansion runs nothing.
-    let xcom_values: XComValues = input
-        .xcoms
-        .iter()
-        .filter(|x| x.dag_id == cli.dag_id)
-        .map(|x| ((x.task_id.clone(), x.key.clone()), x.value.clone()))
-        .collect();
-    let mut plan: Vec<Planned> = Vec::new();
-    let map_length = match &spec.mapped {
-        None => {
-            plan.push(Planned {
-                map_index: -1,
-                bindings: spec.arg_bindings.clone(),
-                resolved: false,
-            });
-            None
-        }
-        Some(mapped) => {
-            let expansion = Expansion::new(mapped, &xcom_values, &spec.mapped_tasks)
-                .with_context(|| format!("cannot expand {}.{}", cli.dag_id, cli.task_id))?;
-            for index in 0..expansion.length {
-                let bindings = spec
-                    .arg_bindings
-                    .as_deref()
-                    .map(|entries| expansion.build_bindings(entries, index))
-                    .transpose()
-                    .with_context(|| format!("cannot bind the arguments of map index {index}"))?;
-                plan.push(Planned {
-                    map_index: index as i64,
-                    bindings,
-                    resolved: true,
-                });
-            }
-            Some(expansion.length)
-        }
-    };
-
-    let run_id = input.dag_run.run_id.clone();
-    match map_length {
+    let dag_run = build_dag_run(cli, &input);
+    match &cli.task_id {
+        Some(task_id) => eprintln!(
+            "gust: running {}.{task_id} (run {})",
+            cli.dag_id, dag_run.run_id
+        ),
         None => eprintln!(
-            "gust: running {}.{} (run {run_id})",
-            cli.dag_id, cli.task_id
-        ),
-        Some(n) => eprintln!(
-            "gust: running {}.{} (run {run_id}), mapped to {n} instance{}",
+            "gust: running Dag {} with {} task{} (run {})",
             cli.dag_id,
-            cli.task_id,
-            if n == 1 { "" } else { "s" },
+            scope.tasks.len(),
+            if scope.tasks.len() == 1 { "" } else { "s" },
+            dag_run.run_id,
         ),
     }
-    let mut instances = Vec::new();
-    for planned in plan {
-        let phase = match map_length {
-            None => "run".to_owned(),
-            Some(_) => format!("[{}]", planned.map_index),
-        };
-        sink.set_phase(phase);
-        services.phase = "run";
-        services.begin_instance(planned.map_index);
-        let startup = build_startup(
-            cli,
-            &input,
-            &bundle_path,
-            &spec,
-            &planned,
-            map_length.map(|n| n as i64),
-        )?;
-        instances.push(run_instance(
-            cli,
-            &command,
-            &spec,
-            startup,
-            planned,
-            &mut services,
-            &sink,
-        )?);
-    }
-
-    if map_length == Some(0) {
-        notes.push(
-            "The task expanded to no instances, so nothing ran; Airflow marks it skipped.".into(),
-        );
-    }
+    let settings = Settings {
+        whole_dag: cli.task_id.is_none(),
+        first_try: input.try_number,
+        max_tries: input.max_tries,
+        mapped_task_ids: &mapped_task_ids,
+    };
+    let mut worker = Worker {
+        cli,
+        command: &command,
+        bundle: &bundle_path,
+        dag_run: &dag_run,
+        services,
+        sink: &sink,
+    };
+    let (instances, state) = scheduler::run_dag(&scope, &settings, &mut worker)?;
+    let finished = matches!(
+        state,
+        models::DagRunState::Success | models::DagRunState::Failed
+    );
+    let dag_run = models::DagRun {
+        state,
+        end_date: finished.then(Timestamp::now),
+        ..dag_run
+    };
 
     Ok(Summary {
         bundle: bundle_path,
@@ -263,33 +264,89 @@ fn run(cli: &Cli) -> Result<Summary> {
         sdk: manifest.map(|m| m.sdk),
         dag_id: cli.dag_id.clone(),
         task_id: cli.task_id.clone(),
-        run_id,
-        logical_date: input.dag_run.logical_date,
-        try_number: input.try_number,
         parse,
-        map_length,
+        dag_run,
         instances,
         logs: parse_logs,
         notes,
     })
 }
 
-/// One task instance to run.
-struct Planned {
-    map_index: i64,
-    bindings: Option<Vec<Json>>,
-    /// The bindings are worked out by gust, in the wire form the supervisor sends, rather than
-    /// taken from the Dag as they are.
-    resolved: bool,
+/// In whole-Dag mode, the tries come from each task's retries, every task instance starts with
+/// an empty state store, and the Dag's own XComs come from the run.
+fn check_whole_dag_input(input: &Input, dag_id: &str) -> Result<()> {
+    if input.ti_given {
+        bail!(
+            "\"ti\" sets one task instance's try, so it needs --task; a whole Dag run starts every task at try 1 with max_tries from its retries"
+        );
+    }
+    if !input.task_state.is_empty() {
+        bail!(
+            "\"task_state\" is one task instance's store, so it needs --task; in a whole Dag run every task instance starts with an empty store"
+        );
+    }
+    if let Some(x) = input.xcoms.iter().find(|x| x.dag_id == dag_id) {
+        bail!(
+            "\"xcoms\" has {dag_id}/{}, but a whole run of Dag {dag_id} gets its own tasks' XComs from the run; give only other Dags' XComs",
+            x.task_id
+        );
+    }
+    Ok(())
 }
 
-/// Run one task instance to the end, serving its requests.
+/// Runs task instances for the scheduler, each in its own runtime process.
+struct Worker<'a> {
+    cli: &'a Cli,
+    command: &'a [OsString],
+    bundle: &'a Path,
+    dag_run: &'a models::DagRun,
+    services: Services,
+    sink: &'a LogSink,
+}
+
+impl Executor for Worker<'_> {
+    fn run(&mut self, task: &TaskSpec, ti: TiRun) -> Result<Instance> {
+        let mut phase = match &self.cli.task_id {
+            Some(_) if ti.map_index < 0 => "run".to_owned(),
+            Some(_) => String::new(),
+            None => task.task_id.clone(),
+        };
+        if ti.map_index >= 0 {
+            phase.push_str(&format!("[{}]", ti.map_index));
+        }
+        self.sink.set_phase(phase);
+        self.services.phase = "run";
+        self.services
+            .begin_instance(&self.cli.dag_id, &task.task_id, ti.map_index, ti.try_number);
+        let startup = build_startup(self.cli, self.bundle, self.dag_run, task, &ti)?;
+        run_instance(
+            self.cli,
+            self.command,
+            task,
+            startup,
+            ti,
+            &mut self.services,
+            self.sink,
+        )
+    }
+
+    fn find_xcom_values(&self) -> XComValues {
+        self.services.find_xcom_values(&self.cli.dag_id)
+    }
+
+    fn set_map_length(&mut self, task_id: &str, length: usize) {
+        self.services
+            .set_map_length(&self.cli.dag_id, task_id, length);
+    }
+}
+
+/// Run one task instance try to the end, serving its requests.
 fn run_instance(
     cli: &Cli,
     command: &[OsString],
     spec: &TaskSpec,
     startup: models::StartupDetails,
-    planned: Planned,
+    ti: TiRun,
     services: &mut Services,
     sink: &LogSink,
 ) -> Result<Instance> {
@@ -299,7 +356,7 @@ fn run_instance(
     if let Some(timeout) = spec.execution_timeout {
         runtime.arm_timeout(timeout);
     }
-    let startup = match (&planned.bindings, planned.resolved) {
+    let startup = match (&ti.bindings, ti.resolved) {
         (Some(bindings), true) => frame::encode_with_bindings(&startup, bindings)?,
         _ => Reply::body(&startup)?,
     };
@@ -355,12 +412,14 @@ fn run_instance(
     };
 
     Ok(Instance {
-        map_index: planned.map_index,
+        task_id: spec.task_id.clone(),
+        map_index: ti.map_index,
+        try_number: Some(ti.try_number),
         state,
         exit_code: exit.status.code(),
-        duration_secs: duration.as_secs_f64(),
-        arg_bindings: planned.bindings,
-        record: std::mem::take(&mut services.record),
+        duration_secs: Some(duration.as_secs_f64()),
+        arg_bindings: ti.bindings,
+        record: Some(std::mem::take(&mut services.record)),
         logs: sink.take(),
         notes,
     })
@@ -405,24 +464,8 @@ fn parse_dags(
     Ok(result)
 }
 
-fn build_startup(
-    cli: &Cli,
-    input: &Input,
-    bundle: &Path,
-    spec: &TaskSpec,
-    planned: &Planned,
-    expanded_ti_count: Option<i64>,
-) -> Result<models::StartupDetails> {
+fn build_dag_run(cli: &Cli, input: &Input) -> models::DagRun {
     let run = &input.dag_run;
-    // Resolved bindings use ADR-0016 fields the supervisor schema does not have yet, so they are
-    // written into the encoded message instead.
-    let arg_bindings = match (&planned.bindings, planned.resolved) {
-        (Some(b), false) => Some(
-            serde_json::from_value(Json::Array(b.clone()))
-                .context("the bundle's argument bindings do not match the supervisor schema")?,
-        ),
-        _ => None,
-    };
     let consumed_asset_events = input
         .asset_events
         .iter()
@@ -446,6 +489,44 @@ fn build_startup(
             timestamp: e.timestamp,
         })
         .collect();
+    models::DagRun {
+        clear_number: 0,
+        conf: run.conf.clone(),
+        consumed_asset_events,
+        dag_id: cli.dag_id.clone(),
+        data_interval_end: run.data_interval.map(|(_, end)| end),
+        data_interval_start: run.data_interval.map(|(start, _)| start),
+        end_date: None,
+        logical_date: run.logical_date,
+        note: run.note.clone(),
+        partition_date: None,
+        partition_key: run.partition_key.clone(),
+        run_after: run.run_after,
+        run_id: run.run_id.clone(),
+        run_type: run.run_type,
+        start_date: Some(run.start_date),
+        state: models::DagRunState::Running,
+        team_name: None,
+        triggering_user_name: run.triggering_user.clone(),
+    }
+}
+
+fn build_startup(
+    cli: &Cli,
+    bundle: &Path,
+    dag_run: &models::DagRun,
+    spec: &TaskSpec,
+    ti: &TiRun,
+) -> Result<models::StartupDetails> {
+    // Resolved bindings use ADR-0016 fields the supervisor schema does not have yet, so they are
+    // written into the encoded message instead.
+    let arg_bindings = match (&ti.bindings, ti.resolved) {
+        (Some(b), false) => Some(
+            serde_json::from_value(Json::Array(b.clone()))
+                .context("the bundle's argument bindings do not match the supervisor schema")?,
+        ),
+        _ => None,
+    };
     Ok(models::StartupDetails {
         bundle_info: models::BundleInfo {
             name: BUNDLE_NAME.into(),
@@ -458,54 +539,36 @@ fn build_startup(
             .to_string_lossy()
             .into_owned(),
         sentry_integration: String::new(),
-        start_date: run.start_date,
+        start_date: dag_run.start_date.unwrap_or_else(Timestamp::now),
         ti: models::TaskInstance {
             context_carrier: None,
             dag_id: cli.dag_id.clone(),
             dag_version_id: Uuid::new_v4(),
             hostname: None,
             id: Uuid::new_v4(),
-            map_index: planned.map_index,
+            map_index: ti.map_index,
             queue: spec.queue.clone().unwrap_or_else(|| "default".into()),
             region_id: None,
             region_index: None,
-            run_id: run.run_id.clone(),
-            task_id: cli.task_id.clone(),
-            try_number: input.try_number,
+            run_id: dag_run.run_id.clone(),
+            task_id: spec.task_id.clone(),
+            try_number: ti.try_number,
         },
         ti_context: models::TiRunContext {
             arg_bindings,
             connections: vec![],
-            dag_run: models::DagRun {
-                clear_number: 0,
-                conf: run.conf.clone(),
-                consumed_asset_events,
-                dag_id: cli.dag_id.clone(),
-                data_interval_end: run.data_interval.map(|(_, end)| end),
-                data_interval_start: run.data_interval.map(|(start, _)| start),
-                end_date: None,
-                logical_date: run.logical_date,
-                note: run.note.clone(),
-                partition_date: None,
-                partition_key: run.partition_key.clone(),
-                run_after: run.run_after,
-                run_id: run.run_id.clone(),
-                run_type: run.run_type,
-                start_date: Some(run.start_date),
-                state: models::DagRunState::Running,
-                team_name: None,
-                triggering_user_name: run.triggering_user.clone(),
-            },
+            dag_run: dag_run.clone(),
             execution_timeout: spec.execution_timeout,
-            expanded_ti_count,
+            expanded_ti_count: ti.expanded_ti_count,
             first_task_reschedule_start_date: None,
             loop_: None,
-            max_tries: input.max_tries.or(spec.retries).unwrap_or(0),
+            max_tries: ti.max_tries,
             multi_team: false,
             next_kwargs: models::NextKwargs::Null,
             next_method: None,
-            should_retry: false,
-            start_date: Some(run.start_date),
+            // As TaskInstance.is_eligible_to_retry decides it.
+            should_retry: ti.max_tries > 0 && ti.try_number <= ti.max_tries,
+            start_date: dag_run.start_date,
             task_reschedule_count: 0,
             variables: vec![],
             xcom_keys_to_clear: vec![],

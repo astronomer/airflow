@@ -22,21 +22,67 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 use serde_json::Value as Json;
 
-/// The parts of a serialized task that the API server would put into the task's run context.
-#[derive(Debug, Default, Serialize)]
+/// The parts of a serialized task gust needs to schedule and run it.
+#[derive(Clone, Debug, Default, Serialize)]
 pub struct TaskSpec {
+    pub task_id: String,
     pub arg_bindings: Option<Vec<Json>>,
     pub retries: Option<i64>,
     pub execution_timeout: Option<f64>,
     pub queue: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mapped: Option<MappedSpec>,
-    /// Every mapped task in the Dag, this one included.
-    #[serde(skip)]
-    pub mapped_tasks: BTreeSet<String>,
+    pub trigger_rule: String,
+    pub is_setup: bool,
+    pub is_teardown: bool,
+    pub on_failure_fail_dagrun: bool,
+    pub upstream: Vec<String>,
+    pub downstream: Vec<String>,
     /// The task sits in a mapped task group, so it expands with the group.
     #[serde(skip)]
     pub in_mapped_group: bool,
+}
+
+impl TaskSpec {
+    /// A task gust knows nothing about beyond its id.
+    pub fn bare(task_id: &str) -> Self {
+        Self {
+            task_id: task_id.to_owned(),
+            trigger_rule: "all_success".into(),
+            ..Self::default()
+        }
+    }
+
+    /// This task alone, as a Dag of one task with no edges.
+    pub fn isolate(&self) -> DagSpec {
+        DagSpec {
+            tasks: vec![Self {
+                upstream: vec![],
+                downstream: vec![],
+                ..self.clone()
+            }],
+        }
+    }
+}
+
+/// A Dag's tasks, in the order the serialized Dag lists them.
+#[derive(Clone, Debug, Default)]
+pub struct DagSpec {
+    pub tasks: Vec<TaskSpec>,
+}
+
+impl DagSpec {
+    pub fn get(&self, task_id: &str) -> Option<&TaskSpec> {
+        self.tasks.iter().find(|t| t.task_id == task_id)
+    }
+
+    pub fn find_mapped_task_ids(&self) -> BTreeSet<String> {
+        self.tasks
+            .iter()
+            .filter(|t| t.mapped.is_some())
+            .map(|t| t.task_id.clone())
+            .collect()
+    }
 }
 
 /// What a mapped task expands over, still in the serialized Dag's encoding.
@@ -91,19 +137,21 @@ fn is_in_mapped_group(group: &Json, task_id: &str) -> bool {
     walk(group, task_id, false).unwrap_or(false)
 }
 
-#[derive(Debug, PartialEq)]
-pub enum Lookup<T> {
-    Found(T),
+pub enum Lookup {
+    Found(DagSpec),
     NoDag { available: Vec<String> },
-    NoTask { available: Vec<String> },
 }
 
 fn unwrap_var(value: &Json) -> &Json {
     value.get("__var").unwrap_or(value)
 }
 
-/// Find `dag_id`/`task_id` in a `DagFileParsingResult` body.
-pub fn find_task(result: &Json, dag_id: &str, task_id: &str) -> Lookup<TaskSpec> {
+fn is_true(task: &Json, key: &str) -> bool {
+    task.get(key).and_then(Json::as_bool) == Some(true)
+}
+
+/// Find `dag_id` in a `DagFileParsingResult` body.
+pub fn find_dag(result: &Json, dag_id: &str) -> Lookup {
     let dags: Vec<&Json> = result
         .get("serialized_dags")
         .and_then(Json::as_array)
@@ -122,42 +170,66 @@ pub fn find_task(result: &Json, dag_id: &str, task_id: &str) -> Lookup<TaskSpec>
                 .collect(),
         };
     };
-    let tasks: Vec<&Json> = dag
+    let raw: Vec<&Json> = dag
         .get("tasks")
         .and_then(Json::as_array)
         .into_iter()
         .flatten()
         .map(unwrap_var)
+        .filter(|t| t.get("task_id").and_then(Json::as_str).is_some())
         .collect();
-    let Some(task) = tasks
+    let ids: BTreeSet<&str> = raw
         .iter()
-        .find(|t| t.get("task_id").and_then(Json::as_str) == Some(task_id))
-    else {
-        return Lookup::NoTask {
-            available: tasks
-                .iter()
-                .filter_map(|t| t.get("task_id")?.as_str().map(str::to_owned))
-                .collect(),
-        };
-    };
-    Lookup::Found(TaskSpec {
-        arg_bindings: task.get("_arg_bindings").and_then(Json::as_array).cloned(),
-        retries: task.get("retries").map(unwrap_var).and_then(Json::as_i64),
-        execution_timeout: task
-            .get("execution_timeout")
-            .map(unwrap_var)
-            .and_then(Json::as_f64),
-        queue: task.get("queue").and_then(Json::as_str).map(str::to_owned),
-        mapped: find_mapped_spec(task),
-        mapped_tasks: tasks
-            .iter()
-            .filter(|t| is_mapped(t))
-            .filter_map(|t| t.get("task_id")?.as_str().map(str::to_owned))
-            .collect(),
-        in_mapped_group: dag
-            .get("task_group")
-            .is_some_and(|g| is_in_mapped_group(g, task_id)),
-    })
+        .filter_map(|t| t.get("task_id")?.as_str())
+        .collect();
+    let mut tasks: Vec<TaskSpec> = raw
+        .iter()
+        .map(|task| {
+            let task_id = task["task_id"].as_str().unwrap_or_default();
+            TaskSpec {
+                task_id: task_id.to_owned(),
+                arg_bindings: task.get("_arg_bindings").and_then(Json::as_array).cloned(),
+                retries: task.get("retries").map(unwrap_var).and_then(Json::as_i64),
+                execution_timeout: task
+                    .get("execution_timeout")
+                    .map(unwrap_var)
+                    .and_then(Json::as_f64),
+                queue: task.get("queue").and_then(Json::as_str).map(str::to_owned),
+                mapped: find_mapped_spec(task),
+                trigger_rule: task
+                    .get("trigger_rule")
+                    .and_then(Json::as_str)
+                    .unwrap_or("all_success")
+                    .to_owned(),
+                is_setup: is_true(task, "is_setup"),
+                is_teardown: is_true(task, "is_teardown"),
+                on_failure_fail_dagrun: is_true(task, "on_failure_fail_dagrun"),
+                upstream: vec![],
+                downstream: task
+                    .get("downstream_task_ids")
+                    .and_then(Json::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Json::as_str)
+                    .filter(|id| ids.contains(id))
+                    .map(str::to_owned)
+                    .collect(),
+                in_mapped_group: dag
+                    .get("task_group")
+                    .is_some_and(|g| is_in_mapped_group(g, task_id)),
+            }
+        })
+        .collect();
+    let edges: Vec<(String, String)> = tasks
+        .iter()
+        .flat_map(|t| t.downstream.iter().map(|d| (t.task_id.clone(), d.clone())))
+        .collect();
+    for (up, down) in edges {
+        if let Some(task) = tasks.iter_mut().find(|t| t.task_id == down) {
+            task.upstream.push(up);
+        }
+    }
+    Lookup::Found(DagSpec { tasks })
 }
 
 #[cfg(test)]
@@ -175,27 +247,37 @@ mod tests {
         ]}}}]})
     }
 
+    fn found(result: &Json, dag_id: &str) -> DagSpec {
+        match find_dag(result, dag_id) {
+            Lookup::Found(dag) => dag,
+            Lookup::NoDag { .. } => panic!("no Dag {dag_id}"),
+        }
+    }
+
     #[test]
-    fn finds_task_spec() {
-        let Lookup::Found(spec) = find_task(&result(), "d", "down") else {
-            panic!()
-        };
-        assert_eq!(spec.retries, Some(2));
-        assert_eq!(spec.execution_timeout, Some(30.0));
-        assert_eq!(spec.queue.as_deref(), Some("go"));
-        assert_eq!(spec.arg_bindings.unwrap()[0]["task_id"], "up");
+    fn finds_task_specs_and_edges() {
+        let mut result = result();
+        result["serialized_dags"][0]["data"]["dag"]["tasks"][0]["__var"]["downstream_task_ids"] =
+            json!(["down", "gone"]);
+        let dag = found(&result, "d");
+        let down = dag.get("down").unwrap();
+        assert_eq!(down.retries, Some(2));
+        assert_eq!(down.execution_timeout, Some(30.0));
+        assert_eq!(down.queue.as_deref(), Some("go"));
+        assert_eq!(down.trigger_rule, "all_success");
+        assert_eq!(down.arg_bindings.as_ref().unwrap()[0]["task_id"], "up");
+        assert_eq!(down.upstream, ["up"]);
+        assert_eq!(dag.get("up").unwrap().downstream, ["down"]);
+        let alone = down.isolate();
+        assert!(alone.tasks[0].upstream.is_empty());
     }
 
     #[test]
     fn reports_what_exists() {
-        let Lookup::NoDag { available } = find_task(&result(), "x", "down") else {
+        let Lookup::NoDag { available } = find_dag(&result(), "x") else {
             panic!()
         };
         assert_eq!(available, ["d"]);
-        let Lookup::NoTask { available } = find_task(&result(), "d", "x") else {
-            panic!()
-        };
-        assert_eq!(available, ["up", "down"]);
     }
 
     #[test]
@@ -215,18 +297,14 @@ mod tests {
                 }}],
             }},
         }}}]});
-        let Lookup::Found(spec) = find_task(&result, "d", "m") else {
-            panic!()
-        };
-        let mapped = spec.mapped.unwrap();
+        let dag = found(&result, "d");
+        let mapped = dag.get("m").unwrap().mapped.clone().unwrap();
         assert!(mapped.op_kwargs);
         assert_eq!(mapped.expand_input["type"], "dict-of-lists");
-        assert_eq!(spec.mapped_tasks, BTreeSet::from(["m".to_owned()]));
-        assert!(!spec.in_mapped_group);
-        let Lookup::Found(spec) = find_task(&result, "d", "g.t") else {
-            panic!()
-        };
-        assert!(spec.mapped.is_none());
-        assert!(spec.in_mapped_group);
+        assert_eq!(dag.find_mapped_task_ids(), BTreeSet::from(["m".to_owned()]));
+        assert!(!dag.get("m").unwrap().in_mapped_group);
+        let grouped = dag.get("g.t").unwrap();
+        assert!(grouped.mapped.is_none());
+        assert!(grouped.in_mapped_group);
     }
 }

@@ -23,7 +23,7 @@ use clap::Parser;
 
 use crate::input::{Input, parse_input};
 
-/// Run one task from an Airflow executable Dag bundle against a mock supervisor.
+/// Run a Dag, or one task of it, from an Airflow executable Dag bundle against a mock supervisor.
 ///
 /// gust starts the bundle the way an Airflow worker does (with `--comm` and `--logs`), answers its
 /// requests from `--input`, and prints what the task did.
@@ -43,9 +43,9 @@ pub struct Cli {
     #[arg(long = "dag", value_name = "DAG_ID")]
     pub dag_id: String,
 
-    /// The task to run.
+    /// The task to run alone. Without it, the whole Dag runs.
     #[arg(long = "task", value_name = "TASK_ID")]
-    pub task_id: String,
+    pub task_id: Option<String>,
 
     /// Everything the task can see beyond the bundle itself, as one JSON object: the Dag run,
     /// the task instance's try, Variables, Connections, XComs, asset events and state stores.

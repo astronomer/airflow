@@ -19,9 +19,10 @@
 
 # gust
 
-`gust` test-runs one task from an Airflow executable Dag bundle, with no Airflow installation and
-no Python. It starts the bundle the way an Airflow worker does, plays the supervisor, answers the
-task's requests from the `--input` mapping, and prints what the task did.
+`gust` test-runs a Dag, or one task of it, from an Airflow executable Dag bundle, with no Airflow
+installation and no Python. It starts the bundle the way an Airflow worker does, plays the
+scheduler and the supervisor, answers the tasks' requests from the `--input` mapping, and prints
+what the tasks did.
 
 ```bash
 gust path/to/bundle --dag=my_dag --task=my_task --input='{
@@ -30,6 +31,12 @@ gust path/to/bundle --dag=my_dag --task=my_task --input='{
   "variables": {"greeting": "hello"},
   "connections": {"my_db": "postgres://user:pass@localhost:5432/app"}
 }'
+```
+
+Without `--task`, gust runs the whole Dag; see [Running a whole Dag](#running-a-whole-dag).
+
+```bash
+gust path/to/bundle --dag=my_dag --input='{"variables": {"greeting": "hello"}}'
 ```
 
 A bundle is whatever file a language SDK packs a project into. gust runs it directly, which suits
@@ -59,10 +66,11 @@ The binary is `target/release/gust`.
 | Flag | |
 |---|---|
 | `BUNDLE` | Path to the bundle. Required. |
-| `--dag`, `--task` | The task to run. Required. |
+| `--dag` | The Dag to run. Required. |
+| `--task` | Run only this task of the Dag, as if the Dag had no other task. Without it, the whole Dag runs. |
 | `--input` | Everything else the task sees, as one JSON object. See [The input mapping](#the-input-mapping). |
 | `--runtime` | The program that runs the bundle. See above. |
-| `--no-parse` | Do not ask the bundle for its Dags first. See [What happens](#what-happens). |
+| `--no-parse` | Do not ask the bundle for its Dags first. Needs `--task`. See [What happens](#what-happens). |
 | `--startup-timeout` | Seconds to wait for the bundle to connect back. Default 10. |
 | `--quiet` | Do not echo the task's logs while it runs. |
 | `--json` | Print the summary as JSON on stdout. |
@@ -79,10 +87,20 @@ from `dag_run.run_id`, so there are no `dag_id`, `task_id` or `run_id` keys else
 them to wherever the task needs them. There is no map index either: gust works out a mapped task's
 instances itself (see [Mapped tasks](#mapped-tasks)).
 
-Anything the task writes (XComs, Variables, asset state store values) is kept for the rest of the
-run, so a task that writes a value and reads it back sees its own value. Each instance of a mapped
-task starts with the `task_state` given here, and its XComs are kept under its own map index. Nothing is written back to the
+Anything a task writes (XComs, Variables, state store values) is kept for the rest of the run, so
+a task that writes a value, and every task after it, sees that value. Each task instance has its
+own task state store and keeps its XComs under its own map index. Nothing is written back to the
 input, and the summary lists every write.
+
+A whole Dag run needs no input beyond what its tasks read. Some keys describe one task instance,
+or values the run itself produces, so they only work with `--task`:
+
+| Key | With `--task` | Whole Dag |
+|---|---|---|
+| `dag_run`, `variables`, `connections`, `asset_state` | yes | yes, shared by every task |
+| `ti` | yes | error: each task starts at try 1, with `max_tries` from its `retries` |
+| `task_state` | yes | error: each task instance starts with an empty store |
+| `xcoms` | yes | only other Dags' XComs; this Dag's come from the run, so giving them is an error |
 
 ### `dag_run`
 
@@ -126,7 +144,7 @@ These events are the run's triggering events, and also the events gust knows abo
 
 ### `ti`
 
-The task instance.
+The task instance's try. Only with `--task`.
 
 | Key | Type | Default |
 |---|---|---|
@@ -165,7 +183,8 @@ these requests.
 ### `task_state`
 
 `{"key": value}`. The task's state store, which answers `GetTaskStateStore` and takes
-`SetTaskStateStore`, `DeleteTaskStateStore` and `ClearTaskStateStore`. Default: empty.
+`SetTaskStateStore`, `DeleteTaskStateStore` and `ClearTaskStateStore`. Each instance of a mapped
+task starts with its own copy. Only with `--task`. Default: empty.
 
 ### `asset_state`
 
@@ -202,19 +221,51 @@ its name or its URI; any other asset only by the string given. Default: all empt
 }
 ```
 
+## Running a whole Dag
+
+Without `--task`, gust runs every task of the Dag, one at a time, as the scheduler would schedule
+them, and stops when the Dag run reaches a finished state. The Dag must be one the bundle defines
+natively: a Python Dag's tasks and edges live in the Python file, so only one of its task handlers
+can run at a time.
+
+- **Order.** gust takes the first task, in the order the serialized Dag lists them, whose upstream
+  tasks are all done, and repeats until every task is done.
+- **Trigger rules.** Once a task's upstream task instances are all done, its `trigger_rule` decides
+  whether it runs, or is marked `skipped` or `upstream_failed` without running, with the
+  scheduler's own rules. Every rule is supported. A mapped upstream counts once per instance, and
+  `all_done_setup_success` looks at the upstream setup tasks.
+- **XComs.** A task reads what earlier tasks pushed. A mapped upstream's output is every
+  instance's value, in map index order.
+- **Branching.** The tasks (or map indexes) a task asks to skip are marked `skipped` before they
+  run, and their downstream tasks follow their trigger rules.
+- **Retries.** A task that ends `up_for_retry` runs again at once with the next try number,
+  ignoring `retry_delay`, until `max_tries` (its `retries`) is used up. Each try starts without the
+  XComs the last one pushed, and keeps its task state store.
+- **Suspended tasks.** gust cannot resume a task that defers, reschedules or waits for human
+  input, so in a whole Dag run such a task counts as `failed`.
+- **The Dag run state** follows `DagRun.update_state`: `failed` when a leaf task instance failed or
+  was `upstream_failed`, else `success`. A teardown is not a leaf unless it sets
+  `on_failure_fail_dagrun`.
+
+With `--task`, gust runs the task as if the Dag held only that task: no upstream tasks, no trigger
+rule to wait for, and no retries, so a try can be tested on its own with `ti`. The Dag run state is
+the one that one-task Dag would end in: `running` when the task ended `up_for_retry`, deferred or
+in another state that is not finished.
+
 ## Mapped tasks
 
-When the task is mapped in the bundle's Dag, gust runs every instance, one after another in map
+When a task is mapped in the bundle's Dag, gust runs every instance, one after another in map
 index order, following [ADR-0016](../airflow-core/adr/lang-sdk/0016-mapped-tasks-across-lang-sdks.md).
 Nothing extra goes in `--input`: what the task expands over is in the serialized Dag, and an
-upstream output it expands over is an XCom from [`xcoms`](#xcoms).
+upstream output it expands over is an XCom from the run, or from [`xcoms`](#xcoms) with `--task`.
 
 - **How many.** A literal list or dict expands over its items (a dict's as `[key, value]` pairs),
   and an upstream XCom over its value the same way, so a mapped upstream's array gives one
   instance per element. `expand()` takes the cross product of its arguments; `expand_kwargs()` one
   instance per dict. `zip()` stops at the shortest argument, or runs to the longest with a
-  `fillvalue`; `concat()` adds the lengths; `map()` keeps the length it wraps. An XCom missing from
-  the input, or one that is not a list or an object, is an error before anything runs.
+  `fillvalue`; `concat()` adds the lengths; `map()` keeps the length it wraps. An XCom that is
+  missing, or not a list or an object, fails the task in a whole Dag run; with `--task` it is an
+  error before anything runs.
 - **What each instance gets.** `ti.map_index` and `ti_context.expanded_ti_count` are set, and each
   `param` argument binding is resolved, as the API server and supervisor would, into a `literal`:
   from the expand input first, then `partial()`, then the parameter's default. A `partial()`
@@ -223,38 +274,40 @@ upstream output it expands over is an XCom from [`xcoms`](#xcoms).
   callables; for `expand_kwargs()` with `map()`, `kwarg` and `fallback` are left to the runtime too.
   Other bindings are passed as they are. These fields are newer than the supervisor schema gust
   was generated from, so they are written into the encoded message directly.
-- **Results.** Every instance runs, whatever the others' states. There is no overall state: the
-  summary has a section per instance with its own state, as does each entry of `instances` in the
-  `--json` output. A task that expands to nothing runs nothing, and the summary notes that Airflow
-  marks it skipped.
+- **Results.** Every instance runs, whatever the others' states, and has its own entry in the
+  summary. A task that expands to nothing runs nothing and is `skipped`, as Airflow marks it.
 
 gust only knows a task is mapped from the parse step, so with `--no-parse` it runs the task once,
 unmapped. No SDK emits a mapped task in its own Dags yet, so this follows the ADR rather than a
-working SDK.
-A task inside a mapped task group, and a `param` binding naming a group argument, are errors.
+working SDK. A task inside a mapped task group, and a `param` binding naming a group argument, are
+errors.
 
 ## What happens
 
 1. **Parse.** gust starts the bundle and sends it a `DagFileParseRequest`, as the Dag processor
-   does. If the task belongs to a Dag the bundle defines natively, gust reads the task's TaskFlow
-   argument bindings, `retries` and `execution_timeout` from the serialized Dag, the way the API
-   server would before a run. A task handler for a Python Dag gets no bindings: those live in the
+   does. From a Dag the bundle defines natively, gust reads each task's edges, trigger rule,
+   TaskFlow argument bindings, `retries`, `execution_timeout` and expansion, the way the scheduler
+   and API server would. A task handler for a Python Dag gets no bindings: those live in the
    Python Dag file. `--no-parse` skips this step.
-2. **Run.** gust starts the bundle again with `--comm` and `--logs`, sends `StartupDetails`, and
-   answers the task's requests until it disconnects. The execution timeout is enforced.
-   A mapped task runs once per instance; see [Mapped tasks](#mapped-tasks).
-3. **Summary.** gust prints the final state, the XComs pushed, the Variables and state store values
-   written, the rendered fields, every request the task made and whether it was answered, and the
-   error log lines.
+2. **Run.** For each task instance try, gust starts the bundle again with `--comm` and `--logs`,
+   sends `StartupDetails`, and answers the task's requests until it disconnects. The execution
+   timeout is enforced.
+3. **Summary.** gust prints the Dag run with its final state, then every task instance in the
+   order gust ran or decided it: its state, and for one that ran, its arguments, the XComs pushed,
+   the Variables and state store values written, the rendered fields, every request it made and
+   whether it was answered, and its error log lines. With `--json`, the summary is an object with
+   `dag_run` (the Dag run the tasks saw, with its final `state` and an `end_date` once finished)
+   and `instances` (one entry per try or decided instance, with `task_id`, `map_index`,
+   `try_number`, `state` and, for a try, its exit code, duration, arguments and record).
 
-The exit status is 0 when every instance succeeded (including when a mapped task expanded to
-none), 1 when one did not, and 2 when gust could not run the task.
+The exit status is 0 when the Dag run succeeded, 1 when it failed or did not finish, and 2 when
+gust could not run it.
 
 ## Not supported
 
-Tasks in a mapped task group, a Python Dag's `map()` callables (`ApplyMap`), resuming a deferred or
-rescheduled task, human-in-the-loop answers, callbacks, stub tasks, and the requests that read other
-task instances or Dag runs. The task gets an
+Tasks in a mapped task group, task loops, a Python Dag's `map()` callables (`ApplyMap`), resuming
+a deferred or rescheduled task, human-in-the-loop answers, callbacks, stub tasks, triggering other
+Dag runs, and the requests that read other task instances or Dag runs. The task gets an
 `API_SERVER_ERROR` for a request gust does not support, and the summary lists it as unsupported.
 
 gust speaks the supervisor schema it was generated from and does not migrate messages for a bundle
