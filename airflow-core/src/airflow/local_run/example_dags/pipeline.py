@@ -47,5 +47,6 @@ workflow = example()
 
 if __name__ == "__main__":
     result = workflow.run()
-    print("total:", result.output("total"))
+    if ("total", -1) in result.task_states:
+        print("total:", result.output("total"))
 # [END run_dags_locally_pipeline]

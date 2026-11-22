@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import runpy
+import sys
 import warnings
 import weakref
 from datetime import UTC, datetime, timedelta
@@ -42,12 +43,14 @@ from airflow.sdk import (
 from airflow.sdk.bases.operator import BaseOperator
 from airflow.sdk.bases.timetable import BaseTimetable
 from airflow.sdk.definitions._internal.contextmanager import DagContext
+from airflow.sdk.definitions._internal.local_run_args import RUN_OPTION_DEFAULTS
 from airflow.sdk.definitions._internal.loop import create_loop
 from airflow.sdk.definitions.param import DagParam, ParamsDict
 from airflow.sdk.exceptions import (
     AirflowDagCycleException,
     DuplicateTaskIdFound,
     LocalRunDagFileError,
+    LocalRunUsageError,
     RemovedInAirflow4Warning,
     TaskGroupCycleDeprecationWarning,
 )
@@ -1429,6 +1432,8 @@ class TestDagRunMethod:
             debug=debug,
             keep_history=keep_history,
             retries=retries,
+            no_db=False,
+            state_file=None,
         )
 
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
@@ -1460,6 +1465,8 @@ class TestDagRunMethod:
             debug=False,
             keep_history=True,
             retries=True,
+            no_db=False,
+            state_file=None,
         )
 
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
@@ -1484,7 +1491,132 @@ class TestDagRunMethod:
             debug=False,
             keep_history=False,
             retries=True,
+            no_db=False,
+            state_file=None,
         )
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_hands_its_no_db_options_to_the_launcher(self, mock_run_dag_file):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+
+        dag.run(task_ids=["total"], no_db=True, state_file="state.json")
+
+        mock_run_dag_file.assert_called_once_with(
+            dag.fileloc,
+            dag_id="local_dag",
+            **(RUN_OPTION_DEFAULTS | {"task_ids": ["total"], "no_db": True, "state_file": "state.json"}),
+        )
+
+    @pytest.mark.parametrize(
+        ("command_line", "keywords", "expected"),
+        [
+            pytest.param(
+                ["--task", "total", "--input", "double=[2, 4]", "--no-history"],
+                {},
+                {"task_ids": ["total"], "inputs": {"double": [2, 4]}, "keep_history": False},
+                id="command-line",
+            ),
+            pytest.param(
+                ["--task", "double[1]", "--downstream"],
+                {"run_conf": {"n": 1}, "debug": True},
+                {
+                    "task_ids": [("double", 1)],
+                    "include_downstream": True,
+                    "run_conf": {"n": 1},
+                    "debug": True,
+                },
+                id="both",
+            ),
+            pytest.param(
+                ["--downstream"],
+                {"task_ids": ["total"]},
+                {"task_ids": ["total"], "include_downstream": True},
+                id="selection-from-a-keyword",
+            ),
+            pytest.param(
+                ["--task", "double[1]", "--no-retries"],
+                {"task_ids": [("double", 1)], "retries": False},
+                {"task_ids": [("double", 1)], "retries": False},
+                id="same-both-ways",
+            ),
+        ],
+    )
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_takes_options_from_its_scripts_command_line(
+        self, mock_run_dag_file, monkeypatch, command_line, keywords, expected
+    ):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+        monkeypatch.setattr(sys, "argv", [dag.fileloc, *command_line])
+
+        dag.run(**keywords)
+
+        mock_run_dag_file.assert_called_once_with(
+            dag.fileloc, dag_id="local_dag", **(RUN_OPTION_DEFAULTS | expected)
+        )
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_ignores_the_command_line_of_another_script(self, mock_run_dag_file, monkeypatch, tmp_path):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+        monkeypatch.setattr(sys, "argv", [str(tmp_path / "other.py"), "--task", "total", "--not-a-run-flag"])
+
+        dag.run()
+
+        mock_run_dag_file.assert_called_once_with(dag.fileloc, dag_id="local_dag", **RUN_OPTION_DEFAULTS)
+
+    @pytest.mark.parametrize(
+        ("command_line", "keywords", "match"),
+        [
+            pytest.param(
+                ["--task", "total"],
+                {"task_ids": ["double"]},
+                r"--task on the command line gives \['total'\], but run\(\) gives task_ids=\['double'\]\. "
+                r"Give each in one place\.",
+                id="differs",
+            ),
+            pytest.param(
+                ["--variables-file", "vars.json"],
+                {"variable_file_path": "other.json"},
+                r"--variables-file on the command line gives 'vars\.json', but run\(\) gives "
+                r"variable_file_path='other\.json'",
+                id="differs-under-another-name",
+            ),
+            pytest.param(
+                ["--upstream"],
+                {},
+                "--upstream, --downstream, --run-id, --input and --keep-task-state apply to the tasks chosen",
+                id="rule-of-the-command-line",
+            ),
+            pytest.param(
+                ["--input", "double=[2"],
+                {"task_ids": ["total"]},
+                "--input double is not valid JSON",
+                id="malformed",
+            ),
+        ],
+    )
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_refuses_options_it_cannot_combine(
+        self, mock_run_dag_file, monkeypatch, command_line, keywords, match
+    ):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+        monkeypatch.setattr(sys, "argv", [dag.fileloc, *command_line])
+
+        with pytest.raises(LocalRunUsageError, match=match):
+            dag.run(**keywords)
+
+        mock_run_dag_file.assert_not_called()
+
+    @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
+    def test_run_exits_on_a_flag_airflow_run_does_not_take(self, mock_run_dag_file, monkeypatch, capsys):
+        dag = DAG("local_dag", schedule=None, start_date=DEFAULT_DATE)
+        monkeypatch.setattr(sys, "argv", [dag.fileloc, "--dag-id", "local_dag"])
+
+        with pytest.raises(SystemExit) as ctx:
+            dag.run()
+
+        assert ctx.value.code == 2
+        assert "unrecognized arguments: --dag-id" in capsys.readouterr().err
+        mock_run_dag_file.assert_not_called()
 
     @mock.patch("airflow.sdk.definitions.dag.run_dag_file", autospec=True)
     def test_run_refuses_while_a_dag_file_is_being_imported(self, mock_run_dag_file):

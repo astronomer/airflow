@@ -144,6 +144,38 @@ XComs tasks push, such as an agent's token usage: ``result.output(task_id, key=.
 and the UI's **XCom** tab shows them. ``airflow run`` takes ``--dag-id`` for a file that defines several Dags,
 ``--conf``, ``--connections-file``, ``--variables-file``, ``--debug`` and ``--no-retries``.
 
+The file run as a script takes the same options on its command line, all but ``--dag-id``, such as
+``uv run pipeline.py --task total``, and ``workflow.run()`` takes each as a keyword argument:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Command line
+     - ``workflow.run()``
+   * - ``--conf``
+     - ``run_conf``
+   * - ``--connections-file``, ``--variables-file``
+     - ``conn_file_path``, ``variable_file_path``
+   * - ``--task``, ``--group``
+     - ``task_ids``, ``task_group_ids``
+   * - ``--upstream``, ``--downstream``
+     - ``include_upstream=True``, ``include_downstream=True``
+   * - ``--run-id``, ``--input``, ``--keep-task-state``
+     - ``run_id``, ``inputs``, ``keep_task_state=True``
+   * - ``--debug``, ``--no-history``, ``--no-retries``
+     - ``debug=True``, ``keep_history=False``, ``retries=False``
+   * - ``--no-db``, ``--state-file``
+     - ``no_db=True``, ``state_file``
+
+Each option can come from either. One given both ways must have the same value; otherwise the run is refused
+before it starts, naming both, as when the file calls ``workflow.run(task_ids=["double"])`` and the command
+line says ``--task total``. A keyword argument left at its default counts as not given. ``workflow.run()``
+reads the command line only when its Dag's file is the script that runs, so a test or a notebook that calls it
+is not affected. Every ``workflow.run()`` call in the script reads the same command line, and an option the
+script parses for itself is refused as unknown. With ``--no-db``, the script's own process has already
+imported Airflow with your shell's settings before ``workflow.run()`` reads the flag; ``airflow run --no-db``
+keeps them out of every process.
+
 ``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
 says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the
 Dag's params; 3 the Dag file, such as an import error or a param's invalid default; 4 the project's setup, such
@@ -220,8 +252,9 @@ gets the outputs they returned in the earlier run.
 
 The task runs as a new try in the latest run that has the outputs it needs, the way **Clear** reruns a task
 in the UI. The new try runs the file as it is now, and the earlier try and its log stay in the history.
-``airflow run`` prints what the tasks it ran returned. When one of them fails, the run is recorded as failed
-and ``airflow run`` exits with 1, whatever the states of the tasks it left alone.
+``uv run pipeline.py --task total`` reruns it the same way, and the file's ``__main__`` block then goes on
+with the result. ``airflow run`` prints what the tasks it ran returned. When one of them fails, the run is
+recorded as failed and ``airflow run`` exits with 1, whatever the states of the tasks it left alone.
 
 ``--task`` takes a task ID, or one mapped try as the run prints it: ``--task 'double[1]'``. Repeat it to
 select more tasks, and use ``--group`` to select every task in a task group. With a selection:
@@ -302,8 +335,9 @@ Set a breakpoint in a task and start the file under your IDE's debugger: **Run a
 **Debug** button beside the ``__main__`` block in PyCharm. The debugger stops in the task, and its variables
 and Debug Console show the task's values: ``get_current_context()["ti"].xcom_pull(task_ids="numbers")``
 returns what ``numbers`` returned. A ``breakpoint()`` in a task stops there too. To debug one task, give the
-call in the ``__main__`` block its ID, ``workflow.run(task_ids=["total"])``: only that task runs, with what the
-tasks before it returned.
+debugger's run of the file the arguments ``--task total``, as ``"args": ["--task", "total"]`` in VS Code's
+``launch.json`` or **Parameters** in PyCharm, or give the call in the ``__main__`` block its ID,
+``workflow.run(task_ids=["total"])``: only that task runs, with what the tasks before it returned.
 
 The debugger needs no flag and no change to the file. The run is the one you get without it, each task try in
 a process of its own, and the debugger follows the run into those processes. While it is attached, a task's

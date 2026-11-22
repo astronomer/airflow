@@ -23,6 +23,7 @@ import pytest
 
 from airflow.cli import cli_parser
 from airflow.cli.commands import run_command
+from airflow.sdk.definitions._internal.local_run_args import build_run_parser
 from airflow.sdk.definitions.local_run import DagRunResult
 from airflow.sdk.exceptions import (
     DagExecutionError,
@@ -128,6 +129,8 @@ class TestRunCommand:
             debug=debug,
             keep_history=keep_history,
             retries=retries,
+            no_db=False,
+            state_file=None,
         )
         assert capsys.readouterr().out.splitlines() == ["Outputs:", "  total = 12"]
 
@@ -170,7 +173,29 @@ class TestRunCommand:
             "debug": False,
             "keep_history": True,
             "retries": True,
+            "no_db": False,
+            "state_file": None,
         }
+
+    def test_takes_the_options_a_dag_file_run_as_a_script_takes(self):
+        def options(parser) -> set[tuple]:
+            return {
+                (
+                    tuple(action.option_strings),
+                    action.dest,
+                    action.metavar,
+                    action.help,
+                    type(action).__name__,
+                )
+                for action in parser._actions
+                if action.option_strings and action.dest not in ("help", "dag_id")
+            }
+
+        run_parser = next(
+            action.choices["run"] for action in self.parser._actions if "run" in (action.choices or {})
+        )
+
+        assert options(run_parser) == options(build_run_parser("pipeline.py"))
 
     @mock.patch.object(run_command, "run_dag_file", autospec=True)
     def test_passes_inputs_to_launcher(self, mock_run_dag_file):

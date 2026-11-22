@@ -901,6 +901,44 @@ def test_setup_errors_say_what_to_fix(project, source, dag_id, error, match):
         run_dag_file(path, dag_id=dag_id)
 
 
+@pytest.mark.parametrize(
+    ("main_call", "expected_code", "expected_runs"),
+    [
+        pytest.param("workflow.run()", 0, 1, id="command-line"),
+        pytest.param('workflow.run(task_ids=["double"])', 1, 1, id="differs-from-run"),
+    ],
+)
+def test_a_dag_file_run_as_a_script_takes_airflow_runs_options(
+    project, main_call, expected_code, expected_runs
+):
+    source = write_dag_file(
+        project,
+        "pipeline.py",
+        PIPELINE
+        + f'\nif __name__ == "__main__":\n    result = {main_call}\n    print("total:", result.output("total"))\n',
+    )
+    run_dag_file(source)
+
+    script = subprocess.run(
+        [sys.executable, str(source), "--task", "total"],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+
+    assert script.returncode == expected_code, script.stderr
+    if expected_code:
+        assert (
+            "--task on the command line gives ['total'], but run() gives task_ids=['double']" in script.stderr
+        )
+    else:
+        assert "total (try 2)" in script.stderr
+        assert "total: 12" in script.stdout
+    assert query(project, "SELECT COUNT(*) FROM dag_run") == [(expected_runs,)]
+
+
 def test_import_failure_is_reported_once(project, capfd):
     path = write_dag_file(project, "broken.py", "import not_a_real_module\n")
 

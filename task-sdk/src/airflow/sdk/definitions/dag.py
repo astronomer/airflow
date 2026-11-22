@@ -45,6 +45,11 @@ from airflow.sdk import TaskInstanceState, TriggerRule, XComArg
 from airflow.sdk._shared.dagnode.cycle import detect_cycle
 from airflow.sdk.bases.operator import BaseOperator
 from airflow.sdk.bases.timetable import BaseTimetable
+from airflow.sdk.definitions._internal.local_run_args import (
+    RUN_OPTION_DEFAULTS,
+    merge_run_options,
+    read_script_options,
+)
 from airflow.sdk.definitions._internal.node import DAGNode, validate_key
 from airflow.sdk.definitions._internal.types import NOTSET, ArgNotSet, is_arg_set
 from airflow.sdk.definitions.asset import AssetAll, BaseAsset
@@ -1450,6 +1455,8 @@ class DAG:
         debug: bool = False,
         keep_history: bool = True,
         retries: bool = True,
+        no_db: bool = False,
+        state_file: str | os.PathLike[str] | None = None,
     ) -> DagRunResult:
         """
         Run this Dag once in its project's local Airflow environment and return the detached result.
@@ -1459,6 +1466,11 @@ class DAG:
         ``if __name__ == "__main__":``. History is kept in ``.airflow/`` next to the project's
         ``pyproject.toml`` (or next to the file when there is none). Each task try runs in a process
         of its own, as on a worker.
+
+        When this Dag's file runs as a script, the options ``airflow run`` takes after the file can also
+        be given on the script's command line, e.g. ``python pipeline.py --task total``. Each option may
+        come from either; one given both ways must have the same value, or the run is refused. A keyword
+        argument left at its default counts as not given.
 
         With ``task_ids`` or ``task_group_ids``, only those tasks run again, as Clear does in the UI:
         in the latest finished run that has the outputs of their upstream tasks, or in ``run_id``.
@@ -1487,6 +1499,10 @@ class DAG:
         :param keep_history: record the run in ``.airflow/``. Otherwise it runs against a database of its
             own that is deleted when it ends, and selected tasks run in a new run with the tasks they need.
         :param retries: retry failed tasks as their ``retries`` say. Otherwise each task gets one attempt.
+        :param no_db: run one selected task once, with explicit ``inputs`` and local services, without a
+            metadata database.
+        :param state_file: with ``no_db``, save the task's state to this JSON file; reuse it only with
+            ``keep_task_state``.
         :raises DagExecutionError: the run finished in a failed state; ``.result`` holds its outcome.
         :raises LocalRunUsageError: the run cannot start as asked, e.g. the Dag lacks a selected task.
         :raises LocalRunDagFileError: the file failed to import, or the Dag is invalid, e.g. a param's default.
@@ -1502,23 +1518,26 @@ class DAG:
                 f'Call {self.dag_id}.run() under `if __name__ == "__main__":`. The run imports this file '
                 "the way Airflow discovers Dags, and that import must not start another run."
             )
-        return run_dag_file(
-            self.fileloc,
-            dag_id=self.dag_id,
-            run_conf=run_conf,
-            connections_file=conn_file_path,
-            variables_file=variable_file_path,
-            task_ids=task_ids,
-            task_group_ids=task_group_ids,
-            include_upstream=include_upstream,
-            include_downstream=include_downstream,
-            run_id=run_id,
-            inputs=inputs,
-            keep_task_state=keep_task_state,
-            debug=debug,
-            keep_history=keep_history,
-            retries=retries,
-        )
+        keyword_options = {
+            "run_conf": run_conf,
+            "connections_file": conn_file_path,
+            "variables_file": variable_file_path,
+            "task_ids": task_ids,
+            "task_group_ids": task_group_ids,
+            "include_upstream": include_upstream,
+            "include_downstream": include_downstream,
+            "run_id": run_id,
+            "inputs": inputs,
+            "keep_task_state": keep_task_state,
+            "debug": debug,
+            "keep_history": keep_history,
+            "retries": retries,
+            "no_db": no_db,
+            "state_file": state_file,
+        }
+        given = {name: value for name, value in keyword_options.items() if value != RUN_OPTION_DEFAULTS[name]}
+        options = merge_run_options(given, read_script_options(self.fileloc))
+        return run_dag_file(self.fileloc, dag_id=self.dag_id, **options)
 
 
 def _run_dag_run_to_completion(

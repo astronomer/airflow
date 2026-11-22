@@ -18,10 +18,6 @@
 
 from __future__ import annotations
 
-import json
-import re
-from typing import Any
-
 from airflow.local_run.exit_codes import (
     EXIT_CONFIG,
     EXIT_DAG_FILE,
@@ -30,17 +26,20 @@ from airflow.local_run.exit_codes import (
     EXIT_USAGE,
     exit_with_error,
 )
+from airflow.sdk.definitions._internal.local_run_args import (  # noqa: SDK001
+    check_run_options,
+    options_from_args,
+)
 from airflow.sdk.definitions.local_run import DagRunResult, run_dag_file
 from airflow.sdk.exceptions import (
     DagExecutionError,
     LocalRunConfigError,
     LocalRunDagFileError,
     LocalRunError,
+    LocalRunUsageError,
 )
 
 MAX_PRINTED_OUTPUTS = 10
-# How the run labels one map index of a task, e.g. double[1].
-TASK_MARKER = re.compile(r"(?P<task_id>.+)\[(?P<map_index>\d+)\]")
 
 
 def run(args) -> None:
@@ -50,67 +49,13 @@ def run(args) -> None:
     Not wrapped in ``action_cli``: that would log the command to the ambient database, not the project's.
     """
     try:
-        run_conf = json.loads(args.conf) if args.conf else None
-    except json.JSONDecodeError as e:
-        exit_with_error(f"--conf is not valid JSON: {e.msg}", EXIT_USAGE)
-    if run_conf is not None and not isinstance(run_conf, dict):
-        exit_with_error("--conf must be a JSON object", EXIT_USAGE)
-    selected = bool(args.task_ids or args.task_group_ids)
-    if not selected and (
-        args.include_upstream or args.include_downstream or args.run_id or args.inputs or args.keep_task_state
-    ):
-        exit_with_error(
-            "--upstream, --downstream, --run-id, --input and --keep-task-state apply to the tasks chosen with "
-            "--task or --group",
-            EXIT_USAGE,
-        )
-    if args.run_id and not args.keep_history:
-        exit_with_error(
-            "--run-id names a run in the project's history, which --no-history does not use", EXIT_USAGE
-        )
-    if args.inputs and args.run_id:
-        exit_with_error(
-            "--input runs the selected tasks in a new run, so it does not take --run-id", EXIT_USAGE
-        )
-    if args.inputs and args.include_upstream:
-        exit_with_error(
-            "--input stands in for the upstream tasks' outputs, so it does not take --upstream", EXIT_USAGE
-        )
-    for flag, new_run in (
-        ("--no-history", not args.keep_history),
-        ("--conf", args.conf),
-        ("--input", args.inputs),
-    ):
-        if args.keep_task_state and new_run and not args.no_db:
-            exit_with_error(
-                f"{flag} runs the selected tasks in a new run, which has no task state to keep, so it does not "
-                "take --keep-task-state",
-                EXIT_USAGE,
-            )
-    inputs = parse_inputs(args.inputs)
-    local_options = {}
-    if args.no_db or args.state_file:
-        local_options = {"no_db": args.no_db, "state_file": args.state_file}
+        options = options_from_args(args)
+        check_run_options(options)
+    except LocalRunUsageError as e:
+        exit_with_error(str(e), EXIT_USAGE)
+    selected = bool(options["task_ids"] or options["task_group_ids"])
     try:
-        result = run_dag_file(
-            args.file,
-            dag_id=args.dag_id,
-            run_conf=run_conf,
-            connections_file=args.connections_file,
-            variables_file=args.variables_file,
-            task_ids=parse_task_ids(args.task_ids),
-            task_group_ids=args.task_group_ids,
-            include_upstream=args.include_upstream,
-            include_downstream=args.include_downstream,
-            run_id=args.run_id,
-            inputs=inputs,
-            keep_task_state=args.keep_task_state,
-            triggered_by="cli",
-            debug=args.debug,
-            keep_history=args.keep_history,
-            retries=args.retries,
-            **local_options,
-        )
+        result = run_dag_file(args.file, dag_id=args.dag_id, triggered_by="cli", **options)
     except DagExecutionError as e:
         print_outputs(e.result, only_ran=selected)
         raise SystemExit(EXIT_FAILED)
@@ -128,34 +73,6 @@ def run(args) -> None:
     except LocalRunError as e:
         exit_with_error(str(e), EXIT_FAILED)
     print_outputs(result, only_ran=selected)
-
-
-def parse_task_ids(values: list[str] | None) -> list[str | tuple[str, int]] | None:
-    """Read ``--task`` values; ``TASK_ID[i]`` selects one map index."""
-    if not values:
-        return None
-    return [
-        (match["task_id"], int(match["map_index"])) if (match := TASK_MARKER.fullmatch(value)) else value
-        for value in values
-    ]
-
-
-def parse_inputs(values: list[str] | None) -> dict[str, Any] | None:
-    """Read ``--input`` values, each ``TASK_ID=JSON``."""
-    if not values:
-        return None
-    inputs: dict[str, Any] = {}
-    for value in values:
-        task_id, separator, data = value.partition("=")
-        if not separator or not task_id:
-            exit_with_error(f"--input takes TASK_ID=JSON, not {value!r}", EXIT_USAGE)
-        if task_id in inputs:
-            exit_with_error(f"--input gives {task_id} more than once", EXIT_USAGE)
-        try:
-            inputs[task_id] = json.loads(data)
-        except json.JSONDecodeError as e:
-            exit_with_error(f"--input {task_id} is not valid JSON: {e.msg}", EXIT_USAGE)
-    return inputs
 
 
 def print_outputs(result: DagRunResult, *, only_ran: bool = False) -> None:
