@@ -34,6 +34,7 @@ from unittest import mock
 import pytest
 import time_machine
 
+from airflow.sdk.definitions import local_run
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
     INTERRUPT_GRACE_SECONDS,
@@ -318,6 +319,23 @@ class TestBuildChildEnvironment:
 
         with pytest.raises(LocalRunConfigError, match="takes a list of class names"):
             build_child_environment({}, home=tmp_path, root=tmp_path)
+
+    def test_database_free_run_gets_a_fernet_key_and_no_database(self, tmp_path):
+        env = build_child_environment({}, home=tmp_path, root=tmp_path, no_db=True)
+
+        assert env["AIRFLOW__CORE__FERNET_KEY"] == read_or_create_fernet_key(tmp_path)
+        assert env["_AIRFLOW__LOCAL_NO_DB"] == "1"
+        assert "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN" not in env
+
+
+@mock.patch.object(local_run.reprlib, "Repr", autospec=True)
+def test_output_repr_supports_python_311_repr_constructor(mock_repr):
+    # Python 3.11's Repr constructor accepts no arguments.
+    mock_repr.side_effect = lambda: local_run._OUTPUT_REPR
+
+    namespace = runpy.run_path(local_run.__file__)
+
+    assert namespace["_OUTPUT_REPR"] is local_run._OUTPUT_REPR
 
 
 class TestWaitForChild:

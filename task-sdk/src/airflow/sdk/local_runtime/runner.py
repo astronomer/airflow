@@ -22,7 +22,6 @@ from __future__ import annotations
 import json
 import os
 import pickle
-import reprlib
 import signal
 import sys
 import time
@@ -45,7 +44,12 @@ from airflow.sdk.api.datamodels._generated import (
 )
 from airflow.sdk.definitions._internal.loop import get_enclosing_loop
 from airflow.sdk.definitions.dag import DAG
-from airflow.sdk.definitions.local_run import PROTOCOL_VERSION, allow_classes_defined_in, find_loaded_module
+from airflow.sdk.definitions.local_run import (
+    PROTOCOL_VERSION,
+    allow_classes_defined_in,
+    find_loaded_module,
+    format_output,
+)
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
 from airflow.sdk.definitions.xcom_arg import XComArg
@@ -229,7 +233,7 @@ def collect_result(startup: StartupDetails, services: LocalTaskServices, state: 
         coordinate = (startup.ti.task_id, -1, key)
         try:
             value = deserialize(stored)
-            output_reprs[coordinate] = redact(reprlib.repr(value))
+            output_reprs[coordinate] = redact(format_output(value))
             outputs[coordinate] = pickle.dumps(value)
         except Exception as error:
             output_errors[coordinate] = redact(f"{type(error).__name__}: {error}")

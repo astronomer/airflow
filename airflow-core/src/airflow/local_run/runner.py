@@ -33,7 +33,6 @@ import math
 import os
 import pickle
 import re
-import reprlib
 import signal
 import sys
 import threading
@@ -85,6 +84,7 @@ from airflow.sdk.definitions.local_run import (
     PROTOCOL_VERSION,
     allow_classes_defined_in,
     find_loaded_module,
+    format_output,
     is_ide_debugger_attached,
     refuse_breakpoint,
 )
@@ -115,14 +115,6 @@ RUN_CREATION_ATTEMPTS = 5
 
 # The locks this process holds on the runs it executes; the operating system releases them however it ends.
 _run_locks: list[TextIO] = []
-
-# How ``airflow run`` shows each output; it cannot load the classes the Dag file defines, which it never imports.
-# Python 3.11's constructor takes no arguments.
-_output_repr = reprlib.Repr()
-_output_repr.maxstring = 80
-_output_repr.maxother = 80
-_output_repr.maxlist = 10
-_output_repr.maxdict = 10
 
 
 class LocalRunSetupError(Exception):
@@ -1463,7 +1455,7 @@ def collect_result(
         key = (row.task_id, row.map_index, row.key)
         try:
             value = XCom.deserialize_value(row)
-            output_reprs[key] = _output_repr.repr(value)
+            output_reprs[key] = format_output(value)
             outputs[key] = pickle.dumps(value)
         except Exception as e:
             output_errors[key] = f"{type(e).__name__}: {e}"

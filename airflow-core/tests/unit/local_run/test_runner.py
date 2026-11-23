@@ -29,7 +29,6 @@ import json
 import os
 import pickle
 import re
-import runpy
 import signal
 import sqlite3
 import subprocess
@@ -819,16 +818,6 @@ def test_tasks_pass_the_classes_the_project_allows(project, debug):
     )
 
     assert run_dag_file(source, debug=debug).output("report") == "score 3"
-
-
-@mock.patch.object(runner.reprlib, "Repr", autospec=True)
-def test_output_repr_supports_python_311_repr_constructor(mock_repr):
-    # Python 3.11's Repr constructor accepts no arguments.
-    mock_repr.side_effect = lambda: runner._output_repr
-
-    namespace = runpy.run_path(runner.__file__)
-
-    assert namespace["_output_repr"] is runner._output_repr
 
 
 TWO_DAGS = """

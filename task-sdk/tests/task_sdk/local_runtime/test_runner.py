@@ -237,6 +237,15 @@ def write_task(project, body, *, arguments="", dependencies="", decorator=""):
     (project / "pipeline.py").write_text(source)
 
 
+def test_output_is_shown_in_full_up_to_a_line(project):
+    write_task(project, "return 'Closed ticket 1; ticket 2 is still broken, so it stays open.'")
+
+    result = run_cli(project, "--task", "check")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "check = 'Closed ticket 1; ticket 2 is still broken, so it stays open.'" in result.stdout
+
+
 def test_explicit_null_input_is_present(project):
     result = run_cli(project, "--task", "consume", "--input", "produce=null")
     assert result.returncode == 0, result.stdout + result.stderr

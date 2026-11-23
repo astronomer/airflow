@@ -32,6 +32,7 @@ import io
 import json
 import os
 import pickle
+import reprlib
 import secrets
 import signal
 import subprocess
@@ -152,6 +153,20 @@ def prepare_project_home(root: Path) -> Path:
     return home
 
 
+# How a local run shows each output; ``airflow run`` cannot load the classes the Dag file defines, which it
+# never imports. Python 3.11's constructor takes no arguments.
+_OUTPUT_REPR = reprlib.Repr()
+_OUTPUT_REPR.maxstring = 80
+_OUTPUT_REPR.maxother = 80
+_OUTPUT_REPR.maxlist = 10
+_OUTPUT_REPR.maxdict = 10
+
+
+def format_output(value: Any) -> str:
+    """Return how a local run's summary shows an output: its repr, shortened to fit a line."""
+    return _OUTPUT_REPR.repr(value)
+
+
 def read_or_create_fernet_key(home: Path) -> str:
     """Return the project's Fernet key, creating it atomically so concurrent first runs agree."""
     key_file = home / "fernet.key"
@@ -203,11 +218,13 @@ def build_child_environment(
             "AIRFLOW__CORE__MIN_SERIALIZED_DAG_UPDATE_INTERVAL": "0",
         }
     )
+    # A database-free run stores nothing encrypted, but a task's connections are still Airflow connections,
+    # which warn on every use when there is no key.
+    env["AIRFLOW__CORE__FERNET_KEY"] = read_or_create_fernet_key(home)
     if no_db:
         env[LOCAL_NO_DB_ENV] = "1"
         env.pop("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN")
     else:
-        env["AIRFLOW__CORE__FERNET_KEY"] = read_or_create_fernet_key(home)
         env["AIRFLOW__API_AUTH__JWT_SECRET"] = secrets.token_urlsafe(64)
     backend_kwargs: dict[str, Any] = {}
     if connections_file:
