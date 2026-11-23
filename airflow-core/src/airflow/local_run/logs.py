@@ -22,7 +22,8 @@ which forwards that output here as well. In debug mode tasks run in the run's ow
 runs its log events, log records and printed output are also written to its log file, the same as a
 deployed task's log. Either way the terminal shows the task's own output, hook output, the name of each
 section of its log, such as each tool call an agent makes, warnings and errors, but not Airflow's progress
-lines; the runner prints a summary instead.
+lines; the runner prints a summary instead. A run without a database keeps no task log, so its terminal shows
+the task's whole log.
 
 What a task prints goes to stdout and stderr as printed. Log events go to stderr, as Python's own logging
 does, one short line each that names the task, so that stdout stays the script's.
@@ -113,6 +114,9 @@ _TASK_RUNNER_LOGGERS = ("task", "supervisor")
 
 _LEVELS = logging.getLevelNamesMapping()
 
+# Set on a line inside a log section, which the terminal indents under the section's name.
+_IN_SECTION_FIELD = "_in_log_section"
+
 # Writes the log file of the task that is running, if any.
 _task_log: Any = None
 
@@ -164,11 +168,57 @@ def configure_local_run_logging() -> None:
 
 def configure_terminal_logging() -> None:
     """
-    Show a task's log on the terminal as a local run does, for a run that writes no task log.
+    Show a task's whole log on the terminal, for a run that writes no task log to read afterwards.
 
     What the task prints stays a log line, so that the terminal masks it.
     """
-    structlog.get_config()["processors"][-1:] = [_drop_off_console, _strip_group_marker, render_for_terminal]
+    structlog.get_config()["processors"][-1:] = [_TaskLogFilter(), _strip_group_marker, render_for_terminal]
+
+
+class _TaskLogFilter:
+    """
+    Pass the lines a deployed task's log would hold, leaving out what the task runner logs about running it.
+
+    The task runner's and supervisor's lines below WARNING, with the sections they open (Pre Execute, Post
+    Execute), stay off. A line in a section the task's code opens, such as a tool call, is shown under the
+    section's name, and without the logger's name when it opened the section.
+    """
+
+    def __init__(self) -> None:
+        self.section_logger: str | None = None
+        self.in_runner_section = False
+
+    def __call__(self, logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
+        if not event_dict.get("task_id"):
+            return _drop_off_console(logger, method_name, event_dict)
+        name = event_dict.get("logger") or ""
+        message = str(event_dict.get("event", ""))
+        level = _LEVELS[str(event_dict.get("level", method_name)).upper()]
+        if message == GROUP_END:
+            self.section_logger, self.in_runner_section = None, False
+            raise structlog.DropEvent
+        if message.startswith(GROUP_START):
+            self.in_runner_section = name in _TASK_RUNNER_LOGGERS
+            if self.in_runner_section:
+                self.section_logger = None
+                raise structlog.DropEvent
+            self.section_logger = name
+            return event_dict
+        # Printed output reaches the supervisor on another stream than log events, so it can arrive while the
+        # runner's section that preceded it in the task still looks open.
+        if (
+            level < logging.WARNING
+            and name not in OUTPUT_LOGGERS
+            and (self.in_runner_section or name in _TASK_RUNNER_LOGGERS)
+        ):
+            raise structlog.DropEvent
+        if level >= logging.ERROR and any(_is_within(name, prefix) for prefix in IMPORT_ERROR_LOGGERS):
+            raise structlog.DropEvent
+        if self.section_logger is not None:
+            event_dict[_IN_SECTION_FIELD] = True
+            if name == self.section_logger:
+                event_dict.pop("logger", None)
+        return event_dict
 
 
 def render_for_terminal(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> str:
@@ -194,6 +244,8 @@ def render_for_terminal(logger: WrappedLogger, method_name: str, event_dict: Eve
     details = [str(text) for key in ("exception", "stack") if (text := fields.pop(key, None))]
     if stacks := fields.pop("error_detail", None):
         details.append(_format_stacks(stacks)[0] if isinstance(stacks, list) else str(stacks))
+    if fields.pop(_IN_SECTION_FIELD, False):
+        line = f"  {line}"
     line += "".join(f" {key}={value}" for key, value in fields.items())
     if task_id:
         line = f"  {get_task_label(str(task_id), map_index if isinstance(map_index, int) else -1)} | {line}"

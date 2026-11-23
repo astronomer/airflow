@@ -292,7 +292,7 @@ def test_connections_variables_templates_and_masked_tool_logs(project):
     assert "local-test-secret-987" not in result.stdout + result.stderr
 
 
-def test_terminal_shows_what_a_local_run_shows(project):
+def test_terminal_shows_the_whole_task_log(project):
     write_task(
         project,
         """
@@ -308,8 +308,12 @@ def test_terminal_shows_what_a_local_run_shows(project):
     )
     result = run_cli(project, "--task", "check")
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "check | Tool call: inspect\n" in result.stderr
-    assert "check | ExampleHook: Running statement: SELECT 1" in result.stderr
+    assert (
+        "check | Tool call: inspect\n"
+        "  check |   ExampleHook: Running statement: SELECT 1\n"
+        "  check |   Tool inspect returned in 0.01s\n"
+    ) in result.stderr
+    assert "check | _PythonDecoratedOperator: Done. Returned value was: 7" in result.stderr
     assert "printed by the task" in result.stdout + result.stderr
     for hidden in (
         "::group::",
@@ -317,7 +321,6 @@ def test_terminal_shows_what_a_local_run_shows(project):
         "Pre Execute",
         "Pushing xcom",
         "Filling up the DagBag",
-        "returned in",
     ):
         assert hidden not in result.stdout + result.stderr
 

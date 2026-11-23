@@ -40,6 +40,7 @@ from airflow.local_run.logs import (
     TaskFailure,
     capture_task_log,
     configure_local_run_logging,
+    configure_terminal_logging,
     read_attempt_failure,
     record_startup_events,
 )
@@ -255,6 +256,45 @@ def test_supervised_task_log_is_one_short_line_on_stderr(console, capsys, event,
     )
 
     assert capsys.readouterr() == ("", f"{shown}\n")
+
+
+def test_terminal_shows_the_whole_log_of_a_task_that_keeps_none(console, capsys, monkeypatch):
+    # The database-free runner configures Airflow's logging to stderr first.
+    monkeypatch.setattr(structlog.get_config()["logger_factory"], "io", sys.stderr)
+    configure_terminal_logging()
+    tool_logger = "airflow.providers.common.ai.toolsets.logging"
+    events = [
+        ("task", "info", "::group::Pre Execute"),
+        ("airflow.dag_processing.dagbag.BundleDagBag", "info", "Filling up the DagBag"),
+        ("airflow.dag_processing.dagbag.BundleDagBag", "warning", "A parse warning"),
+        ("task.stdout", "info", "printed by the task"),
+        ("task", "info", "::endgroup::"),
+        (tool_logger, "info", "::group::Tool call: query"),
+        ("airflow.task.hooks.example.ExampleHook", "info", "Running statement: SELECT 1"),
+        (tool_logger, "info", "Tool query returned in 0.01s"),
+        (tool_logger, "info", "::endgroup::"),
+        ("airflow.task.operators.example.ExampleOperator", "info", "Done. Returned value was: 7"),
+        ("task", "info", "Pushing xcom"),
+    ]
+
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        *(
+            json.dumps({**TASK_CONTEXT, "logger": name, "level": level, "event": event}).encode()
+            for name, level, event in events
+        ),
+    )
+    structlog.get_logger("airflow.models.dagrun").info("internal progress")
+
+    assert capsys.readouterr() == (
+        "",
+        "  load | airflow.dag_processing.dagbag.BundleDagBag: warning: A parse warning\n"
+        "  load | task.stdout: printed by the task\n"
+        "  load | Tool call: query\n"
+        "  load |   ExampleHook: Running statement: SELECT 1\n"
+        "  load |   Tool query returned in 0.01s\n"
+        "  load | ExampleOperator: Done. Returned value was: 7\n",
+    )
 
 
 def test_supervised_task_log_shows_a_logged_traceback_from_the_task_code(console, capsys):
