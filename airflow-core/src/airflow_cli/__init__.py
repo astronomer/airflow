@@ -26,10 +26,15 @@ from contextlib import ExitStack, contextmanager
 from tempfile import TemporaryDirectory
 
 
+def has_no_db_option(arguments: list[str]) -> bool:
+    """Recognize ``--no-db`` or its abbreviation among the options, leaving validation to the parser."""
+    options = arguments[: arguments.index("--")] if "--" in arguments else arguments
+    return any(option in {"--no-db", "--no-d"} for option in options)
+
+
 def is_no_db_run(arguments: list[str]) -> bool:
     """Recognize the explicit run mode, leaving argument validation to the CLI parser."""
-    options = arguments[: arguments.index("--")] if "--" in arguments else arguments
-    return options[:1] == ["run"] and any(option in {"--no-db", "--no-d"} for option in options)
+    return arguments[:1] == ["run"] and has_no_db_option(arguments)
 
 
 @contextmanager
@@ -54,6 +59,12 @@ def isolate_no_db_environment() -> Iterator[None]:
             os.environ.update(original)
 
 
+def isolate_until_exit() -> None:
+    with ExitStack() as cleanup:
+        cleanup.enter_context(isolate_no_db_environment())
+        atexit.register(cleanup.pop_all().close)
+
+
 def prepare_module_execution() -> None:
     """Isolate ``python -m airflow`` before its package imports configuration."""
     if sys.argv[:1] != ["-m"] or not is_no_db_run(sys.argv[1:]):
@@ -64,9 +75,13 @@ def prepare_module_execution() -> None:
         for flag, module in zip(original, original[1:], strict=False)
     ):
         return
-    with ExitStack() as cleanup:
-        cleanup.enter_context(isolate_no_db_environment())
-        atexit.register(cleanup.pop_all().close)
+    isolate_until_exit()
+
+
+def prepare_script_execution() -> None:
+    """Isolate a Python script run with ``--no-db``, such as a Dag file, before it imports configuration."""
+    if sys.argv[0].endswith(".py") and has_no_db_option(sys.argv[1:]):
+        isolate_until_exit()
 
 
 def main() -> None:

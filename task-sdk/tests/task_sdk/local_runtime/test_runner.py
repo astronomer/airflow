@@ -103,7 +103,7 @@ def project(tmp_path):
     return tmp_path
 
 
-def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db"):
+def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db", as_script=False):
     env = {
         **os.environ,
         "PYTHONPATH": str(project / "guard") + os.pathsep + os.environ.get("PYTHONPATH", ""),
@@ -113,15 +113,15 @@ def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db"):
     }
     # The SDK test harness suppresses package initialization; a CLI test must exercise it.
     env.pop("_AIRFLOW__AS_LIBRARY", None)
-    command = [sys.executable, "-m", module] if module else [str(Path(sys.executable).with_name("airflow"))]
+    source = str(project / "pipeline.py")
+    if as_script:
+        command = [sys.executable, source]
+    elif module:
+        command = [sys.executable, "-m", module, "run", source]
+    else:
+        command = [str(Path(sys.executable).with_name("airflow")), "run", source]
     return subprocess.run(
-        [
-            *command,
-            "run",
-            str(project / "pipeline.py"),
-            no_db_flag,
-            *arguments,
-        ],
+        [*command, no_db_flag, *arguments],
         env=env,
         cwd=project,
         capture_output=True,
@@ -149,6 +149,23 @@ def test_selected_task_runs_without_database_or_api(project, module, flag):
     assert "'count': 1" in result.stdout
     assert "Upstream task must never execute" not in result.stdout + result.stderr
     assert not (project / ".airflow").exists()
+    assert not (project / "ambient").exists()
+    assert not list(project.rglob("airflow.db"))
+
+
+def test_dag_file_run_as_a_script_runs_without_database_or_api(project):
+    source = project / "pipeline.py"
+    source.write_text(
+        source.read_text().replace(
+            "\nsample()\n",
+            '\nworkflow = sample()\n\nif __name__ == "__main__":\n    print(workflow.run().output("consume"))\n',
+        )
+    )
+
+    result = run_cli(project, "--task", "consume", "--input", "produce=3", as_script=True)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "'value': 3" in result.stdout
     assert not (project / "ambient").exists()
     assert not list(project.rglob("airflow.db"))
 

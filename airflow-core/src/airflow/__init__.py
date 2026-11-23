@@ -38,6 +38,11 @@ if sys.argv[:1] == ["-m"]:
     from airflow_cli import prepare_module_execution
 
     prepare_module_execution()
+elif sys.argv[1:]:
+    # A Dag file run as a script imports the package before DAG.run() reads a --no-db option.
+    from airflow_cli import prepare_script_execution
+
+    prepare_script_execution()
 
 from airflow.utils.deprecation_tools import DeprecatedImportWarning
 

@@ -172,9 +172,9 @@ before it starts, naming both, as when the file calls ``workflow.run(task_ids=["
 line says ``--task total``. A keyword argument left at its default counts as not given. ``workflow.run()``
 reads the command line only when its Dag's file is the script that runs, so a test or a notebook that calls it
 is not affected. Every ``workflow.run()`` call in the script reads the same command line, and an option the
-script parses for itself is refused as unknown. With ``--no-db``, the script's own process has already
-imported Airflow with your shell's settings before ``workflow.run()`` reads the flag; ``airflow run --no-db``
-keeps them out of every process.
+script parses for itself is refused as unknown. ``--no-db`` on the script's command line keeps your shell's
+Airflow settings out of the script's own process too, as ``airflow run --no-db`` does; ``no_db=True`` in the
+file cannot, because the file has imported Airflow with those settings before ``workflow.run()`` is called.
 
 ``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
 says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the

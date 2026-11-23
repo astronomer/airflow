@@ -23,7 +23,7 @@ from unittest import mock
 
 import pytest
 
-from airflow_cli import is_no_db_run, main, prepare_module_execution
+from airflow_cli import is_no_db_run, main, prepare_module_execution, prepare_script_execution
 
 from tests_common.test_utils.paths import AIRFLOW_CORE_ROOT_PATH, AIRFLOW_ROOT_PATH
 
@@ -90,6 +90,41 @@ def test_module_bootstrap_leaves_other_invocations_unchanged(register, monkeypat
     monkeypatch.setattr("sys.orig_argv", original)
     before = os.environ.copy()
     prepare_module_execution()
+    register.assert_not_called()
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize("flag", ["--no-db", "--no-d"])
+@mock.patch("airflow_cli.atexit.register", autospec=True)
+def test_script_run_with_no_db_isolates_before_package_initialization(register, monkeypatch, flag):
+    monkeypatch.setattr("sys.argv", ["pipeline.py", "--task", "numbers", flag])
+    monkeypatch.setenv("AIRFLOW__DATABASE__SQL_ALCHEMY_CONN", "production")
+    before = os.environ.copy()
+
+    prepare_script_execution()
+    register.assert_called_once()
+    try:
+        assert os.environ["_AIRFLOW__LOCAL_NO_DB"] == "1"
+        assert "AIRFLOW__DATABASE__SQL_ALCHEMY_CONN" not in os.environ
+        assert os.environ["AIRFLOW_HOME"] != before.get("AIRFLOW_HOME")
+    finally:
+        register.call_args.args[0]()
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["pipeline.py", "--task", "numbers"],
+        ["pipeline.py", "--", "--no-db"],
+        ["/venv/bin/airflow", "run", "pipeline.py", "--no-db"],
+    ],
+)
+@mock.patch("airflow_cli.atexit.register", autospec=True)
+def test_script_bootstrap_leaves_other_invocations_unchanged(register, monkeypatch, argv):
+    monkeypatch.setattr("sys.argv", argv)
+    before = os.environ.copy()
+    prepare_script_execution()
     register.assert_not_called()
     assert dict(os.environ) == before
 
