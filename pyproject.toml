@@ -65,8 +65,9 @@ dependencies = [
 packages = []
 
 [project.scripts]
-# Definition allowing direct execution via `uvx apache-airflow ...`
-apache-airflow = "airflow.__main__:main"
+# Definition allowing direct execution via `uvx apache-airflow ...`. Same entry point as airflow-core's
+# `airflow`, which isolates `run --no-db` from the caller's Airflow settings before importing airflow.
+apache-airflow = "airflow_cli:main"
 
 [project.optional-dependencies]
 # Automatically generated airflow optional dependencies (update_airflow_pyproject_toml.py)

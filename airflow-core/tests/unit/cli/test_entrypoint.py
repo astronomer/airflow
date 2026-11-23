@@ -18,11 +18,14 @@
 from __future__ import annotations
 
 import os
+import tomllib
 from unittest import mock
 
 import pytest
 
 from airflow_cli import is_no_db_run, main, prepare_module_execution
+
+from tests_common.test_utils.paths import AIRFLOW_CORE_ROOT_PATH, AIRFLOW_ROOT_PATH
 
 
 @pytest.mark.parametrize(
@@ -111,3 +114,12 @@ def test_no_db_entrypoint_isolates_configuration(airflow_main, monkeypatch):
     assert observed["AIRFLOW_VAR_REGION"] == "region"
     assert observed["AIRFLOW_HOME"] != before.get("AIRFLOW_HOME")
     assert dict(os.environ) == before
+
+
+def test_apache_airflow_script_isolates_no_db_runs_like_airflow():
+    def read_scripts(root):
+        return tomllib.loads((root / "pyproject.toml").read_text())["project"]["scripts"]
+
+    assert (
+        read_scripts(AIRFLOW_ROOT_PATH)["apache-airflow"] == read_scripts(AIRFLOW_CORE_ROOT_PATH)["airflow"]
+    )
