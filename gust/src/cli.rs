@@ -77,15 +77,15 @@ pub struct Cli {
     pub json: bool,
 }
 
-/// The `--input` reference: the README section between the `input-help` markers.
+/// The `--input` reference: the part of `docs/input.md` between the `input-help` markers.
 pub fn find_input_help() -> &'static str {
-    const README: &str = include_str!("../README.md");
+    const INPUT_DOC: &str = include_str!("../docs/input.md");
     const START: &str = "<!-- input-help:start -->";
-    let start = README.find(START).map_or(0, |i| i + START.len());
-    let end = README[start..]
+    let start = INPUT_DOC.find(START).map_or(0, |i| i + START.len());
+    let end = INPUT_DOC[start..]
         .find("<!-- input-help:end -->")
-        .map_or(README.len(), |i| start + i);
-    README[start..end].trim()
+        .map_or(INPUT_DOC.len(), |i| start + i);
+    INPUT_DOC[start..end].trim()
 }
 
 /// Whether the command line is exactly `gust --help:input`.

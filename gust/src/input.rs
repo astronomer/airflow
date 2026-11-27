@@ -17,7 +17,7 @@
 
 //! The `--input` mapping: everything the task can see that gust does not learn from the bundle.
 //!
-//! The format is gust's own and is documented in the README. Each fact has one key; gust derives
+//! The format is gust's own and is documented in `docs/input.md`. Each fact has one key; gust derives
 //! everything else from it and copies values to wherever the supervisor messages need them.
 
 use std::collections::BTreeMap;
