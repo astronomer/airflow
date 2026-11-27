@@ -110,7 +110,7 @@ def project(tmp_path):
     return tmp_path
 
 
-def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db", as_script=False):
+def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db", as_script=False, source=None):
     env = {
         **os.environ,
         "PYTHONPATH": str(project / "guard") + os.pathsep + os.environ.get("PYTHONPATH", ""),
@@ -120,7 +120,7 @@ def run_cli(project, *arguments, timeout=45, module=None, no_db_flag="--no-db", 
     }
     # The SDK test harness suppresses package initialization; a CLI test must exercise it.
     env.pop("_AIRFLOW__AS_LIBRARY", None)
-    source = str(project / "pipeline.py")
+    source = str(source or project / "pipeline.py")
     if as_script:
         command = [sys.executable, source]
     elif module:
@@ -833,9 +833,16 @@ def test_coordinator_that_starts_no_runtime_process_is_refused(get_manager):
 
 
 TS_EXAMPLE = Path(__file__).parents[4] / "ts-sdk" / "example"
+TS_SETTINGS = (
+    "[tool.airflow.sdk]\n"
+    'coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }\n'
+    'queue_to_coordinator = { typescript = "ts" }\n'
+)
 
 
-def test_typescript_stub_runs_on_node(project):
+@pytest.fixture
+def typescript_project(project):
+    """A project with the TypeScript SDK's example Dag and its bundle, which run on Node 22 or later."""
     bundle = TS_EXAMPLE / "dist" / "bundle.min.mjs"
     if not bundle.is_file():
         pytest.skip(f"{bundle} is not built; ts-sdk/example/README.md says how to build it")
@@ -843,19 +850,77 @@ def test_typescript_stub_runs_on_node(project):
     version = subprocess.check_output([node, "--version"], text=True).strip() if node else "none"
     if not node or int(version.removeprefix("v").split(".")[0]) < 22:
         pytest.skip(f"The TypeScript SDK needs Node 22 or later on PATH, not {version}")
-    (project / "pyproject.toml").write_text(
-        "[tool.airflow.sdk]\n"
-        'coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }\n'
-        'queue_to_coordinator = { typescript = "ts" }\n'
-    )
+    (project / "pyproject.toml").write_text(TS_SETTINGS)
     shutil.copy(TS_EXAMPLE / "dags" / "typescript_example.py", project / "pipeline.py")
     (project / "dist").mkdir()
     shutil.copy(bundle, project / "dist")
+    return project
 
-    result = run_cli(project, "--task", "build_message", "--input", 'python_start="hi"')
+
+def test_typescript_stub_runs_on_node(typescript_project):
+    result = run_cli(typescript_project, "--task", "build_message", "--input", 'python_start="hi"')
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert re.search(
         r"build_message = \{'message': 'hello from TypeScript; upstream=hi', 'upstream': 'hi'\}",
         result.stdout,
     ), result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("routes", "task_id", "returncode", "message"),
+    [
+        pytest.param(
+            '{ other = "ts" }',
+            "summarize",
+            4,
+            "Dag 'typescript_native_example' runs on a NodeCoordinator, but these tasks' queues route "
+            "elsewhere: queue 'typescript' of 'extract.north', 'extract.south', 'summarize' and ",
+            id="queue-routed-elsewhere",
+        ),
+        pytest.param(
+            '{ typescript = "ts" }',
+            "missing",
+            2,
+            "Dag 'typescript_native_example' has no task 'missing'",
+            id="task-it-does-not-have",
+        ),
+        pytest.param(
+            '{ typescript = "ts" }',
+            "summarize",
+            2,
+            "--no-db cannot run a task of the native Dag of bundle.min.mjs yet",
+            id="parsed",
+        ),
+    ],
+)
+def test_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, task_id, returncode, message):
+    (typescript_project / "pyproject.toml").write_text(TS_SETTINGS.replace('{ typescript = "ts" }', routes))
+
+    result = run_cli(
+        typescript_project, "--task", task_id, source=typescript_project / "dist" / "bundle.min.mjs"
+    )
+
+    assert result.returncode == returncode, result.stdout + result.stderr
+    assert message in result.stderr
+
+
+def test_a_path_that_is_not_a_file_is_refused(project):
+    result = run_cli(project, "--task", "produce", source=project)
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert f"A local run needs a Dag file; {project} is not a file" in result.stderr
+
+
+def test_project_coordinators_that_cannot_be_built_stop_the_task(project):
+    (project / "pyproject.toml").write_text(
+        '[tool.airflow.sdk]\ncoordinators = { ts = { classpath = "missing_module.Coordinator" } }\n'
+    )
+
+    result = run_cli(project, "--task", "produce")
+
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert (
+        "[tool.airflow.sdk] in pyproject.toml cannot be used: Cannot import coordinator 'ts': "
+        "No module named 'missing_module'"
+    ) in result.stderr

@@ -44,6 +44,7 @@ from airflow.sdk.definitions.local_run import (
     build_child_environment,
     build_result,
     find_project_root,
+    get_setup_error_kind,
     is_ide_debugger_attached,
     is_unguarded_module_level_call,
     prepare_project_home,
@@ -405,6 +406,20 @@ class TestWaitForChild:
         process.kill.assert_called_once_with()
 
 
+@pytest.mark.parametrize(
+    ("error", "kind"),
+    [
+        (LocalRunUsageError("x"), "usage"),
+        (LocalRunDagFileError("x"), "dag_file"),
+        (LocalRunConfigError("x"), "config"),
+        (LocalRunError("x"), None),
+        (OSError("x"), None),
+    ],
+)
+def test_setup_error_kind_is_the_one_its_caller_raises_again(error, kind):
+    assert get_setup_error_kind(error) == kind
+
+
 class TestBuildResult:
     def test_success(self, tmp_path):
         result = build_result(make_payload(), 0, tmp_path, tmp_path / "dag.py")
@@ -696,12 +711,9 @@ class TestRunDagFile:
         with pytest.raises(LocalRunConfigError, match="needs Linux or macOS; on Windows, run it in WSL2"):
             run_dag_file(tmp_path / "missing.txt")
 
-    def test_rejects_non_python_file(self, tmp_path):
-        source = tmp_path / "pipeline.txt"
-        source.touch()
-
-        with pytest.raises(LocalRunUsageError, match="needs a Python Dag file"):
-            run_dag_file(source)
+    def test_rejects_a_path_that_is_not_a_file(self, tmp_path):
+        with pytest.raises(LocalRunUsageError, match="needs a Dag file; .* is not a file"):
+            run_dag_file(tmp_path)
 
     def test_rejects_non_dict_run_conf(self, source):
         with pytest.raises(TypeError, match="run_conf must be a dict, not list"):

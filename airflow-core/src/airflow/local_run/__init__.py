@@ -15,3 +15,8 @@
 # specific language governing permissions and limitations
 # under the License.
 """Child-process side of a local Dag run; see :mod:`airflow.sdk.definitions.local_run`."""
+
+# The default bundle configuration maps this bundle to ``[core] dags_folder``, the project root.
+from __future__ import annotations
+
+BUNDLE_NAME = "dags-folder"

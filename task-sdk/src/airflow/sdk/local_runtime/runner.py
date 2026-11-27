@@ -25,9 +25,10 @@ import pickle
 import signal
 import sys
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
 import structlog
@@ -52,6 +53,7 @@ from airflow.sdk.definitions.local_run import (
     allow_classes_defined_in,
     find_loaded_module,
     format_output,
+    get_setup_error_kind,
 )
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.param import process_params
@@ -74,10 +76,17 @@ from airflow.sdk.serde import CLASSNAME, deserialize
 if TYPE_CHECKING:
     from structlog.typing import FilteringBoundLogger
 
+    from airflow.sdk.coordinators._dag_importer import CoordinatorDagImporter
+
+_DagT = TypeVar("_DagT")
+
 
 def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
     from airflow.dag_processing.dagbag import BundleDagBag  # noqa: SDK002
+    from airflow.local_run.runtimes import find_native_dag_importer  # noqa: SDK002
 
+    if (importer := find_native_dag_importer(source, root)) is not None:
+        return load_native_task(source, root, dag_id, task_id, importer)
     bag = BundleDagBag(
         dag_folder=source,
         bundle_path=root,
@@ -93,16 +102,8 @@ def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
         raise LocalRunDagFileError(
             f"No Dags found in {source}. Create the Dag at module level, for example `workflow = example()`."
         )
-    if dag_id is None:
-        if len(dags) != 1:
-            raise LocalRunUsageError(f"Choose one Dag with --dag-id; found: {', '.join(dags) or 'none'}")
-        dag_id = next(iter(dags))
-    if dag_id not in dags:
-        raise LocalRunUsageError(f"Dag {dag_id!r} was not found in {source}")
-    dag = dags[dag_id]
-    if task_id not in dag.task_dict:
-        raise LocalRunUsageError(f"Dag {dag_id!r} has no task {task_id!r}")
-    task = dag.task_dict[task_id]
+    dag = select_dag(dags, dag_id, source)
+    task = get_task(dag, task_id)
     if isinstance(task, MappedOperator) or task.get_closest_mapped_task_group() or get_enclosing_loop(task):
         raise LocalRunUsageError("--no-db does not support mapped tasks or loops")
     if task.inlets or task.outlets:
@@ -110,6 +111,37 @@ def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
     if getattr(task, "run_as_user", None):
         raise LocalRunUsageError("--no-db does not support run_as_user")
     return dag, task
+
+
+def load_native_task(
+    source: Path, root: Path, dag_id: str | None, task_id: str, importer: CoordinatorDagImporter
+):
+    from airflow.local_run.runtimes import check_native_task_routes, parse_native_dag_file  # noqa: SDK002
+    from airflow.serialization.serialized_objects import DagSerialization  # noqa: SDK002
+
+    parsed = parse_native_dag_file(source, root)
+    selected = select_dag({dag.dag_id: dag for dag in parsed.serialized_dags}, dag_id, source)
+    dag = DagSerialization.from_dict(selected.data)
+    get_task(dag, task_id)
+    check_native_task_routes(dag, importer)
+    raise LocalRunUsageError(f"--no-db cannot run a task of the native Dag of {source.name} yet")
+
+
+def select_dag(dags: Mapping[str, _DagT], dag_id: str | None, source: Path) -> _DagT:
+    """Return the Dag of ``dags``, those ``source`` defines, that ``dag_id`` names, or the only one."""
+    if dag_id is None:
+        if len(dags) != 1:
+            raise LocalRunUsageError(f"Choose one Dag with --dag-id; found: {', '.join(dags) or 'none'}")
+        dag_id = next(iter(dags))
+    if dag_id not in dags:
+        raise LocalRunUsageError(f"Dag {dag_id!r} was not found in {source}")
+    return dags[dag_id]
+
+
+def get_task(dag, task_id: str):
+    if task_id not in dag.task_dict:
+        raise LocalRunUsageError(f"Dag {dag.dag_id!r} has no task {task_id!r}")
+    return dag.task_dict[task_id]
 
 
 def find_task_runtime(task) -> SubprocessCoordinator | None:
@@ -219,6 +251,9 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     configure_logging(output=sys.stderr)
     configure_terminal_logging()
     block_orm_access()
+    from airflow.local_run.runtimes import check_project_coordinators  # noqa: SDK002
+
+    check_project_coordinators()
     source, root = Path(request["source"]), Path(request["root"])
     dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])
     runtime = find_task_runtime(task)
@@ -353,13 +388,7 @@ def main() -> int:
     except KeyboardInterrupt:
         payload = {"version": PROTOCOL_VERSION, "cancelled": True}
     except (LocalRunUsageError, LocalRunDagFileError, LocalRunConfigError, OSError) as error:
-        kind = (
-            "usage"
-            if isinstance(error, LocalRunUsageError)
-            else "dag_file"
-            if isinstance(error, LocalRunDagFileError)
-            else "config"
-        )
+        kind = get_setup_error_kind(error) or "config"
         payload = {"version": PROTOCOL_VERSION, "error": redact(str(error)), "error_kind": kind}
     except Exception as error:
         structlog.get_logger().exception("Local task execution failed")

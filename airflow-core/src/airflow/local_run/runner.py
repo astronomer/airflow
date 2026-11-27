@@ -42,7 +42,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, TextIO
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO, TypeVar
 
 import structlog
 from jsonschema.exceptions import SchemaError
@@ -57,6 +57,7 @@ from airflow.configuration import conf, ensure_secrets_loaded
 from airflow.dag_processing.bundles.manager import DagBundlesManager
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
 from airflow.jobs.job import Job, JobState
+from airflow.local_run import BUNDLE_NAME
 from airflow.local_run.fork_server import ForkServer
 from airflow.local_run.logs import (
     TaskFailure,
@@ -67,6 +68,13 @@ from airflow.local_run.logs import (
     record_startup_events,
 )
 from airflow.local_run.ownership import LOCAL_RUN_JOB_TYPE, assign_local_trigger_queue
+from airflow.local_run.runtimes import (
+    check_native_task_routes,
+    check_project_coordinators,
+    find_native_dag_importer,
+    get_runtime_name,
+    parse_native_dag_file,
+)
 from airflow.local_run.secrets_backend import LocalRunSecretsBackend
 from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
 from airflow.local_run.ui import build_run_url, read_live_ui_url
@@ -85,12 +93,13 @@ from airflow.sdk.definitions.local_run import (
     allow_classes_defined_in,
     find_loaded_module,
     format_output,
+    get_setup_error_kind,
     is_ide_debugger_attached,
     refuse_breakpoint,
 )
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.xcom_arg import XComArg
-from airflow.sdk.execution_time.coordinator import get_coordinator_manager  # noqa: SDK001
+from airflow.sdk.exceptions import LocalRunError  # noqa: SDK001
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import CLASSNAME
 from airflow.serialization.definitions.notset import is_arg_set
@@ -110,9 +119,8 @@ if TYPE_CHECKING:
     from airflow.sdk.types import Operator
     from airflow.serialization.definitions.dag import SerializedDAG
 
-# The default bundle configuration maps this bundle to ``[core] dags_folder``, the project root.
-BUNDLE_NAME = "dags-folder"
 RUN_CREATION_ATTEMPTS = 5
+_DagT = TypeVar("_DagT")
 
 # The locks this process holds on the runs it executes; the operating system releases them however it ends.
 _run_locks: list[TextIO] = []
@@ -153,6 +161,9 @@ def main(argv: list[str]) -> int:
         payload = execute(request)
     except LocalRunSetupError as e:
         payload = {"version": PROTOCOL_VERSION, "error": str(e), "error_kind": e.kind}
+    except LocalRunError as e:
+        # Raised by the checks a run without a database shares.
+        payload = {"version": PROTOCOL_VERSION, "error": str(e), "error_kind": get_setup_error_kind(e)}
     except KeyboardInterrupt:
         payload = {"version": PROTOCOL_VERSION, "cancelled": True}
     write_result(result_path, payload)
@@ -216,15 +227,34 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     retries = request.get("retries", True)
     check_project_secrets_backend()
     check_project_coordinators()
+    importer = find_native_dag_importer(source, root)
+    if importer is not None and debug:
+        raise UsageSetupError(
+            f"--debug runs each task in this Python process, and the tasks of {source.name} run in the "
+            f"runtime of a {get_runtime_name(importer)}"
+        )
     if keep_history:
         ensure_database(home)
     else:
         # The caller made this home for the run alone, so the database is always new.
         initdb()
+    if importer is not None:
+        with record_startup_events():
+            parsed = parse_native_dag_file(source, root)
+        native_dag = select_dag(
+            {found.dag_id: found for found in parsed.serialized_dags}, request.get("dag_id"), source
+        )
+        check_native_task_routes(DagSerialization.from_dict(native_dag.data), importer)
+        raise UsageSetupError(f"A local run with a database cannot run the native Dag of {source.name} yet")
     with record_startup_events():
         bundles = DagBundlesManager()
         bag = import_dag_file(source, root)
-    dag = select_dag(bag, request.get("dag_id"), source)
+    # A bag can also hold serialized Dags from other language importers; only SDK Dags run in-process.
+    dag = select_dag(
+        {found_id: found for found_id, found in bag.dags.items() if isinstance(found, DAG)},
+        request.get("dag_id"),
+        source,
+    )
     triggered_by = DagRunTriggeredByType(request["triggered_by"])
 
     # The thread-local scoped session, as in dag.test(): helpers inside the run loop open
@@ -1219,14 +1249,6 @@ def check_project_secrets_backend() -> None:
                 ) from None
 
 
-def check_project_coordinators() -> None:
-    """Load the coordinators ``[tool.airflow.sdk]`` configures now, so a mistake in them stops the run."""
-    try:
-        get_coordinator_manager()
-    except ValueError as e:
-        raise ConfigSetupError(f"[tool.airflow.sdk] in pyproject.toml cannot be used: {e}") from None
-
-
 def ensure_database(home: Path) -> None:
     """Create the project database, or migrate it to this Airflow version; refuse a newer schema."""
     with project_lock(home):
@@ -1308,9 +1330,8 @@ def suggest_project_root_import(import_error: str, source: Path, root: Path) -> 
     )
 
 
-def select_dag(bag: BundleDagBag, dag_id: str | None, source: Path) -> DAG:
-    # A bag can also hold serialized Dags from other language importers; only SDK Dags run in-process.
-    dags = {found_id: found for found_id, found in bag.dags.items() if isinstance(found, DAG)}
+def select_dag(dags: Mapping[str, _DagT], dag_id: str | None, source: Path) -> _DagT:
+    """Return the Dag of ``dags``, those ``source`` defines, that ``dag_id`` names, or the only one."""
     if dag_id is None:
         if len(dags) == 1:
             return next(iter(dags.values()))
@@ -1325,6 +1346,8 @@ def select_dag(bag: BundleDagBag, dag_id: str | None, source: Path) -> DAG:
         defined = f" It defines: {', '.join(sorted(dags))}." if dags else ""
         # A file that defines other Dags was most likely given the wrong Dag ID.
         error = UsageSetupError if dags else DagFileSetupError
+        if source.suffix != ".py":
+            raise error(f"{source} does not define Dag {dag_id!r}.{defined}")
         raise error(
             f"{source} does not define Dag {dag_id!r} at module level.{defined} A local run imports the file "
             "the way Airflow discovers Dags, so the Dag must be created at module level."

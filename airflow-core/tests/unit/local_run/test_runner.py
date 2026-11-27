@@ -1098,21 +1098,44 @@ def test_project_secrets_backend_that_cannot_be_created_stops_the_run(project):
     assert not (project / ".airflow" / "airflow.db").exists()
 
 
-def test_project_coordinators_that_cannot_be_used_stop_the_run(project):
-    (project / "pyproject.toml").write_text(
-        '[tool.airflow.sdk]\nqueue_to_coordinator = { typescript = "ts" }\n'
-    )
+@pytest.mark.parametrize(
+    ("settings", "reason"),
+    [
+        pytest.param(
+            'queue_to_coordinator = { typescript = "ts" }',
+            r"\[sdk\] queue_to_coordinator references invalid coordinator key: 'ts'",
+            id="queue-to-a-missing-coordinator",
+        ),
+        pytest.param(
+            'coordinators = { ts = { classpath = "missing_module.Coordinator" } }',
+            r"Cannot import coordinator 'ts': No module named 'missing_module'",
+            id="class-that-cannot-be-imported",
+        ),
+        pytest.param(
+            'coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator", '
+            "kwargs = { unknown = 1 } } }",
+            r"Cannot instantiate coordinator 'ts': .*unexpected keyword argument 'unknown'",
+            id="arguments-the-class-does-not-take",
+        ),
+    ],
+)
+def test_project_coordinators_that_cannot_be_used_stop_the_run(project, settings, reason):
+    (project / "pyproject.toml").write_text(f"[tool.airflow.sdk]\n{settings}\n")
     source = write_dag_file(project, "pipeline.py", PIPELINE)
 
     with pytest.raises(
-        LocalRunConfigError,
-        match=r"\[tool\.airflow\.sdk\] in pyproject\.toml cannot be used: "
-        r"\[sdk\] queue_to_coordinator references invalid coordinator key: 'ts'",
+        LocalRunConfigError, match=rf"\[tool\.airflow\.sdk\] in pyproject\.toml cannot be used: {reason}"
     ):
         run_dag_file(source)
+    assert not (project / ".airflow" / "airflow.db").exists()
 
 
 TS_EXAMPLE = AIRFLOW_ROOT_PATH / "ts-sdk" / "example"
+TS_SETTINGS = """
+[tool.airflow.sdk]
+coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }
+queue_to_coordinator = { typescript = "ts" }
+"""
 
 
 @pytest.fixture
@@ -1125,19 +1148,7 @@ def typescript_project(project) -> Path:
     version = subprocess.check_output([node, "--version"], text=True).strip() if node else "none"
     if not node or int(version.removeprefix("v").split(".")[0]) < 22:
         pytest.skip(f"The TypeScript SDK needs Node 22 or later on PATH, not {version}")
-    (project / "pyproject.toml").write_text(
-        textwrap.dedent(
-            """
-            [project]
-            name = "demo"
-            version = "0"
-
-            [tool.airflow.sdk]
-            coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }
-            queue_to_coordinator = { typescript = "ts" }
-            """
-        )
-    )
+    (project / "pyproject.toml").write_text(TS_SETTINGS)
     shutil.copy(TS_EXAMPLE / "dags" / "typescript_example.py", project)
     (project / "dist").mkdir()
     shutil.copy(bundle, project / "dist")
@@ -1173,6 +1184,113 @@ def test_typescript_stub_tasks_run_on_node(typescript_project, tmp_path):
         "scratchAfterDelete": None,
     }
     assert result.output("clear_task_state") == {"afterClear": None}
+
+
+def test_a_file_no_runtime_parses_is_refused(project):
+    source = project / "pipeline.txt"
+    source.touch()
+
+    with pytest.raises(
+        LocalRunUsageError,
+        match=r"needs a Python Dag file or a native Dag file, such as a TypeScript bundle packed by "
+        r"airflow-ts-pack; .*pipeline\.txt is neither$",
+    ):
+        run_dag_file(source)
+    assert not (project / ".airflow" / "airflow.db").exists()
+
+
+@pytest.mark.parametrize(
+    ("pyproject", "fix"),
+    [
+        pytest.param(
+            '[project]\nname = "demo"\nversion = "0"\n',
+            r"\[tool\.airflow\.sdk\] in pyproject\.toml configures none\. Add one to its coordinators table",
+            id="pyproject-without-runtimes",
+        ),
+        pytest.param(
+            None,
+            r"no pyproject\.toml configures one\. Create a pyproject\.toml at the project's root, and add one "
+            r"to the coordinators table of its \[tool\.airflow\.sdk\]",
+            id="no-pyproject",
+        ),
+    ],
+)
+def test_a_native_dag_file_needs_its_runtime_configured(tmp_path, pyproject, fix):
+    if pyproject is not None:
+        (tmp_path / "pyproject.toml").write_text(pyproject)
+    source = tmp_path / "bundle.min.mjs"
+    # The comment airflow-ts-pack starts a bundle with.
+    source.write_text("//# airflowBundle={}\n")
+
+    with pytest.raises(
+        LocalRunConfigError,
+        match=rf"bundle\.min\.mjs is a native Dag file that a NodeCoordinator runs, and {fix}, with "
+        r"classpath = 'airflow\.sdk\.coordinators\.node\.NodeCoordinator'; then route the Dag's queue to "
+        r"it in queue_to_coordinator\.$",
+    ):
+        run_dag_file(source, keep_history=False)
+
+
+def test_debug_is_refused_for_a_native_dag_file(project):
+    (project / "pyproject.toml").write_text(TS_SETTINGS)
+    source = project / "bundle.min.mjs"
+    source.touch()
+
+    with pytest.raises(
+        LocalRunUsageError,
+        match=r"--debug runs each task in this Python process, and the tasks of bundle\.min\.mjs run in the "
+        r"runtime of a NodeCoordinator$",
+    ):
+        run_dag_file(source, debug=True)
+    assert not (project / ".airflow" / "airflow.db").exists()
+
+
+def test_a_native_dag_file_that_does_not_parse_stops_the_run(project):
+    (project / "pyproject.toml").write_text(TS_SETTINGS)
+    source = project / "bundle.min.mjs"
+    source.write_text("//# airflowBundle={}\n")
+
+    with pytest.raises(
+        LocalRunDagFileError,
+        match=r"Parsing .*bundle\.min\.mjs failed:\nCannot start the Lang-SDK runtime: ValueError: ",
+    ):
+        run_dag_file(source, keep_history=False)
+
+
+@pytest.mark.parametrize(
+    ("routes", "dag_id", "error", "message"),
+    [
+        pytest.param(
+            '{ other = "ts" }',
+            None,
+            LocalRunConfigError,
+            r"Dag 'typescript_native_example' runs on a NodeCoordinator, but these tasks' queues route "
+            r"elsewhere: queue 'typescript' of 'extract\.north', 'extract\.south', 'summarize' and \d+ more\. "
+            r"Map each queue to your NodeCoordinator in queue_to_coordinator of \[tool\.airflow\.sdk\] in "
+            r"pyproject\.toml\.$",
+            id="queue-routed-elsewhere",
+        ),
+        pytest.param(
+            '{ typescript = "ts" }',
+            "missing",
+            LocalRunUsageError,
+            r"bundle\.min\.mjs does not define Dag 'missing'\. It defines: typescript_native_example\.$",
+            id="dag-it-does-not-define",
+        ),
+        pytest.param(
+            '{ typescript = "ts" }',
+            None,
+            LocalRunUsageError,
+            r"cannot run the native Dag of bundle\.min\.mjs yet$",
+            id="parsed",
+        ),
+    ],
+)
+def test_a_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, dag_id, error, message):
+    (typescript_project / "pyproject.toml").write_text(TS_SETTINGS.replace('{ typescript = "ts" }', routes))
+
+    with pytest.raises(error, match=message):
+        run_dag_file(typescript_project / "dist" / "bundle.min.mjs", dag_id=dag_id, keep_history=False)
 
 
 GROUPED = """

@@ -83,6 +83,11 @@ _SETUP_ERRORS: dict[str, type[LocalRunError]] = {
 }
 
 
+def get_setup_error_kind(error: Exception) -> str | None:
+    """Return the kind a run's process reports ``error`` as, which its caller raises again; ``None`` if none."""
+    return next((kind for kind, error_type in _SETUP_ERRORS.items() if isinstance(error, error_type)), None)
+
+
 @dataclass(frozen=True)
 class DagRunResult:
     """Detached outcome of a local Dag run; it stays usable after the run's resources are released."""
@@ -388,8 +393,8 @@ def run_dag_file(
         raise LocalRunConfigError("Running a Dag locally needs Linux or macOS; on Windows, run it in WSL2")
     started_at = time.monotonic()
     source_path = Path(source).resolve()
-    if source_path.suffix != ".py" or not source_path.is_file():
-        raise LocalRunUsageError(f"A local run needs a Python Dag file; {source_path} is not one")
+    if not source_path.is_file():
+        raise LocalRunUsageError(f"A local run needs a Dag file; {source_path} is not a file")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise TypeError(f"run_conf must be a dict, not {type(run_conf).__name__}")
     if not isinstance(retries, bool):

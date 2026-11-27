@@ -78,8 +78,8 @@ def run_task_file(
     if keep_task_state and state_file is None:
         raise LocalRunUsageError("--no-db --keep-task-state requires an explicit --state-file")
     source_path = Path(source).resolve()
-    if source_path.suffix != ".py" or not source_path.is_file():
-        raise LocalRunUsageError(f"A local run needs a Python Dag file; {source_path} is not one")
+    if not source_path.is_file():
+        raise LocalRunUsageError(f"A local run needs a Dag file; {source_path} is not a file")
     if run_conf is not None and not isinstance(run_conf, dict):
         raise LocalRunUsageError("--conf must be a JSON object")
     root = find_project_root(source_path)
