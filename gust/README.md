@@ -19,8 +19,8 @@
 
 # gust
 
-`gust` test-runs a Dag, or one task of it, from a built Dag file, with no Airflow installation and
-no Python. It starts the Dag file the way an Airflow worker does, plays the scheduler and the
+`gust` test-runs a Dag, or one task of it, from a Dag file, with no scheduler, API server or
+database. It starts the Dag file the way an Airflow worker does, plays the scheduler and the
 supervisor, answers the tasks' requests from the `--input` mapping, and prints what the tasks did.
 
 ```bash
@@ -44,11 +44,16 @@ process:
 - an executable with the bundle trailer that native SDKs append (such as the Go SDK's
   `airflow-go-pack`; see `task-sdk/docs/executable-bundle-spec.rst`), with its executable bit set;
 - a `.min.mjs` built by `airflow-ts-pack`, run with `--runtime=node`;
-- a fat Jar, which the Java SDK's Gradle plugin builds by default, run with `--runtime='java -jar'`.
+- a fat Jar, which the Java SDK's Gradle plugin builds by default, run with `--runtime='java -jar'`;
+- a `.py` or `.pyc` file, or a directory or zip file with `__main__.py`, run with a Python
+  interpreter that can import the Task SDK and Airflow core, such as `--runtime=python3`. gust
+  starts it through a small bridge of its own, which runs it the way `python <path>` would. A
+  Python Dag file with stub tasks is refused.
 
 ```bash
 gust dist/my_dags.min.mjs --runtime=node --dag=my_dag --task=my_task
 gust build/libs/my-dags-all.jar --runtime='java -jar' --dag=my_dag --task=my_task
+gust dags/my_dag.py --runtime=python3 --dag=my_dag --task=my_task
 ```
 
 `--runtime` is split like a shell command line, so it can carry interpreter options; gust puts it
@@ -163,10 +168,10 @@ gust could not run it.
 ## Not supported
 
 Tasks in a mapped task group, task loops, a Python Dag's `map()` callables (`ApplyMap`), resuming
-a deferred or rescheduled task, human-in-the-loop answers, callbacks, task handlers for Python
-Dags, triggering other Dag runs, and the requests that read other task instances or Dag runs. The
-task gets an `API_SERVER_ERROR` for a request gust does not support, and the summary lists it as
-unsupported.
+a deferred or rescheduled task, human-in-the-loop answers, callbacks, stub tasks in a
+Python Dag file and task handlers, triggering other Dag runs, and the requests that read other
+task instances or Dag runs. The task gets an `API_SERVER_ERROR` for a request gust does not
+support, and the summary lists it as unsupported.
 
 gust speaks the supervisor schema it was generated from and does not migrate messages for a Dag
 file built against an older one; it notes the difference in the summary.

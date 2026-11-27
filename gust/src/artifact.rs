@@ -33,6 +33,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::{executable, jar, node};
 
+/// The Python side of gust, run with the interpreter's `-c`.
+const BRIDGE: &str = include_str!("bridge.py");
+
+const MAIN_MODULES: [&str; 2] = ["__main__.py", "__main__.pyc"];
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Sdk {
     pub language: String,
@@ -46,6 +51,14 @@ pub enum Kind {
     Executable,
     Node,
     Java,
+    Python,
+}
+
+/// Why the runtime is started.
+#[derive(Clone, Copy, Debug)]
+pub enum Mode {
+    Parse,
+    Run,
 }
 
 #[derive(Debug)]
@@ -53,7 +66,7 @@ pub struct Artifact {
     pub kind: Kind,
     /// The path as given, which is what the runtime receives.
     pub path: PathBuf,
-    /// The SDK the artifact declares.
+    /// The SDK a built artifact declares. Python reports its own when the bridge starts.
     pub sdk: Option<Sdk>,
 }
 
@@ -69,11 +82,15 @@ impl Artifact {
                 sdk,
             })
         };
-        ensure!(
-            !metadata.is_dir(),
-            "{} is a directory; gust takes one Dag file",
-            path.display()
-        );
+        if metadata.is_dir() {
+            if MAIN_MODULES.iter().any(|m| path.join(m).is_file()) {
+                return found(Kind::Python, None);
+            }
+            bail!(
+                "{} is a directory without __main__.py or __main__.pyc, so Python cannot run it",
+                path.display()
+            );
+        }
 
         let describe =
             |e: anyhow::Error| e.context(format!("{} is not a usable bundle", path.display()));
@@ -90,6 +107,9 @@ impl Artifact {
             let sdk = node::read_sdk(path)
                 .with_context(|| format!("{} is not a usable TypeScript bundle", path.display()))?;
             return found(Kind::Node, Some(sdk));
+        }
+        if name.ends_with(".py") || name.ends_with(".pyc") {
+            return found(Kind::Python, None);
         }
         if let Ok(mut archive) = zip::ZipArchive::new(File::open(path)?) {
             let attributes = match archive.by_name(jar::MANIFEST_NAME) {
@@ -119,16 +139,27 @@ impl Artifact {
                     }),
                 );
             }
+            if MAIN_MODULES
+                .iter()
+                .any(|m| archive.index_for_name(m).is_some())
+            {
+                return found(Kind::Python, None);
+            }
             if attributes.is_some() {
                 bail!(
                     "{} is a Jar whose manifest sets no Main-Class",
                     path.display()
                 );
             }
+            bail!(
+                "{} is a zip file without __main__.py or __main__.pyc, so Python cannot run it",
+                path.display()
+            );
         }
         bail!(
             "gust cannot run {}. It takes an executable with an Airflow bundle trailer, a {} \
-             built by airflow-ts-pack, or a fat Jar",
+             built by airflow-ts-pack, a fat Jar, a .py or .pyc file, or a directory or zip file \
+             with __main__.py",
             path.display(),
             node::SUFFIX,
         )
@@ -140,6 +171,7 @@ impl Artifact {
             Kind::Executable => return Ok(()),
             Kind::Node => "node",
             Kind::Java => "java -jar",
+            Kind::Python => "python3",
         };
         let Some(runtime) = runtime else {
             bail!(
@@ -157,9 +189,16 @@ impl Artifact {
     }
 
     /// The program and arguments that start this artifact, before `--comm` and `--logs`.
-    pub fn build_command(&self, runtime: Option<&[String]>) -> Vec<OsString> {
+    pub fn build_command(&self, runtime: Option<&[String]>, mode: Mode) -> Vec<OsString> {
         let mut command: Vec<OsString> =
             runtime.into_iter().flatten().map(OsString::from).collect();
+        if self.kind == Kind::Python {
+            let mode = match mode {
+                Mode::Parse => "parse",
+                Mode::Run => "run",
+            };
+            command.extend(["-c", BRIDGE, mode].map(OsString::from));
+        }
         command.push(self.path.clone().into());
         command
     }
@@ -207,6 +246,24 @@ mod tests {
     }
 
     #[test]
+    fn python_files_and_main_modules() {
+        let file = temp("dag.py");
+        fs::write(&file, "").unwrap();
+        assert_eq!(Artifact::inspect(&file).unwrap().kind, Kind::Python);
+
+        let dir = temp("app");
+        fs::create_dir_all(&dir).unwrap();
+        assert!(inspect_err(&dir).contains("without __main__.py"));
+        fs::write(dir.join("__main__.pyc"), "").unwrap();
+        assert_eq!(Artifact::inspect(&dir).unwrap().kind, Kind::Python);
+
+        let zipapp = write_zip("app.pyz", &[("__main__.py", "")]);
+        assert_eq!(Artifact::inspect(&zipapp).unwrap().kind, Kind::Python);
+        let plain = write_zip("plain.zip", &[("dag.py", "")]);
+        assert!(inspect_err(&plain).contains("zip file without __main__.py"));
+    }
+
+    #[test]
     fn fat_jars_only() {
         let fat = write_zip(
             "fat.bin",
@@ -239,11 +296,6 @@ mod tests {
         let unpacked = temp("dag.min.mjs");
         fs::write(&unpacked, "export {};").unwrap();
         assert!(inspect_err(&unpacked).contains("airflow-ts-pack"));
-        let plain = write_zip("plain.zip", &[("dag.py", "")]);
-        assert!(inspect_err(&plain).contains("gust cannot run"));
-        let dir = temp("dags");
-        fs::create_dir_all(&dir).unwrap();
-        assert!(inspect_err(&dir).contains("is a directory"));
         assert!(inspect_err(&temp("missing")).contains("cannot find"));
     }
 
@@ -256,7 +308,7 @@ mod tests {
         };
         let words = |s: &[&str]| s.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>();
         assert!(artifact(Kind::Executable).check_runtime(None).is_ok());
-        assert!(artifact(Kind::Node).check_runtime(None).is_err());
+        assert!(artifact(Kind::Python).check_runtime(None).is_err());
         let java = artifact(Kind::Java);
         assert!(
             java.check_runtime(Some(&words(&["java", "-Xmx1g", "-jar"])))
@@ -268,5 +320,23 @@ mod tests {
                 .to_string()
                 .contains("-jar")
         );
+    }
+
+    #[test]
+    fn python_runs_through_the_bridge() {
+        let command = Artifact {
+            kind: Kind::Python,
+            path: "dags".into(),
+            sdk: None,
+        }
+        .build_command(
+            Some(&["python3".to_owned(), "-X".to_owned(), "dev".to_owned()]),
+            Mode::Parse,
+        );
+        assert_eq!(
+            command[..4],
+            ["python3", "-X", "dev", "-c"].map(OsString::from)
+        );
+        assert_eq!(command[5..], ["parse", "dags"].map(OsString::from));
     }
 }

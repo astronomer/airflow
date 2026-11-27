@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Reading what a task needs from the bundle's own serialized Dags.
+//! Reading what a task needs from the Dag file's own serialized Dags.
 
 use std::collections::BTreeSet;
 
@@ -36,6 +36,9 @@ pub struct TaskSpec {
     pub is_setup: bool,
     pub is_teardown: bool,
     pub on_failure_fail_dagrun: bool,
+    /// The task's body is a task handler supplied elsewhere.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_stub: bool,
     pub upstream: Vec<String>,
     pub downstream: Vec<String>,
     /// The task sits in a mapped task group, so it expands with the group.
@@ -74,6 +77,14 @@ pub struct DagSpec {
 impl DagSpec {
     pub fn get(&self, task_id: &str) -> Option<&TaskSpec> {
         self.tasks.iter().find(|t| t.task_id == task_id)
+    }
+
+    pub fn find_stub_task_ids(&self) -> Vec<&str> {
+        self.tasks
+            .iter()
+            .filter(|t| t.is_stub)
+            .map(|t| t.task_id.as_str())
+            .collect()
     }
 
     pub fn find_mapped_task_ids(&self) -> BTreeSet<String> {
@@ -204,6 +215,7 @@ pub fn find_dag(result: &Json, dag_id: &str) -> Lookup {
                 is_setup: is_true(task, "is_setup"),
                 is_teardown: is_true(task, "is_teardown"),
                 on_failure_fail_dagrun: is_true(task, "on_failure_fail_dagrun"),
+                is_stub: is_true(task, "is_stub"),
                 upstream: vec![],
                 downstream: task
                     .get("downstream_task_ids")

@@ -42,7 +42,7 @@ use serde_json::Value as Json;
 use uuid::Uuid;
 
 use crate::{
-    artifact::Artifact,
+    artifact::{Artifact, Mode},
     cli::Cli,
     dag::{DagSpec, Lookup, TaskSpec},
     expand::XComValues,
@@ -87,7 +87,6 @@ fn run(cli: &Cli) -> Result<Summary> {
     let artifact = Artifact::inspect(&cli.dag_file)?;
     let runtime = cli.runtime.as_ref().map(|r| r.0.as_slice());
     artifact.check_runtime(runtime)?;
-    let command = artifact.build_command(runtime);
     let mut notes = Vec::new();
     if let Some(sdk) = &artifact.sdk
         && sdk.supervisor_schema_version != models::SCHEMA_API_VERSION
@@ -113,6 +112,7 @@ fn run(cli: &Cli) -> Result<Summary> {
         sink.set_phase("parse");
         services.phase = "parse";
         eprintln!("gust: asking {} for its Dags", artifact.path.display());
+        let command = artifact.build_command(runtime, Mode::Parse);
         match parse_dags(&artifact, &command, cli, &mut services, &sink)? {
             None => notes.push(
                 "The Dag file did not answer the Dag parse request; the task gets no argument bindings.".into(),
@@ -177,6 +177,19 @@ fn run(cli: &Cli) -> Result<Summary> {
             dag
         }
     };
+    // A Lang-SDK Dag marks all its tasks as stubs, since their bodies live in the Dag file itself
+    // rather than in Python. Only a Python Dag file's stubs need a task handler from elsewhere.
+    if artifact.kind == artifact::Kind::Python
+        && let Some(dag) = &dag_spec
+        && let stubs = dag.find_stub_task_ids()
+        && !stubs.is_empty()
+    {
+        bail!(
+            "Dag {:?} has stub tasks ({}), whose task handlers gust does not run",
+            cli.dag_id,
+            stubs.join(", "),
+        );
+    }
     if let Some(task) = scope.tasks.iter().find(|t| t.in_mapped_group) {
         bail!(
             "{}.{} is in a mapped task group, which gust does not expand yet",
@@ -210,6 +223,7 @@ fn run(cli: &Cli) -> Result<Summary> {
         max_tries: input.max_tries,
         mapped_task_ids: &mapped_task_ids,
     };
+    let command = artifact.build_command(runtime, Mode::Run);
     let mut worker = Worker {
         cli,
         command: &command,
