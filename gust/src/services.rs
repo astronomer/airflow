@@ -702,10 +702,15 @@ impl Services {
                             }
                             _ => {
                                 self.log(type_, target, Outcome::NotFound);
-                                not_found(
-                                    XcomNotFound,
-                                    json!({"dag_id": msg.dag_id, "run_id": msg.run_id, "task_id": msg.task_id, "key": msg.key, "offset": offset}),
-                                )
+                                // Airflow answers with the error as the body, and the Python
+                                // Task SDK stops iterating a mapped task's results on it.
+                                Reply::body(&models::ErrorResponse {
+                                    detail: json!({"dag_id": msg.dag_id, "run_id": msg.run_id, "task_id": msg.task_id, "key": msg.key, "offset": offset})
+                                        .as_object()
+                                        .cloned(),
+                                    error: XcomNotFound,
+                                    type_: typed("ErrorResponse"),
+                                })
                             }
                         }
                     }
@@ -1023,8 +1028,12 @@ mod tests {
         assert_eq!(body.unwrap()["len"], 3);
         let (_, body) = ask(&mut s, req("GetXComSequenceItem", json!({"offset": -1})));
         assert_eq!(body.unwrap()["root"], 30);
-        let (_, body) = ask(&mut s, req("GetXComSequenceItem", json!({"offset": 3})));
-        assert_eq!(body.unwrap()["error"], "XCOM_NOT_FOUND");
+        // Airflow answers with the error as the body, not in the error slot.
+        let (slot, body) = ask(&mut s, req("GetXComSequenceItem", json!({"offset": 3})));
+        assert_eq!(
+            (slot, &body.unwrap()["error"]),
+            ("body", &json!("XCOM_NOT_FOUND"))
+        );
         let (_, body) = ask(&mut s, req("GetXComSequenceItem", json!({"offset": -4})));
         assert_eq!(body.unwrap()["error"], "XCOM_NOT_FOUND");
         let (_, body) = ask(

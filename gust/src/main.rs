@@ -457,6 +457,8 @@ fn parse_dags(
         };
         if frame.body_type() == Some("DagFileParsingResult") {
             result = Some(frame::to_json(body));
+            // The Dag processor acknowledges the result, and the Python Task SDK waits for that.
+            let _ = runtime.send(frame.id, &Reply::Ack);
             break;
         }
         let reply = services.handle(body)?;
