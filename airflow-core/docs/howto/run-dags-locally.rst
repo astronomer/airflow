@@ -179,7 +179,8 @@ file cannot, because the file has imported Airflow with those settings before ``
 ``airflow run`` exits with 0 when the run succeeds and 1 when a task fails. When the run cannot start, the code
 says what to fix: 2 the command, such as a task or Dag ID the file lacks, or a ``--conf`` that breaks one of the
 Dag's params; 3 the Dag file, such as an import error or a param's invalid default; 4 the project's setup, such
-as a ``[tool.airflow.secrets]`` table it cannot use, for which ``airflow standalone --project`` exits with 4 too.
+as a ``[tool.airflow.secrets]`` table it cannot use, for which ``airflow standalone --project`` exits with 4
+too, or a coordinator in ``[tool.airflow.sdk]`` that it cannot build.
 Ctrl-C exits with 130. In Python, ``workflow.run()`` raises ``LocalRunDagFileError`` and ``LocalRunConfigError``
 for 3 and 4, and for 2 a ``ValueError`` or ``TypeError``: ``LocalRunUsageError`` when the run refuses what it is
 asked, such as a task the Dag lacks. The three are ``LocalRunError``.
@@ -500,12 +501,18 @@ and how it ended.
 :doc:`apache-airflow-providers-common-ai:use_cases/rank_renewals_by_churn_risk` checks each step of an agent Dag
 with its own task, and reruns one step or one check with ``--task`` and ``--input``.
 
+.. _run-dags-locally:typescript:
+
 Run TypeScript
 --------------
 
-A ``@task.stub`` task whose code is in a TypeScript bundle (see :ref:`typescript-sdk`) runs in a local run as
-it does on a worker, once ``pyproject.toml`` routes its queue to Node, with the keys of a deployment's
-``[sdk]`` section:
+A local run runs TypeScript on Node.js, as a deployment does: a Dag written in TypeScript, and the
+``@task.stub`` tasks of a Python Dag whose code is in a TypeScript bundle (see :ref:`typescript-sdk`). It
+needs Node.js 22 or later on ``PATH``, or named with ``node_executable`` in the coordinator's ``kwargs``.
+
+Send the TypeScript tasks' queue to Node.js in the project's ``pyproject.toml``, with the keys of a
+deployment's ``[sdk]`` section. A project with only TypeScript in it needs a ``pyproject.toml`` for this too,
+at its root, next to its ``package.json``:
 
 .. code-block:: toml
 
@@ -513,28 +520,70 @@ it does on a worker, once ``pyproject.toml`` routes its queue to Node, with the 
     coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }
     queue_to_coordinator = { typescript = "ts" }
 
-The run looks for the bundle in the project, where a deployment looks when the coordinator sets no
-``task_handler_bundle_name``, and runs whatever the bundle holds, so build it with ``airflow-ts-pack`` first.
-It needs Node 22 or later on ``PATH``, or named with ``node_executable`` in the coordinator's ``kwargs``.
-With ``--no-db``, a TypeScript task's runtime reads its inputs, connections, variables and task state from
-the same local services as a Python task, and a missing input or a variable write fails with the same message.
-``--debug`` does not run TypeScript tasks yet.
+Without them, a run of a bundle stops before it starts and says what to add.
 
-A Dag written in TypeScript runs from its bundle, with the same settings:
+Run a Dag written in TypeScript
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Build the bundle at the project's root, then run it. For the ``ts_hello`` Dag of the TypeScript SDK's
+:ref:`quick start <typescript-sdk/quick-start>`:
 
 .. code-block:: bash
 
-    uv run airflow run dist/bundle.min.mjs --dag-id typescript_native_example
+    npx airflow-ts-pack src/main.ts --outdir dist
+    uv run airflow run dist/bundle.min.mjs
 
-Node parses the bundle, as the Dag processor has it parse one in a deployment, and the history keeps the Dag's
-TypeScript source for the UI's Code page. The run refuses a task whose queue does not route to Node, before
-any task runs. ``--task``, ``--input`` and the history work as for a Python Dag: an input stands in for the
-output of an upstream task that a task takes as an argument. The run parses the bundle as it is, so rebuild
-it after each change. It warns when the bundle is older than its entrypoint or a Dag's own file, but not when
-only a module they import changed. With ``--no-db``, one task runs alone in its runtime, given an input for
-each upstream output it takes as an argument; a ``dag.if`` or ``dag.switch`` decider and a ``triggerDagRun``
-task fail there, as they need a Dag run. A Dag written in Java, or in Go as an executable, runs the same way
-with its own coordinator, but only TypeScript is tested.
+.. code-block:: text
+
+    Running Dag 'ts_hello' from bundle.min.mjs (run manual__2026-11-27T10:00:00.000000+00:00)
+      ✓ extract
+    extracted 42 rows
+      ✓ report
+    Succeeded in 11.2s (20.5s total). History: /path/to/my-dags/.airflow
+    Outputs:
+      extract = 42
+
+Node.js reads the Dag from the bundle, as the Dag processor has it do in a deployment, and the history keeps
+the Dag's TypeScript source for the UI's **Code** tab. Give ``--dag-id`` when the bundle declares several
+Dags. Before any task runs, the run refuses a Dag with a task whose queue does not reach Node.js, and names
+the queue to add to ``queue_to_coordinator``; a deployment would fail that task when it starts.
+
+A run reads the bundle, not your source, so build it again after each change. When the bundle is older than
+a file it was built from, the run says so first:
+
+.. code-block:: text
+
+    Warning: dist/bundle.min.mjs is older than src/main.ts, which it was built from, so the run does not have the latest changes. Build it again to run them.
+
+It checks the entrypoint and each Dag's own file, relative to the project's root, but not the modules they
+import.
+
+``--task``, ``--input``, ``--conf``, ``--no-history`` and ``--no-retries`` work as for a Python Dag (see
+:ref:`run-dags-locally:run-one-task`). An input stands in for the output of an upstream task that a task
+takes as an argument:
+
+.. code-block:: bash
+
+    uv run airflow run dist/bundle.min.mjs --task report --input extract=7
+
+With ``--no-db``, one task runs alone on Node.js, with the inputs you give. A ``dag.if`` or ``dag.switch``
+decider and a ``triggerDagRun`` task fail there, as they need a Dag run. ``--debug`` is refused, as it runs
+each task in the run's own Python process.
+
+``airflow standalone --project`` reads the bundle too: the Dag runs on its schedule there, and the Dag
+processor adds no Dag version while the bundle is unchanged.
+
+Run the TypeScript tasks of a Python Dag
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Run the Python Dag file as usual. A ``@task.stub`` task runs on Node.js as it does on a worker: the run looks
+in the project for a bundle that declares the task's Dag, where a deployment looks when the coordinator sets
+no ``task_handler_bundle_name``, so build the bundle first. With ``--no-db``, the task reads its inputs,
+connections, variables and task state from the same local services as a Python task, and a missing input or a
+variable write fails with the same message. ``--debug`` does not run TypeScript tasks yet.
+
+A Dag written in Java, or in Go as an executable, runs the same way with its own coordinator, but only
+TypeScript is tested.
 
 Limits
 ------
