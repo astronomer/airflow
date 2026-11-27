@@ -20,7 +20,7 @@
 use std::{
     ffi::OsString,
     io::{BufRead, BufReader, ErrorKind, Read},
-    net::{TcpListener, TcpStream},
+    net::{Shutdown, TcpListener, TcpStream},
     process::{Child, Command, ExitStatus, Stdio},
     sync::{
         Arc, Mutex,
@@ -48,7 +48,7 @@ const RUNTIME_ENV_DEFAULTS: &[(&str, &str)] = &[
 
 /// Grace period after the execution timeout before the runtime is killed, as Airflow gives.
 const KILL_GRACE: Duration = Duration::from_secs(5);
-/// How long to wait for the runtime to exit once it closed the comm socket.
+/// How long to wait for the runtime to exit once the supervisor is done with the comm socket.
 const EXIT_WAIT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Serialize)]
@@ -295,6 +295,11 @@ impl Runtime {
 
     /// Wait for the runtime to exit and its output to drain.
     pub fn finish(mut self) -> Result<Exit> {
+        // Airflow's supervisor closes the comm socket once it reads EOF there, and a runtime
+        // may wait for that before exiting: Node keeps a half-closed socket, and so the
+        // process, alive until the peer closes its side too. Only the write side is shut,
+        // as closing with unread data would reset the connection.
+        let _ = self.comm.shutdown(Shutdown::Write);
         let started = Instant::now();
         let status = loop {
             if let Some(status) = self.child.lock().unwrap().try_wait()? {
@@ -318,5 +323,27 @@ impl Runtime {
             status,
             timed_out: self.timed_out.load(Ordering::SeqCst),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A runtime that, like Node with a half-closed socket, exits only once the comm socket closes.
+    #[test]
+    fn finish_lets_a_runtime_waiting_for_comm_eof_exit() {
+        let script = r#"
+            comm=${0#--comm=}; logs=${1#--logs=}
+            exec 3<>"/dev/tcp/${comm%:*}/${comm##*:}" 4<>"/dev/tcp/${logs%:*}/${logs##*:}"
+            cat <&3 >/dev/null
+        "#;
+        let command = ["bash", "-c", script].map(OsString::from);
+        let runtime =
+            Runtime::launch(&command, Duration::from_secs(5), &LogSink::new(false)).unwrap();
+        let started = Instant::now();
+        let exit = runtime.finish().unwrap();
+        assert!(exit.status.success(), "{:?}", exit.status);
+        assert!(started.elapsed() < EXIT_WAIT);
     }
 }
