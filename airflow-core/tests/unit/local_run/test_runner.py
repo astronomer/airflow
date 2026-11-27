@@ -29,6 +29,7 @@ import json
 import os
 import pickle
 import re
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -66,6 +67,7 @@ from airflow.sdk.exceptions import (
 from airflow.utils.types import DagRunTriggeredByType
 
 from tests_common.test_utils.config import conf_vars
+from tests_common.test_utils.paths import AIRFLOW_ROOT_PATH
 
 PIPELINE = """
 from airflow.sdk import dag, task
@@ -1094,6 +1096,83 @@ def test_project_secrets_backend_that_cannot_be_created_stops_the_run(project):
     ):
         run_dag_file(source)
     assert not (project / ".airflow" / "airflow.db").exists()
+
+
+def test_project_coordinators_that_cannot_be_used_stop_the_run(project):
+    (project / "pyproject.toml").write_text(
+        '[tool.airflow.sdk]\nqueue_to_coordinator = { typescript = "ts" }\n'
+    )
+    source = write_dag_file(project, "pipeline.py", PIPELINE)
+
+    with pytest.raises(
+        LocalRunConfigError,
+        match=r"\[tool\.airflow\.sdk\] in pyproject\.toml cannot be used: "
+        r"\[sdk\] queue_to_coordinator references invalid coordinator key: 'ts'",
+    ):
+        run_dag_file(source)
+
+
+TS_EXAMPLE = AIRFLOW_ROOT_PATH / "ts-sdk" / "example"
+
+
+@pytest.fixture
+def typescript_project(project) -> Path:
+    """A project with the TypeScript SDK's example Dag and its bundle, which run on Node 22 or later."""
+    bundle = TS_EXAMPLE / "dist" / "bundle.min.mjs"
+    if not bundle.is_file():
+        pytest.skip(f"{bundle} is not built; ts-sdk/example/README.md says how to build it")
+    node = shutil.which("node")
+    version = subprocess.check_output([node, "--version"], text=True).strip() if node else "none"
+    if not node or int(version.removeprefix("v").split(".")[0]) < 22:
+        pytest.skip(f"The TypeScript SDK needs Node 22 or later on PATH, not {version}")
+    (project / "pyproject.toml").write_text(
+        textwrap.dedent(
+            """
+            [project]
+            name = "demo"
+            version = "0"
+
+            [tool.airflow.sdk]
+            coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }
+            queue_to_coordinator = { typescript = "ts" }
+            """
+        )
+    )
+    shutil.copy(TS_EXAMPLE / "dags" / "typescript_example.py", project)
+    (project / "dist").mkdir()
+    shutil.copy(bundle, project / "dist")
+    return project
+
+
+def test_typescript_stub_tasks_run_on_node(typescript_project, tmp_path):
+    connections = tmp_path / "connections.json"
+    connections.write_text(
+        json.dumps({"typescript_example_http": {"conn_type": "http", "host": "example.com", "login": "me"}})
+    )
+
+    result = run_dag_file(typescript_project / "typescript_example.py", connections_file=connections)
+
+    assert result.state == "success", result.failures
+    assert result.output("build_message") == {
+        "message": "hello from TypeScript; upstream=hello from Python",
+        "upstream": "hello from Python",
+    }
+    assert result.output("build_message", key="typescript_message") == (
+        "hello from TypeScript; upstream=hello from Python"
+    )
+    assert result.output("read_connection") == {
+        "id": "typescript_example_http",
+        "type": "http",
+        "host": "example.com",
+        "login": "me",
+        "hasPassword": False,
+    }
+    assert result.output("write_and_read_task_state") == {
+        "jobId": result.run_id,
+        "scratchBeforeDelete": {"attempt": 1},
+        "scratchAfterDelete": None,
+    }
+    assert result.output("clear_task_state") == {"afterClear": None}
 
 
 GROUPED = """

@@ -500,6 +500,25 @@ and how it ended.
 :doc:`apache-airflow-providers-common-ai:use_cases/rank_renewals_by_churn_risk` checks each step of an agent Dag
 with its own task, and reruns one step or one check with ``--task`` and ``--input``.
 
+Run TypeScript tasks
+--------------------
+
+A ``@task.stub`` task whose code is in a TypeScript bundle (see :ref:`typescript-sdk`) runs in a local run as
+it does on a worker, once ``pyproject.toml`` routes its queue to Node, with the keys of a deployment's
+``[sdk]`` section:
+
+.. code-block:: toml
+
+    [tool.airflow.sdk]
+    coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }
+    queue_to_coordinator = { typescript = "ts" }
+
+The run looks for the bundle in the project, where a deployment looks when the coordinator sets no
+``task_handler_bundle_name``, and runs whatever the bundle holds, so build it with ``airflow-ts-pack`` first.
+It needs Node 22 or later on ``PATH``, or named with ``node_executable`` in the coordinator's ``kwargs``.
+``--debug`` and ``--no-db`` do not run TypeScript tasks yet, and no local run runs a Dag written in
+TypeScript.
+
 Limits
 ------
 

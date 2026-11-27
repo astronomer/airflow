@@ -57,6 +57,9 @@ CONSOLE_LEVELS = {
     "airflow.task.hooks": logging.INFO,
     "task": logging.WARNING,
     "supervisor": logging.WARNING,
+    # A non-Python task's coordinator and, by its own loggers' names, the TypeScript SDK's runtime.
+    "coordinators": logging.WARNING,
+    "ts-sdk": logging.WARNING,
     "alembic": logging.WARNING,
     "sqlalchemy": logging.WARNING,
 }

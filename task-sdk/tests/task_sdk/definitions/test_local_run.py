@@ -320,6 +320,35 @@ class TestBuildChildEnvironment:
         with pytest.raises(LocalRunConfigError, match="takes a list of class names"):
             build_child_environment({}, home=tmp_path, root=tmp_path)
 
+    def test_project_routes_queues_to_runtimes_as_a_deployments_sdk_section_does(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            "[tool.airflow.sdk]\n"
+            'coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }\n'
+            'queue_to_coordinator = { typescript = "ts" }\n'
+        )
+        base = {"AIRFLOW__SDK__QUEUE_TO_COORDINATOR": '{"typescript": "deployment"}'}
+
+        env = build_child_environment(base, home=tmp_path, root=tmp_path)
+
+        assert json.loads(env["AIRFLOW__SDK__COORDINATORS"]) == {
+            "ts": {"classpath": "airflow.sdk.coordinators.node.NodeCoordinator"}
+        }
+        assert json.loads(env["AIRFLOW__SDK__QUEUE_TO_COORDINATOR"]) == {"typescript": "ts"}
+
+    @pytest.mark.parametrize(
+        "pyproject",
+        [
+            pytest.param('[tool.airflow]\nsdk = "node"\n', id="not-a-table"),
+            pytest.param('[tool.airflow.sdk]\nqueue_to_coordinator = "ts"\n', id="option-not-a-table"),
+            pytest.param("[tool.airflow.sdk]\ncoordinator = {}\n", id="unknown-option"),
+        ],
+    )
+    def test_invalid_project_sdk_settings_are_refused(self, tmp_path, pyproject):
+        (tmp_path / "pyproject.toml").write_text(pyproject)
+
+        with pytest.raises(LocalRunConfigError, match="takes coordinators and queue_to_coordinator tables"):
+            build_child_environment({}, home=tmp_path, root=tmp_path)
+
     def test_database_free_run_gets_a_fernet_key_and_no_database(self, tmp_path):
         env = build_child_environment({}, home=tmp_path, root=tmp_path, no_db=True)
 

@@ -72,6 +72,8 @@ _SECRETS_BACKEND_KWARG_PREFIX = "AIRFLOW__SECRETS__BACKEND_KWARG__"
 PROJECT_SECRETS_BACKEND = "airflow.local_run.secrets_backend.LocalRunSecretsBackend"
 # The default of ``[core] allowed_deserialization_classes``, which a project's classes are added to.
 _AIRFLOW_DESERIALIZATION_CLASSES = "airflow.*"
+# The ``[sdk]`` options that ``[tool.airflow.sdk]`` in a project's ``pyproject.toml`` takes.
+_PROJECT_SDK_OPTIONS = frozenset({"coordinators", "queue_to_coordinator"})
 
 # What the run's process says the user has to fix, when the run could not start.
 _SETUP_ERRORS: dict[str, type[LocalRunError]] = {
@@ -200,6 +202,7 @@ def build_child_environment(
     the secrets backend the project's ``pyproject.toml`` names, which keep its credentials out of that file;
     a backend set in the environment is not, as it may be a deployment's. The classes that file allows tasks
     to deserialize are allowed on top of Airflow's own, as a deployment's ``[core]`` setting would allow them.
+    The runtimes it routes queues to, such as TypeScript's, are set as a deployment's ``[sdk]`` section does.
     """
     env = {
         name: value
@@ -244,6 +247,8 @@ def build_child_environment(
         env["AIRFLOW__CORE__ALLOWED_DESERIALIZATION_CLASSES"] = " ".join(
             [_AIRFLOW_DESERIALIZATION_CLASSES, *classes]
         )
+    for option, value in read_project_sdk_settings(root).items():
+        env[f"AIRFLOW__SDK__{option.upper()}"] = json.dumps(value)
     return env
 
 
@@ -268,6 +273,21 @@ def read_project_deserialization_classes(root: Path) -> list[str]:
             'class names, which can be glob patterns, e.g. ["my_project.models.*"]'
         )
     return classes
+
+
+def read_project_sdk_settings(root: Path) -> dict[str, dict[str, Any]]:
+    """Return the ``[sdk]`` options that ``[tool.airflow.sdk]`` in the project's ``pyproject.toml`` sets."""
+    table = read_project_settings(root).get("sdk", {})
+    if (
+        not isinstance(table, dict)
+        or table.keys() - _PROJECT_SDK_OPTIONS
+        or not all(isinstance(value, dict) for value in table.values())
+    ):
+        raise LocalRunConfigError(
+            f"[tool.airflow.sdk] in {root / 'pyproject.toml'} takes coordinators and queue_to_coordinator "
+            'tables, as airflow.cfg\'s [sdk] section does, e.g. queue_to_coordinator = { typescript = "ts" }'
+        )
+    return table
 
 
 def read_project_secrets_backend(root: Path) -> dict[str, Any] | None:

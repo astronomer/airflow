@@ -30,7 +30,7 @@ import warnings
 from contextlib import suppress
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import psutil
 
@@ -42,12 +42,20 @@ from airflow.local_run.fork_server import ForkServer, ForkServerError
 from airflow.local_run.logs import capture_task_log
 from airflow.models.trigger import TRIGGER_FAIL_REPR, Trigger, TriggerFailureReason
 from airflow.sdk._shared.secrets_masker import reset_secrets_masker
+from airflow.sdk.coordinators.python import PythonCoordinator  # noqa: SDK001
 from airflow.sdk.definitions.dag import FINISHED_STATES
 from airflow.sdk.exceptions import TaskDeferralTimeout
+from airflow.sdk.execution_time.coordinator import (  # noqa: SDK001
+    BaseCoordinator,
+    InvalidCoordinatorError,
+    TaskLaunchError,
+    get_coordinator_manager,
+)
 from airflow.sdk.execution_time.supervisor import (
     ActivitySubprocess,
     InProcessTestSupervisor,
     _configure_logging,
+    _fail_task_before_runtime,
 )
 from airflow.utils.state import TaskInstanceState
 
@@ -55,9 +63,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from sqlalchemy.orm import Session
+    from structlog.typing import FilteringBoundLogger
 
     from airflow.models.taskinstance import TaskInstance
+    from airflow.sdk.api.client import Client  # noqa: SDK001
     from airflow.sdk.types import Operator
+
+_T = TypeVar("_T")
 
 # How long a stopped try gets to clean up after SIGTERM, e.g. in its operator's on_kill, before it is interrupted.
 INTERRUPT_DELAY = 1.0
@@ -70,13 +82,15 @@ class SupervisedTries:
     Run task tries one at a time, each in a process of its own, using the run loop's session.
 
     With a ``fork_server``, it forks each try's process. Without one, or once it is gone, the supervisor starts
-    them, which on macOS means a new interpreter for each.
+    them, which on macOS means a new interpreter for each. A task whose queue ``[sdk] queue_to_coordinator``
+    routes to another runtime, such as TypeScript's, runs in a process that runtime's coordinator starts.
     """
 
     def __init__(self, *, session: Session, fork_server: ForkServer | None = None) -> None:
         self._session = session
         self._fork_server = fork_server
-        self._running: ActivitySubprocess | None = None
+        # Returns the process groups of the running try; a new callable for each try.
+        self._running: Callable[[], list[int]] | None = None
         self._left_behind: list[psutil.Process] = []
 
     def run(self, ti: TaskInstance, task: Operator) -> tuple[str, Path]:
@@ -97,6 +111,13 @@ class SupervisedTries:
                 # The Execution API updated the row through a session of its own.
                 self._session.refresh(ti)
                 log_path = Path(conf.get("logging", "base_log_folder"), workload.log_path)
+                if state is None:
+                    # As below, failing a try that is to be retried archives it.
+                    if ti.working_set is None:
+                        return TaskInstanceState.UP_FOR_RETRY, log_path
+                    if TYPE_CHECKING:
+                        assert ti.state is not None
+                    return ti.state, log_path
                 if state != TaskInstanceState.DEFERRED:
                     return state, log_path
                 self._resume_after_trigger(ti, workload, log_path)
@@ -126,61 +147,118 @@ class SupervisedTries:
         gets the terminal's interrupt, which stops plain Python code, and after ``KILL_DELAY`` it is killed,
         with whatever it started outside its group.
         """
-        if (process := self._running) is None:
+        if (running := self._running) is None:
             return False
-        self._left_behind = find_descendants(process.pid)
-        _signal_group(process.pid, signal.SIGTERM)
+        groups = running()
+        self._left_behind = [process for group in groups for process in find_descendants(group)]
+        _signal_groups(groups, signal.SIGTERM)
         # SIGINT sent with SIGTERM would be handled first, and end the task before its operator cleans up.
-        _call_later(INTERRUPT_DELAY, self._interrupt_if_running, process)
-        _call_later(KILL_DELAY, self._kill_if_running, process)
+        _call_later(INTERRUPT_DELAY, self._interrupt_if_running, running)
+        _call_later(KILL_DELAY, self._kill_if_running, running)
         return True
 
-    def _interrupt_if_running(self, process: ActivitySubprocess) -> None:
-        if self._running is process:
-            _signal_group(process.pid, signal.SIGINT)
+    def _interrupt_if_running(self, running: Callable[[], list[int]]) -> None:
+        if self._running is running:
+            _signal_groups(running(), signal.SIGINT)
 
-    def _kill_if_running(self, process: ActivitySubprocess) -> None:
-        if self._running is process:
-            _signal_group(process.pid, signal.SIGKILL)
+    def _kill_if_running(self, running: Callable[[], list[int]]) -> None:
+        if self._running is running:
+            _signal_groups(running(), signal.SIGKILL)
             # They can hold the try's sockets, which the supervisor waits on.
             for left_behind in self._left_behind:
                 with suppress(psutil.NoSuchProcess):
                     left_behind.kill()
 
-    def _supervise(self, workload: ExecuteTask, relative_log_path: str, task: Operator) -> str:
-        """Run the workload as ``supervise_task`` does, but keep this process's Ctrl-C handler installed."""
+    def _supervise(self, workload: ExecuteTask, relative_log_path: str, task: Operator) -> str | None:
+        """
+        Run the workload as ``supervise_task`` does, but keep this process's Ctrl-C handler installed.
+
+        Return the state the supervisor reported, or None when the task's runtime could not be launched. The
+        try is then failed with the reason, as on a worker, and its row holds the outcome.
+        """
         client = InProcessTestSupervisor._api_client(task.dag, workload.ti.id)
         logger, log_file = _configure_logging(relative_log_path, client)
+        logger = logger.bind(ti_id=str(workload.ti.id))
         try:
             reset_secrets_masker()
-            with warnings.catch_warnings():
-                # The Execution API's thread is idle while this thread forks, as in the Dag processor, which
-                # forks the same way.
-                warnings.filterwarnings("ignore", message=r".* is multi-threaded, use of fork\(\)")
-                start = partial(
-                    ActivitySubprocess.start,
-                    what=workload.ti,  # type: ignore[arg-type]  # duck-types as the SDK's TaskInstance
-                    dag_rel_path=workload.dag_rel_path,
-                    bundle_info=workload.bundle_info,
-                    client=client,
-                    logger=logger.bind(ti_id=str(workload.ti.id)),
-                    subprocess_logs_to_stdout=True,
-                )
-                try:
-                    process = start(launcher=self._fork_server)
-                except ForkServerError:
-                    self._fork_server = None
-                    process = start()
-            self._running = process
             try:
-                process.wait()
-            finally:
-                self._running = None
-                stop_processes(self._left_behind)
-                self._left_behind = []
-            return process.final_state
+                coordinator = get_coordinator(workload.ti.queue)
+                if isinstance(coordinator, PythonCoordinator):
+                    return self._run_python_try(workload, client, logger)
+                return self._run_coordinator_try(coordinator, workload, client, logger)
+            except TaskLaunchError as e:
+                _fail_task_before_runtime(
+                    ti=workload.ti,  # type: ignore[arg-type]  # duck-types as the SDK's TaskInstance
+                    client=client,
+                    logger=logger,
+                    error=e,
+                )
+                return None
         finally:
             log_file.close()
+
+    def _run_python_try(self, workload: ExecuteTask, client: Client, logger: FilteringBoundLogger) -> str:
+        with warnings.catch_warnings():
+            # The Execution API's thread is idle while this thread forks, as in the Dag processor, which
+            # forks the same way.
+            warnings.filterwarnings("ignore", message=r".* is multi-threaded, use of fork\(\)")
+            start = partial(
+                ActivitySubprocess.start,
+                what=workload.ti,  # type: ignore[arg-type]  # duck-types as the SDK's TaskInstance
+                dag_rel_path=workload.dag_rel_path,
+                bundle_info=workload.bundle_info,
+                client=client,
+                logger=logger,
+                subprocess_logs_to_stdout=True,
+            )
+            try:
+                process = start(launcher=self._fork_server)
+            except ForkServerError:
+                self._fork_server = None
+                process = start()
+        self._wait_for_try(lambda: [process.pid], process.wait)
+        return process.final_state
+
+    def _run_coordinator_try(
+        self,
+        coordinator: BaseCoordinator,
+        workload: ExecuteTask,
+        client: Client,
+        logger: FilteringBoundLogger,
+    ) -> str:
+        result = self._wait_for_try(
+            lambda: self._find_runtime_groups(),
+            partial(
+                coordinator.execute_task,
+                what=workload.ti,  # type: ignore[arg-type]  # duck-types as the SDK's TaskInstance
+                dag_rel_path=workload.dag_rel_path,
+                bundle_info=workload.bundle_info,
+                client=client,
+                logger=logger,
+                subprocess_logs_to_stdout=True,
+            ),
+        )
+        return result.final_state
+
+    def _wait_for_try(self, running: Callable[[], list[int]], wait: Callable[[], _T]) -> _T:
+        self._running = running
+        try:
+            return wait()
+        finally:
+            self._running = None
+            stop_processes(self._left_behind)
+            self._left_behind = []
+
+    def _find_runtime_groups(self) -> list[int]:
+        """
+        Return the process group of the runtime a coordinator started for the running try, once it started.
+
+        The coordinator does not hand out the runtime's process, but starts it from this process as the leader
+        of a group of its own. This process's other children are the fork server, and helpers that lead no
+        group, which signalling the groups skips.
+        """
+        fork_server_pid = self._fork_server.pid if self._fork_server is not None else None
+        return [child.pid for child in psutil.Process().children() if child.pid != fork_server_pid]
 
     def _resume_after_trigger(self, ti: TaskInstance, workload: ExecuteTask, log_path: Path) -> None:
         """Run the deferred try's trigger here, then schedule the task to resume, as the triggerer would."""
@@ -212,16 +290,29 @@ class SupervisedTries:
         self._session.refresh(ti)
 
 
+def get_coordinator(queue: str | None) -> BaseCoordinator:
+    """
+    Return the coordinator that ``[sdk] queue_to_coordinator`` routes ``queue`` to, as a worker picks it.
+
+    :raises TaskLaunchError: when the coordinator cannot be built, which retrying cannot fix.
+    """
+    try:
+        return get_coordinator_manager().for_queue(queue or conf.get("operators", "default_queue"))
+    except InvalidCoordinatorError as e:
+        raise TaskLaunchError(str(e), retryable=False) from e
+
+
 def _call_later(delay: float, func: Callable[..., None], *args: Any) -> None:
     timer = threading.Timer(delay, func, args=args)
     timer.daemon = True
     timer.start()
 
 
-def _signal_group(pid: int, signum: signal.Signals) -> None:
-    # The supervisor starts each try as the leader of its own process group.
-    with suppress(ProcessLookupError):
-        os.killpg(pid, signum)
+def _signal_groups(pids: list[int], signum: signal.Signals) -> None:
+    # The supervisor and the coordinators start each try as the leader of its own process group.
+    for pid in pids:
+        with suppress(ProcessLookupError):
+            os.killpg(pid, signum)
 
 
 def find_descendants(pid: int) -> list[psutil.Process]:

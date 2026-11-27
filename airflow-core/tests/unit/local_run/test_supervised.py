@@ -34,6 +34,12 @@ from airflow.local_run.fork_server import ForkServer, ForkServerError
 from airflow.local_run.supervised import SupervisedTries
 from airflow.models.taskinstance import TaskInstance
 from airflow.models.trigger import Trigger
+from airflow.sdk.execution_time.coordinator import (
+    BaseCoordinator,
+    CoordinatorManager,
+    InvalidCoordinatorError,
+    TaskLaunchError,
+)
 from airflow.sdk.execution_time.supervisor import ActivitySubprocess
 from airflow.utils.state import TaskInstanceState
 
@@ -48,6 +54,33 @@ def ti():
     return mock.create_autospec(TaskInstance, instance=True)
 
 
+@pytest.fixture
+def workload():
+    # The workload's fields are pydantic fields, which autospec does not see.
+    return mock.NonCallableMock(spec=["ti", "dag_rel_path", "bundle_info"], ti=mock.Mock(queue="typescript"))
+
+
+@pytest.fixture
+def coordinator():
+    with mock.patch.object(supervised, "get_coordinator_manager", autospec=True) as get_manager:
+        manager = mock.create_autospec(CoordinatorManager, instance=True)
+        get_manager.return_value = manager
+        manager.for_queue.return_value = mock.create_autospec(BaseCoordinator, instance=True)
+        yield manager.for_queue.return_value
+
+
+@pytest.fixture
+def api_client():
+    with (
+        mock.patch.object(supervised, "reset_secrets_masker", autospec=True),
+        mock.patch.object(
+            supervised, "_configure_logging", autospec=True, return_value=(mock.Mock(), mock.Mock())
+        ),
+        mock.patch.object(supervised.InProcessTestSupervisor, "_api_client", autospec=True) as api_client,
+    ):
+        yield api_client.return_value
+
+
 def test_stop_without_a_running_try_reports_none(session):
     assert SupervisedTries(session=session).stop() is False
 
@@ -60,9 +93,7 @@ def test_stop_lets_the_try_clean_up_then_interrupts_and_kills_it_if_it_keeps_run
     killpg, timer, find_descendants, session, still_running, escalated
 ):
     tries = SupervisedTries(session=session)
-    process = mock.create_autospec(ActivitySubprocess, instance=True)
-    process.pid = 123
-    tries._running = process
+    tries._running = running = mock.Mock(return_value=[123])
     left_behind = mock.create_autospec(psutil.Process, instance=True)
     find_descendants.return_value = [left_behind]
 
@@ -70,13 +101,13 @@ def test_stop_lets_the_try_clean_up_then_interrupts_and_kills_it_if_it_keeps_run
 
     killpg.assert_called_once_with(123, signal.SIGTERM)
     assert timer.call_args_list == [
-        mock.call(supervised.INTERRUPT_DELAY, tries._interrupt_if_running, args=(process,)),
-        mock.call(supervised.KILL_DELAY, tries._kill_if_running, args=(process,)),
+        mock.call(supervised.INTERRUPT_DELAY, tries._interrupt_if_running, args=(running,)),
+        mock.call(supervised.KILL_DELAY, tries._kill_if_running, args=(running,)),
     ]
     if not still_running:
         tries._running = None
-    tries._interrupt_if_running(process)
-    tries._kill_if_running(process)
+    tries._interrupt_if_running(running)
+    tries._kill_if_running(running)
     escalation = [mock.call(123, signal.SIGINT), mock.call(123, signal.SIGKILL)]
     assert killpg.call_args_list[1:] == (escalation if escalated else [])
     assert left_behind.kill.called is escalated
@@ -104,17 +135,14 @@ def test_stop_processes_kills_one_that_ignores_sigterm():
     assert ignores.wait(timeout=10) == -signal.SIGKILL
 
 
-@mock.patch.object(supervised, "reset_secrets_masker", autospec=True)
-@mock.patch.object(supervised, "_configure_logging", autospec=True, return_value=(mock.Mock(), mock.Mock()))
-@mock.patch.object(supervised.InProcessTestSupervisor, "_api_client", autospec=True)
+@pytest.mark.usefixtures("api_client")
 @mock.patch.object(supervised.ActivitySubprocess, "start", autospec=True)
-def test_tries_start_without_the_fork_server_once_it_is_gone(start, *_):
+def test_tries_start_without_the_fork_server_once_it_is_gone(start, workload):
     process = mock.create_autospec(ActivitySubprocess, instance=True)
     start.side_effect = [ForkServerError("gone"), process, process]
     fork_server = mock.create_autospec(ForkServer, instance=True)
     tries = SupervisedTries(session=mock.create_autospec(Session, instance=True), fork_server=fork_server)
-    # The workload's fields are pydantic fields, which autospec does not see.
-    workload = mock.NonCallableMock(spec=["ti", "dag_rel_path", "bundle_info"])
+    workload.ti.queue = "default"
     task = mock.NonCallableMock(spec=["dag"])
 
     assert tries._supervise(workload, "attempt=1.log", task) is process.final_state
@@ -122,6 +150,112 @@ def test_tries_start_without_the_fork_server_once_it_is_gone(start, *_):
 
     assert [call.kwargs.get("launcher") for call in start.call_args_list] == [fork_server, None, None]
     process.wait.assert_called_with()
+
+
+@mock.patch.object(supervised.ActivitySubprocess, "start", autospec=True)
+def test_task_routed_to_another_runtime_runs_through_its_coordinator(
+    start, session, workload, coordinator, api_client
+):
+    coordinator.execute_task.return_value = BaseCoordinator.ExecutionResult(0, TaskInstanceState.SUCCESS)
+
+    state = SupervisedTries(session=session)._supervise(
+        workload, "attempt=1.log", mock.NonCallableMock(spec=["dag"])
+    )
+
+    assert state == TaskInstanceState.SUCCESS
+    supervised.get_coordinator_manager.return_value.for_queue.assert_called_once_with("typescript")
+    coordinator.execute_task.assert_called_once_with(
+        what=workload.ti,
+        dag_rel_path=workload.dag_rel_path,
+        bundle_info=workload.bundle_info,
+        client=api_client,
+        logger=mock.ANY,
+        subprocess_logs_to_stdout=True,
+    )
+    start.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("failure", "expected"),
+    [
+        pytest.param(
+            TaskLaunchError("The runtime exited with 1 before connecting"),
+            TaskLaunchError("The runtime exited with 1 before connecting"),
+            id="launch",
+        ),
+        pytest.param(
+            InvalidCoordinatorError("Cannot import coordinator 'ts'"),
+            TaskLaunchError("Cannot import coordinator 'ts'", retryable=False),
+            id="coordinator",
+        ),
+    ],
+)
+@mock.patch.object(supervised, "_fail_task_before_runtime", autospec=True)
+def test_task_whose_runtime_cannot_launch_fails_as_on_a_worker(
+    fail, session, workload, coordinator, api_client, failure, expected
+):
+    if isinstance(failure, InvalidCoordinatorError):
+        supervised.get_coordinator_manager.return_value.for_queue.side_effect = failure
+    else:
+        coordinator.execute_task.side_effect = failure
+
+    state = SupervisedTries(session=session)._supervise(
+        workload, "attempt=1.log", mock.NonCallableMock(spec=["dag"])
+    )
+
+    assert state is None
+    fail.assert_called_once_with(ti=workload.ti, client=api_client, logger=mock.ANY, error=mock.ANY)
+    error = fail.call_args.kwargs["error"]
+    assert (str(error), error.retryable) == (str(expected), expected.retryable)
+
+
+@pytest.mark.parametrize(
+    ("working_set", "state", "expected"),
+    [
+        (None, TaskInstanceState.FAILED, TaskInstanceState.UP_FOR_RETRY),
+        (True, TaskInstanceState.FAILED, TaskInstanceState.FAILED),
+    ],
+)
+@mock.patch.object(SupervisedTries, "_supervise", autospec=True, return_value=None)
+@mock.patch.object(supervised.ExecuteTask, "make", autospec=True)
+def test_try_whose_runtime_did_not_launch_reports_the_outcome_in_its_row(
+    make, _, session, ti, working_set, state, expected
+):
+    make.return_value = mock.NonCallableMock(spec=["log_path"], log_path="attempt=1.log")
+    ti.working_set = working_set
+    ti.state = state
+
+    outcome, _ = SupervisedTries(session=session).run(ti, mock.sentinel.task)
+
+    assert outcome == expected
+
+
+def test_interrupt_reaches_the_process_group_a_coordinator_started(
+    session, workload, coordinator, api_client
+):
+    # A process of this one's that is not the try's, as the fork server is.
+    fork_server_process = subprocess.Popen(["sleep", "60"], process_group=0)
+    fork_server = mock.create_autospec(ForkServer, instance=True)
+    fork_server.pid = fork_server_process.pid
+    tries = SupervisedTries(session=session, fork_server=fork_server)
+    exit_codes = []
+
+    def execute_task(**_):
+        runtime = subprocess.Popen(["sleep", "60"], process_group=0)
+        # What Ctrl-C does while the runtime runs.
+        tries.stop()
+        exit_codes.append(runtime.wait(timeout=10))
+        return BaseCoordinator.ExecutionResult(exit_codes[-1], TaskInstanceState.FAILED)
+
+    coordinator.execute_task.side_effect = execute_task
+    try:
+        tries._supervise(workload, "attempt=1.log", mock.NonCallableMock(spec=["dag"]))
+
+        assert exit_codes == [-signal.SIGTERM]
+        assert fork_server_process.poll() is None
+    finally:
+        fork_server_process.kill()
+        fork_server_process.wait()
 
 
 @pytest.mark.parametrize(

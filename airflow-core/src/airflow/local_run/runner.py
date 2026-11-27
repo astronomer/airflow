@@ -90,6 +90,7 @@ from airflow.sdk.definitions.local_run import (
 )
 from airflow.sdk.definitions.mappedoperator import MappedOperator
 from airflow.sdk.definitions.xcom_arg import XComArg
+from airflow.sdk.execution_time.coordinator import get_coordinator_manager  # noqa: SDK001
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import CLASSNAME
 from airflow.serialization.definitions.notset import is_arg_set
@@ -214,6 +215,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     keep_history = request.get("keep_history", True)
     retries = request.get("retries", True)
     check_project_secrets_backend()
+    check_project_coordinators()
     if keep_history:
         ensure_database(home)
     else:
@@ -1215,6 +1217,14 @@ def check_project_secrets_backend() -> None:
                     f"The secrets backend {backend.backend_path} that pyproject.toml names could not be set up: "
                     f"{type(e).__name__}: {e}"
                 ) from None
+
+
+def check_project_coordinators() -> None:
+    """Load the coordinators ``[tool.airflow.sdk]`` configures now, so a mistake in them stops the run."""
+    try:
+        get_coordinator_manager()
+    except ValueError as e:
+        raise ConfigSetupError(f"[tool.airflow.sdk] in pyproject.toml cannot be used: {e}") from None
 
 
 def ensure_database(home: Path) -> None:

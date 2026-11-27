@@ -98,6 +98,10 @@ def test_terminal_hides_airflow_progress_but_not_task_output(console, capsys):
     logging.getLogger("my.module").info("user record")
     structlog.get_logger("supervisor").info("supervisor progress")
     structlog.get_logger("supervisor").warning("supervisor warning")
+    structlog.get_logger("coordinators.subprocess").info("coordinator progress")
+    structlog.get_logger("coordinators.subprocess").warning("coordinator warning")
+    structlog.get_logger("ts-sdk.runtime").info("runtime progress")
+    structlog.get_logger("ts-sdk.runtime").warning("runtime warning")
 
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -109,9 +113,17 @@ def test_terminal_hides_airflow_progress_but_not_task_output(console, capsys):
         "migration error",
         "user record",
         "supervisor warning",
+        "coordinator warning",
+        "runtime warning",
     ):
         assert line in shown
-    for line in ("internal progress", "migration progress", "supervisor progress"):
+    for line in (
+        "internal progress",
+        "migration progress",
+        "supervisor progress",
+        "coordinator progress",
+        "runtime progress",
+    ):
         assert line not in shown
 
 
