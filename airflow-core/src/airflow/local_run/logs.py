@@ -51,15 +51,18 @@ from airflow.sdk.log import logging_processors, mask_logs
 if TYPE_CHECKING:
     from structlog.typing import EventDict, WrappedLogger
 
+# The root of the TypeScript SDK runtime's loggers, which log about running a task as the task runner does.
+TS_SDK_LOGGER = "ts-sdk"
+
 # Lowest level shown on the terminal, by logger-name prefix; the longest matching prefix wins.
 CONSOLE_LEVELS = {
     "airflow": logging.WARNING,
     "airflow.task.hooks": logging.INFO,
     "task": logging.WARNING,
     "supervisor": logging.WARNING,
-    # A non-Python task's coordinator and, by its own loggers' names, the TypeScript SDK's runtime.
+    # A non-Python task's coordinator.
     "coordinators": logging.WARNING,
-    "ts-sdk": logging.WARNING,
+    TS_SDK_LOGGER: logging.WARNING,
     "alembic": logging.WARNING,
     "sqlalchemy": logging.WARNING,
 }
@@ -182,9 +185,10 @@ class _TaskLogFilter:
     """
     Pass the lines a deployed task's log would hold, leaving out what the task runner logs about running it.
 
-    The task runner's and supervisor's lines below WARNING, with the sections they open (Pre Execute, Post
-    Execute), stay off. A line in a section the task's code opens, such as a tool call, is shown under the
-    section's name, and without the logger's name when it opened the section.
+    The task runner's, the TypeScript SDK runtime's and the supervisor's lines below WARNING, with the
+    sections the runner and supervisor open (Pre Execute, Post Execute), stay off. A line in a section the
+    task's code opens, such as a tool call, is shown under the section's name, and without the logger's name
+    when it opened the section.
     """
 
     def __init__(self) -> None:
@@ -212,7 +216,7 @@ class _TaskLogFilter:
         if (
             level < logging.WARNING
             and name not in OUTPUT_LOGGERS
-            and (self.in_runner_section or name in _TASK_RUNNER_LOGGERS)
+            and (self.in_runner_section or name in _TASK_RUNNER_LOGGERS or _is_within(name, TS_SDK_LOGGER))
         ):
             raise structlog.DropEvent
         if level >= logging.ERROR and any(_is_within(name, prefix) for prefix in IMPORT_ERROR_LOGGERS):

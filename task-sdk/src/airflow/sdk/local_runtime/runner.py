@@ -27,7 +27,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import structlog
@@ -42,6 +42,9 @@ from airflow.sdk.api.datamodels._generated import (
     TaskInstance,
     TIRunContext,
 )
+from airflow.sdk.bases.decorator import DecoratedOperator
+from airflow.sdk.coordinators._subprocess import SubprocessCoordinator
+from airflow.sdk.coordinators.python import PythonCoordinator
 from airflow.sdk.definitions._internal.loop import get_enclosing_loop
 from airflow.sdk.definitions.dag import DAG
 from airflow.sdk.definitions.local_run import (
@@ -60,12 +63,16 @@ from airflow.sdk.exceptions import (
     ParamValidationError,
 )
 from airflow.sdk.execution_time.comms import StartupDetails
+from airflow.sdk.execution_time.coordinator import TaskLaunchError, get_coordinator_manager
 from airflow.sdk.execution_time.supervisor import block_orm_access, task_process_uses_exec
 from airflow.sdk.local_runtime.services import LocalTaskServices
 from airflow.sdk.local_runtime.state import LocalStateStore
 from airflow.sdk.local_runtime.supervisor import LocalTaskSupervisor
 from airflow.sdk.log import configure_logging
 from airflow.sdk.serde import CLASSNAME, deserialize
+
+if TYPE_CHECKING:
+    from structlog.typing import FilteringBoundLogger
 
 
 def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
@@ -102,9 +109,47 @@ def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
         raise LocalRunUsageError("--no-db does not support asset services or inlet/outlet events")
     if getattr(task, "run_as_user", None):
         raise LocalRunUsageError("--no-db does not support run_as_user")
-    if getattr(task, "is_stub", False):
-        raise LocalRunUsageError("--no-db currently supports Python task implementations")
     return dag, task
+
+
+def find_task_runtime(task) -> SubprocessCoordinator | None:
+    """Return the coordinator that ``[sdk] queue_to_coordinator`` routes ``task`` to, or None for Python's."""
+    try:
+        coordinator = get_coordinator_manager().for_queue(task.queue)
+    except ValueError as error:
+        raise LocalRunConfigError(f"[tool.airflow.sdk] in pyproject.toml cannot be used: {error}") from None
+    if isinstance(coordinator, PythonCoordinator):
+        if getattr(task, "is_stub", False):
+            raise LocalRunUsageError(
+                f"Task {task.task_id!r} is a stub, and no runtime runs its queue {task.queue!r}: map the "
+                "queue to one in queue_to_coordinator of [tool.airflow.sdk] in pyproject.toml"
+            )
+        return None
+    if not isinstance(coordinator, SubprocessCoordinator):
+        raise LocalRunUsageError(
+            f"--no-db cannot run queue {task.queue!r}: "
+            f"its {type(coordinator).__name__} starts no runtime process"
+        )
+    return coordinator
+
+
+def build_stub_context(task) -> dict[str, Any]:
+    """Return what the Execution API adds to a stub task's context at its start: arguments and timeout."""
+    if not getattr(task, "is_stub", False):
+        return {}
+    # As in serialization: it pulls pydantic's JSON-schema machinery, which only a stub needs.
+    from airflow.serialization.stub_arg_bindings import build_arg_bindings  # noqa: SDK002
+
+    context: dict[str, Any] = {}
+    if isinstance(task, DecoratedOperator):
+        try:
+            if arg_bindings := build_arg_bindings(task):
+                context["arg_bindings"] = arg_bindings
+        except ValueError as error:
+            raise LocalRunDagFileError(str(error)) from None
+    if task.execution_timeout is not None:
+        context["execution_timeout"] = task.execution_timeout.total_seconds()
+    return context
 
 
 def build_inputs(task, inputs: dict[str, Any]) -> dict[tuple[str, str], Any]:
@@ -165,7 +210,7 @@ def build_startup(dag, task, source: Path, root: Path, run_conf: dict | None) ->
         dag_rel_path=source.relative_to(root).as_posix(),
         bundle_info=BundleInfo(name="dags-folder", version=None),
         start_date=now,
-        ti_context=TIRunContext(dag_run=dag_run, max_tries=0, should_retry=False),
+        ti_context=TIRunContext(dag_run=dag_run, max_tries=0, should_retry=False, **build_stub_context(task)),
         sentry_integration="",
     )
 
@@ -176,6 +221,7 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     block_orm_access()
     source, root = Path(request["source"]), Path(request["root"])
     dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])
+    runtime = find_task_runtime(task)
     try:
         process_params(dag, task, request.get("run_conf"), suppress_exception=False)
     except ParamValidationError as error:
@@ -194,34 +240,70 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
             f"Running task {task.task_id!r} of Dag {dag.dag_id!r} without a database ({startup.ti.run_id})",
             flush=True,
         )
-        process = LocalTaskSupervisor.start(
-            id=startup.ti.id,
-            services=services,
-            use_exec=task_process_uses_exec(),
-            new_process_group=True,
-            logger=structlog.get_logger("airflow.sdk.local_runtime").bind(task_id=task.task_id),
-        )
+        logger = structlog.get_logger("airflow.sdk.local_runtime").bind(task_id=task.task_id)
+        process = None
+        launch_failure = None
         cancelled = False
         try:
+            process = start_task_process(
+                startup, root=root, services=services, runtime=runtime, logger=logger
+            )
             process.send_msg(startup, request_id=0)
             process.wait()
+        except TaskLaunchError as error:
+            launch_failure = str(error)
+            logger.error("Cannot launch the task's runtime", reason=launch_failure)
         except KeyboardInterrupt:
             cancelled = True
         finally:
-            if process._exit_code is None:
+            if process is not None and process._exit_code is None:
                 process.kill(signal.SIGTERM, escalation_delay=1, force=True)
                 process.cleanup_sockets_after_kill()
                 process.selector.close()
-        task_state = "failed" if cancelled else process.final_state
+        task_state = "failed" if cancelled or process is None else process.final_state
         payload = collect_result(startup, services, task_state, source)
         payload["cancelled"] = cancelled
-        if process.failure and task_state == "failed":
-            payload["failures"] = {(task.task_id, -1): redact(process.failure)}
+        failure = launch_failure or (process.failure if process is not None else None)
+        if failure and task_state == "failed":
+            payload["failures"] = {(task.task_id, -1): redact(failure)}
         print(
             f"{'Succeeded' if payload['state'] == 'success' else 'Failed'} in {time.monotonic() - request['started_at']:.1f}s.",
             flush=True,
         )
         return payload
+
+
+def start_task_process(
+    startup: StartupDetails,
+    *,
+    root: Path,
+    services: LocalTaskServices,
+    runtime: SubprocessCoordinator | None,
+    logger: FilteringBoundLogger,
+) -> LocalTaskSupervisor:
+    """
+    Start the task's process: Python's task runner, or the runtime ``runtime`` finds in the project.
+
+    :raises TaskLaunchError: when the runtime cannot be found or started.
+    """
+    if runtime is None:
+        return LocalTaskSupervisor.start(
+            id=startup.ti.id,
+            services=services,
+            use_exec=task_process_uses_exec(),
+            new_process_group=True,
+            logger=logger,
+        )
+    command, schema_version = runtime.build_task_command(what=startup.ti, roots=[root])
+    return LocalTaskSupervisor.start_runtime(
+        id=startup.ti.id,
+        command=command,
+        schema_version=schema_version,
+        startup_timeout=runtime.task_startup_timeout,
+        execution_timeout=startup.ti_context.execution_timeout,
+        services=services,
+        logger=logger,
+    )
 
 
 def collect_result(startup: StartupDetails, services: LocalTaskServices, state: str, source: Path) -> dict:

@@ -481,6 +481,91 @@ class _ResourceTracker:
 
 
 @attrs.define(kw_only=True)
+class _LaunchedRuntime:
+    """A runtime connected to both servers, which :func:`_launch_runtime` owns until :meth:`release`."""
+
+    process: subprocess.Popen
+    comm_server: socket.socket
+    logs_server: socket.socket
+    comm: socket.socket
+    logs: socket.socket
+    stdout: socket.socket
+    stderr: socket.socket
+    drained: dict[socket.socket, bytes]
+    _tracker: _ResourceTracker
+
+    def release(self) -> None:
+        """Hand the process and its sockets over to the caller, which closes and stops them from now on."""
+        self._tracker.untrack(
+            self.stdout, self.stderr, self.comm, self.logs, self.comm_server, self.logs_server
+        )
+        self._tracker.untrack(self.process)
+
+
+@contextlib.contextmanager
+def _launch_runtime(
+    command: Sequence[str],
+    *,
+    target_loggers: tuple[FilteringBoundLogger, ...],
+    startup_timeout: float,
+) -> Generator[_LaunchedRuntime, None, None]:
+    """
+    Start *command* with ``--comm`` and ``--logs`` appended, and wait until it connects to both.
+
+    The runtime leads a process group of its own, so its supervisor must signal the group
+    (``new_process_group=True``). What it writes to stdout and stderr before it connects is in
+    ``drained``, for :meth:`~WatchedSubprocess._register_pipe_readers`. If the block raises before it
+    calls :meth:`_LaunchedRuntime.release`, the runtime is stopped and its sockets are closed.
+
+    :raises TaskLaunchError: when the runtime cannot start, or exits or times out before it connects.
+    """
+    with _ResourceTracker(timeout=startup_timeout) as tracker:
+        with _raise_as_launch_error("The runtime cannot start"):
+            comm_server, logs_server = tracker.track(_start_server(), _start_server())
+            stdout_r, stdout_w = tracker.track(*socket.socketpair())
+            stderr_r, stderr_w = tracker.track(*socket.socketpair())
+
+            proc = subprocess.Popen(
+                [
+                    *command,
+                    "--comm={0[0]}:{0[1]}".format(comm_server.getsockname()),
+                    "--logs={0[0]}:{0[1]}".format(logs_server.getsockname()),
+                ],
+                stdout=stdout_w.fileno(),
+                stderr=stderr_w.fileno(),
+                env=_build_runtime_env(),
+                # Own process group, so the supervisor can signal everything the runtime
+                # spawned with os.killpg, as the Python task runner has done since #65505.
+                # Popen returns after exec, so the group exists before kill().
+                process_group=0,
+            )
+            tracker.track(proc)
+            for soc in tracker.untrack(stdout_w, stderr_w):
+                soc.close()
+            log.info("Starting subprocess", pid=proc.pid)
+
+            socks, drained = _accept_connections(
+                {"comm": comm_server, "logs": logs_server},
+                {"stdout": stdout_r, "stderr": stderr_r},
+                proc,
+                target_loggers=target_loggers,
+                max_wait=startup_timeout,
+            )
+            tracker.track(*socks.values())
+        yield _LaunchedRuntime(
+            process=proc,
+            comm_server=comm_server,
+            logs_server=logs_server,
+            comm=socks[comm_server],
+            logs=socks[logs_server],
+            stdout=stdout_r,
+            stderr=stderr_r,
+            drained=drained,
+            tracker=tracker,
+        )
+
+
+@attrs.define(kw_only=True)
 class _PopenActivitySubprocess(ActivitySubprocess):
     """
     Activity subprocess that talks to the parent over two TCP sockets.
@@ -517,59 +602,27 @@ class _PopenActivitySubprocess(ActivitySubprocess):
         # 'self' only exists once the runtime has connected, so the loggers its output is forwarded
         # to are resolved here, for a launch that fails before that.
         target_loggers = cls._default_target_loggers(process_log, subprocess_logs_to_stdout)
-        with _ResourceTracker(timeout=startup_timeout) as tracker:
+        with _launch_runtime(
+            command, target_loggers=target_loggers, startup_timeout=startup_timeout
+        ) as runtime:
             with _raise_as_launch_error("The runtime cannot start"):
-                comm_server, logs_server = tracker.track(_start_server(), _start_server())
-                stdout_r, stdout_w = tracker.track(*socket.socketpair())
-                stderr_r, stderr_w = tracker.track(*socket.socketpair())
-
-                proc = subprocess.Popen(
-                    [
-                        *command,
-                        "--comm={0[0]}:{0[1]}".format(comm_server.getsockname()),
-                        "--logs={0[0]}:{0[1]}".format(logs_server.getsockname()),
-                    ],
-                    stdout=stdout_w.fileno(),
-                    stderr=stderr_w.fileno(),
-                    env=_build_runtime_env(),
-                    # Own process group, so the supervisor can signal everything the runtime
-                    # spawned with os.killpg, as the Python task runner has done since #65505.
-                    # Popen returns after exec, so the group exists before kill().
-                    # Must agree with new_process_group=True below.
-                    process_group=0,
-                )
-                tracker.track(proc)
-                for soc in tracker.untrack(stdout_w, stderr_w):
-                    soc.close()
-                log.info("Starting subprocess", pid=proc.pid)
-
-                socks, drained = _accept_connections(
-                    {"comm": comm_server, "logs": logs_server},
-                    {"stdout": stdout_r, "stderr": stderr_r},
-                    proc,
-                    target_loggers=target_loggers,
-                    max_wait=startup_timeout,
-                )
-                tracker.track(*socks.values())
-
                 self = cls(
                     id=what.id,
-                    pid=proc.pid,
-                    process=PopenTracker(proc),
+                    pid=runtime.process.pid,
+                    process=PopenTracker(runtime.process),
                     process_log=process_log,
                     start_time=time.monotonic(),
-                    stdin=socks[comm_server],
+                    stdin=runtime.comm,
                     subprocess_schema_version=subprocess_schema_version,
                     subprocess_logs_to_stdout=subprocess_logs_to_stdout,
                     default_execution_timeout=default_execution_timeout,
-                    # The supervisor signals the group; must agree with process_group=0 above.
                     new_process_group=True,
-                    comm_server=comm_server,
-                    logs_server=logs_server,
+                    comm_server=runtime.comm_server,
+                    logs_server=runtime.logs_server,
                     **kwargs,
                 )
                 self._register_pipe_readers(
-                    stdout_r, stderr_r, socks[comm_server], socks[logs_server], data=drained
+                    runtime.stdout, runtime.stderr, runtime.comm, runtime.logs, data=runtime.drained
                 )
             self._on_child_started(
                 ti=what,
@@ -579,17 +632,9 @@ class _PopenActivitySubprocess(ActivitySubprocess):
             )
 
             # 'self' owns everything from here: it closes the pipes and the servers when the
-            # subprocess exits in 'wait'. Until this point the tracker still owns them, so a
+            # subprocess exits in 'wait'. Until this point the launch still owns them, so a
             # failure registering the pipes or starting the task instance releases them.
-            tracker.untrack(
-                stdout_r,
-                stderr_r,
-                socks[comm_server],
-                socks[logs_server],
-                comm_server,
-                logs_server,
-                proc,
-            )
+            runtime.release()
 
         return self
 
@@ -1140,6 +1185,27 @@ class SubprocessCoordinator(BaseCoordinator):
                 signal.signal(sig, signal.SIG_DFL)
         _set_close_on_exec_above_stderr()
         os.execvpe(argv[0], argv, _build_runtime_env())
+
+    def build_task_command(
+        self, *, what: TaskInstance, roots: Sequence[pathlib.Path]
+    ) -> tuple[list[str], str | None]:
+        """
+        Return the command that runs *what* from the artifacts under *roots*, and its schema version.
+
+        For a supervisor that starts the runtime itself with :func:`_launch_runtime`, such as a local run's
+        without a database, rather than through :meth:`execute_task`.
+
+        :raises TaskLaunchError: when the artifact cannot be found or run, or needs a supervisor schema
+            version that this Task SDK does not support.
+        """
+        with _raise_as_launch_error(
+            f"Cannot prepare the runtime of task {what.task_id!r} in Dag {what.dag_id!r}"
+        ):
+            with self._set_scan_roots(roots):
+                command, schema_version = self._build_execute_task_command(what=what)
+            if schema_version is not None:
+                _require_supported_schema_version(schema_version)
+        return command, schema_version
 
     @contextlib.contextmanager
     def _set_scan_roots(self, roots: Sequence[pathlib.Path]):

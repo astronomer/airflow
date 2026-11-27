@@ -278,6 +278,7 @@ def test_terminal_shows_the_whole_log_of_a_task_that_keeps_none(console, capsys,
     events = [
         ("task", "info", "::group::Pre Execute"),
         ("airflow.dag_processing.dagbag.BundleDagBag", "info", "Filling up the DagBag"),
+        ("ts-sdk.runtime", "info", "[ts-sdk.runtime] Received task startup details"),
         ("airflow.dag_processing.dagbag.BundleDagBag", "warning", "A parse warning"),
         ("task.stdout", "info", "printed by the task"),
         ("task", "info", "::endgroup::"),

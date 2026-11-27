@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import signal
 import sqlite3
 import subprocess
@@ -27,9 +29,14 @@ import textwrap
 import time
 from contextlib import closing, suppress
 from pathlib import Path
+from unittest import mock
 
 import psutil
 import pytest
+
+from airflow.sdk.exceptions import LocalRunConfigError, LocalRunUsageError
+from airflow.sdk.execution_time.coordinator import BaseCoordinator, CoordinatorManager
+from airflow.sdk.local_runtime import runner
 
 
 @pytest.fixture
@@ -612,3 +619,243 @@ def test_agent_tools_use_development_database_without_metadata_database(project,
     with closing(sqlite3.connect(database)) as conn:
         assert dict(conn.execute("SELECT id, status FROM tickets")) == {1: "closed", 2: "open", 3: "closed"}
     assert not list(project.rglob("airflow.db"))
+
+
+# A runtime of another language, as far as its supervisor can tell: it speaks the task protocol over TCP. It
+# records the context it starts with, reads each argument, a connection, a missing variable and its task
+# state, and returns what it read. An argument named "pull" names a task whose output it reads when it runs.
+FAKE_RUNTIME = """
+import json
+import socket
+import sys
+from datetime import datetime, timezone
+
+import msgspec
+
+
+def connect(flag):
+    host, port = next(arg for arg in sys.argv if arg.startswith(flag)).removeprefix(flag).rsplit(":", 1)
+    return socket.create_connection((host, int(port)))
+
+
+comm = connect("--comm=")
+logs = connect("--logs=")
+requests = 0
+
+
+def read_exactly(size):
+    data = b""
+    while len(data) < size:
+        if not (chunk := comm.recv(size - len(data))):
+            raise EOFError
+        data += chunk
+    return data
+
+
+def read_frame():
+    frame = msgspec.msgpack.decode(read_exactly(int.from_bytes(read_exactly(4), "big")))
+    return frame + [None] * (3 - len(frame))
+
+
+def call(body):
+    global requests
+    requests += 1
+    payload = msgspec.msgpack.encode([requests, body])
+    comm.sendall(len(payload).to_bytes(4, "big") + payload)
+    return read_frame()[1:]
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def pull(task_id):
+    result, error = call({"type": "GetXCom", "key": "return_value", "task_id": task_id, **coordinate})
+    if error:
+        call({"type": "TaskState", "state": "failed", "end_date": now()})
+        sys.exit(1)
+    return result["value"]
+
+
+startup = read_frame()[1]
+ti = startup["ti"]
+coordinate = {"dag_id": ti["dag_id"], "run_id": ti["run_id"]}
+with open("startup.json", "w") as file:
+    json.dump(startup["ti_context"], file, default=str)
+record = {"event": "fake runtime started", "level": "info", "logger": "fake.runtime", "timestamp": now()}
+logs.sendall((json.dumps(record) + "\\n").encode())
+arguments = {}
+for binding in startup["ti_context"]["arg_bindings"]:
+    if binding["kind"] == "xcom":
+        arguments[binding["name"]] = pull(binding["task_id"])
+    elif binding["name"] == "pull" and binding["value"]:
+        arguments[binding["name"]] = pull(binding["value"])
+    else:
+        arguments[binding["name"]] = binding["value"]
+connection = call({"type": "GetConnection", "conn_id": "fake_conn"})[0]
+variable = call({"type": "GetVariable", "key": "missing"})[0]
+call({"type": "SetTaskStateStore", "ti_id": ti["id"], "key": "seen", "value": arguments, "expires_at": None})
+state = call({"type": "GetTaskStateStore", "ti_id": ti["id"], "key": "seen"})[0]
+output = {"arguments": state["value"], "host": connection["host"], "variable": variable["error"]}
+call({"type": "SetXCom", "key": "return_value", "value": output, "task_id": ti["task_id"], **coordinate})
+call({"type": "SucceedTask", "end_date": now()})
+"""
+
+FAKE_COORDINATORS = """
+import sys
+from pathlib import Path
+
+from airflow.sdk.coordinators._subprocess import SubprocessCoordinator
+
+
+class FakeRuntimeCoordinator(SubprocessCoordinator):
+    def _build_execute_task_command(self, *, what):
+        return [sys.executable, str(Path(__file__).with_name("fake_runtime.py"))], None
+
+
+class MissingRuntimeCoordinator(SubprocessCoordinator):
+    def _build_execute_task_command(self, *, what):
+        return [str(Path(__file__).with_name("no_such_runtime"))], None
+"""
+
+
+def write_stub_project(project, *, coordinator="FakeRuntimeCoordinator", call="consume(produce())"):
+    (project / "pyproject.toml").write_text(
+        "[tool.airflow.sdk]\n"
+        f'coordinators = {{ fake = {{ classpath = "fake_coordinators.{coordinator}" }} }}\n'
+        'queue_to_coordinator = { fake = "fake" }\n'
+    )
+    (project / "guard" / "fake_runtime.py").write_text(FAKE_RUNTIME)
+    (project / "guard" / "fake_coordinators.py").write_text(FAKE_COORDINATORS)
+    (project / "connections.json").write_text(
+        json.dumps({"fake_conn": {"conn_type": "http", "host": "example.com"}})
+    )
+    (project / "pipeline.py").write_text(
+        textwrap.dedent(
+            f"""
+            from datetime import timedelta
+
+            from airflow.sdk import dag, task
+
+            @task
+            def produce():
+                raise RuntimeError("Upstream task must never execute")
+
+            @task.stub(queue="fake", execution_timeout=timedelta(minutes=5))
+            def consume(value=None, greeting="hello", pull=None): ...
+
+            @dag(schedule=None)
+            def sample():
+                {call}
+
+            sample()
+            """
+        )
+    )
+
+
+def test_stub_runs_in_its_runtime_with_local_services(project):
+    write_stub_project(project)
+
+    result = run_cli(
+        project, "--task", "consume", "--input", "produce=3", "--connections-file", "connections.json"
+    )
+
+    output = result.stdout + result.stderr
+    assert result.returncode == 0, output
+    assert "consume | fake.runtime: fake runtime started" in output
+    assert (
+        "consume = {'arguments': {'greeting': 'hello', 'pull': None, 'value': 3}, 'host': 'example.com', "
+        "'variable': 'VARIABLE_NOT_FOUND'}" in output
+    )
+    context = json.loads((project / "startup.json").read_text())
+    assert context["execution_timeout"] == 300
+    assert [
+        {key: value for key, value in binding.items() if value is not None}
+        for binding in context["arg_bindings"]
+    ] == [
+        {"name": "value", "kind": "xcom", "task_id": "produce"},
+        {"name": "greeting", "kind": "literal", "value": "hello", "from_default": True},
+        {"name": "pull", "kind": "literal", "from_default": True},
+    ]
+
+
+def test_stub_whose_runtime_reads_a_missing_input_fails_with_the_reason(project):
+    write_stub_project(project, call='produce() >> consume(pull="produce")')
+
+    result = run_cli(project, "--task", "consume")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "No input for 'produce', key 'return_value'. Supply --input produce=JSON" in result.stderr
+
+
+def test_stub_whose_runtime_cannot_start_fails_with_the_reason(project):
+    write_stub_project(project, coordinator="MissingRuntimeCoordinator")
+
+    result = run_cli(project, "--task", "consume", "--input", "produce=3")
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Cannot launch the task's runtime reason=The runtime cannot start" in result.stderr
+
+
+def test_stub_on_a_queue_without_a_runtime_is_refused(project):
+    write_stub_project(project)
+    (project / "pyproject.toml").write_text("")
+
+    result = run_cli(project, "--task", "consume", "--input", "produce=3")
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert (
+        "Task 'consume' is a stub, and no runtime runs its queue 'fake': map the queue to one in "
+        "queue_to_coordinator of [tool.airflow.sdk] in pyproject.toml"
+    ) in result.stderr
+
+
+@mock.patch.object(runner, "get_coordinator_manager", autospec=True)
+def test_project_coordinators_that_cannot_be_used_are_a_config_error(get_manager):
+    get_manager.side_effect = ValueError(
+        "[sdk] queue_to_coordinator references invalid coordinator key: 'ts'"
+    )
+
+    with pytest.raises(
+        LocalRunConfigError, match=r"\[tool\.airflow\.sdk\] in pyproject\.toml cannot be used"
+    ):
+        runner.find_task_runtime(mock.NonCallableMock(queue="typescript"))
+
+
+@mock.patch.object(runner, "get_coordinator_manager", autospec=True)
+def test_coordinator_that_starts_no_runtime_process_is_refused(get_manager):
+    get_manager.return_value = manager = mock.create_autospec(CoordinatorManager, instance=True)
+    manager.for_queue.return_value = mock.create_autospec(BaseCoordinator, instance=True)
+
+    with pytest.raises(LocalRunUsageError, match="--no-db cannot run queue 'typescript'"):
+        runner.find_task_runtime(mock.NonCallableMock(queue="typescript"))
+
+
+TS_EXAMPLE = Path(__file__).parents[4] / "ts-sdk" / "example"
+
+
+def test_typescript_stub_runs_on_node(project):
+    bundle = TS_EXAMPLE / "dist" / "bundle.min.mjs"
+    if not bundle.is_file():
+        pytest.skip(f"{bundle} is not built; ts-sdk/example/README.md says how to build it")
+    node = shutil.which("node")
+    version = subprocess.check_output([node, "--version"], text=True).strip() if node else "none"
+    if not node or int(version.removeprefix("v").split(".")[0]) < 22:
+        pytest.skip(f"The TypeScript SDK needs Node 22 or later on PATH, not {version}")
+    (project / "pyproject.toml").write_text(
+        "[tool.airflow.sdk]\n"
+        'coordinators = { ts = { classpath = "airflow.sdk.coordinators.node.NodeCoordinator" } }\n'
+        'queue_to_coordinator = { typescript = "ts" }\n'
+    )
+    shutil.copy(TS_EXAMPLE / "dags" / "typescript_example.py", project / "pipeline.py")
+    (project / "dist").mkdir()
+    shutil.copy(bundle, project / "dist")
+
+    result = run_cli(project, "--task", "build_message", "--input", 'python_start="hi"')
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert re.search(
+        r"build_message = \{'message': 'hello from TypeScript; upstream=hi', 'upstream': 'hi'\}",
+        result.stdout,
+    ), result.stdout + result.stderr

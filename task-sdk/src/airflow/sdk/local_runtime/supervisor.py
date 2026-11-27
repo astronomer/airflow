@@ -29,12 +29,19 @@ import attrs
 import psutil
 from pydantic import TypeAdapter
 
+from airflow.sdk.coordinators._subprocess import PopenTracker, _launch_runtime
 from airflow.sdk.exceptions import AirflowSecretsBackendAccessDenied, ErrorType
 from airflow.sdk.execution_time import comms
 from airflow.sdk.execution_time.supervisor import WatchedSubprocess
 from airflow.sdk.local_runtime.services import UnsupportedLocalOperation
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Self
+    from uuid import UUID
+
+    from structlog.typing import FilteringBoundLogger
+
     from airflow.sdk.local_runtime.services import LocalTaskServices
 
 
@@ -47,6 +54,54 @@ class LocalTaskSupervisor(WatchedSubprocess):
     _deadline: float | None = attrs.field(default=None, init=False)
     _finished_at: float | None = attrs.field(default=None, init=False)
     _children: set[psutil.Process] = attrs.field(factory=set, init=False)
+    # A runtime of another language may show only the type of an error it gets, so the reason is logged here.
+    _log_request_errors: bool = False
+
+    @classmethod
+    def start_runtime(
+        cls,
+        *,
+        id: UUID,
+        command: Sequence[str],
+        schema_version: str | None,
+        startup_timeout: float,
+        execution_timeout: float | None,
+        services: LocalTaskServices,
+        logger: FilteringBoundLogger,
+    ) -> Self:
+        """
+        Start a task's runtime of another language, which connects back over TCP, as its coordinator does.
+
+        Messages are translated to and from the runtime's ``schema_version``. The runtime may not send
+        ``SetExecutionTimeout``, so ``execution_timeout`` starts the clock here; one it sends restarts it.
+
+        :raises TaskLaunchError: when the runtime cannot start, or exits or times out before it connects.
+        """
+        with _launch_runtime(
+            command,
+            target_loggers=cls._default_target_loggers(logger, False),
+            startup_timeout=startup_timeout,
+        ) as runtime:
+            process = cls(
+                id=id,
+                pid=runtime.process.pid,
+                stdin=runtime.comm,
+                process=PopenTracker(runtime.process),
+                process_log=logger,
+                subprocess_schema_version=schema_version,
+                new_process_group=True,
+                services=services,
+                log_request_errors=True,
+            )
+            process._register_pipe_readers(
+                runtime.stdout, runtime.stderr, runtime.comm, runtime.logs, data=runtime.drained
+            )
+            runtime.release()
+        # Both connections are accepted, and nothing else may connect.
+        cls._close_unused_sockets(runtime.comm_server, runtime.logs_server)
+        if execution_timeout:
+            process._deadline = time.monotonic() + execution_timeout
+        return process
 
     def _handle_request(self, msg, log, req_id: int) -> None:
         try:
@@ -77,6 +132,8 @@ class LocalTaskSupervisor(WatchedSubprocess):
             self.send_msg(response, request_id=req_id)
         except Exception as error:
             self.failure = str(error)
+            if self._log_request_errors:
+                self.process_log.warning(self.failure)
             error_type = (
                 ErrorType.PERMISSION_DENIED
                 if isinstance(error, AirflowSecretsBackendAccessDenied)

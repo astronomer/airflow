@@ -22,6 +22,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import signal
 import socket
 import subprocess
@@ -2220,6 +2221,37 @@ def _connect_without_output(servers, drains, proc, **kwargs):
     """Stand in for _accept_connections when the runtime connects without writing anything."""
     accepted = {server: MagicMock(spec=socket.socket) for server in servers.values()}
     return accepted, {soc: b"" for soc in drains.values()}
+
+
+class TestBuildTaskCommand:
+    """A supervisor that starts the runtime itself gets the command a coordinator would run."""
+
+    def test_returns_the_command_found_under_the_roots(self, tmp_path):
+        coordinator = _StubSubprocessCoordinator(command=["/runtime", "--flag"], schema_version="2026-06-16")
+
+        command = coordinator.build_task_command(what=_make_ti(), roots=[tmp_path])
+
+        assert command == (["/runtime", "--flag"], "2026-06-16")
+        assert coordinator.recorded_roots == [[tmp_path]]
+
+    @pytest.mark.parametrize(
+        ("coordinator", "message"),
+        [
+            pytest.param(
+                _MissingArtifactCoordinator(command=[]),
+                "Cannot prepare the runtime of task 'task_1' in Dag 'tutorial_dag': cannot find a JAR",
+                id="missing-artifact",
+            ),
+            pytest.param(
+                _StubSubprocessCoordinator(command=["/runtime"], schema_version="1999-01-01"),
+                "The runtime uses supervisor schema version '1999-01-01'",
+                id="unsupported-schema",
+            ),
+        ],
+    )
+    def test_fails_to_launch_when_the_runtime_cannot_be_prepared(self, tmp_path, coordinator, message):
+        with pytest.raises(TaskLaunchError, match=re.escape(message)):
+            coordinator.build_task_command(what=_make_ti(), roots=[tmp_path])
 
 
 class TestExecuteTaskLaunchFailure:

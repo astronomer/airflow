@@ -187,7 +187,7 @@ asked, such as a task the Dag lacks. The three are ``LocalRunError``.
 Run one task without a metadata database
 ----------------------------------------
 
-Add ``--no-db`` to execute exactly one Python task, once, with local task services:
+Add ``--no-db`` to execute exactly one task, once, with local task services:
 
 .. code-block:: bash
 
@@ -516,8 +516,9 @@ it does on a worker, once ``pyproject.toml`` routes its queue to Node, with the 
 The run looks for the bundle in the project, where a deployment looks when the coordinator sets no
 ``task_handler_bundle_name``, and runs whatever the bundle holds, so build it with ``airflow-ts-pack`` first.
 It needs Node 22 or later on ``PATH``, or named with ``node_executable`` in the coordinator's ``kwargs``.
-``--debug`` and ``--no-db`` do not run TypeScript tasks yet, and no local run runs a Dag written in
-TypeScript.
+With ``--no-db``, a TypeScript task's runtime reads its inputs, connections, variables and task state from
+the same local services as a Python task, and a missing input or a variable write fails with the same message.
+``--debug`` does not run TypeScript tasks yet, and no local run runs a Dag written in TypeScript.
 
 Limits
 ------
