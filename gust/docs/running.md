@@ -40,6 +40,58 @@ With `--json`, the summary is an object with `dag_run` (the Dag run the tasks sa
 with `task_id`, `map_index`, `try_number`, `state` and, for a try, its exit code, duration,
 arguments and record).
 
+## Output
+
+gust echoes the tasks' log lines while they run, then prints a summary: the Dag run, and each task
+instance with what it did. Running the Go SDK's native example, shortened:
+
+```console
+$ gust bin/go_native --dag=go_native_pipeline --input='{
+  "variables": {"go_native_greeting": "hi", "go_native_cadence": "daily"},
+  "connections": {"test_http": {"conn_type": "http", "host": "example.com"}}
+}'
+gust: asking bin/go_native for its Dags
+gust: running Dag go_native_pipeline with 11 tasks (run manual__2026-11-27T03:49:38.841253Z)
+  anyRows | INFO    Skipping downstream tasks task_ids=["reportEmpty"]
+   pick | INFO    Skipping downstream tasks task_ids=["publishWeekly"]
+
+────────────────────────────────────────────────────────────
+gust summary: Dag go_native_pipeline
+────────────────────────────────────────────────────────────
+  Dag run     SUCCESS
+  instances   2 skipped, 9 success
+  run id      manual__2026-11-27T03:49:38.841253Z
+  logical     2026-11-27T03:49:38.841253Z
+  dag file    bin/go_native (go SDK (devel), schema 2027-02-28)
+
+── seed, try 1 ───────────────────────────────────────
+  state       SUCCESS
+  exit code   0
+  duration    0.05s
+
+XComs pushed
+  go_native_pipeline/seed/seed_note = "seeded hi from example.com"
+  go_native_pipeline/seed/return_value = {"greeting":"hi","host":"example.com"}
+
+Requests from the task
+  GetVariable            go_native_greeting                       ok
+  GetConnection          test_http                                ok
+  SetXCom                go_native_pipeline/seed/seed_note        ok
+  SetXCom                go_native_pipeline/seed/return_value     ok
+  SucceedTask            success                                  ok
+
+── reportEmpty ───────────────────────────────────────
+  state       SKIPPED
+
+Notes
+  - Skipped by branch task anyRows.
+
+…
+```
+
+`--quiet` leaves out the log lines, and `--json` prints the summary as JSON, as described
+above.
+
 ## A whole Dag
 
 Without `--task`, gust runs every task of the Dag, one at a time, as the scheduler would schedule
