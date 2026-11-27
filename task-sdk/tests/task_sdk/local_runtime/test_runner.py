@@ -28,15 +28,18 @@ import sys
 import textwrap
 import time
 from contextlib import closing, suppress
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
 import psutil
 import pytest
 
+from airflow.sdk import DAG, task
 from airflow.sdk.exceptions import LocalRunConfigError, LocalRunUsageError
 from airflow.sdk.execution_time.coordinator import BaseCoordinator, CoordinatorManager
 from airflow.sdk.local_runtime import runner
+from airflow.serialization.serialized_objects import DagSerialization
 
 
 @pytest.fixture
@@ -626,6 +629,7 @@ def test_agent_tools_use_development_database_without_metadata_database(project,
 # state, and returns what it read. An argument named "pull" names a task whose output it reads when it runs.
 FAKE_RUNTIME = """
 import json
+import os
 import socket
 import sys
 from datetime import datetime, timezone
@@ -678,6 +682,14 @@ def pull(task_id):
 
 
 startup = read_frame()[1]
+if startup.get("type") == "DagFileParseRequest":
+    # As a native Dag file's runtime answers: with the Dag the file declares, serialized.
+    with open(os.path.join(os.path.dirname(__file__), "native_dag.json")) as file:
+        data = json.load(file)
+    data["dag"]["fileloc"] = startup["file"]
+    data["dag"]["relative_fileloc"] = os.path.relpath(startup["file"], startup["bundle_path"])
+    call({"type": "DagFileParsingResult", "fileloc": startup["file"], "serialized_dags": [{"data": data}]})
+    sys.exit(0)
 ti = startup["ti"]
 coordinate = {"dag_id": ti["dag_id"], "run_id": ti["run_id"]}
 with open("startup.json", "w") as file:
@@ -706,6 +718,7 @@ import sys
 from pathlib import Path
 
 from airflow.sdk.coordinators._subprocess import SubprocessCoordinator
+from airflow.sdk.coordinators.node import NodeCoordinator
 
 
 class FakeRuntimeCoordinator(SubprocessCoordinator):
@@ -716,6 +729,15 @@ class FakeRuntimeCoordinator(SubprocessCoordinator):
 class MissingRuntimeCoordinator(SubprocessCoordinator):
     def _build_execute_task_command(self, *, what):
         return [str(Path(__file__).with_name("no_such_runtime"))], None
+
+
+# Claims a native Dag file as Node does, and parses it and runs its tasks in the fake runtime.
+class FakeNodeCoordinator(NodeCoordinator):
+    def _build_parse_dag_command(self, *, path):
+        return [sys.executable, str(Path(__file__).with_name("fake_runtime.py"))], None
+
+    def _build_dag_file_command(self, *, what, path):
+        return [sys.executable, str(Path(__file__).with_name("fake_runtime.py"))], None
 """
 
 
@@ -868,11 +890,11 @@ def test_typescript_stub_runs_on_node(typescript_project):
 
 
 @pytest.mark.parametrize(
-    ("routes", "task_id", "returncode", "message"),
+    ("routes", "arguments", "returncode", "message"),
     [
         pytest.param(
             '{ other = "ts" }',
-            "summarize",
+            ("--task", "summarize"),
             4,
             "Dag 'typescript_native_example' runs on a NodeCoordinator, but these tasks' queues route "
             "elsewhere: queue 'typescript' of 'extract.north', 'extract.south', 'summarize' and ",
@@ -880,29 +902,101 @@ def test_typescript_stub_runs_on_node(typescript_project):
         ),
         pytest.param(
             '{ typescript = "ts" }',
-            "missing",
+            ("--task", "missing"),
             2,
             "Dag 'typescript_native_example' has no task 'missing'",
             id="task-it-does-not-have",
         ),
         pytest.param(
             '{ typescript = "ts" }',
-            "summarize",
+            ("--task", "summarize", "--input", 'extract.north={"region": "north", "rows": 5}'),
             2,
-            "--no-db cannot run a task of the native Dag of bundle.min.mjs yet",
-            id="parsed",
+            "No input for 'extract.south', key 'return_value'; supply --input extract.south=JSON",
+            id="input-it-binds-not-given",
         ),
     ],
 )
-def test_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, task_id, returncode, message):
+def test_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, arguments, returncode, message):
     (typescript_project / "pyproject.toml").write_text(TS_SETTINGS.replace('{ typescript = "ts" }', routes))
 
-    result = run_cli(
-        typescript_project, "--task", task_id, source=typescript_project / "dist" / "bundle.min.mjs"
-    )
+    result = run_cli(typescript_project, *arguments, source=typescript_project / "dist" / "bundle.min.mjs")
 
     assert result.returncode == returncode, result.stdout + result.stderr
     assert message in result.stderr
+
+
+def test_task_of_a_dag_written_in_typescript_runs_on_node(typescript_project):
+    result = run_cli(
+        typescript_project,
+        "--task",
+        "summarize",
+        "--input",
+        'extract.north={"region": "north", "rows": 5}',
+        "--input",
+        'extract.south={"region": "south", "rows": 2}',
+        source=typescript_project / "dist" / "bundle.min.mjs",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "summarize = {'regions': 2, 'total': 7}" in result.stdout
+
+
+def write_native_project(project) -> Path:
+    """
+    Write a project whose native Dag file the fake runtime parses and runs, as Node does a bundle.
+
+    The file is not a bundle Node could run, so a task that runs at all ran its own Dag file: searching the
+    project for a bundle that declares the Dag finds none.
+    """
+    write_stub_project(project, coordinator="FakeNodeCoordinator")
+    with DAG("native", schedule=None) as dag:
+
+        @task.stub(queue="fake")
+        def produce(): ...
+
+        @task.stub(queue="fake", execution_timeout=timedelta(minutes=5))
+        def consume(value=None, greeting="hello", pull=None): ...
+
+        consume(produce())
+    (project / "guard" / "native_dag.json").write_text(json.dumps(DagSerialization.to_dict(dag)))
+    (project / "dist").mkdir()
+    bundle = project / "dist" / "bundle.min.mjs"
+    # The comment airflow-ts-pack starts a bundle with, by which Node's Dag importer claims the file.
+    bundle.write_text("//# airflowBundle={}\n")
+    return bundle
+
+
+def test_native_dag_task_runs_its_dag_file_with_its_parsed_bindings(project):
+    bundle = write_native_project(project)
+
+    result = run_cli(
+        project,
+        "--task",
+        "consume",
+        "--input",
+        "produce=3",
+        "--connections-file",
+        "connections.json",
+        source=bundle,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "consume = {'arguments': {'greeting': 'hello', 'pull': None, 'value': 3}, 'host': 'example.com', "
+        "'variable': 'VARIABLE_NOT_FOUND'}" in result.stdout
+    )
+    context = json.loads((project / "startup.json").read_text())
+    assert context["execution_timeout"] == 300
+    assert [binding["task_id"] for binding in context["arg_bindings"] if binding["kind"] == "xcom"] == [
+        "produce"
+    ]
+
+
+def test_native_dag_task_needs_an_input_for_each_output_it_binds(project):
+    result = run_cli(project, "--task", "consume", source=write_native_project(project))
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "No input for 'produce', key 'return_value'; supply --input produce=JSON" in result.stderr
 
 
 def test_a_path_that_is_not_a_file_is_refused(project):

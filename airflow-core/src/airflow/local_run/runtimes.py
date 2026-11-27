@@ -49,9 +49,11 @@ from airflow.sdk.execution_time.coordinator import get_coordinator_manager  # no
 from airflow.sdk.importers import FilesystemDagDefinition  # noqa: SDK001
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
     from airflow.dag_processing.processor import DagFileParsingResult
+    from airflow.serialization.definitions.baseoperator import SerializedBaseOperator
     from airflow.serialization.definitions.dag import SerializedDAG
 
 # How many task IDs a refusal names for each queue it lists.
@@ -170,3 +172,10 @@ def check_native_task_routes(dag: SerializedDAG, importer: CoordinatorDagImporte
         f"{queues}. Map each queue to your {runtime.__name__} in queue_to_coordinator of [tool.airflow.sdk] "
         "in pyproject.toml."
     )
+
+
+def iter_bound_outputs(task: SerializedBaseOperator) -> Iterator[str]:
+    """Yield the ID of each task whose return value ``task``, of a native Dag, takes as an argument."""
+    for binding in task.arg_bindings or ():
+        if binding["kind"] == "xcom":
+            yield binding["task_id"]

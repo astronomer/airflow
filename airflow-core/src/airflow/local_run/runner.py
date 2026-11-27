@@ -74,6 +74,7 @@ from airflow.local_run.runtimes import (
     check_project_coordinators,
     find_native_dag_importer,
     get_runtime_name,
+    iter_bound_outputs,
     parse_native_dag_file,
 )
 from airflow.local_run.secrets_backend import LocalRunSecretsBackend
@@ -795,10 +796,8 @@ def get_input_task(dag: DAG | SerializedDAG, task_id: str) -> Operator | Seriali
 def iter_read_outputs(task: Operator | SerializedBaseOperator) -> Iterator[tuple[str, str]]:
     """Yield the ID of each task whose XCom ``task``'s arguments read, with the XCom's key."""
     if isinstance(task, SerializedBaseOperator):
-        # A native Dag's task says in its argument bindings which return values it reads.
-        for binding in task.arg_bindings or ():
-            if binding["kind"] == "xcom":
-                yield binding["task_id"], XCOM_RETURN_KEY
+        for upstream_id in iter_bound_outputs(task):
+            yield upstream_id, XCOM_RETURN_KEY
         return
     if isinstance(task, MappedOperator):
         arguments: tuple[Any, ...] = (task.partial_kwargs, task._get_specified_expand_input())

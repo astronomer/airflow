@@ -1187,13 +1187,14 @@ class SubprocessCoordinator(BaseCoordinator):
         os.execvpe(argv[0], argv, _build_runtime_env())
 
     def build_task_command(
-        self, *, what: TaskInstance, roots: Sequence[pathlib.Path]
+        self, *, what: TaskInstance, roots: Sequence[pathlib.Path], dag_file: pathlib.Path | None = None
     ) -> tuple[list[str], str | None]:
         """
         Return the command that runs *what* from the artifacts under *roots*, and its schema version.
 
         For a supervisor that starts the runtime itself with :func:`_launch_runtime`, such as a local run's
-        without a database, rather than through :meth:`execute_task`.
+        without a database, rather than through :meth:`execute_task`. A task of a native Dag runs its own
+        Dag file, *dag_file*, as in :meth:`execute_task`.
 
         :raises TaskLaunchError: when the artifact cannot be found or run, or needs a supervisor schema
             version that this Task SDK does not support.
@@ -1202,7 +1203,10 @@ class SubprocessCoordinator(BaseCoordinator):
             f"Cannot prepare the runtime of task {what.task_id!r} in Dag {what.dag_id!r}"
         ):
             with self._set_scan_roots(roots):
-                command, schema_version = self._build_execute_task_command(what=what)
+                if dag_file is None:
+                    command, schema_version = self._build_execute_task_command(what=what)
+                else:
+                    command, schema_version = self._build_dag_file_command(what=what, path=dag_file)
             if schema_version is not None:
                 _require_supported_schema_version(schema_version)
         return command, schema_version

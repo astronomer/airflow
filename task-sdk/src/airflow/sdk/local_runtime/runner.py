@@ -25,7 +25,7 @@ import pickle
 import signal
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -83,10 +83,7 @@ _DagT = TypeVar("_DagT")
 
 def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
     from airflow.dag_processing.dagbag import BundleDagBag  # noqa: SDK002
-    from airflow.local_run.runtimes import find_native_dag_importer  # noqa: SDK002
 
-    if (importer := find_native_dag_importer(source, root)) is not None:
-        return load_native_task(source, root, dag_id, task_id, importer)
     bag = BundleDagBag(
         dag_folder=source,
         bundle_path=root,
@@ -104,27 +101,33 @@ def load_task(source: Path, root: Path, dag_id: str | None, task_id: str):
         )
     dag = select_dag(dags, dag_id, source)
     task = get_task(dag, task_id)
-    if isinstance(task, MappedOperator) or task.get_closest_mapped_task_group() or get_enclosing_loop(task):
-        raise LocalRunUsageError("--no-db does not support mapped tasks or loops")
-    if task.inlets or task.outlets:
-        raise LocalRunUsageError("--no-db does not support asset services or inlet/outlet events")
-    if getattr(task, "run_as_user", None):
-        raise LocalRunUsageError("--no-db does not support run_as_user")
+    refuse_unsupported_task(task)
     return dag, task
 
 
 def load_native_task(
     source: Path, root: Path, dag_id: str | None, task_id: str, importer: CoordinatorDagImporter
 ):
+    """Return the Dag that the runtime of ``importer`` parses from ``source``, serialized, and its task."""
     from airflow.local_run.runtimes import check_native_task_routes, parse_native_dag_file  # noqa: SDK002
     from airflow.serialization.serialized_objects import DagSerialization  # noqa: SDK002
 
     parsed = parse_native_dag_file(source, root)
     selected = select_dag({dag.dag_id: dag for dag in parsed.serialized_dags}, dag_id, source)
     dag = DagSerialization.from_dict(selected.data)
-    get_task(dag, task_id)
+    task = get_task(dag, task_id)
     check_native_task_routes(dag, importer)
-    raise LocalRunUsageError(f"--no-db cannot run a task of the native Dag of {source.name} yet")
+    refuse_unsupported_task(task)
+    return dag, task
+
+
+def refuse_unsupported_task(task) -> None:
+    if isinstance(task, MappedOperator) or task.get_closest_mapped_task_group() or get_enclosing_loop(task):
+        raise LocalRunUsageError("--no-db does not support mapped tasks or loops")
+    if task.inlets or task.outlets:
+        raise LocalRunUsageError("--no-db does not support asset services or inlet/outlet events")
+    if getattr(task, "run_as_user", None):
+        raise LocalRunUsageError("--no-db does not support run_as_user")
 
 
 def select_dag(dags: Mapping[str, _DagT], dag_id: str | None, source: Path) -> _DagT:
@@ -169,11 +172,15 @@ def build_stub_context(task) -> dict[str, Any]:
     """Return what the Execution API adds to a stub task's context at its start: arguments and timeout."""
     if not getattr(task, "is_stub", False):
         return {}
-    # As in serialization: it pulls pydantic's JSON-schema machinery, which only a stub needs.
-    from airflow.serialization.stub_arg_bindings import build_arg_bindings  # noqa: SDK002
-
     context: dict[str, Any] = {}
-    if isinstance(task, DecoratedOperator):
+    if is_native_task(task):
+        # Its runtime parsed them with the Dag, and the Execution API sends them as they are.
+        if task.arg_bindings:
+            context["arg_bindings"] = task.arg_bindings
+    elif isinstance(task, DecoratedOperator):
+        # As in serialization: it pulls pydantic's JSON-schema machinery, which only a stub needs.
+        from airflow.serialization.stub_arg_bindings import build_arg_bindings  # noqa: SDK002
+
         try:
             if arg_bindings := build_arg_bindings(task):
                 context["arg_bindings"] = arg_bindings
@@ -201,12 +208,31 @@ def build_inputs(task, inputs: dict[str, Any]) -> dict[tuple[str, str], Any]:
             if not isinstance(value, dict) or CLASSNAME in value:
                 raise LocalRunUsageError(f"{task_id!r} has multiple_outputs; its input must be a JSON object")
             values.update(((task_id, key), item) for key, item in value.items())
-    for upstream, key in XComArg.iter_xcom_references(task):
-        if (upstream.task_id, key) not in values:
+    for upstream_id, key in iter_read_outputs(task):
+        if (upstream_id, key) not in values:
             raise LocalRunUsageError(
-                f"No input for {upstream.task_id!r}, key {key!r}; supply --input {upstream.task_id}=JSON"
+                f"No input for {upstream_id!r}, key {key!r}; supply --input {upstream_id}=JSON"
             )
     return values
+
+
+def iter_read_outputs(task) -> Iterator[tuple[str, str]]:
+    """Yield the ID of each task whose XCom ``task``'s arguments read, with the XCom's key."""
+    if is_native_task(task):
+        from airflow.local_run.runtimes import iter_bound_outputs  # noqa: SDK002
+
+        for upstream_id in iter_bound_outputs(task):
+            yield upstream_id, "return_value"
+        return
+    for upstream, key in XComArg.iter_xcom_references(task):
+        yield upstream.task_id, key
+
+
+def is_native_task(task) -> bool:
+    """Whether ``task`` is of a native Dag, deserialized from what its runtime parsed."""
+    from airflow.serialization.definitions.baseoperator import SerializedBaseOperator  # noqa: SDK002
+
+    return isinstance(task, SerializedBaseOperator)
 
 
 def build_startup(dag, task, source: Path, root: Path, run_conf: dict | None) -> StartupDetails:
@@ -251,11 +277,17 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     configure_logging(output=sys.stderr)
     configure_terminal_logging()
     block_orm_access()
-    from airflow.local_run.runtimes import check_project_coordinators  # noqa: SDK002
+    from airflow.local_run.runtimes import (  # noqa: SDK002
+        check_project_coordinators,
+        find_native_dag_importer,
+    )
 
     check_project_coordinators()
     source, root = Path(request["source"]), Path(request["root"])
-    dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])
+    if (importer := find_native_dag_importer(source, root)) is None:
+        dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])
+    else:
+        dag, task = load_native_task(source, root, request.get("dag_id"), request["task_id"], importer)
     runtime = find_task_runtime(task)
     try:
         process_params(dag, task, request.get("run_conf"), suppress_exception=False)
@@ -281,7 +313,12 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
         cancelled = False
         try:
             process = start_task_process(
-                startup, root=root, services=services, runtime=runtime, logger=logger
+                startup,
+                root=root,
+                services=services,
+                runtime=runtime,
+                dag_file=None if importer is None else source,
+                logger=logger,
             )
             process.send_msg(startup, request_id=0)
             process.wait()
@@ -314,10 +351,13 @@ def start_task_process(
     root: Path,
     services: LocalTaskServices,
     runtime: SubprocessCoordinator | None,
+    dag_file: Path | None,
     logger: FilteringBoundLogger,
 ) -> LocalTaskSupervisor:
     """
     Start the task's process: Python's task runner, or the runtime ``runtime`` finds in the project.
+
+    The task of a native Dag runs its own Dag file, ``dag_file``, in its runtime.
 
     :raises TaskLaunchError: when the runtime cannot be found or started.
     """
@@ -329,7 +369,7 @@ def start_task_process(
             new_process_group=True,
             logger=logger,
         )
-    command, schema_version = runtime.build_task_command(what=startup.ti, roots=[root])
+    command, schema_version = runtime.build_task_command(what=startup.ti, roots=[root], dag_file=dag_file)
     return LocalTaskSupervisor.start_runtime(
         id=startup.ti.id,
         command=command,

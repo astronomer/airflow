@@ -2234,6 +2234,17 @@ class TestBuildTaskCommand:
         assert command == (["/runtime", "--flag"], "2026-06-16")
         assert coordinator.recorded_roots == [[tmp_path]]
 
+    def test_runs_the_native_dag_file_it_is_given_instead_of_scanning(self, tmp_path):
+        coordinator = _NativeStubCoordinator(command=["/runtime"], schema_version="2026-06-16")
+        dag_file = tmp_path / "dag.native"
+
+        command = coordinator.build_task_command(what=_make_ti(), roots=[tmp_path], dag_file=dag_file)
+
+        assert command == (["/runtime", os.fspath(dag_file)], "2026-06-16")
+        assert coordinator.recorded_dag_files == [dag_file]
+        assert coordinator.recorded_roots == [[tmp_path]]
+        assert coordinator.scans == 0
+
     @pytest.mark.parametrize(
         ("coordinator", "message"),
         [
