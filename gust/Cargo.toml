@@ -23,7 +23,7 @@ name = "gust"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "Test-run a single task from an Airflow executable Dag bundle"
+description = "Test-run an Airflow Dag, or one task of it, against a mock supervisor"
 
 [dependencies]
 anyhow = "1"
@@ -42,3 +42,4 @@ sha2 = "0.10"
 shlex = "1"
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
+zip = { version = "9.8.2", default-features = false, features = ["deflate"] }

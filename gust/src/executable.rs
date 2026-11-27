@@ -18,15 +18,16 @@
 //! Reader for the executable bundle footer (`task-sdk/docs/executable-bundle-spec.rst`).
 
 use std::{
-    collections::BTreeMap,
     fs::File,
     io::{Read, Seek, SeekFrom},
     path::Path,
 };
 
 use anyhow::{Context, Result, bail, ensure};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
+
+use crate::artifact::Sdk;
 
 const TRAILER_LEN: u64 = 64;
 const MAGIC: &[u8; 8] = b"AFBNDL01";
@@ -35,21 +36,6 @@ const FOOTER_VERSION: u32 = 1;
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
     pub sdk: Sdk,
-    #[serde(default)]
-    pub dags: BTreeMap<String, DagEntry>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Sdk {
-    pub language: String,
-    pub version: String,
-    pub supervisor_schema_version: String,
-}
-
-#[derive(Debug, Default, Deserialize)]
-pub struct DagEntry {
-    #[serde(default)]
-    pub tasks: Vec<String>,
 }
 
 /// Read and verify the manifest of a bundle. `Ok(None)` means the file has no bundle trailer.
@@ -126,7 +112,7 @@ mod tests {
         let path = write_temp("ok", &pack(b"\x7fELF...", b"package main", METADATA));
         let manifest = read_manifest(&path).unwrap().unwrap();
         assert_eq!(manifest.sdk.language, "go");
-        assert_eq!(manifest.dags["d"].tasks, ["t"]);
+        assert_eq!(manifest.sdk.supervisor_schema_version, "2026-06-16");
     }
 
     #[test]

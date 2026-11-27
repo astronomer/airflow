@@ -23,19 +23,20 @@ use clap::Parser;
 
 use crate::input::{Input, parse_input};
 
-/// Run a Dag, or one task of it, from an Airflow executable Dag bundle against a mock supervisor.
+/// Run an Airflow Dag, or one task of it, against a mock supervisor.
 ///
-/// gust starts the bundle the way an Airflow worker does (with `--comm` and `--logs`), answers its
-/// requests from `--input`, and prints what the tasks did.
+/// gust starts the Dag file the way an Airflow worker does (with `--comm` and `--logs`), answers
+/// its requests from `--input`, and prints what the tasks did.
 #[derive(Debug, Parser)]
 #[command(version, max_term_width = 100)]
 pub struct Cli {
-    /// Path to the bundle executable.
-    pub bundle: PathBuf,
+    /// The Dag file: an executable bundle, a `.min.mjs` built by airflow-ts-pack, a fat Jar, a
+    /// `.py` or `.pyc` file, or a directory or zip file with `__main__.py`.
+    pub dag_file: PathBuf,
 
-    /// The program that runs the bundle, such as `node` or `java -jar`. The bundle path and the
-    /// `--comm`/`--logs` arguments are added after it. Split like a shell command line. Without
-    /// it, the bundle is run directly.
+    /// The program that runs the Dag file, such as `node`, `java -jar` or `python3`. The Dag file
+    /// and the `--comm`/`--logs` arguments are added after it. Split like a shell command line.
+    /// An executable bundle needs none.
     #[arg(long, value_name = "COMMAND", value_parser = parse_runtime)]
     pub runtime: Option<RuntimeCommand>,
 
@@ -47,24 +48,24 @@ pub struct Cli {
     #[arg(long = "task", value_name = "TASK_ID")]
     pub task_id: Option<String>,
 
-    /// Everything the tasks can see beyond the bundle itself, as one JSON object: the Dag run,
+    /// Everything the tasks can see beyond the Dag file itself, as one JSON object: the Dag run,
     /// the task instance's try, Variables, Connections, XComs, asset events and state stores.
     /// Run `gust --help:input` for the format.
     #[arg(long, value_name = "JSON", value_parser = parse_input)]
     pub input: Option<Input>,
 
     /// Print the format of `--input`.
-    // `main` answers this before parsing, since it takes no bundle or `--dag`; declaring it here
+    // `main` answers this before parsing, since it takes no Dag file or `--dag`; declaring it here
     // lists it in `--help` and rejects it alongside other arguments.
     #[arg(long = "help:input", exclusive = true)]
     pub help_input: bool,
 
-    /// Do not ask the bundle for its Dags before running the task. The task then gets no
+    /// Do not ask the Dag file for its Dags before running the task. The task then gets no
     /// TaskFlow argument bindings, retries, or execution timeout from its Dag.
     #[arg(long)]
     pub no_parse: bool,
 
-    /// Seconds to wait for the bundle to connect back.
+    /// Seconds to wait for the Dag file's runtime to connect back.
     #[arg(long, default_value = "10", value_name = "SECONDS", value_parser = parse_seconds)]
     pub startup_timeout: Duration,
 

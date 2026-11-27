@@ -15,16 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! gust: test-run one task of an Airflow executable Dag bundle.
+//! gust: test-run an Airflow Dag, or one task of it, against a mock supervisor.
 
-mod bundle;
+mod artifact;
 mod cli;
 mod dag;
+mod executable;
 mod expand;
 mod frame;
 mod input;
+mod jar;
 #[rustfmt::skip]
 mod models;
+mod node;
 mod runtime;
 mod scheduler;
 mod services;
@@ -39,6 +42,7 @@ use serde_json::Value as Json;
 use uuid::Uuid;
 
 use crate::{
+    artifact::Artifact,
     cli::Cli,
     dag::{DagSpec, Lookup, TaskSpec},
     expand::XComValues,
@@ -80,28 +84,19 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<Summary> {
-    let bundle_path = cli
-        .bundle
-        .canonicalize()
-        .with_context(|| format!("cannot find bundle {}", cli.bundle.display()))?;
-    let manifest = bundle::read_manifest(&bundle_path)?;
-    let runtime_command = cli.runtime.as_ref().map(|r| r.0.clone());
-    let mut command: Vec<OsString> = runtime_command
-        .iter()
-        .flatten()
-        .map(OsString::from)
-        .collect();
-    command.push(bundle_path.clone().into());
+    let artifact = Artifact::inspect(&cli.dag_file)?;
+    let runtime = cli.runtime.as_ref().map(|r| r.0.as_slice());
+    artifact.check_runtime(runtime)?;
+    let command = artifact.build_command(runtime);
     let mut notes = Vec::new();
-    match &manifest {
-        None if runtime_command.is_some() => {}
-        None => notes.push("The file has no executable bundle trailer; it was run as a plain executable.".into()),
-        Some(m) if m.sdk.supervisor_schema_version != models::SCHEMA_API_VERSION => notes.push(format!(
-            "The bundle was built against supervisor schema {}, but gust speaks {} and does not migrate messages.",
-            m.sdk.supervisor_schema_version,
+    if let Some(sdk) = &artifact.sdk
+        && sdk.supervisor_schema_version != models::SCHEMA_API_VERSION
+    {
+        notes.push(format!(
+            "The Dag file was built against supervisor schema {}, but gust speaks {} and does not migrate messages.",
+            sdk.supervisor_schema_version,
             models::SCHEMA_API_VERSION,
-        )),
-        Some(_) => {}
+        ));
     }
 
     let sink = LogSink::new(!cli.quiet);
@@ -113,15 +108,14 @@ fn run(cli: &Cli) -> Result<Summary> {
 
     let mut parse = ParseReport::default();
     let mut dag_spec: Option<DagSpec> = None;
-    let mut known_dags: Vec<String> = Vec::new();
     if !cli.no_parse {
         parse.performed = true;
         sink.set_phase("parse");
         services.phase = "parse";
-        eprintln!("gust: asking {} for its Dags", bundle_path.display());
-        match parse_dags(&bundle_path, &command, cli, &mut services, &sink)? {
+        eprintln!("gust: asking {} for its Dags", artifact.path.display());
+        match parse_dags(&artifact, &command, cli, &mut services, &sink)? {
             None => notes.push(
-                "The bundle did not answer the Dag parse request; the task gets no argument bindings.".into(),
+                "The Dag file did not answer the Dag parse request; the task gets no argument bindings.".into(),
             ),
             Some(result) => {
                 if let Some(Json::Object(errors)) = result.get("import_errors") {
@@ -131,38 +125,15 @@ fn run(cli: &Cli) -> Result<Summary> {
                 }
                 match dag::find_dag(&result, &cli.dag_id) {
                     Lookup::Found(found) => {
-                        parse.native_dag = true;
                         dag_spec = Some(found);
                     }
-                    Lookup::NoDag { available } => {
-                        known_dags.clone_from(&available);
-                        let handler = manifest.as_ref().and_then(|m| m.dags.get(&cli.dag_id));
-                        match (handler, &cli.task_id) {
-                            (Some(entry), Some(task_id)) if !entry.tasks.contains(task_id) => bail!(
-                                "the bundle has no task handler for {}.{task_id}; it handles: {}",
-                                cli.dag_id,
-                                entry.tasks.join(", "),
-                            ),
-                            (Some(_), Some(_)) => notes.push(format!(
-                                "{:?} is a Python Dag this bundle has task handlers for; its argument bindings live in the Python Dag file, so the task gets none.",
-                                cli.dag_id,
-                            )),
-                            (Some(_), None) => bail!(
-                                "{:?} is a Python Dag this bundle has task handlers for; its tasks and edges live in the Python Dag file, so gust can only run one task of it at a time (give --task)",
-                                cli.dag_id,
-                            ),
-                            (None, _) if manifest.is_some() => {
-                                let mut known = available;
-                                known.extend(manifest.iter().flat_map(|m| m.dags.keys().cloned()));
-                                bail!(
-                                    "the bundle has no Dag {:?}; it knows: {}",
-                                    cli.dag_id,
-                                    if known.is_empty() { "nothing".into() } else { known.join(", ") },
-                                )
-                            }
-                            (None, _) => notes.push(format!("The bundle's parse result has no Dag {:?}.", cli.dag_id)),
-                        }
-                    }
+                    Lookup::NoDag { available } => bail!(
+                        "{} has no Dag {:?}; it has: {}{}",
+                        artifact.path.display(),
+                        cli.dag_id,
+                        if available.is_empty() { "nothing".into() } else { available.join(", ") },
+                        notes.iter().map(|n| format!("\n{n}")).collect::<String>(),
+                    ),
                 }
             }
         }
@@ -197,13 +168,9 @@ fn run(cli: &Cli) -> Result<Summary> {
                     bail!("--no-parse needs --task: gust learns a Dag's tasks by parsing it");
                 }
                 bail!(
-                    "the bundle's parse result has no Dag {:?}, so gust does not know its tasks; it has: {}",
+                    "{} did not answer the Dag parse request, so gust does not know the tasks of {:?}",
+                    artifact.path.display(),
                     cli.dag_id,
-                    if known_dags.is_empty() {
-                        "nothing".into()
-                    } else {
-                        known_dags.join(", ")
-                    },
                 );
             };
             check_whole_dag_input(&input, &cli.dag_id)?;
@@ -246,7 +213,7 @@ fn run(cli: &Cli) -> Result<Summary> {
     let mut worker = Worker {
         cli,
         command: &command,
-        bundle: &bundle_path,
+        dag_file: &artifact.path,
         dag_run: &dag_run,
         services,
         sink: &sink,
@@ -263,9 +230,10 @@ fn run(cli: &Cli) -> Result<Summary> {
     };
 
     Ok(Summary {
-        bundle: bundle_path,
-        runtime: runtime_command,
-        sdk: manifest.map(|m| m.sdk),
+        dag_file: artifact.path.clone(),
+        kind: artifact.kind,
+        runtime: runtime.map(<[String]>::to_vec),
+        sdk: artifact.sdk.clone(),
         dag_id: cli.dag_id.clone(),
         task_id: cli.task_id.clone(),
         parse,
@@ -302,7 +270,7 @@ fn check_whole_dag_input(input: &Input, dag_id: &str) -> Result<()> {
 struct Worker<'a> {
     cli: &'a Cli,
     command: &'a [OsString],
-    bundle: &'a Path,
+    dag_file: &'a Path,
     dag_run: &'a models::DagRun,
     services: Services,
     sink: &'a LogSink,
@@ -322,7 +290,7 @@ impl Executor for Worker<'_> {
         self.services.phase = "run";
         self.services
             .begin_instance(&self.cli.dag_id, &task.task_id, ti.map_index, ti.try_number);
-        let startup = build_startup(self.cli, self.bundle, self.dag_run, task, &ti)?;
+        let startup = build_startup(self.cli, self.dag_file, self.dag_run, task, &ti)?;
         run_instance(
             self.cli,
             self.command,
@@ -429,24 +397,26 @@ fn run_instance(
     })
 }
 
-/// Ask the bundle for its Dags, as the Dag processor does, serving any requests it makes meanwhile.
+/// Ask the Dag file for its Dags, as the Dag processor does, serving any requests it makes meanwhile.
 fn parse_dags(
-    bundle: &Path,
+    artifact: &Artifact,
     command: &[OsString],
     cli: &Cli,
     services: &mut Services,
     sink: &LogSink,
 ) -> Result<Option<Json>> {
     let mut runtime = Runtime::launch(command, cli.startup_timeout, sink)?;
+    let bundle_path = artifact
+        .path
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_default();
     let request = models::DagFileParseRequest {
         bundle_name: BUNDLE_NAME.into(),
-        bundle_path: bundle
-            .parent()
-            .unwrap_or(Path::new("/"))
-            .display()
-            .to_string(),
+        bundle_path: bundle_path.display().to_string(),
         callback_requests: vec![],
-        file: bundle.display().to_string(),
+        file: artifact.path.display().to_string(),
         type_: "DagFileParseRequest".into(),
     };
     runtime.send(0, &Reply::body(&request)?)?;
@@ -519,7 +489,7 @@ fn build_dag_run(cli: &Cli, input: &Input) -> models::DagRun {
 
 fn build_startup(
     cli: &Cli,
-    bundle: &Path,
+    dag_file: &Path,
     dag_run: &models::DagRun,
     spec: &TaskSpec,
     ti: &TiRun,
@@ -529,7 +499,7 @@ fn build_startup(
     let arg_bindings = match (&ti.bindings, ti.resolved) {
         (Some(b), false) => Some(
             serde_json::from_value(Json::Array(b.clone()))
-                .context("the bundle's argument bindings do not match the supervisor schema")?,
+                .context("the Dag's argument bindings do not match the supervisor schema")?,
         ),
         _ => None,
     };
@@ -539,7 +509,7 @@ fn build_startup(
             version: None,
             version_data: None,
         },
-        dag_rel_path: bundle
+        dag_rel_path: dag_file
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()

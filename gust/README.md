@@ -19,13 +19,12 @@
 
 # gust
 
-`gust` test-runs a Dag, or one task of it, from an Airflow executable Dag bundle, with no Airflow
-installation and no Python. It starts the bundle the way an Airflow worker does, plays the
-scheduler and the supervisor, answers the tasks' requests from the `--input` mapping, and prints
-what the tasks did.
+`gust` test-runs a Dag, or one task of it, from a built Dag file, with no Airflow installation and
+no Python. It starts the Dag file the way an Airflow worker does, plays the scheduler and the
+supervisor, answers the tasks' requests from the `--input` mapping, and prints what the tasks did.
 
 ```bash
-gust path/to/bundle --dag=my_dag --task=my_task --input='{
+gust path/to/my_dags --dag=my_dag --task=my_task --input='{
   "dag_run": {"logical_date": "2026-01-01T00:00:00Z", "conf": {"region": "eu"}},
   "xcoms": {"my_dag/upstream": {"": {"rows": 3}}},
   "variables": {"greeting": "hello"},
@@ -36,22 +35,24 @@ gust path/to/bundle --dag=my_dag --task=my_task --input='{
 Without `--task`, gust runs the whole Dag; see [Running a whole Dag](#running-a-whole-dag).
 
 ```bash
-gust path/to/bundle --dag=my_dag --input='{"variables": {"greeting": "hello"}}'
+gust path/to/my_dags --dag=my_dag --input='{"variables": {"greeting": "hello"}}'
 ```
 
-A bundle is whatever file a language SDK packs a project into. gust runs it directly, which suits
-the executable bundles that native SDKs build (such as the Go SDK's `airflow-go-pack`; see
-`task-sdk/docs/executable-bundle-spec.rst`). A bundle that needs an interpreter is run through
-`--runtime`, which gust puts in front of the bundle path:
+gust takes one Dag file, checks it, and refuses anything it does not recognise before starting a
+process:
+
+- an executable with the bundle trailer that native SDKs append (such as the Go SDK's
+  `airflow-go-pack`; see `task-sdk/docs/executable-bundle-spec.rst`), with its executable bit set;
+- a `.min.mjs` built by `airflow-ts-pack`, run with `--runtime=node`;
+- a fat Jar, which the Java SDK's Gradle plugin builds by default, run with `--runtime='java -jar'`.
 
 ```bash
 gust dist/my_dags.min.mjs --runtime=node --dag=my_dag --task=my_task
 gust build/libs/my-dags-all.jar --runtime='java -jar' --dag=my_dag --task=my_task
 ```
 
-`--runtime` is split like a shell command line, so it can carry interpreter options. gust does not
-inspect the file to pick an interpreter. `java -jar` needs the fat JAR the Java SDK's Gradle plugin
-builds by default; a JAR built with `fatJar = false` does not carry its dependencies.
+`--runtime` is split like a shell command line, so it can carry interpreter options; gust puts it
+in front of the Dag file's path. For Java it must end with `-jar`.
 
 ## Building
 
@@ -65,14 +66,14 @@ The binary is `target/release/gust`.
 
 | Flag | |
 |---|---|
-| `BUNDLE` | Path to the bundle. Required. |
+| `DAG_FILE` | The Dag file. Required. |
 | `--dag` | The Dag to run. Required. |
 | `--task` | Run only this task of the Dag, as if the Dag had no other task. Without it, the whole Dag runs. |
 | `--input` | Everything else the tasks see, as one JSON object. See [The input mapping](docs/input.md), also printed by `gust --help:input`. |
 | `--help:input` | Print the format of `--input` and exit. |
-| `--runtime` | The program that runs the bundle. See above. |
-| `--no-parse` | Do not ask the bundle for its Dags first. Needs `--task`. See [What happens](#what-happens). |
-| `--startup-timeout` | Seconds to wait for the bundle to connect back. Default 10. |
+| `--runtime` | The program that runs the Dag file. See above. |
+| `--no-parse` | Do not ask the Dag file for its Dags first. Needs `--task`. See [What happens](#what-happens). |
+| `--startup-timeout` | Seconds to wait for the Dag file to connect back. Default 10. |
 | `--quiet` | Do not echo the task's logs while it runs. |
 | `--json` | Print the summary as JSON on stdout. |
 
@@ -83,9 +84,7 @@ The binary is `target/release/gust`.
 ## Running a whole Dag
 
 Without `--task`, gust runs every task of the Dag, one at a time, as the scheduler would schedule
-them, and stops when the Dag run reaches a finished state. The Dag must be one the bundle defines
-natively: a Python Dag's tasks and edges live in the Python file, so only one of its task handlers
-can run at a time.
+them, and stops when the Dag run reaches a finished state.
 
 - **Order.** gust takes the first task, in the order the serialized Dag lists them, whose upstream
   tasks are all done, and repeats until every task is done.
@@ -113,7 +112,7 @@ in another state that is not finished.
 
 ## Mapped tasks
 
-When a task is mapped in the bundle's Dag, gust runs every instance, one after another in map
+When a task is mapped in the parsed Dag, gust runs every instance, one after another in map
 index order, following [ADR-0016](../airflow-core/adr/lang-sdk/0016-mapped-tasks-across-lang-sdks.md).
 Nothing extra goes in `--input`: what the task expands over is in the serialized Dag, and an
 upstream output it expands over is an XCom from the run, or from [`xcoms`](docs/input.md#xcoms) with `--task`.
@@ -143,12 +142,11 @@ errors.
 
 ## What happens
 
-1. **Parse.** gust starts the bundle and sends it a `DagFileParseRequest`, as the Dag processor
-   does. From a Dag the bundle defines natively, gust reads each task's edges, trigger rule,
+1. **Parse.** gust starts the Dag file and sends it a `DagFileParseRequest`, as the Dag processor
+   does. From the Dag named by `--dag`, gust reads each task's edges, trigger rule,
    TaskFlow argument bindings, `retries`, `execution_timeout` and expansion, the way the scheduler
-   and API server would. A task handler for a Python Dag gets no bindings: those live in the
-   Python Dag file. `--no-parse` skips this step.
-2. **Run.** For each task instance try, gust starts the bundle again with `--comm` and `--logs`,
+   and API server would. `--no-parse` skips this step.
+2. **Run.** For each task instance try, gust starts the Dag file again with `--comm` and `--logs`,
    sends `StartupDetails`, and answers the task's requests until it disconnects. The execution
    timeout is enforced.
 3. **Summary.** gust prints the Dag run with its final state, then every task instance in the
@@ -165,12 +163,13 @@ gust could not run it.
 ## Not supported
 
 Tasks in a mapped task group, task loops, a Python Dag's `map()` callables (`ApplyMap`), resuming
-a deferred or rescheduled task, human-in-the-loop answers, callbacks, stub tasks, triggering other
-Dag runs, and the requests that read other task instances or Dag runs. The task gets an
-`API_SERVER_ERROR` for a request gust does not support, and the summary lists it as unsupported.
+a deferred or rescheduled task, human-in-the-loop answers, callbacks, task handlers for Python
+Dags, triggering other Dag runs, and the requests that read other task instances or Dag runs. The
+task gets an `API_SERVER_ERROR` for a request gust does not support, and the summary lists it as
+unsupported.
 
-gust speaks the supervisor schema it was generated from and does not migrate messages for a bundle
-built against an older one; it notes the difference in the summary.
+gust speaks the supervisor schema it was generated from and does not migrate messages for a Dag
+file built against an older one; it notes the difference in the summary.
 
 ## The supervisor models
 

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Launching a bundle the way the executable coordinator does, and talking to it.
+//! Launching a Dag file's runtime the way a coordinator does, and talking to it.
 
 use std::{
     ffi::OsString,
@@ -167,7 +167,7 @@ impl LogLine {
     }
 }
 
-/// A running bundle process connected to this supervisor.
+/// A running Dag file process connected to this supervisor.
 pub struct Runtime {
     child: Arc<Mutex<Child>>,
     comm: TcpStream,
@@ -187,7 +187,7 @@ impl Runtime {
     pub fn launch(command: &[OsString], startup_timeout: Duration, sink: &LogSink) -> Result<Self> {
         let (program, args) = command
             .split_first()
-            .context("the command to start the bundle is empty")?;
+            .context("the command to start the Dag file is empty")?;
         let comm_listener = TcpListener::bind("127.0.0.1:0")?;
         let logs_listener = TcpListener::bind("127.0.0.1:0")?;
         comm_listener.set_nonblocking(true)?;
@@ -232,12 +232,12 @@ impl Runtime {
             }
             if let Some(status) = child.try_wait()? {
                 readers.drain(..).for_each(|r| drop(r.join()));
-                bail!("the bundle exited ({status}) before connecting to the supervisor");
+                bail!("the runtime exited ({status}) before connecting to the supervisor");
             }
             if Instant::now() > deadline {
                 let _ = child.kill();
                 let _ = child.wait();
-                bail!("the bundle did not connect within {startup_timeout:?}");
+                bail!("the runtime did not connect within {startup_timeout:?}");
             }
             thread::sleep(Duration::from_millis(20));
         }

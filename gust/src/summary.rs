@@ -23,7 +23,7 @@ use serde::Serialize;
 use serde_json::Value as Json;
 
 use crate::{
-    bundle::Sdk,
+    artifact::{Kind, Sdk},
     models::DagRun,
     runtime::LogLine,
     services::{Outcome, Record, RequestLog},
@@ -32,15 +32,14 @@ use crate::{
 #[derive(Debug, Default, Serialize)]
 pub struct ParseReport {
     pub performed: bool,
-    /// Whether the task was found in a Dag the bundle defines natively.
-    pub native_dag: bool,
     pub spec: Option<Json>,
     pub requests: Vec<RequestLog>,
 }
 
 #[derive(Serialize)]
 pub struct Summary {
-    pub bundle: PathBuf,
+    pub dag_file: PathBuf,
+    pub kind: Kind,
     pub runtime: Option<Vec<String>>,
     pub sdk: Option<Sdk>,
     pub dag_id: String,
@@ -52,7 +51,7 @@ pub struct Summary {
     pub dag_run: DagRun,
     /// Every task instance of the run, in the order gust ran or decided it.
     pub instances: Vec<Instance>,
-    /// Log lines from parsing the bundle.
+    /// Log lines from parsing the Dag file.
     pub logs: Vec<LogLine>,
     pub notes: Vec<String>,
 }
@@ -321,13 +320,23 @@ impl Summary {
         if let Some(date) = &self.dag_run.logical_date {
             println!("  logical     {date}");
         }
-        print!("  bundle      {}", self.bundle.display());
+        print!("  dag file    {}", self.dag_file.display());
         match &self.sdk {
-            Some(sdk) => println!(
-                " ({} SDK {}, schema {})",
-                sdk.language, sdk.version, sdk.supervisor_schema_version
+            Some(sdk) => {
+                let version = sdk
+                    .version
+                    .as_deref()
+                    .map(|v| format!(" {v}"))
+                    .unwrap_or_default();
+                println!(
+                    " ({} SDK{version}, schema {})",
+                    sdk.language, sdk.supervisor_schema_version
+                );
+            }
+            None => println!(
+                " ({})",
+                serde_json::to_value(self.kind).unwrap().as_str().unwrap()
             ),
-            None => println!(),
         }
         if let Some(runtime) = &self.runtime {
             println!("  runtime     {}", runtime.join(" "));
