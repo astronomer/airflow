@@ -1324,6 +1324,22 @@ def test_a_dag_written_in_typescript_runs_on_node(typescript_project):
         assert stored.fetchall() == [("typescript",)]
 
 
+def test_a_bundle_older_than_a_source_it_was_packed_from_is_warned_about(typescript_project, capfd):
+    bundle = typescript_project / "dist" / "bundle.min.mjs"
+    # The example is packed from its own directory, so its sources are recorded under src/.
+    (typescript_project / "src").mkdir()
+    (typescript_project / "src" / "native.ts").touch()
+    os.utime(bundle, (100, 100))
+
+    result = run_dag_file(bundle, task_ids=["extract.south"], keep_history=False)
+
+    assert result.state == "success", result.failures
+    assert (
+        "Warning: dist/bundle.min.mjs is older than src/native.ts, which it was built from, so the run does "
+        "not have the latest changes. Build it again to run them." in capfd.readouterr().err
+    )
+
+
 def test_a_typescript_task_runs_with_inputs_for_the_outputs_its_arguments_bind(typescript_project):
     result = run_dag_file(
         typescript_project / "dist" / "bundle.min.mjs",

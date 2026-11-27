@@ -76,6 +76,7 @@ from airflow.local_run.runtimes import (
     get_runtime_name,
     iter_bound_outputs,
     parse_native_dag_file,
+    warn_if_built_before_its_sources,
 )
 from airflow.local_run.secrets_backend import LocalRunSecretsBackend
 from airflow.local_run.supervised import SupervisedTries, find_descendants, stop_processes
@@ -257,6 +258,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             source,
         )
     else:
+        warn_if_built_before_its_sources(source, root, importer)
         with record_startup_events():
             bundles = DagBundlesManager()
             parsed = parse_native_dag_file(source, root)

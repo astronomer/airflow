@@ -148,6 +148,25 @@ def read_bundle_source(bundle_path: pathlib.Path, dag_id: str | None = None) -> 
     return _read_source(_read_verified_payloads(bundle_path), dag_id)
 
 
+def read_bundle_source_paths(bundle_path: pathlib.Path) -> list[str]:
+    """
+    Return the files ``airflow-ts-pack`` built the bundle from: its entrypoint and each native Dag's file.
+
+    The paths are relative to the directory the bundle was packed in.
+    """
+    payload = _read_verified_payloads(bundle_path).metadata
+    try:
+        metadata = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"cannot parse embedded airflow metadata: {exc}") from exc
+    if not isinstance(metadata, dict):
+        raise ValueError("embedded airflow metadata must contain a mapping")
+    paths = [metadata.get("entrypoint_path")]
+    if isinstance(dag_source_paths := metadata.get("dag_source_paths"), dict):
+        paths.extend(dag_source_paths.values())
+    return list(dict.fromkeys(path for path in paths if isinstance(path, str)))
+
+
 def read_bundle_entrypoint_source(bundle_path: pathlib.Path) -> str | None:
     """Return the entrypoint source ``airflow-ts-pack`` embedded, or ``None`` when it embeds none."""
     return _read_source(_read_verified_payloads(bundle_path), None)

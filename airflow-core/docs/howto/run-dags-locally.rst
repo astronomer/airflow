@@ -530,10 +530,11 @@ Node parses the bundle, as the Dag processor has it parse one in a deployment, a
 TypeScript source for the UI's Code page. The run refuses a task whose queue does not route to Node, before
 any task runs. ``--task``, ``--input`` and the history work as for a Python Dag: an input stands in for the
 output of an upstream task that a task takes as an argument. The run parses the bundle as it is, so rebuild
-it after each change. With ``--no-db``, one task runs alone in its runtime, given an input for each upstream
-output it takes as an argument; a ``dag.if`` or ``dag.switch`` decider and a ``triggerDagRun`` task fail
-there, as they need a Dag run. A Dag written in Java, or in Go as an executable, runs the same way with its
-own coordinator, but only TypeScript is tested.
+it after each change. It warns when the bundle is older than its entrypoint or a Dag's own file, but not when
+only a module they import changed. With ``--no-db``, one task runs alone in its runtime, given an input for
+each upstream output it takes as an argument; a ``dag.if`` or ``dag.switch`` decider and a ``triggerDagRun``
+task fail there, as they need a Dag run. A Dag written in Java, or in Go as an executable, runs the same way
+with its own coordinator, but only TypeScript is tested.
 
 Limits
 ------

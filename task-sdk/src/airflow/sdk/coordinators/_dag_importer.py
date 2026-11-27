@@ -127,6 +127,14 @@ class CoordinatorDagImporter(AbstractDagImporter[FilesystemDagDefinition]):
             ],
         )
 
+    def get_source_paths(self, definition: DagDefinition) -> list[str]:
+        """
+        Return the source files *definition* was built from, relative to the directory it was built in.
+
+        A local run warns when one of them changed after *definition* was built. This default finds none.
+        """
+        return []
+
 
 def build_coordinator_dag_importers(
     manager: CoordinatorManager, bundle_name: str

@@ -26,6 +26,7 @@ reports to the user.
 from __future__ import annotations
 
 import os
+import sys
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, cast
 
@@ -111,6 +112,25 @@ def find_unconfigured_importer(source: Path) -> CoordinatorDagImporter | None:
         if importer.can_handle(source) and importer.might_contain_dag(definition, safe_mode=True):
             return importer
     return None
+
+
+def warn_if_built_before_its_sources(source: Path, root: Path, importer: CoordinatorDagImporter) -> None:
+    """Warn when ``source`` is older than a file it was built from, whose changes the run would miss."""
+    try:
+        paths = importer.get_source_paths(FilesystemDagDefinition(path=source))
+    except (OSError, ValueError):
+        # Parsing the file then says why it cannot be read.
+        return
+    built = source.stat().st_mtime
+    # Relative to where the file was built, which is the project root when built as the docs show.
+    changed = [path for path in paths if (root / path).is_file() and (root / path).stat().st_mtime > built]
+    if changed:
+        print(
+            f"Warning: {source.relative_to(root)} is older than {', '.join(changed)}, which it was built "
+            "from, so the run does not have the latest changes. Build it again to run them.",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 def get_runtime_name(importer: CoordinatorDagImporter) -> str:

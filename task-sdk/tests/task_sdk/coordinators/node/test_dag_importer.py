@@ -131,6 +131,34 @@ class TestMightContainDag:
         assert importer.might_contain_dag(FilesystemDagDefinition(path), True) is True
 
 
+@pytest.mark.parametrize(
+    ("dag_source_paths", "entrypoint_path", "expected"),
+    [
+        pytest.param(
+            {"sales": "src/sales.ts", "inventory": "src/main.ts"},
+            "src/main.ts",
+            ["src/main.ts", "src/sales.ts"],
+            id="entrypoint-and-each-dags-file",
+        ),
+        pytest.param({}, None, [], id="none-recorded"),
+    ],
+)
+def test_source_paths_are_the_files_the_bundle_was_packed_from(
+    importer, tmp_path, dag_source_paths, entrypoint_path, expected
+):
+    path = write_bundle(
+        tmp_path, "sales", "inventory", dag_source_paths=dag_source_paths, entrypoint_path=entrypoint_path
+    )
+
+    assert importer.get_source_paths(FilesystemDagDefinition(path)) == expected
+
+
+def test_a_runtime_that_records_no_source_paths_has_none(tmp_path):
+    importer = JavaDagImporter(bundle_name=BUNDLE_NAME)
+
+    assert importer.get_source_paths(FilesystemDagDefinition(tmp_path / "dags.jar")) == []
+
+
 class TestGetSourceCode:
     def test_returns_the_entrypoint_source_without_a_dag_id(self, importer, tmp_path):
         sales = 'export const sales = new Dag({ dagId: "sales" });\n'

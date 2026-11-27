@@ -34,6 +34,7 @@ from unittest import mock
 
 import psutil
 import pytest
+from task_sdk.coordinators.node._bundle_test_utils import write_bundle
 
 from airflow.sdk import DAG, task
 from airflow.sdk.exceptions import LocalRunConfigError, LocalRunUsageError
@@ -990,6 +991,31 @@ def test_native_dag_task_runs_its_dag_file_with_its_parsed_bindings(project):
     assert [binding["task_id"] for binding in context["arg_bindings"] if binding["kind"] == "xcom"] == [
         "produce"
     ]
+
+
+def test_native_dag_file_older_than_a_source_it_was_built_from_is_warned_about(project):
+    bundle = write_native_project(project)
+    write_bundle(bundle.parent, "native", dag_source_paths={}, entrypoint_path="src/main.ts")
+    (project / "src").mkdir()
+    (project / "src" / "main.ts").touch()
+    os.utime(bundle, (100, 100))
+
+    result = run_cli(
+        project,
+        "--task",
+        "consume",
+        "--input",
+        "produce=3",
+        "--connections-file",
+        "connections.json",
+        source=bundle,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "Warning: dist/bundle.min.mjs is older than src/main.ts, which it was built from, so the run does "
+        "not have the latest changes. Build it again to run them." in result.stderr
+    )
 
 
 def test_native_dag_task_needs_an_input_for_each_output_it_binds(project):

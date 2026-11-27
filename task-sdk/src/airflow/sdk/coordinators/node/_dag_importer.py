@@ -27,6 +27,7 @@ from airflow.sdk.coordinators.node._bundle_reader import (
     has_bundle_layout_prefix,
     read_bundle_entrypoint_source,
     read_bundle_source,
+    read_bundle_source_paths,
 )
 from airflow.sdk.importers.base import DagSourceCode
 
@@ -70,3 +71,7 @@ class NodeDagImporter(CoordinatorDagImporter):
                 else read_bundle_entrypoint_source(path)
             )
         return DagSourceCode(source_code=source or _NO_SOURCE, language="typescript")
+
+    def get_source_paths(self, definition: DagDefinition) -> list[str]:
+        with definition.as_file() as path:
+            return read_bundle_source_paths(path)

@@ -280,6 +280,7 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     from airflow.local_run.runtimes import (  # noqa: SDK002
         check_project_coordinators,
         find_native_dag_importer,
+        warn_if_built_before_its_sources,
     )
 
     check_project_coordinators()
@@ -287,6 +288,7 @@ def execute(request: dict[str, Any]) -> dict[str, Any]:
     if (importer := find_native_dag_importer(source, root)) is None:
         dag, task = load_task(source, root, request.get("dag_id"), request["task_id"])
     else:
+        warn_if_built_before_its_sources(source, root, importer)
         dag, task = load_native_task(source, root, request.get("dag_id"), request["task_id"], importer)
     runtime = find_task_runtime(task)
     try:
