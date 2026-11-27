@@ -106,7 +106,8 @@ errors.
 - `map()` callables of a Python Dag in another language's runtime (`ApplyMap`).
 - Resuming a deferred or rescheduled task, and human-in-the-loop answers.
 - Callbacks.
-- Stub tasks in a Python Dag file, and task handlers.
+- Stub tasks in a Python Dag file, except by running their task handler on its own with
+  `--task-handler`, and Python task handlers.
 - Triggering other Dag runs, and the requests that read other task instances or Dag runs.
 - Converting messages between supervisor schemas.
 

@@ -137,7 +137,18 @@ gust /tmp/gust/go_native --dag=go_native_pipeline --input='{
 }'
 ```
 
-`go-sdk/example/bundle` builds only task handlers for Python Dags, so it has no Dags of its own.
+`go-sdk/example/bundle` builds only task handlers, for the Python Dags in `go-sdk/dags`. Run one
+with `--task-handler`, giving the arguments its stub in `go_examples.py` takes:
+
+```bash
+cd go-sdk/example/bundle
+go tool airflow-go-pack --output /tmp/gust/go_handlers
+gust /tmp/gust/go_handlers --task-handler=taskflow_binding_dag/via_flat_args --input='{"args": {
+  "name": "summary", "count": 3, "ratio": 2.5, "enabled": true, "tags": ["metrics", "hourly"],
+  "config": {"environment": "production", "region": "eu-west-1", "debug": true},
+  "numbers": [1, 1, 2, 3, 5, 8], "note": null
+}}'
+```
 
 **TypeScript.** Build `ts-sdk/example` with its `build` script, then:
 

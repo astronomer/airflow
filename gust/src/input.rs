@@ -23,7 +23,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Deserializer};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 use url::Url;
 
 use crate::{models::DagRunType, timestamp::Timestamp};
@@ -45,6 +45,8 @@ pub struct Input {
     pub asset_state: BTreeMap<String, Map<String, Value>>,
     pub assets: Vec<Asset>,
     pub asset_events: Vec<AssetEvent>,
+    /// The literal argument bindings `args` gives, for a task gust does not parse a Dag for.
+    pub args: Option<Vec<Value>>,
 }
 
 #[derive(Clone, Debug)]
@@ -135,6 +137,7 @@ struct RawInput {
     xcoms: Map<String, Value>,
     task_state: Map<String, Value>,
     asset_state: Map<String, Value>,
+    args: Option<Map<String, Value>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -314,6 +317,11 @@ fn resolve(raw: RawInput, now: Timestamp) -> Result<Input, String> {
         asset_state: BTreeMap::new(),
         assets,
         asset_events,
+        args: raw.args.map(|args| {
+            args.into_iter()
+                .map(|(name, value)| json!({"kind": "literal", "name": name, "value": value}))
+                .collect()
+        }),
     };
     for (asset, store) in raw.asset_state {
         let Value::Object(store) = store else {
@@ -491,8 +499,6 @@ fn parse_conn_fields(conn_id: String, mut fields: Map<String, Value>) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     fn ts(s: &str) -> Timestamp {
@@ -682,6 +688,23 @@ mod tests {
             let input = format!(r#"{{"xcoms": {bad}}}"#);
             assert!(parse_at(&input, NOW).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn args_become_literal_bindings() {
+        assert_eq!(parse_at("{}", NOW).unwrap().args, None);
+        let args = parse_at(r#"{"args": {"x": 1, "y": null}}"#, NOW)
+            .unwrap()
+            .args
+            .unwrap();
+        assert_eq!(
+            args,
+            [
+                json!({"kind": "literal", "name": "x", "value": 1}),
+                json!({"kind": "literal", "name": "y", "value": null}),
+            ]
+        );
+        assert!(parse_at(r#"{"args": []}"#, NOW).is_err());
     }
 
     #[test]

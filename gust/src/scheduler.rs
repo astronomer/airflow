@@ -130,7 +130,7 @@ pub fn run_dag(
                 max_tries,
                 expanded_ti_count: None,
                 bindings: task.arg_bindings.clone(),
-                resolved: false,
+                resolved: task.arg_bindings_resolved,
             }),
             Some(mapped) => {
                 let xcoms = exec.find_xcom_values();

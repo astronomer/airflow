@@ -54,6 +54,13 @@ gust dags/my_dag.py --runtime=python3 --dag=my_dag --task=load \
   --input='{"xcoms": {"my_dag/extract": {"": {"rows": 3}}}}'
 ```
 
+Run the task handler a Dag file declares for a stub task of a Python Dag, with the arguments the
+stub would get:
+
+```bash
+gust bin/my_handlers --task-handler=my_dag/summarize --input='{"args": {"region": "eu"}}'
+```
+
 The exit status is 0 when the Dag run succeeded, 1 when it failed or did not finish, and 2 when
 gust could not run it.
 
@@ -62,8 +69,9 @@ gust could not run it.
 | Flag | |
 |---|---|
 | `DAG_FILE` | The Dag file. Required. See [Dag files and runtimes](docs/dag-files.md). |
-| `--dag` | The Dag to run. Required. |
+| `--dag` | The Dag to run. Required, unless `--task-handler` is given. |
 | `--task` | Run only this task, as if the Dag had no other task. |
+| `--task-handler` | Run the task handler for `DAG_ID/TASK_ID` instead of a Dag. Replaces `--dag` and `--task`. See [Task handlers](docs/dag-files.md#task-handlers). |
 | `--runtime` | The program that starts the Dag file, such as `node`, `java -jar` or `python3`. |
 | `--input` | What the tasks see from Airflow, as one JSON object. See [The input mapping](docs/input.md), also printed by `gust --help:input`. |
 | `--no-parse` | Do not ask the Dag file for its Dags first. Needs `--task`. |

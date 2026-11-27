@@ -101,3 +101,25 @@ Python task reads before asking the supervisor still applies, such as `AIRFLOW_V
 gust does not run stub tasks (`@task.stub`) of a Python Dag file, since their task handlers live
 elsewhere. A whole Dag run is refused when any of the Dag's tasks is a stub, and a `--task` run when
 that task is one; other tasks of the Dag can still run with `--task`.
+
+## Task handlers
+
+A Dag file can also hold task handlers: the bodies of a Python Dag's stub tasks, written with
+another SDK. `--task-handler=DAG_ID/TASK_ID` runs one of them, in place of `--dag` and `--task`.
+The ids are split at the first `/`, which a Dag id cannot contain.
+
+```bash
+gust bin/my_handlers --task-handler=my_dag/summarize --input='{"args": {"region": "eu"}}'
+gust dist/handlers.min.mjs --runtime=node --task-handler=my_dag/summarize
+```
+
+The Python Dag is not involved, so gust does not parse anything. Before starting the Dag file,
+gust checks that it declares the handler: an executable lists its handlers in its manifest's
+`dags`, and a TypeScript bundle in its metadata's `task_handlers`. A Jar lists none, so for Java
+only running it tells. gust does not run Python task handlers yet.
+
+What the API server would take from the Python Dag is not there either:
+
+- The task's arguments come from [`args`](input.md#args) in `--input`. Give every argument the
+  handler reads, including those with a default in the Python stub.
+- The task runs once, with no retries and no execution timeout, unmapped.

@@ -27,6 +27,10 @@ use serde_json::Value as Json;
 pub struct TaskSpec {
     pub task_id: String,
     pub arg_bindings: Option<Vec<Json>>,
+    /// `arg_bindings` are already in the form the supervisor sends, as gust builds them from `args`
+    /// in `--input`, rather than as the serialized Dag has them.
+    #[serde(skip)]
+    pub arg_bindings_resolved: bool,
     pub retries: Option<i64>,
     pub execution_timeout: Option<f64>,
     pub queue: Option<String>,
@@ -200,6 +204,7 @@ pub fn find_dag(result: &Json, dag_id: &str) -> Lookup {
             TaskSpec {
                 task_id: task_id.to_owned(),
                 arg_bindings: task.get("_arg_bindings").and_then(Json::as_array).cloned(),
+                arg_bindings_resolved: false,
                 retries: task.get("retries").map(unwrap_var).and_then(Json::as_i64),
                 execution_timeout: task
                     .get("execution_timeout")

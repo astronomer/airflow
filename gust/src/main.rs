@@ -37,7 +37,6 @@ mod timestamp;
 use std::{ffi::OsString, path::Path, process::ExitCode, time::Instant};
 
 use anyhow::{Context, Result, bail};
-use clap::Parser;
 use serde_json::Value as Json;
 use uuid::Uuid;
 
@@ -62,7 +61,7 @@ fn main() -> ExitCode {
         println!("{}", cli::find_input_help());
         return ExitCode::SUCCESS;
     }
-    let cli = Cli::parse();
+    let cli = Cli::parse_args();
     match run(&cli) {
         Ok(summary) => {
             if cli.json {
@@ -87,6 +86,9 @@ fn run(cli: &Cli) -> Result<Summary> {
     let artifact = Artifact::inspect(&cli.dag_file)?;
     let runtime = cli.runtime.as_ref().map(|r| r.0.as_slice());
     artifact.check_runtime(runtime)?;
+    if cli.task_handler.is_some() {
+        artifact.check_handler(&cli.dag_id, cli.task_id.as_deref().unwrap_or_default())?;
+    }
     let mut notes = Vec::new();
     if let Some(sdk) = &artifact.sdk
         && sdk.supervisor_schema_version != models::SCHEMA_API_VERSION
@@ -103,11 +105,16 @@ fn run(cli: &Cli) -> Result<Summary> {
         Some(input) => input.clone(),
         None => input::parse_input("{}").map_err(anyhow::Error::msg)?,
     };
+    if input.args.is_some() && !cli.no_parse && cli.task_handler.is_none() {
+        bail!(
+            "\"args\" gives a task's arguments when gust does not parse its Dag, with --task-handler or --no-parse; a parsed Dag gives its own"
+        );
+    }
     let mut services = Services::new(&input);
 
     let mut parse = ParseReport::default();
     let mut dag_spec: Option<DagSpec> = None;
-    if !cli.no_parse {
+    if !cli.no_parse && cli.task_handler.is_none() {
         parse.performed = true;
         sink.set_phase("parse");
         services.phase = "parse";
@@ -155,7 +162,11 @@ fn run(cli: &Cli) -> Result<Summary> {
                             .join(", "),
                     )
                 })?,
-                None => TaskSpec::bare(task_id),
+                None => TaskSpec {
+                    arg_bindings: input.args.clone(),
+                    arg_bindings_resolved: true,
+                    ..TaskSpec::bare(task_id)
+                },
             };
             parse.spec = dag_spec
                 .is_some()
@@ -210,6 +221,10 @@ fn run(cli: &Cli) -> Result<Summary> {
 
     let dag_run = build_dag_run(cli, &input);
     match &cli.task_id {
+        Some(task_id) if cli.task_handler.is_some() => eprintln!(
+            "gust: running the task handler for {}/{task_id} (run {})",
+            cli.dag_id, dag_run.run_id
+        ),
         Some(task_id) => eprintln!(
             "gust: running {}.{task_id} (run {})",
             cli.dag_id, dag_run.run_id

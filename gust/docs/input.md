@@ -52,10 +52,13 @@ one task instance, or values the run itself produces, so they only work with
 | `xcoms`       | yes           | other Dags' (see 2) |
 | `task_state`  | yes           | error (see 3)       |
 | `asset_state` | yes           | yes                 |
+| `args`        | see 4         | error (see 4)       |
 
 1. Each task starts at try 1, with `max_tries` from its `retries`.
 2. This Dag's XComs come from the run, so giving them is an error.
 3. Each task instance starts with an empty store.
+4. Only with `--task-handler`, or `--task` with `--no-parse`: a parsed Dag gives
+   its tasks' arguments itself.
 
 ## `dag_run`
 
@@ -160,6 +163,14 @@ sequence answer from that array: `GetXComCount` with its length,
 and `GetXComSequenceSlice` with `[start:stop:step]` as Python slices it. A
 missing XCom counts as empty; a value that is not an array is an error for
 these requests.
+
+## `args`
+
+`{"name": value}`. The task's arguments, sent as literal argument bindings, as
+the API server sends a stub task's arguments to its task handler. Give every
+argument the handler reads, including those with a default in the Python stub:
+the API server sends defaults too. Only for a task gust does not parse a Dag
+for (see 4 above). Default: no bindings.
 
 ## `task_state`
 

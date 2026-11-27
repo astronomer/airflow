@@ -41,12 +41,32 @@ pub struct Cli {
     pub runtime: Option<RuntimeCommand>,
 
     /// The Dag to run.
-    #[arg(long = "dag", value_name = "DAG_ID")]
+    #[arg(
+        long = "dag",
+        value_name = "DAG_ID",
+        required_unless_present = "task_handler",
+        conflicts_with = "task_handler"
+    )]
+    dag: Option<String>,
+
+    /// The Dag id, from `--dag` or `--task-handler`.
+    #[arg(skip)]
     pub dag_id: String,
 
     /// The task to run alone. Without it, the whole Dag runs.
-    #[arg(long = "task", value_name = "TASK_ID")]
+    #[arg(long = "task", value_name = "TASK_ID", conflicts_with = "task_handler")]
     pub task_id: Option<String>,
+
+    /// Run the task handler the Dag file declares for a stub task of a Python Dag, instead of a
+    /// Dag of its own. The Dag and task ids are split at the first `/`, which a Dag id cannot
+    /// contain. The task gets the arguments given as `args` in `--input`.
+    #[arg(
+        long = "task-handler",
+        value_name = "DAG_ID/TASK_ID",
+        value_parser = parse_task_handler,
+        conflicts_with = "no_parse"
+    )]
+    pub task_handler: Option<TaskHandlerId>,
 
     /// Everything the tasks can see beyond the Dag file itself, as one JSON object: the Dag run,
     /// the task instance's try, Variables, Connections, XComs, asset events and state stores.
@@ -76,6 +96,40 @@ pub struct Cli {
     /// Print the summary as JSON on stdout.
     #[arg(long)]
     pub json: bool,
+}
+
+impl Cli {
+    /// Parse the command line, and take the Dag and task ids from `--task-handler` if given.
+    pub fn parse_args() -> Self {
+        Self::parse().resolve()
+    }
+
+    fn resolve(mut self) -> Self {
+        match &self.task_handler {
+            Some(handler) => {
+                self.dag_id.clone_from(&handler.dag_id);
+                self.task_id = Some(handler.task_id.clone());
+            }
+            None => self.dag_id = self.dag.take().unwrap_or_default(),
+        }
+        self
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TaskHandlerId {
+    pub dag_id: String,
+    pub task_id: String,
+}
+
+fn parse_task_handler(s: &str) -> Result<TaskHandlerId, String> {
+    match s.split_once('/') {
+        Some((dag_id, task_id)) if !dag_id.is_empty() && !task_id.is_empty() => Ok(TaskHandlerId {
+            dag_id: dag_id.into(),
+            task_id: task_id.into(),
+        }),
+        _ => Err(format!("expected DAG_ID/TASK_ID, got {s:?}")),
+    }
 }
 
 /// The `--input` reference: the part of `docs/input.md` between the `input-help` markers.
@@ -127,6 +181,40 @@ mod tests {
         assert!(help.ends_with("```"), "{help}");
         assert!(!help.contains("<!--"));
         assert!(help.lines().all(|l| l.chars().count() <= 80));
+    }
+
+    #[test]
+    fn task_handler_names_the_dag_and_task() {
+        let parse = |args: &[&str]| {
+            Cli::try_parse_from(std::iter::once("gust").chain(args.iter().copied()))
+                .map(Cli::resolve)
+        };
+        let cli = parse(&["b", "--task-handler", "d/g.t/odd"]).unwrap();
+        assert_eq!(
+            (cli.dag_id.as_str(), cli.task_id.as_deref()),
+            ("d", Some("g.t/odd"))
+        );
+        let cli = parse(&["b", "--dag", "d"]).unwrap();
+        assert_eq!((cli.dag_id.as_str(), cli.task_id), ("d", None));
+
+        for args in [
+            &["b", "--task-handler", "d/t", "--dag", "d"][..],
+            &["b", "--task-handler", "d/t", "--task", "t"],
+            &["b", "--task-handler", "d/t", "--no-parse"],
+        ] {
+            let err = parse(args).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ArgumentConflict,
+                "{args:?}"
+            );
+        }
+        let err = parse(&["b"]).unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+        for bad in ["d", "d/", "/t"] {
+            let err = parse(&["b", "--task-handler", bad]).unwrap_err();
+            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation, "{bad}");
+        }
     }
 
     #[test]

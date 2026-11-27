@@ -22,6 +22,7 @@
 //! kind.
 
 use std::{
+    collections::BTreeMap,
     ffi::OsString,
     fs::{self, File},
     io::Read,
@@ -43,6 +44,15 @@ pub struct Sdk {
     pub language: String,
     pub version: Option<String>,
     pub supervisor_schema_version: String,
+}
+
+/// The task handlers a Dag file declares for Python Dags' stub tasks, keyed by Dag id.
+pub type Handlers = BTreeMap<String, HandlerEntry>;
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct HandlerEntry {
+    #[serde(default)]
+    pub tasks: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
@@ -68,6 +78,8 @@ pub struct Artifact {
     pub path: PathBuf,
     /// The SDK a built artifact declares. Python reports its own when the bridge starts.
     pub sdk: Option<Sdk>,
+    /// The task handlers the artifact declares, if its kind lists them. A Jar does not.
+    pub handlers: Option<Handlers>,
 }
 
 impl Artifact {
@@ -75,16 +87,17 @@ impl Artifact {
     pub fn inspect(path: &Path) -> Result<Self> {
         let metadata =
             fs::metadata(path).with_context(|| format!("cannot find {}", path.display()))?;
-        let found = |kind, sdk| {
+        let found = |kind, sdk, handlers| {
             Ok(Self {
                 kind,
                 path: path.to_owned(),
                 sdk,
+                handlers,
             })
         };
         if metadata.is_dir() {
             if MAIN_MODULES.iter().any(|m| path.join(m).is_file()) {
-                return found(Kind::Python, None);
+                return found(Kind::Python, None, None);
             }
             bail!(
                 "{} is a directory without __main__.py or __main__.pyc, so Python cannot run it",
@@ -100,16 +113,16 @@ impl Artifact {
                 "{} has an executable bundle trailer but is not executable; run `chmod +x` on it",
                 path.display()
             );
-            return found(Kind::Executable, Some(manifest.sdk));
+            return found(Kind::Executable, Some(manifest.sdk), Some(manifest.dags));
         }
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         if name.ends_with(node::SUFFIX) {
-            let sdk = node::read_sdk(path)
+            let (sdk, handlers) = node::read_metadata(path)
                 .with_context(|| format!("{} is not a usable TypeScript bundle", path.display()))?;
-            return found(Kind::Node, Some(sdk));
+            return found(Kind::Node, Some(sdk), Some(handlers));
         }
         if name.ends_with(".py") || name.ends_with(".pyc") {
-            return found(Kind::Python, None);
+            return found(Kind::Python, None, None);
         }
         if let Ok(mut archive) = zip::ZipArchive::new(File::open(path)?) {
             let attributes = match archive.by_name(jar::MANIFEST_NAME) {
@@ -137,13 +150,14 @@ impl Artifact {
                         version: None,
                         supervisor_schema_version: version.clone(),
                     }),
+                    None,
                 );
             }
             if MAIN_MODULES
                 .iter()
                 .any(|m| archive.index_for_name(m).is_some())
             {
-                return found(Kind::Python, None);
+                return found(Kind::Python, None, None);
             }
             if attributes.is_some() {
                 bail!(
@@ -185,6 +199,41 @@ impl Artifact {
                  `--runtime \"{example}\"`"
             );
         }
+        Ok(())
+    }
+
+    /// Check that this artifact declares the task handler for `task_id` of `dag_id`.
+    pub fn check_handler(&self, dag_id: &str, task_id: &str) -> Result<()> {
+        ensure!(
+            self.kind != Kind::Python,
+            "gust does not run Python task handlers yet"
+        );
+        let Some(handlers) = &self.handlers else {
+            // A Jar does not list its handlers, so only running it can tell.
+            return Ok(());
+        };
+        let list = |ids: &mut dyn Iterator<Item = &String>| {
+            let ids: Vec<&str> = ids.map(String::as_str).collect();
+            if ids.is_empty() {
+                "nothing".to_owned()
+            } else {
+                ids.join(", ")
+            }
+        };
+        let entry = handlers.get(dag_id).with_context(|| {
+            format!(
+                "{} has no task handlers for Dag {dag_id:?}; it has them for: {}",
+                self.path.display(),
+                list(&mut handlers.keys()),
+            )
+        })?;
+        // Airflow picks a handler file by its Dag ids alone, and the spec allows an empty task list.
+        ensure!(
+            entry.tasks.is_empty() || entry.tasks.iter().any(|t| t == task_id),
+            "{} has no task handler for {dag_id}/{task_id}; for that Dag it has: {}",
+            self.path.display(),
+            list(&mut entry.tasks.iter()),
+        );
         Ok(())
     }
 
@@ -305,6 +354,7 @@ mod tests {
             kind,
             path: "x".into(),
             sdk: None,
+            handlers: None,
         };
         let words = |s: &[&str]| s.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>();
         assert!(artifact(Kind::Executable).check_runtime(None).is_ok());
@@ -323,11 +373,37 @@ mod tests {
     }
 
     #[test]
+    fn handlers_are_checked_when_listed() {
+        let with = |kind, handlers: Option<&str>| Artifact {
+            kind,
+            path: "x".into(),
+            sdk: None,
+            handlers: handlers.map(|h| serde_json::from_str(h).unwrap()),
+        };
+        let listed = with(
+            Kind::Executable,
+            Some(r#"{"d": {"tasks": ["t"]}, "e": {"tasks": []}}"#),
+        );
+        assert!(listed.check_handler("d", "t").is_ok());
+        assert!(listed.check_handler("e", "anything").is_ok());
+        let err = listed.check_handler("d", "u").unwrap_err().to_string();
+        assert!(
+            err.contains("no task handler for d/u; for that Dag it has: t"),
+            "{err}"
+        );
+        let err = listed.check_handler("f", "t").unwrap_err().to_string();
+        assert!(err.contains("it has them for: d, e"), "{err}");
+        assert!(with(Kind::Java, None).check_handler("d", "t").is_ok());
+        assert!(with(Kind::Python, None).check_handler("d", "t").is_err());
+    }
+
+    #[test]
     fn python_runs_through_the_bridge() {
         let command = Artifact {
             kind: Kind::Python,
             path: "dags".into(),
             sdk: None,
+            handlers: None,
         }
         .build_command(
             Some(&["python3".to_owned(), "-X".to_owned(), "dev".to_owned()]),

@@ -27,7 +27,7 @@ use anyhow::{Context, Result, bail, ensure};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::artifact::Sdk;
+use crate::artifact::{Handlers, Sdk};
 
 const TRAILER_LEN: u64 = 64;
 const MAGIC: &[u8; 8] = b"AFBNDL01";
@@ -36,6 +36,9 @@ const FOOTER_VERSION: u32 = 1;
 #[derive(Debug, Deserialize)]
 pub struct Manifest {
     pub sdk: Sdk,
+    /// The task handlers the bundle declares, which the spec calls `dags`.
+    #[serde(default)]
+    pub dags: Handlers,
 }
 
 /// Read and verify the manifest of a bundle. `Ok(None)` means the file has no bundle trailer.
@@ -113,6 +116,7 @@ mod tests {
         let manifest = read_manifest(&path).unwrap().unwrap();
         assert_eq!(manifest.sdk.language, "go");
         assert_eq!(manifest.sdk.supervisor_schema_version, "2026-06-16");
+        assert_eq!(manifest.dags["d"].tasks, ["t"]);
     }
 
     #[test]

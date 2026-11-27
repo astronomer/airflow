@@ -31,7 +31,7 @@ use anyhow::{Context, Result, bail, ensure};
 use serde_json::Value as Json;
 use sha2::{Digest, Sha256};
 
-use crate::artifact::Sdk;
+use crate::artifact::{Handlers, Sdk};
 
 pub const SUFFIX: &str = ".min.mjs";
 
@@ -58,8 +58,9 @@ struct Layout {
     code: Section,
 }
 
-/// Read and verify the bundle at `path`, returning the SDK it was built with.
-pub fn read_sdk(path: &Path) -> Result<Sdk> {
+/// Read and verify the bundle at `path`, returning the SDK it was built with and the task
+/// handlers it declares.
+pub fn read_metadata(path: &Path) -> Result<(Sdk, Handlers)> {
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let size = file.metadata()?.len();
     let mut reader = BufReader::new(file);
@@ -236,7 +237,7 @@ fn parse_section(section: &Json, name: &str) -> Result<Section> {
     Ok(Section { start, end, sha256 })
 }
 
-fn parse_metadata(payload: &[u8]) -> Result<Sdk> {
+fn parse_metadata(payload: &[u8]) -> Result<(Sdk, Handlers)> {
     let metadata: Json = serde_json::from_slice(payload).context("cannot parse its metadata")?;
     let version = metadata.get("airflow_bundle_metadata_version");
     let supported = version.and_then(Json::as_str).is_some_and(|v| {
@@ -256,10 +257,14 @@ fn parse_metadata(payload: &[u8]) -> Result<Sdk> {
             version.map_or("(missing)".into(), Json::to_string)
         );
     }
-    ensure!(
-        metadata.get("task_handlers").is_some_and(Json::is_object),
-        "its metadata has no task_handlers mapping"
-    );
+    let handlers: Handlers = serde_json::from_value(
+        metadata
+            .get("task_handlers")
+            .filter(|h| h.is_object())
+            .context("its metadata has no task_handlers mapping")?
+            .clone(),
+    )
+    .context("its task_handlers mapping does not list task ids for each Dag")?;
     let sdk = metadata
         .get("sdk")
         .context("its metadata has no sdk mapping")?;
@@ -268,13 +273,14 @@ fn parse_metadata(payload: &[u8]) -> Result<Sdk> {
             .and_then(Json::as_str)
             .filter(|s| !s.is_empty())
     };
-    Ok(Sdk {
+    let sdk = Sdk {
         language: field("language").unwrap_or("typescript").to_owned(),
         version: field("version").map(str::to_owned),
         supervisor_schema_version: field("supervisor_schema_version")
             .context("its metadata has no sdk.supervisor_schema_version")?
             .to_owned(),
-    })
+    };
+    Ok((sdk, handlers))
 }
 
 #[cfg(test)]
@@ -350,7 +356,7 @@ mod tests {
         out
     }
 
-    const METADATA: &str = r#"{"airflow_bundle_metadata_version":"1.0","sdk":{"language":"typescript","version":"1.0.0","supervisor_schema_version":"2026-06-16"},"task_handlers":{}}"#;
+    const METADATA: &str = r#"{"airflow_bundle_metadata_version":"1.0","sdk":{"language":"typescript","version":"1.0.0","supervisor_schema_version":"2026-06-16"},"task_handlers":{"py_dag":{"tasks":["extract"]}}}"#;
 
     fn write_temp(name: &str, bytes: &[u8]) -> std::path::PathBuf {
         let path = std::env::temp_dir().join(format!("gust-node-{}-{name}", std::process::id()));
@@ -365,14 +371,16 @@ mod tests {
             &[("main.ts", "export {};"), ("dags/a.ts", "x")],
             "console.log(1);\n",
         );
-        let sdk = read_sdk(&write_temp("ok.min.mjs", &bytes)).unwrap();
+        let (sdk, handlers) = read_metadata(&write_temp("ok.min.mjs", &bytes)).unwrap();
         assert_eq!(sdk.supervisor_schema_version, "2026-06-16");
         assert_eq!(sdk.version.as_deref(), Some("1.0.0"));
+        assert_eq!(handlers["py_dag"].tasks, ["extract"]);
     }
 
     #[test]
     fn rejects_an_unpacked_module() {
-        let err = read_sdk(&write_temp("plain.min.mjs", b"export const x = 1;\n")).unwrap_err();
+        let err =
+            read_metadata(&write_temp("plain.min.mjs", b"export const x = 1;\n")).unwrap_err();
         assert!(err.to_string().contains("airflow-ts-pack"), "{err}");
     }
 
@@ -381,14 +389,14 @@ mod tests {
         let mut bytes = pack(METADATA, &[("main.ts", "export {};")], "console.log(1);\n");
         let last = bytes.len() - 3;
         bytes[last] = b'2';
-        let err = read_sdk(&write_temp("tampered.min.mjs", &bytes)).unwrap_err();
+        let err = read_metadata(&write_temp("tampered.min.mjs", &bytes)).unwrap_err();
         assert!(err.to_string().contains("code section"), "{err}");
     }
 
     #[test]
     fn rejects_an_unescaped_comment_end_in_source() {
         let bytes = pack(METADATA, &[("main.ts", "a */ b")], "1;\n");
-        let err = read_sdk(&write_temp("escape.min.mjs", &bytes)).unwrap_err();
+        let err = read_metadata(&write_temp("escape.min.mjs", &bytes)).unwrap_err();
         assert!(err.to_string().contains("unescaped"), "{err}");
     }
 
@@ -396,7 +404,7 @@ mod tests {
     fn rejects_another_major_version() {
         let metadata = METADATA.replace(r#""1.0""#, r#""2.0""#);
         let bytes = pack(&metadata, &[], "1;\n");
-        let err = read_sdk(&write_temp("v2.min.mjs", &bytes)).unwrap_err();
+        let err = read_metadata(&write_temp("v2.min.mjs", &bytes)).unwrap_err();
         assert!(err.to_string().contains("not supported"), "{err}");
     }
 }
