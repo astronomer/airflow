@@ -180,15 +180,20 @@ fn run(cli: &Cli) -> Result<Summary> {
     // A Lang-SDK Dag marks all its tasks as stubs, since their bodies live in the Dag file itself
     // rather than in Python. Only a Python Dag file's stubs need a task handler from elsewhere.
     if artifact.kind == artifact::Kind::Python
-        && let Some(dag) = &dag_spec
-        && let stubs = dag.find_stub_task_ids()
+        && let stubs = scope.find_stub_task_ids()
         && !stubs.is_empty()
     {
-        bail!(
-            "Dag {:?} has stub tasks ({}), whose task handlers gust does not run",
-            cli.dag_id,
-            stubs.join(", "),
-        );
+        match &cli.task_id {
+            Some(task_id) => bail!(
+                "{}.{task_id} is a stub task, whose task handler gust does not run",
+                cli.dag_id,
+            ),
+            None => bail!(
+                "Dag {:?} has stub tasks ({}), whose task handlers gust does not run",
+                cli.dag_id,
+                stubs.join(", "),
+            ),
+        }
     }
     if let Some(task) = scope.tasks.iter().find(|t| t.in_mapped_group) {
         bail!(

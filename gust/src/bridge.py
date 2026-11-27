@@ -151,6 +151,12 @@ def run(path):
             sys.exit(1)
         if not isinstance(task, (BaseOperator, MappedOperator)):
             raise TypeError(f"task is of the wrong type, got {type(task)}")
+        # gust refuses stubs after parsing; with --no-parse, this is the first place that knows.
+        if task.is_stub:
+            log.error(
+                "gust does not run task handlers for stub tasks", dag_id=dag.dag_id, task_id=task.task_id
+            )
+            sys.exit(1)
         task_runner.check_xcom_backend_supports_loops(dag)
         task_runner._register_deserialization_allowed_classes(dag, log)
         return RuntimeTaskInstance.model_construct(

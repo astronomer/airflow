@@ -98,5 +98,6 @@ runs as on an Airflow worker: the same operators, templating, XCom handling and 
 Python task reads before asking the supervisor still applies, such as `AIRFLOW_VAR_*` and
 `AIRFLOW_CONN_*` environment variables, a secrets backend, and a custom XCom backend.
 
-A Python Dag file with stub tasks (`@task.stub`) is refused: their task handlers live elsewhere,
-and gust does not run them.
+gust does not run stub tasks (`@task.stub`) of a Python Dag file, since their task handlers live
+elsewhere. A whole Dag run is refused when any of the Dag's tasks is a stub, and a `--task` run when
+that task is one; other tasks of the Dag can still run with `--task`.

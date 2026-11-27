@@ -101,7 +101,9 @@ Two of gust's answers exist because the Python Task SDK relies on them:
 
 A Lang-SDK Dag marks every task `is_stub`, since to Airflow its body lives in the Dag file rather
 than in Python. So gust refuses stub tasks only in a Python Dag file, where a stub's task handler
-comes from somewhere else.
+comes from somewhere else. `main.rs` checks the tasks it is about to run, from the parsed Dag; with
+`--no-parse` gust knows no task, so the bridge checks instead, and stops before the Task SDK looks
+for a handler.
 
 ## The supervisor models
 
