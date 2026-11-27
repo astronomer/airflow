@@ -42,7 +42,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NoReturn, TextIO, TypeVar
+from typing import TYPE_CHECKING, Any, NoReturn, TextIO, TypeVar, cast
 
 import structlog
 from jsonschema.exceptions import SchemaError
@@ -55,6 +55,7 @@ from airflow._shared.timezones import timezone
 from airflow.api.common.mark_tasks import set_dag_run_state_to_failed
 from airflow.configuration import conf, ensure_secrets_loaded
 from airflow.dag_processing.bundles.manager import DagBundlesManager
+from airflow.dag_processing.collection import update_dag_parsing_results_in_db
 from airflow.dag_processing.dagbag import BundleDagBag, sync_bag_to_db
 from airflow.jobs.job import Job, JobState
 from airflow.local_run import BUNDLE_NAME
@@ -102,6 +103,9 @@ from airflow.sdk.definitions.xcom_arg import XComArg
 from airflow.sdk.exceptions import LocalRunError  # noqa: SDK001
 from airflow.sdk.execution_time.xcom import XCom
 from airflow.sdk.serde import CLASSNAME
+from airflow.serialization.definitions.baseoperator import SerializedBaseOperator
+from airflow.serialization.definitions.dag import SerializedDAG
+from airflow.serialization.definitions.mappedoperator import SerializedMappedOperator
 from airflow.serialization.definitions.notset import is_arg_set
 from airflow.serialization.encoders import coerce_to_core_timetable
 from airflow.serialization.serialized_objects import DagSerialization
@@ -116,8 +120,9 @@ from airflow.utils.types import DagRunTriggeredByType, DagRunType
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
+    from airflow.dag_processing.processor import DagFileParsingResult
     from airflow.sdk.types import Operator
-    from airflow.serialization.definitions.dag import SerializedDAG
+    from airflow.serialization.definitions.mappedoperator import Operator as SerializedOperator
 
 RUN_CREATION_ATTEMPTS = 5
 _DagT = TypeVar("_DagT")
@@ -238,23 +243,27 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     else:
         # The caller made this home for the run alone, so the database is always new.
         initdb()
-    if importer is not None:
+    parsed: BundleDagBag | DagFileParsingResult
+    dag: DAG | SerializedDAG
+    if importer is None:
         with record_startup_events():
+            bundles = DagBundlesManager()
+            parsed = import_dag_file(source, root)
+        # A bag can also hold serialized Dags from other language importers; only SDK Dags run in-process.
+        dag = select_dag(
+            {found_id: found for found_id, found in parsed.dags.items() if isinstance(found, DAG)},
+            request.get("dag_id"),
+            source,
+        )
+    else:
+        with record_startup_events():
+            bundles = DagBundlesManager()
             parsed = parse_native_dag_file(source, root)
-        native_dag = select_dag(
+        selected = select_dag(
             {found.dag_id: found for found in parsed.serialized_dags}, request.get("dag_id"), source
         )
-        check_native_task_routes(DagSerialization.from_dict(native_dag.data), importer)
-        raise UsageSetupError(f"A local run with a database cannot run the native Dag of {source.name} yet")
-    with record_startup_events():
-        bundles = DagBundlesManager()
-        bag = import_dag_file(source, root)
-    # A bag can also hold serialized Dags from other language importers; only SDK Dags run in-process.
-    dag = select_dag(
-        {found_id: found for found_id, found in bag.dags.items() if isinstance(found, DAG)},
-        request.get("dag_id"),
-        source,
-    )
+        dag = DagSerialization.from_dict(selected.data)
+        check_native_task_routes(dag, importer)
     triggered_by = DagRunTriggeredByType(request["triggered_by"])
 
     # The thread-local scoped session, as in dag.test(): helpers inside the run loop open
@@ -266,7 +275,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
     try:
         if selection is None:
             scheduler_dag, dag_run = start_run(
-                bag,
+                parsed,
                 dag,
                 source=source,
                 root=root,
@@ -278,7 +287,7 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             heading = f"Running Dag {dag.dag_id!r} from {source.name} (run {dag_run.run_id})"
         else:
             scheduler_dag, dag_run, heading = start_selected_run(
-                bag,
+                parsed,
                 dag,
                 selection,
                 source=source,
@@ -326,12 +335,13 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
             report_attempt(ti, _state_name(ti.state), log_path)
 
         # Given to the run loop rather than left to it, so that a failing drop_retries is handled as a failed try.
-        def run_try_in_process(ti: TaskInstance, task: Operator) -> None:
+        def run_try_in_process(ti: TaskInstance, task: Operator | SerializedOperator) -> None:
             if not retries:
                 drop_retries(ti, session=session)
-            _run_task(ti=ti, task=task, run_triggerer=True)
+            # --debug is refused for a native Dag file, the only kind whose Dag is a serialized one.
+            _run_task(ti=ti, task=cast("Operator", task), run_triggerer=True)
 
-        def run_supervised_try(ti: TaskInstance, task: Operator) -> None:
+        def run_supervised_try(ti: TaskInstance, task: Operator | SerializedOperator) -> None:
             if not retries:
                 drop_retries(ti, session=session)
             outcome, log_path = tries.run(ti, task)
@@ -394,8 +404,8 @@ def run_requested_dag(request: dict[str, Any], *, fork_server: ForkServer | None
 
 
 def start_run(
-    bag: BundleDagBag,
-    dag: DAG,
+    parsed: BundleDagBag | DagFileParsingResult,
+    dag: DAG | SerializedDAG,
     *,
     source: Path,
     root: Path,
@@ -419,7 +429,7 @@ def start_run(
         with attempt, project_lock(home):
             try:
                 abandoned = fail_abandoned_runs(home, session=session)
-                register_dags(bag, source, root, bundles, session=session)
+                register_dags(parsed, source, root, bundles, session=session)
                 session.commit()
                 scheduler_dag, dag_run = create_dag_run(dag, run_conf, triggered_by, session=session)
                 session.commit()
@@ -464,8 +474,8 @@ def read_task_selection(request: dict[str, Any]) -> TaskSelection | None:
 
 
 def start_selected_run(
-    bag: BundleDagBag,
-    dag: DAG,
+    parsed: BundleDagBag | DagFileParsingResult,
+    dag: DAG | SerializedDAG,
     selection: TaskSelection,
     *,
     source: Path,
@@ -490,7 +500,7 @@ def start_selected_run(
         with attempt, project_lock(home):
             try:
                 abandoned = fail_abandoned_runs(home, session=session)
-                register_dags(bag, source, root, bundles, session=session)
+                register_dags(parsed, source, root, bundles, session=session)
                 session.commit()
                 scheduler_dag = build_scheduler_dag(dag)
                 markers = expand_task_selection(scheduler_dag, selection)
@@ -591,7 +601,7 @@ def rerun_selection(
 
 
 def start_run_for_selection(
-    dag: DAG,
+    dag: DAG | SerializedDAG,
     markers: list[str | tuple[str, int]],
     selected: set[str],
     selection: TaskSelection,
@@ -628,7 +638,7 @@ def start_run_for_selection(
 
 
 def start_run_with_inputs(
-    dag: DAG,
+    dag: DAG | SerializedDAG,
     markers: list[str | tuple[str, int]],
     selected: set[str],
     selection: TaskSelection,
@@ -659,7 +669,7 @@ def start_run_with_inputs(
             ti.task = scheduler_dag.get_task(ti.task_id)
             give_output(
                 ti,
-                dag.task_dict[ti.task_id],
+                get_input_task(dag, ti.task_id),
                 selection.inputs[ti.task_id],
                 note=f"Not run: its output was given as an input of {labels}",
                 session=session,
@@ -710,7 +720,7 @@ def find_tasks_to_run(dag: SerializedDAG, selected: set[str], selection: TaskSel
     return wanted
 
 
-def check_inputs(dag: DAG, wanted: set[str], selection: TaskSelection) -> set[str]:
+def check_inputs(dag: DAG | SerializedDAG, wanted: set[str], selection: TaskSelection) -> set[str]:
     """
     Refuse inputs the tasks in ``wanted`` cannot run alone with; return the tasks directly upstream of them.
 
@@ -733,25 +743,25 @@ def check_inputs(dag: DAG, wanted: set[str], selection: TaskSelection) -> set[st
                 f"Inputs are for {', '.join(sorted(before))}" if before else f"{labels} has no upstream tasks"
             )
             raise UsageSetupError(f"{task_id} is not directly upstream of {labels}. {allowed}.")
-        check_input(dag.task_dict[task_id], value)
+        check_input(get_input_task(dag, task_id), value)
     readers: dict[str, set[str]] = {}
     for task_id in wanted:
-        for upstream, key in iter_read_outputs(dag.task_dict[task_id]):
-            if upstream.task_id in wanted:
+        for upstream_id, key in iter_read_outputs(get_input_task(dag, task_id)):
+            if upstream_id in wanted:
                 continue
-            if key != XCOM_RETURN_KEY and not has_multiple_outputs(upstream):
+            if key != XCOM_RETURN_KEY and not has_multiple_outputs(get_input_task(dag, upstream_id)):
                 raise UsageSetupError(
-                    f"{task_id} reads the XCom {key!r} of {upstream.task_id}, which no input can give: an input "
+                    f"{task_id} reads the XCom {key!r} of {upstream_id}, which no input can give: an input "
                     "is a task's return value"
                 )
-            readers.setdefault(upstream.task_id, set()).add(task_id)
+            readers.setdefault(upstream_id, set()).add(task_id)
     if missing := sorted(readers.keys() - selection.inputs.keys()):
         read_by = sorted({reader for task_id in missing for reader in readers[task_id]})
         raise UsageSetupError(f"No input given for {', '.join(missing)}, read by {', '.join(read_by)}")
     return before
 
 
-def check_input(task: Operator, value: Any) -> None:
+def check_input(task: Operator | SerializedBaseOperator, value: Any) -> None:
     """Refuse a serialized input that ``task`` could not have returned, or that cannot stand in for its output."""
     if task.get_closest_mapped_task_group() is not None or get_enclosing_loop(task) is not None:
         raise UsageSetupError(
@@ -773,20 +783,37 @@ def check_input(task: Operator, value: Any) -> None:
         raise UsageSetupError(f"{task.task_id} has multiple_outputs, so its input must be a dict")
 
 
-def iter_read_outputs(task: Operator) -> Iterator[tuple[Operator, str]]:
-    """Yield each task whose XCom ``task``'s arguments read, with the XCom's key."""
+def get_input_task(dag: DAG | SerializedDAG, task_id: str) -> Operator | SerializedBaseOperator:
+    """Return the task ``task_id`` of ``dag``, which runs with inputs, or whose output is one."""
+    task = dag.task_dict[task_id]
+    if isinstance(task, SerializedMappedOperator):
+        # No runtime of another language maps a task yet.
+        raise UsageSetupError(f"{task_id} is a mapped task of a native Dag, which --input does not support")
+    return task
+
+
+def iter_read_outputs(task: Operator | SerializedBaseOperator) -> Iterator[tuple[str, str]]:
+    """Yield the ID of each task whose XCom ``task``'s arguments read, with the XCom's key."""
+    if isinstance(task, SerializedBaseOperator):
+        # A native Dag's task says in its argument bindings which return values it reads.
+        for binding in task.arg_bindings or ():
+            if binding["kind"] == "xcom":
+                yield binding["task_id"], XCOM_RETURN_KEY
+        return
     if isinstance(task, MappedOperator):
-        yield from XComArg.iter_xcom_references(task.partial_kwargs)
-        yield from XComArg.iter_xcom_references(task._get_specified_expand_input())
+        arguments: tuple[Any, ...] = (task.partial_kwargs, task._get_specified_expand_input())
     else:
-        yield from XComArg.iter_xcom_references(task)
+        arguments = (task,)
+    for argument in arguments:
+        for upstream, key in XComArg.iter_xcom_references(argument):
+            yield upstream.task_id, key
 
 
-def has_mapped_dependants(task: Operator) -> bool:
+def has_mapped_dependants(task: Operator | SerializedBaseOperator) -> bool:
     return next(task.iter_mapped_dependants(), None) is not None
 
 
-def has_multiple_outputs(task: Operator) -> bool:
+def has_multiple_outputs(task: Operator | SerializedBaseOperator) -> bool:
     if isinstance(task, MappedOperator):
         # A decorated task has the attribute; another operator keeps it with the arguments of its partial().
         return bool(getattr(task, "multiple_outputs", task.partial_kwargs.get("multiple_outputs")))
@@ -798,7 +825,9 @@ def is_plain_dict(value: Any) -> bool:
     return isinstance(value, dict) and CLASSNAME not in value
 
 
-def give_output(ti: TaskInstance, task: Operator, value: Any, *, note: str, session: Session) -> None:
+def give_output(
+    ti: TaskInstance, task: Operator | SerializedBaseOperator, value: Any, *, note: str, session: Session
+) -> None:
     """
     Record ``ti`` as succeeded with ``value``, a serialized input, as its output, pushed as a try pushes it.
 
@@ -1356,24 +1385,51 @@ def select_dag(dags: Mapping[str, _DagT], dag_id: str | None, source: Path) -> _
 
 
 def register_dags(
-    bag: BundleDagBag, source: Path, root: Path, bundles: DagBundlesManager, *, session: Session
+    parsed: BundleDagBag | DagFileParsingResult,
+    source: Path,
+    root: Path,
+    bundles: DagBundlesManager,
+    *,
+    session: Session,
 ) -> None:
     """Store the file's Dags; a Dag ID still defined by another existing file in the project is refused."""
     bundles.sync_bundles_to_db(session=session)
     # The Dag rows reference the bundle row; without a flush SQLAlchemy may insert them first.
     session.flush()
     relative = source.relative_to(root).as_posix()
-    for dag_model in session.scalars(select(DagModel).where(DagModel.dag_id.in_(list(bag.dags)))):
+    if isinstance(parsed, BundleDagBag):
+        dag_ids = list(parsed.dags)
+    else:
+        dag_ids = [dag.dag_id for dag in parsed.serialized_dags]
+    for dag_model in session.scalars(select(DagModel).where(DagModel.dag_id.in_(dag_ids))):
         other = dag_model.relative_fileloc
         if other and other != relative and (root / other).exists():
             raise DagFileSetupError(
                 f"Dag ID {dag_model.dag_id!r} is already used by {other} in this project; "
                 "rename one of the Dags so their histories stay separate."
             )
-    sync_bag_to_db(bag, BUNDLE_NAME, None, session=session)
+    if isinstance(parsed, BundleDagBag):
+        sync_bag_to_db(parsed, BUNDLE_NAME, None, session=session)
+        return
+    # sync_bag_to_db leaves out what a runtime parsed; stored as the Dag processor stores it, with the Dag's own
+    # source for the Code page.
+    update_dag_parsing_results_in_db(
+        BUNDLE_NAME,
+        None,
+        parsed.serialized_dags,
+        {},
+        None,
+        set(),
+        session=session,
+        files_parsed={(BUNDLE_NAME, relative)},
+        dag_source_codes=parsed.dag_source_codes,
+    )
 
 
-def build_scheduler_dag(dag: DAG) -> SerializedDAG:
+def build_scheduler_dag(dag: DAG | SerializedDAG) -> SerializedDAG:
+    if isinstance(dag, SerializedDAG):
+        # A native Dag file's runtime serialized the Dag, and it has no callbacks to copy.
+        return dag
     dag.validate()
     scheduler_dag = DagSerialization.deserialize_dag(DagSerialization.serialize_dag(dag))
     # Serialization drops callbacks; the run loop finds them on the scheduler Dag, as in dag.test().
@@ -1391,7 +1447,7 @@ def start_local_run_job(*, session: Session) -> Job:
 
 
 def create_dag_run(
-    dag: DAG, run_conf: dict | None, triggered_by: DagRunTriggeredByType, *, session: Session
+    dag: DAG | SerializedDAG, run_conf: dict | None, triggered_by: DagRunTriggeredByType, *, session: Session
 ) -> tuple[SerializedDAG, DagRun]:
     """
     Create a new run with its own logical date.

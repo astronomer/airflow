@@ -36,6 +36,7 @@ from airflow._shared.logging.structlog import (
 from airflow._shared.module_loading import get_unique_dag_module_name
 from airflow.local_run import logs
 from airflow.local_run.logs import (
+    LAUNCH_FAILED_EVENT,
     TASK_FAILED_EVENT,
     TaskFailure,
     capture_task_log,
@@ -183,6 +184,27 @@ def test_supervised_task_failure_is_left_to_the_runner(console, capsys):
     send_lines(
         process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
         json.dumps(failure).encode(),
+    )
+
+    captured = capsys.readouterr()
+    assert captured.out + captured.err == ""
+
+
+def test_failure_a_runtime_of_another_language_reports_is_left_to_the_runner(console, capsys):
+    configure_local_run_logging()
+    failure = {
+        "event": "[ts-sdk.runtime] Task failed",
+        "level": "error",
+        "logger": "ts-sdk.runtime",
+        "error": "boom",
+    }
+
+    send_lines(
+        process_log_messages_from_subprocess((structlog.get_logger("supervisor"),)),
+        json.dumps(failure).encode(),
+    )
+    structlog.get_logger("airflow.sdk.execution_time.supervisor").warning(
+        LAUNCH_FAILED_EVENT, reason="The runtime cannot start"
     )
 
     captured = capsys.readouterr()
@@ -674,6 +696,46 @@ def test_attempt_failure_starts_at_the_task_code(tmp_path, frames, shown, left_o
         f"({left_out} frames of Airflow running the task are left out; the task's log has the full "
         f"traceback: {path})",
     ]
+
+
+@pytest.mark.parametrize(
+    ("event", "expected"),
+    [
+        pytest.param(
+            {
+                "event": "[ts-sdk.runtime] Task failed",
+                "logger": "ts-sdk.runtime",
+                "error": "boom\nat the end",
+            },
+            TaskFailure(summary="boom", details="boom\nat the end"),
+            id="runtime-failure",
+        ),
+        pytest.param(
+            {"event": "Task failed", "logger": "task", "error": "boom", "stack": "Error: boom\n    at run"},
+            TaskFailure(summary="boom", details="Error: boom\n    at run"),
+            id="runtime-failure-with-stack",
+        ),
+        pytest.param(
+            {"event": LAUNCH_FAILED_EVENT, "logger": "task", "reason": "The runtime cannot start"},
+            TaskFailure(summary="The runtime cannot start", details="The runtime cannot start"),
+            id="runtime-not-launched",
+        ),
+        pytest.param(
+            {
+                "event": "[ts-sdk.runtime] Task failed to start a timer",
+                "logger": "ts-sdk.runtime",
+                "error": "x",
+            },
+            None,
+            id="other-event",
+        ),
+    ],
+)
+def test_attempt_failure_of_a_runtime_of_another_language(tmp_path, event, expected):
+    path = tmp_path / "attempt=1.log"
+    path.write_text(json.dumps({"level": "error", **event}) + "\n")
+
+    assert read_attempt_failure(path) == expected
 
 
 def test_attempt_failure_of_a_run_without_history_does_not_point_to_its_log(tmp_path):

@@ -46,10 +46,14 @@ from alembic.util import CommandError
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, scoped_session
 
+from airflow.dag_processing.bundles.manager import DagBundlesManager
+from airflow.dag_processing.processor import DagFileParsingResult
 from airflow.local_run import runner
 from airflow.local_run.logs import TaskFailure
+from airflow.models.dag import DagModel
+from airflow.models.dagcode import DagCode
 from airflow.models.taskinstance import TaskInstance
-from airflow.sdk import DAG, Param
+from airflow.sdk import DAG, Param, task
 from airflow.sdk.definitions.local_run import (
     CHILD_MODULE,
     PROTOCOL_VERSION,
@@ -64,9 +68,19 @@ from airflow.sdk.exceptions import (
     LocalRunError,
     LocalRunUsageError,
 )
+from airflow.sdk.importers import DagSourceCode
+from airflow.serialization.serialized_objects import DagSerialization, LazyDeserializedDAG
+from airflow.utils.session import create_session
 from airflow.utils.types import DagRunTriggeredByType
 
 from tests_common.test_utils.config import conf_vars
+from tests_common.test_utils.db import (
+    clear_db_dag_code,
+    clear_db_dags,
+    clear_db_jobs,
+    clear_db_runs,
+    clear_db_serialized_dags,
+)
 from tests_common.test_utils.paths import AIRFLOW_ROOT_PATH
 
 PIPELINE = """
@@ -1258,11 +1272,11 @@ def test_a_native_dag_file_that_does_not_parse_stops_the_run(project):
 
 
 @pytest.mark.parametrize(
-    ("routes", "dag_id", "error", "message"),
+    ("routes", "request_args", "error", "message"),
     [
         pytest.param(
             '{ other = "ts" }',
-            None,
+            {},
             LocalRunConfigError,
             r"Dag 'typescript_native_example' runs on a NodeCoordinator, but these tasks' queues route "
             r"elsewhere: queue 'typescript' of 'extract\.north', 'extract\.south', 'summarize' and \d+ more\. "
@@ -1272,25 +1286,131 @@ def test_a_native_dag_file_that_does_not_parse_stops_the_run(project):
         ),
         pytest.param(
             '{ typescript = "ts" }',
-            "missing",
+            {"dag_id": "missing"},
             LocalRunUsageError,
             r"bundle\.min\.mjs does not define Dag 'missing'\. It defines: typescript_native_example\.$",
             id="dag-it-does-not-define",
         ),
         pytest.param(
             '{ typescript = "ts" }',
-            None,
+            {"task_ids": ["summarize"], "inputs": {"extract.north": {"region": "north", "rows": 5}}},
             LocalRunUsageError,
-            r"cannot run the native Dag of bundle\.min\.mjs yet$",
-            id="parsed",
+            r"^No input given for extract\.south, read by summarize$",
+            id="input-it-binds-not-given",
         ),
     ],
 )
-def test_a_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, dag_id, error, message):
+def test_a_native_dag_file_is_parsed_by_its_runtime(typescript_project, routes, request_args, error, message):
     (typescript_project / "pyproject.toml").write_text(TS_SETTINGS.replace('{ typescript = "ts" }', routes))
 
     with pytest.raises(error, match=message):
-        run_dag_file(typescript_project / "dist" / "bundle.min.mjs", dag_id=dag_id, keep_history=False)
+        run_dag_file(typescript_project / "dist" / "bundle.min.mjs", keep_history=False, **request_args)
+
+
+def test_a_dag_written_in_typescript_runs_on_node(typescript_project):
+    # Not the whole Dag: its last task triggers a run that nothing runs without airflow standalone, and waits.
+    result = run_dag_file(typescript_project / "dist" / "bundle.min.mjs", task_ids=["cleanup"])
+
+    assert result.state == "success", result.failures
+    assert result.output("summarize") == {"total": 3, "regions": 2}
+    assert {task_id: result.task_states[task_id, -1] for task_id in ("load_rows", "report_empty")} == {
+        "load_rows": "success",
+        "report_empty": "skipped",
+    }
+    with sqlite3.connect(typescript_project / ".airflow" / "airflow.db") as connection:
+        stored = connection.execute(
+            "SELECT language FROM dag_code WHERE dag_id = 'typescript_native_example'"
+        )
+        assert stored.fetchall() == [("typescript",)]
+
+
+def test_a_typescript_task_runs_with_inputs_for_the_outputs_its_arguments_bind(typescript_project):
+    result = run_dag_file(
+        typescript_project / "dist" / "bundle.min.mjs",
+        task_ids=["summarize"],
+        inputs={
+            "extract.north": {"region": "north", "rows": 5},
+            "extract.south": {"region": "south", "rows": 2},
+        },
+        keep_history=False,
+    )
+
+    assert result.state == "success", result.failures
+    assert result.output("summarize") == {"total": 7, "regions": 2}
+
+
+NATIVE_SOURCE = 'export const dag = new Dag("native");\n'
+
+
+def build_native_dag(bundle: Path, root: Path) -> LazyDeserializedDAG:
+    """The Dag a runtime of another language parses from ``bundle``: stub tasks that bind their arguments."""
+    with DAG("native", schedule=None) as dag:
+
+        @task.stub(queue="typescript")
+        def extract(): ...
+
+        @task.stub(queue="typescript")
+        def summarize(rows): ...
+
+        summarize(extract())
+    dag.fileloc = str(bundle)
+    dag.relative_fileloc = bundle.relative_to(root).as_posix()
+    return LazyDeserializedDAG.from_dag(dag)
+
+
+@pytest.fixture
+def clean_db():
+    def clear():
+        clear_db_runs()
+        clear_db_jobs()
+        clear_db_dag_code()
+        clear_db_serialized_dags()
+        clear_db_dags()
+
+    clear()
+    yield
+    clear()
+
+
+@pytest.mark.db_test
+@pytest.mark.usefixtures("clean_db")
+def test_a_native_dag_is_stored_with_its_own_source_and_runs_as_parsed(tmp_path):
+    bundle = tmp_path / "dist" / "bundle.min.mjs"
+    native = build_native_dag(bundle, tmp_path)
+    parsed = DagFileParsingResult(
+        fileloc=str(bundle),
+        serialized_dags=[native],
+        dag_source_codes={"native": DagSourceCode(source_code=NATIVE_SOURCE, language="typescript")},
+    )
+
+    with create_session() as session:
+        runner.register_dags(parsed, bundle, tmp_path, DagBundlesManager(), session=session)
+        _, dag_run = runner.create_dag_run(
+            DagSerialization.from_dict(native.data), None, DagRunTriggeredByType.TEST, session=session
+        )
+
+        dag_code = DagCode.get_latest_dagcode("native", session=session)
+        assert (dag_code.source_code, dag_code.language) == (NATIVE_SOURCE, "typescript")
+        assert session.get_one(DagModel, "native").relative_fileloc == "dist/bundle.min.mjs"
+        assert sorted(ti.task_id for ti in dag_run.get_task_instances(session=session)) == [
+            "extract",
+            "summarize",
+        ]
+
+
+def test_an_input_a_native_task_binds_must_be_given(tmp_path):
+    dag = DagSerialization.from_dict(build_native_dag(tmp_path / "bundle.min.mjs", tmp_path).data)
+    selection = runner.TaskSelection(
+        task_ids=("summarize",),
+        task_group_ids=(),
+        include_upstream=False,
+        include_downstream=False,
+        run_id=None,
+        inputs={},
+    )
+
+    with pytest.raises(runner.UsageSetupError, match=r"^No input given for extract, read by summarize$"):
+        runner.check_inputs(dag, {"summarize"}, selection)
 
 
 GROUPED = """

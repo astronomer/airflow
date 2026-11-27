@@ -14,7 +14,7 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-"""Run a Dag from a Python file in its project's local Airflow environment."""
+"""Run a Dag from its file in its project's local Airflow environment."""
 
 from __future__ import annotations
 

@@ -68,6 +68,7 @@ if TYPE_CHECKING:
     from airflow.models.taskinstance import TaskInstance
     from airflow.sdk.api.client import Client  # noqa: SDK001
     from airflow.sdk.types import Operator
+    from airflow.serialization.definitions.mappedoperator import Operator as SerializedOperator
 
 _T = TypeVar("_T")
 
@@ -93,7 +94,7 @@ class SupervisedTries:
         self._running: Callable[[], list[int]] | None = None
         self._left_behind: list[psutil.Process] = []
 
-    def run(self, ti: TaskInstance, task: Operator) -> tuple[str, Path]:
+    def run(self, ti: TaskInstance, task: Operator | SerializedOperator) -> tuple[str, Path]:
         """
         Run a try of ``ti`` and return the state its supervisor reported, and the try's log file.
 
@@ -169,7 +170,9 @@ class SupervisedTries:
                 with suppress(psutil.NoSuchProcess):
                     left_behind.kill()
 
-    def _supervise(self, workload: ExecuteTask, relative_log_path: str, task: Operator) -> str | None:
+    def _supervise(
+        self, workload: ExecuteTask, relative_log_path: str, task: Operator | SerializedOperator
+    ) -> str | None:
         """
         Run the workload as ``supervise_task`` does, but keep this process's Ctrl-C handler installed.
 

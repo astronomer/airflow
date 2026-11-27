@@ -528,7 +528,13 @@ ARG_BOOTSTRAP_PATH = Arg(
 )
 
 # run
-ARG_RUN_FILE = Arg(("file",), help="Python file that defines the Dag")
+ARG_RUN_FILE = Arg(
+    ("file",),
+    help=(
+        "Python file that defines the Dag, or a native Dag file, such as a TypeScript bundle packed by "
+        "airflow-ts-pack"
+    ),
+)
 ARG_RUN_CONNECTIONS_FILE = Arg(
     ("--connections-file",), help="Connections file (JSON, YAML or env) available to the run"
 )
@@ -2555,13 +2561,15 @@ core_commands: list[CLICommand] = [
     ),
     ActionCommand(
         name="run",
-        help="Run a Dag from a Python file in the project's local Airflow environment",
+        help="Run a Dag from its file in the project's local Airflow environment",
         description=(
-            "Import the file the way Airflow discovers Dags (its __main__ block does not run), run the Dag "
-            "once, and keep the run in .airflow/ next to the project's pyproject.toml, or, with --no-history, "
-            "nowhere. No scheduler, API server or database setup is needed. With --task or --group, only "
-            "those tasks run again, in an earlier run whose upstream outputs they read, or with the tasks "
-            "they need in a new run; with --input, alone in a new run, with the upstream outputs given."
+            "Import the file the way Airflow discovers Dags (its __main__ block does not run), or have the "
+            "runtime [tool.airflow.sdk] configures parse a native Dag file, such as a TypeScript bundle; run "
+            "the Dag once, and keep the run in .airflow/ next to the project's pyproject.toml, or, with "
+            "--no-history, nowhere. No scheduler, API server or database setup is needed. With --task or "
+            "--group, only those tasks run again, in an earlier run whose upstream outputs they read, or "
+            "with the tasks they need in a new run; with --input, alone in a new run, with the upstream "
+            "outputs given."
         ),
         func=lazy_load_command("airflow.cli.commands.run_command.run"),
         args=(

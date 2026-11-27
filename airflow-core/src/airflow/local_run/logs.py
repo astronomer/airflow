@@ -85,6 +85,13 @@ PRE_EXECUTE_GROUP = f"{GROUP_START}Pre Execute"
 # What the task runner logs, with the exception, when a task attempt fails.
 TASK_FAILED_EVENT = "Task failed with exception"
 
+# What the runtime of a task in another language, such as TypeScript or Go, logs with the error when the task
+# fails.
+RUNTIME_TASK_FAILED_EVENT = "Task failed"
+
+# What the supervisor logs, with the reason, when the runtime of a task in another language cannot start.
+LAUNCH_FAILED_EVENT = "Cannot launch the task's runtime"
+
 # What a supervised task printed, as its supervisor forwards it; shown as printed.
 OUTPUT_LOGGERS = {"task.stdout": "stdout", "task.stderr": "stderr"}
 
@@ -331,6 +338,11 @@ def read_attempt_failure(path: Path, *, log_kept: bool = True) -> TaskFailure | 
                     )
                     details += f"\n({left_out} frames of Airflow running the task are left out{where})"
                 failure = TaskFailure(summary=_format_exception_only(stacks[0]), details=details)
+            elif is_runtime_task_failure(event):
+                error = str(event["error"])
+                failure = TaskFailure(summary=error.splitlines()[0], details=str(event.get("stack") or error))
+            elif message == LAUNCH_FAILED_EVENT and "reason" in event:
+                failure = TaskFailure(summary=str(event["reason"]), details=str(event["reason"]))
             elif message.startswith(PROCESS_EXIT_EVENTS):
                 detail = ", ".join(
                     f"{key}={event[key]}" for key in ("exit_code", "signal_name") if key in event
@@ -338,6 +350,13 @@ def read_attempt_failure(path: Path, *, log_kept: bool = True) -> TaskFailure | 
                 summary = f"{message} ({detail})" if detail else message
                 failure = TaskFailure(summary=summary, details=summary)
     return failure
+
+
+def is_runtime_task_failure(event: Mapping[str, Any]) -> bool:
+    """Whether ``event`` is the failure a task's runtime in another language reported."""
+    # The TypeScript runtime starts its events with the logger's name in brackets.
+    message = str(event.get("event", "")).removeprefix(f"[{event.get('logger')}] ")
+    return message == RUNTIME_TASK_FAILED_EVENT and "error" in event
 
 
 def _format_stacks(stacks: list[dict[str, Any]]) -> tuple[str, int]:
@@ -439,7 +458,11 @@ def _route_event(logger: WrappedLogger, method_name: str, event_dict: EventDict)
         raise structlog.DropEvent
     if _belongs_in_task_log(name):
         _copy_to_task_log(method_name, event_dict)
-    if name == "task" and event_dict.get("event") == TASK_FAILED_EVENT:
+    if (
+        (name == "task" and event_dict.get("event") == TASK_FAILED_EVENT)
+        or event_dict.get("event") == LAUNCH_FAILED_EVENT
+        or is_runtime_task_failure(event_dict)
+    ):
         # The runner reports the failure from the task's log, once it knows whether the task will retry.
         raise structlog.DropEvent
     return _drop_off_console(logger, method_name, event_dict)

@@ -93,6 +93,8 @@ if TYPE_CHECKING:
     from airflow.sdk.definitions.taskgroup import TaskGroup
     from airflow.sdk.definitions.xcom_arg import PlainXComArg
     from airflow.sdk.execution_time.supervisor import TaskRunResult
+    from airflow.serialization.definitions.dag import SerializedDAG
+    from airflow.serialization.definitions.mappedoperator import Operator as SerializedOperator
     from airflow.timetables.base import DataInterval, Timetable as CoreTimetable
 
     Operator: TypeAlias = BaseOperator | MappedOperator
@@ -1541,7 +1543,7 @@ class DAG:
 
 
 def _run_dag_run_to_completion(
-    dag: DAG,
+    dag: DAG | SerializedDAG,
     dr: DagRun,
     *,
     session: Session,
@@ -1549,10 +1551,13 @@ def _run_dag_run_to_completion(
     mark_success_pattern: Pattern | str | None = None,
     should_stop: Callable[[], bool] | None = None,
     task_context: Callable[[SchedulerTaskInstance], AbstractContextManager[object]] | None = None,
-    execute_try: Callable[[SchedulerTaskInstance, Operator], object] | None = None,
+    execute_try: Callable[[SchedulerTaskInstance, Operator | SerializedOperator], object] | None = None,
 ) -> None:
     """
     Drive a created Dag run until it finishes, running its tasks from the in-memory ``dag``.
+
+    A serialized ``dag``, such as one parsed by the runtime of another language, runs its tasks through
+    ``execute_try`` or the executor: they cannot run in this process.
 
     :param should_stop: polled before each loop pass and each task; when it returns True the run
         stops with ``KeyboardInterrupt``. In-process tasks turn an interrupt into an ordinary task
@@ -1668,7 +1673,8 @@ def _run_dag_run_to_completion(
                         elif execute_try is not None:
                             execute_try(ti, task)
                         else:
-                            _run_task(ti=ti, task=task, run_triggerer=True)
+                            # Only an SDK Dag gets here: a serialized one comes with execute_try.
+                            _run_task(ti=ti, task=cast("Operator", task), run_triggerer=True)
                     except Exception:
                         log.exception("Task failed; ti=%s", ti)
         if use_executor:

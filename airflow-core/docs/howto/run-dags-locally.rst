@@ -500,8 +500,8 @@ and how it ended.
 :doc:`apache-airflow-providers-common-ai:use_cases/rank_renewals_by_churn_risk` checks each step of an agent Dag
 with its own task, and reruns one step or one check with ``--task`` and ``--input``.
 
-Run TypeScript tasks
---------------------
+Run TypeScript
+--------------
 
 A ``@task.stub`` task whose code is in a TypeScript bundle (see :ref:`typescript-sdk`) runs in a local run as
 it does on a worker, once ``pyproject.toml`` routes its queue to Node, with the keys of a deployment's
@@ -518,12 +518,25 @@ The run looks for the bundle in the project, where a deployment looks when the c
 It needs Node 22 or later on ``PATH``, or named with ``node_executable`` in the coordinator's ``kwargs``.
 With ``--no-db``, a TypeScript task's runtime reads its inputs, connections, variables and task state from
 the same local services as a Python task, and a missing input or a variable write fails with the same message.
-``--debug`` does not run TypeScript tasks yet, and no local run runs a Dag written in TypeScript.
+``--debug`` does not run TypeScript tasks yet.
+
+A Dag written in TypeScript runs from its bundle, with the same settings:
+
+.. code-block:: bash
+
+    uv run airflow run dist/bundle.min.mjs --dag-id typescript_native_example
+
+Node parses the bundle, as the Dag processor has it parse one in a deployment, and the history keeps the Dag's
+TypeScript source for the UI's Code page. The run refuses a task whose queue does not route to Node, before
+any task runs. ``--task``, ``--input`` and the history work as for a Python Dag: an input stands in for the
+output of an upstream task that a task takes as an argument. The run parses the bundle as it is, so rebuild
+it after each change. ``--no-db`` does not run a task of a Dag written in TypeScript yet. A Dag written in
+Java, or in Go as an executable, runs the same way with its own coordinator, but only TypeScript is tested.
 
 Limits
 ------
 
-* A local run needs its Dag created at module level in a ``.py`` file, so that importing the file finds it:
-  not in a notebook, and not inside the ``__main__`` block.
+* A local run of a Python Dag needs it created at module level in a ``.py`` file, so that importing the file
+  finds it: not in a notebook, and not inside the ``__main__`` block.
 * Local runs and ``airflow standalone --project`` use SQLite and the ``LocalExecutor``. To run Airflow for
   more than one person, see :doc:`/installation/index`.
