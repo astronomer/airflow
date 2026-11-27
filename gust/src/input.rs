@@ -360,7 +360,9 @@ fn resolve_xcoms(map: Map<String, Value>) -> Result<Vec<XComInput>, String> {
     let mut xcoms = Vec::new();
     for (name, keys) in map {
         let (dag_id, task_id) = match name.split_once('/') {
-            Some((d, t)) if !d.is_empty() && !t.is_empty() && !t.contains('/') => (d, t),
+            // A Dag id cannot contain a slash, but a Lang-SDK packer only warns about one in a task
+            // id, so everything after the first slash is the task id.
+            Some((d, t)) if !d.is_empty() && !t.is_empty() => (d, t),
             _ => {
                 return Err(format!(
                     "xcoms: expected a \"dag_id/task_id\" key, got {name:?}"
@@ -644,7 +646,7 @@ mod tests {
     #[test]
     fn xcoms_by_dag_and_task() {
         let mut x = parse_at(
-            r#"{"xcoms": {"d/t": {"": [1, 2], "k": "s"}, "d/u": {"return_value": 3}}}"#,
+            r#"{"xcoms": {"d/t": {"": [1, 2], "k": "s"}, "d/u": {"return_value": 3}, "d/u/v": {"": 4}}}"#,
             NOW,
         )
         .unwrap()
@@ -667,12 +669,13 @@ mod tests {
                 ("d", "t", "k", &json!("s")),
                 ("d", "t", "return_value", &json!([1, 2])),
                 ("d", "u", "return_value", &json!(3)),
+                ("d", "u/v", "return_value", &json!(4)),
             ]
         );
         for bad in [
             r#"{"d": {"k": 1}}"#,
             r#"{"d/": {"k": 1}}"#,
-            r#"{"d/t/k": {"k": 1}}"#,
+            r#"{"/t": {"k": 1}}"#,
             r#"{"d/t": 1}"#,
             r#"{"d/t": {"": 1, "return_value": 2}}"#,
         ] {

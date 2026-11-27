@@ -145,10 +145,10 @@ Connections.
 
 ## `xcoms`
 
-`{"dag_id/task_id": {"key": value}}`. Answers `GetXCom` for that Dag, task and
-key, whatever run the task asks for. The key `""` is short for
-`return_value`; giving both for one task is an error. Default: `{}`, no
-XComs.
+`{"dag_id/task_id": {"key": value}}`, split at the first `/`. Answers
+`GetXCom` for that Dag, task and key, whatever run the task asks for. The key
+`""` is short for `return_value`; giving both for one task is an error.
+Default: `{}`, no XComs.
 
 A mapped upstream task's XComs are given as one JSON array, holding the value
 of each map index in order: `{"my_dag/mapped": {"": [10, 20, 30]}}`. When the
